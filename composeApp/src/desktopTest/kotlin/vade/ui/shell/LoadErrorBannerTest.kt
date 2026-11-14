@@ -125,7 +125,10 @@ class LoadErrorBannerTest {
         var sessionsGate: CompletableDeferred<Unit>? = null
         var messagesGate: CompletableDeferred<Unit>? = null
 
-        override suspend fun sessions(): List<SessionSummary> {
+        // 契约在 g-archive-ui 之后带上了 includeArchived；默认值只写在接口上，
+        // 所以每个实现都必须声明这个形参（否则「overrides nothing」编译不过）。
+        // 本测试只关心重试横幅，归档与否不影响它，故忽略该开关。
+        override suspend fun sessions(includeArchived: Boolean): List<SessionSummary> {
             sessionsCalls.incrementAndGet()
             sessionsGate?.await()
             sessionsFailure?.let { throw it }
