@@ -11,18 +11,20 @@
 |---|---|---|
 | 桌面端编译 `gradle :composeApp:desktopMainClasses` | ✅ 可用 | 2026-11-14 实测 `BUILD SUCCESSFUL in 4s` |
 | 桌面端启动 `gradle :composeApp:run` | ✅ 可用，窗口真实渲染 | 实测拉起 `vade.ui.MainKt` 进程；截图 `shots/g-docs/desktop-quickstart-fixed.png` |
-| 客户端全量测试 `gradle :composeApp:desktopTest` | ✅ **154 tests / 0 failures / 1 skipped** | 2026-11-14 实测（XML 逐文件汇总）；skipped = `VadeClientSmokeTest`（环境变量门控，见 §4） |
-| Android APK 构建 `gradle :composeApp:assembleDebug` | ✅ 可用 | 2026-11-14 实测 `BUILD SUCCESSFUL in 1m 19s`，产出 `composeApp-debug.apk`（21,534,706 字节） |
-| **UI 数据** | ❌ **全部假数据，未连 core** | `App()` 默认 `source = FakeSessionSource()`（`composeApp/src/commonMain/kotlin/vade/ui/App.kt`）；窗口顶部自带横幅「假数据：未连接 core（U1-a 只做骨架，U1-b 接线）」 |
-| 真连接（`ui/attach`、配对、断线重连接进 UI） | ❌ **UI 未接线** | 协议层 `VadeClient`（21 方法 / 26 事件）已实现并有测试覆盖，但**没有任何页面调用它** → 这正是 ALPHA.md 的 **W2** |
-| 真聊天（`ui/submit` / `turn.delta` 流式 / 中断） | ❌ 未接 UI | 同上。协议客户端对真核的冒烟通过记录见 `shots/w1-proto/smoke.md`（attach→submit→8 个连续事件→usage.get 全真实输出） |
-| 搜索 | ⚠️ 降级：**本地缓存索引** | `schema/rpc.json` 没有 `session/search`（见 README「已实现 / 未实现」表） |
-| echo 模块在 UI 里可调（ALPHA A3） | ❌ 不可演示 | echo 模块**已迁出主仓**到独立仓 `vade-module-echo`（主仓 `modules/README.md`：「参考实现（已迁出）」）；且 UI 未接线。core 无模块在线时 `ui/submit` 走 notice 短路（实测记录 `shots/w1-proto/smoke.md`） |
-| 桌面打包分发 `packageMsi` / `createDistributable` | ⬜ 任务存在、**从未执行** | `--dry-run` 验证过任务在；ALPHA.md A5 → 波次 W3 |
-| Wasm 构建运行 | ⚠️ 只验证过编译 | `compileKotlinWasmJs` 绿是 w1-proto 批次的记录（`shots/w1-proto/RESULT.md`），运行时冒烟未做 |
-| Android 真机 / 模拟器运行时 | ❌ 未验证 | ALPHA.md A6 最后一项；APK 能编出来 ≠ 装上能跑 |
-| 服务端 core 启动 | ✅ 可用 | 2026-11-14 实测：`/healthz` 返回 `{"ok": true, "version": "0.1.0", "policy_mode": "allow_all"}`；`/ws` 完成 `101 Switching Protocols` |
-| Linux / macOS | ❌ 未验证 | 本文全部命令在 **Windows 11 + MSYS bash** 实测；Linux/macOS 侧路径与截图工具不同，未跑过 |
+| 客户端全量测试 `gradle :composeApp:desktopTest --rerun` | ✅ **368 tests / 0 failures / 1 skipped** | 2026-11-14 实测（`build/test-results/desktopTest/TEST-*.xml` 逐文件 tests= 求和）；skipped = `VadeClientSmokeTest`（环境变量门控，见 §4） |
+| Android APK 构建 `gradle :composeApp:assembleDebug` | ✅ 可用 | 2026-11-14 实测，`composeApp-debug.apk` **21,878,888 字节** |
+| Wasm 编译与链接 | ✅ 编译 + 链接均通过 | `compileKotlinWasmJs` 绿；`compileProductionExecutableKotlinWasmJs` 产出 `composeApp.wasm` **13,681,513 字节**。**浏览器里跑起来未验证** |
+| 桌面打包分发 | ✅ **已实测出包** | `packageMsi` → `vade-ui-0.1.0.msi` **93,312,713 字节**；`createDistributable` → app-image **153.6 MB**（自带 jlink 运行时，运行机不需 JDK）。⚠️ alpha 序列的版本号限制见 `deploy/desktop/README.md` |
+| **UI 数据** | ❌ **仍是 fixtures，未连 core** | `App()` 默认 `source = FakeSessionSource()`（`vade/ui/App.kt`）。真数据源 `RealSessionSource` 已实现并有 36 条测试，但 **`UiState` 尚未读它**（接线在 `w-wire` 批进行中） |
+| 真连接（`ui/attach`、配对、断线重连接进 UI） | ❌ **UI 未接线** | 协议层 `VadeClient` 已覆盖 **34/34 方法、34/34 事件键**，但没有任何页面调用它 → ALPHA.md 的 **W2** |
+| 真聊天（`ui/submit` / `turn.delta` 流式 / 中断） | ❌ 未接 UI | 同上。协议客户端对真核的冒烟记录见 `shots/w1-proto/smoke.md` |
+| 搜索 | ⚠️ 契约已支持，UI 仍降级 | 契约 1.5.0 **已有** `session/search`（RFC-0014）；客户端 codec 由 `p-search` 批补，UI 仍走本地缓存索引 |
+| echo 模块在 UI 里可调（ALPHA A3） | ❌ 不可演示 | echo 模块已迁出主仓到独立仓 `vade-module-echo`；模块页宿主（`g-module`）未落地，UI 未接线 |
+| 会话元数据编辑（重命名/置顶/分组/图标/颜色） | ✅ UI 完整，⚠️ 未接真 RPC | `vade/ui/meta/` 8 文件 + 30 条测试；`SessionMetaActions` 的真适配器由 `w-adapt` 批实现 |
+| 模型切换 / 用量 / 子代理面板 / 编辑重发 / 附件 | ✅ UI 完整，⚠️ 未接真 RPC | `model/` `usage/` `subagent/` `chat/` 均已落地并有测试；真适配器同样在 `w-adapt` |
+| ask_user 卡片 | ❌ 未合并 | 实现完成（37 条测试）但在 `tmp/c-askuser`，等 `g-glass` 落地后合并（避免 `AppShell.kt` 冲突） |
+| Android 真机 / 模拟器运行时 | ⚠️ 部分 | API 37 模拟器与 API 30 真机均装包启动成功、无崩溃；**已发现两个真 bug**（手势条压底栏 → `c-inset`；模糊不可见 → `g-glass`） |
+| Linux / macOS | ❌ 未验证 | 本文全部命令在 **Windows 11 + MSYS bash** 实测 |
 
 **一句话**：今天你能「编译 → 起窗口 → 跑测试 → 连一个真 core 的协议层（测试内）」，但**窗口里的所有内容都是假数据**；把假数据换成真数据是 ALPHA.md W2 的活，打包分发是 W3 的活。
 
@@ -142,7 +144,7 @@ BUILD SUCCESSFUL in 5s
 11 actionable tasks: 4 executed, 7 up-to-date
 ```
 
-对 `composeApp/build/test-results/desktopTest/*.xml` 逐文件汇总（实测）：**154 tests / 0 failures / 0 errors / 1 skipped**。
+对 `composeApp/build/test-results/desktopTest/*.xml` 逐文件汇总（实测）：**368 tests / 0 failures / 0 errors / 1 skipped**（2026-11-14 合并十余批后的数；这条数字随批次增长，读的时候以自己跑出来的为准）。
 
 唯一 skipped 是 `vade.ui.protocol.VadeClientSmokeTest`：它用 `org.junit.Assume` 门控——只有设了
 `VADE_SMOKE_PORT` 等环境变量才会真连一个 core 跑冒烟，普通执行标记 skipped（**不是静默 pass**）。
@@ -343,7 +345,7 @@ actual:   'org.jetbrains.compose.ui:ui:1.12.2'
 This may lead to compilation errors or unexpected behavior at runtime.
 ```
 
-**现状**：某传递依赖把 compose-ui 拉到 1.12.2；实测桌面窗口正常渲染、154 条测试全绿，当前
+**现状**：某传递依赖把 compose-ui 拉到 1.12.2；实测桌面窗口正常渲染、368 条测试全绿，当前
 **只是警告**。不要自行乱升插件版本去消警告——动矩阵前先读 `docs/ENVIRONMENT.md` 的链条。
 
 ---
@@ -356,7 +358,7 @@ This may lead to compilation errors or unexpected behavior at runtime.
 | `gradle :composeApp:desktopMainClasses` | ✅ 实测 |
 | `gradle :composeApp:run` | ✅ 实测（窗口进程 + 截图） |
 | `tools/capture-window.ps1`（截图循环） | ✅ 实测 |
-| `gradle :composeApp:desktopTest` / `--rerun` | ✅ 实测（154 / 0 / 1 skipped） |
+| `gradle :composeApp:desktopTest` / `--rerun` | ✅ 实测（368 / 0 / 1 skipped） |
 | `gradle :composeApp:assembleDebug` | ✅ 实测（APK 20.5 MB） |
 | `gradle :composeApp:packageMsi` / `createDistributable` | ⚠️ 仅 `--dry-run` 验证任务存在，未真正执行 |
 | `gradle :compileKotlinWasmJs` | ❌ 未在本机验证（w1-proto 批次记录为绿，引用） |

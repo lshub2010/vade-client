@@ -91,7 +91,7 @@ isolation」。
 
 - `gradle --version` → Gradle 9.6.1，Launcher JVM 21.0.13，Daemon JVM `D:\Hermes\tools\jdk21`
 - `gradle :composeApp:desktopMainClasses` → BUILD SUCCESSFUL in 4s
-- `gradle :composeApp:desktopTest --rerun` → 154 tests / 0 failures / 1 skipped（XML 汇总）
+- `gradle :composeApp:desktopTest --rerun` → 368 tests / 0 failures / 1 skipped（XML 汇总）
 - `gradle :composeApp:assembleDebug` → BUILD SUCCESSFUL in 1m 19s，APK 21,534,706 字节
 - gradle-8.10.2 → `Minimum supported Gradle version is 9.6.0. Current version is 8.10.2.`
 - 干净 clone 无 SDK → `SDK location not found. ...`
