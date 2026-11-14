@@ -16,22 +16,52 @@ import kotlin.math.abs
 const val MOTION_BLUR_START_VELOCITY_DP_PER_SEC: Float = 1200f
 
 /** Speed at which the radius reaches [MOTION_BLUR_MAX_RADIUS_DP]; slower = proportionally less. */
-const val MOTION_BLUR_FULL_VELOCITY_DP_PER_SEC: Float = 4800f
+const val MOTION_BLUR_FULL_VELOCITY_DP_PER_SEC: Float = 6000f
 
-/** Hard cap from §11 (the sheet-open case uses a larger 14dp cap; see [MOTION_BLUR_MAX_RADIUS_DP]). */
-const val MOTION_BLUR_MAX_RADIUS_DP: Float = 10f
+/**
+ * Cap for the **scroll** case (§11's sheet-open case uses a larger 14dp cap).
+ *
+ * 6 dp, not 10: a 10 dp radius smeared 34 sp glyphs into unreadable colour blocks, which reads
+ * as "out of focus" rather than "moving fast". Motion blur must stay legible at speed and be
+ * perfectly sharp at rest, so the cap is the largest radius that still leaves glyph counters
+ * visible.
+ */
+const val MOTION_BLUR_MAX_RADIUS_DP: Float = 6f
 
 /** §11: after the speed drops below the threshold the radius must reach 0 within 120 ms. */
 const val MOTION_BLUR_DECAY_MS: Int = 120
 
 /**
+ * Horizontal Gaussian sigma per dp of radius — the *token* axis.
+ *
+ * §11 asks for a directional blur ("只做垂直方向为主的方向性模糊"): a scrolling list moves only
+ * along Y, so the smear must live on Y. A truly zero sigmaX leaves a hard seam where
+ * `FilterTileMode.CLAMP` meets the layer bounds and makes vertical glyph strokes look
+ * razor-cut, so X keeps `0.12 × radius`: enough to anti-alias that edge, far too small to read
+ * as defocus (at the 6 dp cap, sigmaX ≈ 0.7 px at density 1 — roughly 4.6× narrower than Y).
+ */
+const val MOTION_BLUR_SIGMA_X_PER_RADIUS: Float = 0.12f
+
+/**
+ * Vertical Gaussian sigma per dp of radius — the *dominant* axis.
+ *
+ * `0.55 × radius` puts the 6 dp cap at sigmaY ≈ 3.3 px (density 1). Physically a motion-blurred
+ * edge is a box of length `speed × exposure`; a Gaussian with sigma ≈ box/3.5 is the usual
+ * visual stand-in, so this factor is a look, not a measurement (RESULT.md §已知限制). Chosen by
+ * eye against `shots/motion/freeze-6.png`: 34 sp monospace glyphs collapse into a vertical
+ * streak whose outlines stay readable — the old isotropic `sigmaX = sigmaY = 5 px` erased them.
+ */
+const val MOTION_BLUR_SIGMA_Y_PER_RADIUS: Float = 0.55f
+
+/**
  * The one and only velocity → radius curve.
  *
- * Piecewise-linear on purpose: `0` at [MOTION_BLUR_START_VELOCITY_DP_PER_SEC], rising to
- * [MOTION_BLUR_MAX_RADIUS_DP] at [MOTION_BLUR_FULL_VELOCITY_DP_PER_SEC] (3× the trigger
- * speed, which is where a normal fling lands), clamped above. Linear keeps the "blur is
- * speed, stop means sharp" reading obvious — an eased curve would keep pixels soft after the
- * finger has already stopped, which §11 forbids ("静止时严格为 0").
+ * `radius = 6 × clamp((v − 1200) / (6000 − 1200), 0, 1)` — **continuous**, not a step at the
+ * threshold. Piecewise-linear on purpose: linear keeps the "blur *is* speed, stop means sharp"
+ * reading obvious, and an eased curve would keep pixels soft after the finger has already
+ * stopped, which §11 forbids ("静止时严格为 0"). Continuous rather than "jump to max above the
+ * trigger" because a fling crosses 1200 dp/s constantly — a step would strobe the list between
+ * sharp and fully blurred every time the sampled velocity wobbled around the threshold.
  *
  * Non-finite input (a first frame with no previous sample) yields 0, never NaN: a NaN radius
  * would reach Skia as a NaN sigma and blank the layer.
@@ -64,5 +94,9 @@ expect fun blurForVelocity(velocityDpPerSec: Float): Float
  *  - Layout and hit-testing are untouched: this only changes painting.
  *  - The blur is applied to the node's own content, not to whatever is behind it (that is
  *    haze's job for glass surfaces, and §11 forbids stacking the two).
+ *  - Desktop/wasm smear **only along Y** ([MOTION_BLUR_SIGMA_X_PER_RADIUS] vs
+ *    [MOTION_BLUR_SIGMA_Y_PER_RADIUS]). Android's `Modifier.blur` takes one radius with no
+ *    per-axis parameter, so that target stays isotropic — a documented platform gap, see
+ *    RESULT.md §已知限制.
  */
 expect fun Modifier.motionBlur(radiusDp: Float): Modifier

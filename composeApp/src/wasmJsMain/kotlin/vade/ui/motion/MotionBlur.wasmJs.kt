@@ -14,7 +14,10 @@ import kotlin.math.round
  *
  * Same technique as `MotionBlur.desktop.kt`, because wasm and desktop share the skiko backend:
  * `Modifier.drawWithContent` + `drawIntoCanvas { it.nativeCanvas }` + `saveLayer` with
- * `ImageFilter.makeBlur(sigma, sigma, FilterTileMode.CLAMP)` on the layer paint.
+ * `ImageFilter.makeBlur(sigmaX, sigmaY, FilterTileMode.CLAMP)` on the layer paint. The two
+ * sigmas are asymmetric for the same reason as on desktop — the smear must be directional
+ * (mostly Y), not isotropic defocus; see [MOTION_BLUR_SIGMA_X_PER_RADIUS] /
+ * [MOTION_BLUR_SIGMA_Y_PER_RADIUS].
  *
  * Kept as a separate file rather than hoisted into a shared source set on purpose: the two
  * targets stay independently compilable, so if CanvasKit ever diverges (e.g. `saveLayer` is
@@ -26,7 +29,6 @@ import kotlin.math.round
  * it returns `this` with no layer at all.
  */
 
-private const val SIGMA_PER_RADIUS = 0.5f
 private const val SIGMA_STEP_PX = 0.25f
 
 actual fun blurForVelocity(velocityDpPerSec: Float): Float = velocityToBlurRadiusDp(velocityDpPerSec)
@@ -34,36 +36,42 @@ actual fun blurForVelocity(velocityDpPerSec: Float): Float = velocityToBlurRadiu
 actual fun Modifier.motionBlur(radiusDp: Float): Modifier {
     if (radiusDp <= 0f) return this
     return this.drawWithContent {
-        val raw = radiusDp * density * SIGMA_PER_RADIUS
-        val sigma = (round(raw / SIGMA_STEP_PX) * SIGMA_STEP_PX).coerceAtLeast(SIGMA_STEP_PX)
+        val sigmaX = quantize(radiusDp * density * MOTION_BLUR_SIGMA_X_PER_RADIUS)
+        val sigmaY = quantize(radiusDp * density * MOTION_BLUR_SIGMA_Y_PER_RADIUS)
         drawIntoCanvas { composeCanvas ->
             val canvas = composeCanvas.nativeCanvas
-            canvas.saveLayer(null, SkiaBlurPaints.forSigma(sigma))
+            canvas.saveLayer(null, SkiaBlurPaints.forSigmas(sigmaX, sigmaY))
             drawContent()
             canvas.restore()
         }
     }
 }
 
+/** Same quantization rule as desktop: never 0, so the token axis stays a real blur. */
+private fun quantize(sigma: Float): Float =
+    (round(sigma / SIGMA_STEP_PX) * SIGMA_STEP_PX).coerceAtLeast(SIGMA_STEP_PX)
+
 private object SkiaBlurPaints {
     private var paint: Paint? = null
     private var filter: ImageFilter? = null
-    private var sigma: Float = Float.NaN
+    private var sigmaX: Float = Float.NaN
+    private var sigmaY: Float = Float.NaN
 
-    fun forSigma(nextSigma: Float): Paint {
-        paint?.let { if (nextSigma == sigma) return it }
+    fun forSigmas(nextX: Float, nextY: Float): Paint {
+        paint?.let { if (nextX == sigmaX && nextY == sigmaY) return it }
         filter?.close()
         paint?.close()
         val created = ImageFilter.makeBlur(
-            sigmaX = nextSigma,
-            sigmaY = nextSigma,
+            sigmaX = nextX,
+            sigmaY = nextY,
             mode = FilterTileMode.CLAMP,
         )
         filter = created
         return Paint().also {
             it.imageFilter = created
             paint = it
-            sigma = nextSigma
+            sigmaX = nextX
+            sigmaY = nextY
         }
     }
 }

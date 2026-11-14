@@ -38,7 +38,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import vade.ui.motion.MOTION_BLUR_DECAY_MS
+import vade.ui.motion.MOTION_BLUR_FULL_VELOCITY_DP_PER_SEC
 import vade.ui.motion.MOTION_BLUR_MAX_RADIUS_DP
+import vade.ui.motion.MOTION_BLUR_SIGMA_X_PER_RADIUS
+import vade.ui.motion.MOTION_BLUR_SIGMA_Y_PER_RADIUS
 import vade.ui.motion.MOTION_BLUR_START_VELOCITY_DP_PER_SEC
 import vade.ui.motion.blurForVelocity
 import vade.ui.motion.motionBlur
@@ -168,7 +171,7 @@ fun MotionProbe(
             val dtSec = ((now - prevNanos) / 1_000_000_000.0).toFloat().coerceAtLeast(0.001f)
             val rawDpPerSec = with(density) { ((offset - prevOffset) / dtSec).toDp().value }
             // Light smoothing: per-frame deltas are spiky because frame spacing is uneven, and
-            // an unsmoothed radius flickers between 0 and 10 dp on a real fling.
+            // an unsmoothed radius flickers between 0 and the cap on a real fling.
             ema = ema + (rawDpPerSec - ema) * 0.4f
             prevOffset = offset
             prevNanos = now
@@ -295,7 +298,9 @@ private fun Hud(
             fontFamily = FontFamily.Monospace,
         )
         Text(
-            "trigger ${MOTION_BLUR_START_VELOCITY_DP_PER_SEC.roundToInt()} dp/s\ncap ${fmt(MOTION_BLUR_MAX_RADIUS_DP, 0)} dp",
+            "trigger ${MOTION_BLUR_START_VELOCITY_DP_PER_SEC.roundToInt()} dp/s\n" +
+                "full ${MOTION_BLUR_FULL_VELOCITY_DP_PER_SEC.roundToInt()} dp/s → " +
+                "cap ${fmt(MOTION_BLUR_MAX_RADIUS_DP, 0)} dp",
             color = Color(0xFF5A6270),
             fontSize = 10.sp,
             fontFamily = FontFamily.Monospace,
@@ -319,6 +324,8 @@ private fun Hud(
         Spacer(Modifier.height(10.dp))
         // The same radius on a static pattern: a frozen screenshot then shows the blur both on
         // moving content and in isolation, so "is it actually blurring?" needs no scrolling.
+        // Directional blur is legible here as *vertical* smearing of the vertical strokes — the
+        // glyphs stretch down the page while their horizontal width stays crisp.
         Text("same radius, static", color = Color(0xFF6E7681), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
         Box(
             Modifier
@@ -331,7 +338,8 @@ private fun Hud(
             Text("REFERENCE", color = Color(0xFFF2F3F5), fontSize = 18.sp, fontFamily = FontFamily.Monospace)
         }
         Text(
-            "skiko sigma = radius × density × 0.5",
+            "sigmaY = r×density×${fmt(MOTION_BLUR_SIGMA_Y_PER_RADIUS, 2)}\n" +
+                "sigmaX = r×density×${fmt(MOTION_BLUR_SIGMA_X_PER_RADIUS, 2)} (token)",
             color = Color(0xFF4A505B),
             fontSize = 9.sp,
             fontFamily = FontFamily.Monospace,
