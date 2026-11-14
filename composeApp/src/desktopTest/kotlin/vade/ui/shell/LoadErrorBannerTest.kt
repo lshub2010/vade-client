@@ -45,6 +45,7 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestDispatcher
 import vade.ui.chat.ChatMessage
+import vade.ui.chat.ChatPreset
 import vade.ui.chat.ChatRole
 import vade.ui.chat.ContentPart
 import vade.ui.data.SessionSource
@@ -150,6 +151,9 @@ class LoadErrorBannerTest {
         initialSkinId = "material",
         initialDest = Destination.Sessions,
         initialSessionId = initialSessionId,
+        // `Interrupted` = a settled thread: no streaming animation loop, so these tests stay
+        // cheap and deterministic. The banner is orthogonal to the chat preset.
+        chatPreset = ChatPreset.Interrupted,
         source = source,
         loaderScope = CoroutineScope(dispatcher + SupervisorJob()),
     )
