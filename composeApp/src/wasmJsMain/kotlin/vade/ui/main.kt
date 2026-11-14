@@ -1,5 +1,6 @@
 package vade.ui
 
+import androidx.compose.runtime.key
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.window.ComposeViewport
 import kotlinx.browser.document
@@ -7,6 +8,7 @@ import kotlinx.browser.window
 import vade.ui.demo.MotionProbe
 import vade.ui.demo.MotionProbeConfig
 import vade.ui.demo.ProbeContent
+import vade.ui.skin.VadeFonts
 import vade.ui.skin.glass.MotionBlurKernel
 
 /**
@@ -19,7 +21,9 @@ import vade.ui.skin.glass.MotionBlurKernel
  *
  * Query keys: `freeze=<dp>` (pins the radius), `blur=off`, `autoscroll`, `fps`,
  * `kernel=box|triangle|gaussian` (pins the kernel for the A/B; default is the shipped one),
- * `content=real|pathological` (list fixture; default `real`).
+ * `content=real|pathological` (list fixture; default `real`), and `font=off|<path>`
+ * (skip / override the bundled CJK subset — the regression and failure-path switch,
+ * see [installVadeSans]).
  */
 @OptIn(ExperimentalComposeUiApi::class)
 fun main() {
@@ -49,10 +53,26 @@ fun main() {
         }
     }
 
-    ComposeViewport(document.body!!) {
-        // g-live: same uniform switch as desktop/Android — `?source=real&host=...&
-        // port=...&pair_code=...` wires the real core through the shared parser
-        // (vade.ui.data.SourceConfig); no query keeps the fixture path byte-for-byte.
-        if (probe) MotionProbe() else App(source = vade.ui.data.sessionSourceFromEnvironment())
+    // 字体：先把随包的 CJK 子集装进 typography，再建 viewport —— 首帧就有字形，
+    // 不需要等 gstatic（断网也正常）。`?font=off` 跳过安装（回归/对照用，等于修复前），
+    // `?font=<path>` 换一个 URL（验证失败回退路径用）。详见 VadeFontWasm.kt。
+    val fontSwitch = value("font")
+    val startApp: () -> Unit = {
+        ComposeViewport(document.body!!) {
+            // 读 generation：字体若晚到，整棵树（含 remember 出来的 skin）被重建，
+            // 因为 CMP 不会仅凭字形字节到齐就自己重绘。
+            key(VadeFonts.generation) {
+                // g-live: same uniform switch as desktop/Android — `?source=real&host=...&
+                // port=...&pair_code=...` wires the real core through the shared parser
+                // (vade.ui.data.SourceConfig); no query keeps the fixture path byte-for-byte.
+                if (probe) MotionProbe() else App(source = vade.ui.data.sessionSourceFromEnvironment())
+            }
+        }
+    }
+
+    when {
+        fontSwitch.equals("off", ignoreCase = true) -> startApp()
+        fontSwitch.isNullOrEmpty() -> installVadeSans(VADE_SANS_URL, startApp)
+        else -> installVadeSans(fontSwitch, startApp)
     }
 }

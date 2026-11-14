@@ -202,14 +202,16 @@ class ModuleCatalogDecodeTest {
                     """
                     {"revision": 1, "modules": [
                       {"module_id":"ok","instance_id":"i","display_name":"OK","online":true},
-                      {"module_id":"bad","instance_id":"i","online":true}
+                      {"instance_id":"i","display_name":"BAD","online":true}
                     ]}
                     """.trimIndent(),
                 ),
             )
         }
         assertTrue(
-            error.message.orEmpty().contains("display_name"),
+            // 举的例子从 `display_name` 换成 `module_id`：契约里前者是 string|null（可选），
+            // 拿它当「必填字段」的例子会把这个测试变成「钉住一个错误的契约」。
+            error.message.orEmpty().contains("module_id"),
             "必须点名缺的键（不是笼统 malformed）：${error.message}",
         )
     }

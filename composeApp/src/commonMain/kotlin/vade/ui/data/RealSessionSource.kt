@@ -91,7 +91,10 @@ class RealSessionSource(
      *  - 契约落地后这里只需 `ModulesLoader(WireModuleCatalogSource(...), scope)` 一行，
      *    屏幕与 `AppShell` 都不用改（它们只认 `ModuleCatalog`）。
      */
-    override val moduleCatalog: ModuleCatalog? get() = null
+    /** 连接期由 [connect] 建出（与 client 同生命周期）；断开即置空。 */
+    private var _moduleCatalog: ModuleCatalog? = null
+
+    override val moduleCatalog: ModuleCatalog? get() = _moduleCatalog
 
     /** Convenience production constructor: device-session attach at [host]:[port]. */
     constructor(
@@ -182,6 +185,9 @@ class RealSessionSource(
                 ),
             )
             val s = scope ?: CoroutineScope(SupervisorJob() + Dispatchers.Default).also { scope = it }
+            // A3 · 模块清单（C-05 1.6.0 `ui/modules`）。与 client 同生命周期：
+            // 断开后 client 不可复活，清单也不再可信。
+            _moduleCatalog = ModulesLoader(WireModuleCatalogSource { created.uiModulesRaw() }, s)
             // Both collectors must be SUBSCRIBED before connect() — client.events is a
             // hot SharedFlow without replay, and late subscribers miss early events
             // (replay frames arrive right after Connected).
@@ -215,6 +221,8 @@ class RealSessionSource(
         _client = null
         // The closed client cannot be revived, so its adapters go with it.
         _adapters = null
+        (_moduleCatalog as? ModulesLoader)?.dispose()
+        _moduleCatalog = null
         tapFactory.reset()
         _state.value = RealSessionState.Disconnected
     }

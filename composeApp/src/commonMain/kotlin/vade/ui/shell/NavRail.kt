@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
@@ -77,7 +78,13 @@ fun NavRail(
                             .size(30.dp)
                             .clip(RoundedCornerShape(skin.shapes.small))
                             .background(
-                                if (isSelected) skin.colors.primary.copy(alpha = 0.16f) else skin.colors.surfaceVariant,
+                                // g-nav-fix ④: the unselected slot used to paint `surfaceVariant` — the
+                                // rail's own background, i.e. the same colour written down twice. That is
+                                // only correct while the rail stays an opaque `surfaceVariant` column; on a
+                                // glass/backdrop rail it would turn every idle slot into a solid chip.
+                                // Explicit transparent says "no fill" and keeps the one shape cue (the
+                                // selected 16 % accent box) the only painted slot. Zero pixel change today.
+                                if (isSelected) skin.colors.primary.copy(alpha = 0.16f) else Color.Transparent,
                             ),
                         contentAlignment = Alignment.Center,
                     ) {

@@ -223,7 +223,10 @@ internal object ModuleCatalogWire {
                 buildJsonObject {
                     put("module_id", moduleId)
                     put("instance_id", instanceId)
-                    put("display_name", module.mustStr("display_name"))
+                    // 契约是 `display_name: string|null`（C-03 里它是可选字段）。
+                    // 缺/空时**不写这个键**，由 ModuleRegistry.declare 落到 module_id ——
+                    // 早先这里用 mustStr 当必填，会让「没有 display_name 的模块」整份被拒。
+                    module.strStrict("display_name")?.takeIf { it.isNotBlank() }?.let { put("display_name", it) }
                     module["version"]?.let { put("version", it) }
                     module["pages"]?.let { pages -> put("ui", buildJsonObject { put("pages", pages) }) }
                 },
@@ -249,6 +252,18 @@ internal object ModuleCatalogWire {
  */
 internal interface ModuleCatalogSource {
     suspend fun fetch(): JsonObject
+}
+
+/**
+ * 真实的 [ModuleCatalogSource]：一次 `ui/modules` 的原始回包。
+ *
+ * 只是一层函数包装，不持连接、不做重试——重试与去重都在 [ModulesLoader] 里。
+ * 组合根交进来的是 `{ client.uiModulesRaw() }`（`RealSessionSource.connect()`）。
+ */
+internal class WireModuleCatalogSource(
+    private val call: suspend () -> JsonObject,
+) : ModuleCatalogSource {
+    override suspend fun fetch(): JsonObject = call()
 }
 
 // ------------------------------------------------------------------ loader

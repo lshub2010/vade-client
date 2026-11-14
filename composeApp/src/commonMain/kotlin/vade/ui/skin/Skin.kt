@@ -4,6 +4,9 @@ import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Easing
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
@@ -336,16 +339,48 @@ data class SkinShapes(
     val sheet: Dp = 32.dp,
 )
 
+/**
+ * The font seam for every typography token.
+ *
+ * `typography` below resolves its family through this holder instead of hard-coding
+ * `FontFamily.Default`, because Web **has no system fonts**: Skiko/CanvasKit can only draw
+ * glyphs whose bytes it was handed, and CMP's own fallback (`NotoFontDownloader`, `internal`,
+ * no configuration) fetches Noto subsets from `fonts.gstatic.com` at runtime — so a Chinese
+ * screen is tofu until the CDN answers, and forever tofu offline
+ * (`shots/g-font-recon/RECON.md` §1). The wasm entry point therefore installs the bundled
+ * subset **before the first composition** (`wasmJsMain/vade/ui/VadeFontWasm.kt`); every other
+ * target leaves the default in place, so nothing re-flows there.
+ *
+ * [generation] is bumped on every install because CMP does **not** repaint when glyph bytes
+ * merely arrive (measured: 30 s of identical tofu frames, `shots/g-font-bundle2/RESULT.md`).
+ * Read it inside composition (a `key(...)`) and the tree is invalidated on install.
+ */
+object VadeFonts {
+    /** Family used by `title`/`body`/`caption`; `FontFamily.Default` unless a host installs one. */
+    var sans: FontFamily = FontFamily.Default
+        private set
+
+    /** Increments each time [sans] is replaced — read it in composition to be invalidated. */
+    var generation by mutableStateOf(0)
+        private set
+
+    fun installSans(fontFamily: FontFamily) {
+        sans = fontFamily
+        generation++
+    }
+}
+
 @Immutable
 data class SkinTypography(
-    val title: TextStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.SemiBold),
+    val title: TextStyle =
+        TextStyle(fontSize = 18.sp, fontWeight = FontWeight.SemiBold, fontFamily = VadeFonts.sans),
     /**
      * Body default. The chat reading column overrides this to the visual-language
      * 15sp / 1.55 inside `MarkdownText`; every other page passes an explicit size to
      * `UiText`, so this stays 14sp and no existing screen re-flows.
      */
-    val body: TextStyle = TextStyle(fontSize = 14.sp),
-    val caption: TextStyle = TextStyle(fontSize = 11.sp),
+    val body: TextStyle = TextStyle(fontSize = 14.sp, fontFamily = VadeFonts.sans),
+    val caption: TextStyle = TextStyle(fontSize = 11.sp, fontFamily = VadeFonts.sans),
     val mono: TextStyle = TextStyle(fontSize = 12.sp, fontFamily = FontFamily.Monospace),
 )
 
