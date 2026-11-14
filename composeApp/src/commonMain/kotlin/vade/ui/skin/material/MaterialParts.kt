@@ -42,6 +42,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import vade.ui.icon.VadeIcon
+import vade.ui.icon.VadeIcons
 import vade.ui.skin.ApprovalRequest
 import vade.ui.skin.AttachmentState
 import vade.ui.skin.AttachmentView
@@ -416,7 +418,7 @@ internal fun MaterialAttachmentChip(
         }
         if (onRemove != null) {
             Spacer(Modifier.width(4.dp))
-            IconTap(onClick = onRemove) { Text("✕", fontSize = 14.sp, color = colors.onSurfaceVariant) }
+            IconTap(onClick = onRemove) { VadeIcon(VadeIcons.Close, contentDescription = "移除附件", size = 14.dp, tint = colors.onSurfaceVariant) }
         }
     }
 }

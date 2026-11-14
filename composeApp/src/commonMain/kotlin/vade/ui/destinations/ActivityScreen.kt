@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import vade.ui.UiText
+import vade.ui.icon.VadeIcons
 import vade.ui.skin.LocalSkin
 
 /**
@@ -52,21 +53,21 @@ fun ActivityScreen(
 
         SectionLabel("待审批")
         EmptyStateCard(
-            glyph = "!",
+            icon = VadeIcons.Pending,
             title = "暂无待审批",
             body = "审批关闭只认 turn.approval_resolved（FR-8.53）；U1-d 接线前不伪造倒计时，也不插入假的审批卡。",
         )
 
         SectionLabel("最近失败")
         EmptyStateCard(
-            glyph = "×",
+            icon = VadeIcons.Failed,
             title = "暂无失败记录",
             body = "失败 turn 与失败工具卡会在这里汇总（U1-d）。",
         )
 
         SectionLabel("后台任务 · 子代理")
         EmptyStateCard(
-            glyph = "⧗",
+            icon = VadeIcons.Waiting,
             title = "等待 RFC-0007",
             body = "子代理 / 后台任务协议未批准，本切片只留容器与空态，不接假事件流。",
         )

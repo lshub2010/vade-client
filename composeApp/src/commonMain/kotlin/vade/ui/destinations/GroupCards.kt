@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.TextStyle
@@ -21,6 +22,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import vade.ui.UiText
+import vade.ui.icon.VadeIcon
+import vade.ui.icon.VadeIcons
 import vade.ui.skin.LocalSkin
 
 /**
@@ -65,16 +68,16 @@ fun GroupCard(
 }
 
 /**
- * Centered empty state inside a [GroupCard]. [glyph] is a single geometric glyph (the icon
- * pack is U1-g; emoji are banned by the visual language). [action] — pass at most one
- * primary action; two call-to-actions in an empty state is the thing the spec forbids.
+ * Centered empty state inside a [GroupCard]. [icon] is a Tabler vector (§3 bans character
+ * icons — the previous `○` default was exactly that). [action] — pass at most one primary
+ * action; two call-to-actions in an empty state is the thing the spec forbids.
  */
 @Composable
 fun EmptyStateCard(
     title: String,
     body: String,
     modifier: Modifier = Modifier,
-    glyph: String = "○",
+    icon: ImageVector = VadeIcons.Empty,
     action: (@Composable () -> Unit)? = null,
 ) {
     val skin = LocalSkin.current
@@ -84,7 +87,7 @@ fun EmptyStateCard(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-                UiText(glyph, size = 24, color = skin.colors.onSurfaceVariant)
+                VadeIcon(icon, contentDescription = null, size = 24.dp, tint = skin.colors.onSurfaceVariant)
             }
             Spacer(Modifier.height(10.dp))
             UiText(

@@ -11,6 +11,10 @@ import com.composables.icons.tabler.outline.ChevronLeft
 import com.composables.icons.tabler.outline.ChevronRight
 import com.composables.icons.tabler.outline.Dots
 import com.composables.icons.tabler.outline.Folder
+import com.composables.icons.tabler.outline.Ban
+import com.composables.icons.tabler.outline.Hourglass
+import com.composables.icons.tabler.outline.Shield
+import com.composables.icons.tabler.outline.Inbox
 import com.composables.icons.tabler.outline.LayoutGrid
 import com.composables.icons.tabler.outline.MessageCircle
 import com.composables.icons.tabler.outline.Palette
@@ -102,4 +106,16 @@ object VadeIcons {
 
     /** Appearance / skin settings. */
     val Palette: ImageVector = Tabler.Outline.Palette
+
+    /** Empty state (nothing here yet) — replaces the `○` character placeholder. */
+    val Empty: ImageVector = Tabler.Outline.Inbox
+
+    /** Waiting / pending (queued work, awaiting protocol). */
+    val Waiting: ImageVector = Tabler.Outline.Hourglass
+
+    /** Pending approval (nothing blocked yet). */
+    val Pending: ImageVector = Tabler.Outline.Shield
+
+    /** Failure / blocked (nothing failed yet). */
+    val Failed: ImageVector = Tabler.Outline.Ban
 }

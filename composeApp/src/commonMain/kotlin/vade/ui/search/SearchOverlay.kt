@@ -45,6 +45,8 @@ import kotlinx.coroutines.delay
 import vade.ui.UiText
 import vade.ui.shell.TopBarButton
 import vade.ui.shell.UiState
+import vade.ui.icon.VadeIcon
+import vade.ui.icon.VadeIcons
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.glass.GlassSurface
 
@@ -355,7 +357,7 @@ private fun SearchNotice(title: String, body: String) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-            UiText("⌕", size = 26, color = skin.colors.onSurfaceVariant)
+            VadeIcon(VadeIcons.Search, contentDescription = null, size = 26.dp, tint = skin.colors.onSurfaceVariant)
         }
         Spacer(Modifier.height(8.dp))
         UiText(
