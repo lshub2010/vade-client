@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.ui.Modifier
+import vade.ui.data.AndroidSourceEnv
+import vade.ui.data.sessionSourceFromEnvironment
 
 /**
  * Android entry point — same `App()` as desktop and wasm; only the host container differs.
@@ -39,13 +41,22 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
         )
         setContent {
+            // g-live: install the launch intent's extras BEFORE composition so the
+            // shared switch (vade.ui.data.SourceConfig) can read them — extras beat
+            // env vars per key (see SourceConfig.android.kt). Doc comment below the
+            // class kdoc: the switch is `vade.source=real` + `vade.host`/`vade.port`
+            // (+ `vade.pair_code`), e.g. from `adb shell am start --es ...`.
+            AndroidSourceEnv.intentExtras = intent?.extras
             Box(
                 Modifier
                     .fillMaxSize()
                     .statusBarsPadding()
                     .imePadding(),
             ) {
-                App()
+                // Same uniform switch as desktop/wasm: FakeSessionSource() fixtures
+                // unless the intent (or env) says `real` — App()'s own default is
+                // untouched, so no intent at all keeps the pre-g-live behaviour.
+                App(source = sessionSourceFromEnvironment())
             }
         }
     }

@@ -50,6 +50,9 @@ fun main() {
     }
 
     ComposeViewport(document.body!!) {
-        if (probe) MotionProbe() else App()
+        // g-live: same uniform switch as desktop/Android — `?source=real&host=...&
+        // port=...&pair_code=...` wires the real core through the shared parser
+        // (vade.ui.data.SourceConfig); no query keeps the fixture path byte-for-byte.
+        if (probe) MotionProbe() else App(source = vade.ui.data.sessionSourceFromEnvironment())
     }
 }
