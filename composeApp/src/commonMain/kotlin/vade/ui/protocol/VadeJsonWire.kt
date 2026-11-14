@@ -57,6 +57,22 @@ fun JsonObject.strOrNull(key: String): String? = this[key]?.let {
     (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content
 }
 
+/**
+ * Optional string that still checks SHAPE: absent → null, JSON null → null, a string → it,
+ * anything else (number/bool/object/array) → [PayloadDecodeException].
+ *
+ * [str] answers `null` for a wrong shape, which is right for a purely cosmetic key that a
+ * newer core may type differently, and wrong for a key the module documents as `string|null`:
+ * silently turning `3` into "absent" is the "all-zero row" bug class again. Use this one
+ * wherever the contract spells `X|null` and the value is shown to the user.
+ */
+fun JsonObject.strStrict(key: String): String? {
+    val v = this[key] ?: return null
+    if (v is JsonNull) return null
+    return (v as? JsonPrimitive)?.takeIf { it.isString }?.content
+        ?: throw PayloadDecodeException("wire object field '$key' is not string|null")
+}
+
 // ------------------------------------------------------------------ required-key accessors
 //
 // A missing REQUIRED key in a result/payload is a decode failure — [PayloadDecodeException]
