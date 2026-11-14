@@ -1,38 +1,61 @@
 package vade.ui.chat
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -40,33 +63,45 @@ import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import vade.ui.skin.BtnStyle
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.MessageView
+import vade.ui.skin.glass.GlassSurface
 
 /**
- * U1-b · 会话详情 — the message flow, the tool cards, the composer and the image preview.
+ * U1-b → v2 · 会话详情 — floating composer, out-of-frame send ball, icon-only controls,
+ * inline approval card and the §9 floating sheet.
  *
- * Layout rules from D92 / D88 + `research/ui-visual-language.md`:
- *  - the reading column is centred and **capped at 760 dp**; the assistant message is
- *    plain full-width text (no bubble, no border — §1.4 内容优先), the user bubble is
- *    right-aligned, ≤78 % wide, 20dp radius with a 6dp bottom-right tail;
- *  - message-to-message gap is 20, paragraph gap inside a message is 12 (§4);
- *  - attachments render as C-09 chips *outside* the bubble (D95/D96);
- *  - the composer sticks to the bottom and the thread scrolls above it, so IME / the
- *    floating capsule can never cover the send button (the Android inset story is U1-g).
+ * v2 structure (docs/visual-language.md §1/§2/§3/§4/§9/§10):
+ *  - the composer is an **independent floating layer**: gutter 16dp (desktop 24dp), 16dp
+ *    above the bottom edge, `xl` 28dp corners, a `GlassSurface` glass base + float shadow;
+ *    the list's bottom padding = measured composer height + 24dp, so the newest row is
+ *    never covered when pinned to bottom;
+ *  - send is a **48dp ball outside the input frame** (12dp gap, vertically centred):
+ *    `accent` solid + `glowAccent` 12dp glow when armed, `surfaceGlass` + hairline when
+ *    empty, the same slot turns into the ■ stop control while streaming (only the icon and
+ *    the ring take `danger` — the ball never turns red); press scales 0.92 over 180ms;
+ *  - **no text buttons anywhere** — every control is a drawn glyph (↑ ■ ＋ ✓ ✕ ⏷) inside a
+ *    ≥44dp touch target with a full `contentDescription`;
+ *  - approvals are **inline timeline cards** (卡头 需要批准 + risk badge / 卡体 args 预览 /
+ *    卡尾 ✓ ✕ ⏷), evolving in place 待批准 → 已允许/已拒绝/已超时 without adding a row;
+ *    the skin's `ApprovalDialog` stays unused here (module pages / admin keep it);
+ *  - the fullscreen image preview is a **§9 floating sheet**: 12dp gaps on all sides,
+ *    `sheet` 32dp corners, grabber 36×4dp, ✕ close — never an edge-to-edge dialog;
+ *  - motion: composer height 200ms, ball press 180ms, card insert fade + 12dp slide 180ms,
+ *    all on `Skin.motion.easing`. No motion blur on this page (§11 dropped — plain scroll).
  *
- * Every visual component used here is one of the frozen eleven. Three of them carry an
- * **optional slot added after the freeze** (all default to the old behaviour), which is
- * how this page gets rich markdown, tool meta rows and a disabled send button without
- * a 12th component:
- *  - `MessageBubble(body = …)` — rich body instead of one plain `Text`;
- *  - `ToolCallCard(meta = …)` — `duration_ms` / `batch_id` footer;
- *  - `InputBar(sendEnabled = …, maxLines = …)` — disabled send + 6-line growth.
+ * Every control goes through `Skin.*` tokens or `skin/glass/GlassSurface`; the page
+ * composes them from Compose-foundation primitives only (same escape hatch as `UiText`,
+ * `StatusPill` and the markdown renderer) — no toolkit widgets, no direct toolkit colours.
  */
 @Composable
 fun ChatThread(
@@ -88,9 +123,8 @@ fun ChatThread(
     }
 
     // Fake upload progress for the composer chips. Without this the chip sits at 「上传中 0%」
-    // forever — `tickUploads` existed but only the tests ever drove it, so the state that is
-    // supposed to be "real UI, not a hard-coded string" was frozen. Same `animate` gate as the
-    // stream so a preset frame stays deterministic.
+    // forever — `tickUploads` existed but only the tests ever drove it. Same `animate` gate
+    // as the stream so a preset frame stays deterministic.
     LaunchedEffect(animate, state.staged.size) {
         if (!animate) return@LaunchedEffect
         while (state.tickUploads()) delay(160)
@@ -101,54 +135,71 @@ fun ChatThread(
     // `scrollTo`, not `animateScrollTo`: every streaming tick re-keys this effect, and a
     // cancelled animation stops wherever it had got to, so the animated version never reaches
     // the bottom during a live stream and the last row ends up half-cut behind the composer.
-    // A still frame (`animate = false`) deliberately keeps the reader where it is, so a preset
-    // capture can show the top of the thread instead of only its tail.
-    LaunchedEffect(state.items.size, state.messages.lastOrNull()?.bodyText?.length) {
+    // `composerHeightPx` is a key on purpose: the overlay reports its height *after* the first
+    // layout pass, and the pin must re-run once the real bottom padding exists.
+    var composerHeightPx by remember { mutableStateOf(0) }
+    LaunchedEffect(
+        state.items.size,
+        state.messages.lastOrNull()?.bodyText?.length,
+        composerHeightPx,
+    ) {
         if (!animate) return@LaunchedEffect
         runCatching { scroll.scrollTo(scroll.maxValue) }
     }
 
-    Box(modifier.fillMaxSize().background(skin.colors.canvas)) {
-        Column(Modifier.fillMaxSize()) {
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-                BoxWithConstraints(Modifier.fillMaxSize()) {
-                    // 页面左右边距：手机 16 / 桌面 24（视觉规范 §4）。
-                    val gutter = if (maxWidth >= 600.dp) 24.dp else 16.dp
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(scroll)
-                            .padding(horizontal = gutter, vertical = 16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Column(
-                            modifier = Modifier.widthIn(max = 760.dp).fillMaxWidth(),
-                            // 消息之间 20dp（视觉规范 §4）。
-                            verticalArrangement = Arrangement.spacedBy(20.dp),
-                        ) {
-                            state.items.forEach { item ->
-                                when (item) {
-                                    is ChatItem.Message -> MessageRow(state, item.message)
-                                    is ChatItem.Tool -> ToolRow(state, item.call)
-                                }
+    BoxWithConstraints(modifier.fillMaxSize().background(skin.colors.canvas)) {
+        // 页面左右边距：手机 16 / 桌面 24（视觉规范 §4）。
+        val gutter = if (maxWidth >= 600.dp) 24.dp else 16.dp
+
+        // The scroll column runs the *full* height; the composer floats above it and the
+        // trailing spacer keeps the newest row clear of it (§1: 高度 + 24dp).
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(scroll)
+                .padding(start = gutter, end = gutter, top = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Column(
+                modifier = Modifier.widthIn(max = 760.dp).fillMaxWidth(),
+                // 消息之间 20dp（视觉规范 §4）。
+                verticalArrangement = Arrangement.spacedBy(20.dp),
+            ) {
+                state.items.forEach { item ->
+                    when (item) {
+                        is ChatItem.Message -> MessageRow(state, item.message)
+                        is ChatItem.Tool -> {
+                            val call = item.call
+                            if (isApprovalCard(call, state.approvalOutcome(call.id))) {
+                                ApprovalCardRow(state, call)
+                            } else {
+                                ToolRow(state, call)
                             }
-                            state.lastNotice?.let { notice ->
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
-                                    StatusPill(notice)
-                                }
-                            }
-                            Spacer(Modifier.height(2.dp))
                         }
                     }
                 }
+                state.lastNotice?.let { notice ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
+                        StatusPill(notice)
+                    }
+                }
+                Spacer(Modifier.height(2.dp))
             }
-            Composer(state)
+            // v2 §1：列表底部内边距 = composer 实测高度 + 24dp（滚到底时最后一条不被遮）。
+            val density = LocalDensity.current
+            Spacer(Modifier.height(with(density) { composerHeightPx.toDp() } + 24.dp))
         }
 
+        ComposerOverlay(
+            state = state,
+            gutter = gutter,
+            onHeightChanged = { composerHeightPx = it },
+        )
+
         // Fullscreen preview is an overlay of the page, not a platform dialog: the skin must
-        // not decide windowing (same reasoning as ApprovalDialog in U1-a).
+        // not decide windowing (same reasoning as the approval card above).
         state.preview?.let { image ->
-            ImagePreview(image, onClose = state::closePreview)
+            ImagePreviewSheet(image, onClose = state::closePreview)
         }
     }
 }
@@ -163,17 +214,22 @@ private fun MessageRow(state: ChatState, message: ChatMessage) {
 
     Column(Modifier.fillMaxWidth(), horizontalAlignment = if (isUser) Alignment.End else Alignment.Start) {
         // Queue badge (FR-8.36) sits on the user bubble it belongs to, not in a global list.
+        // Cancel is a drawn ✕ in a ≥44dp target — no text button (v2 §3).
         val position = state.queuePosition(message.id)
         if (position > 0) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 4.dp)) {
-                StatusPill("排队中 #$position · 取消", Tone.Accent)
-                Spacer(Modifier.width(6.dp))
-                BasicText(
-                    text = "×",
-                    style = skin.typography.caption.copy(color = skin.colors.onSurfaceVariant),
-                    modifier = Modifier.clickable {
-                        state.queue.firstOrNull { it.messageId == message.id }?.let { state.cancelQueued(it.clientMsgId) }
+                StatusPill("排队中 #$position", Tone.Accent)
+                ChatIconButton(
+                    icon = ChatIcon.Close,
+                    contentDescription = "取消这条排队",
+                    onClick = {
+                        state.queue.firstOrNull { it.messageId == message.id }?.let {
+                            state.cancelQueued(it.clientMsgId)
+                        }
                     },
+                    boxSize = 44.dp,
+                    iconSize = 14.dp,
+                    tint = skin.colors.onSurfaceVariant,
                 )
             }
         }
@@ -198,7 +254,7 @@ private fun MessageRow(state: ChatState, message: ChatMessage) {
             }
         }
 
-        // One component, two chrome treatments: assistant = no bubble (§1.4), user = bubble.
+        // One component, two chrome treatments: assistant = no bubble, user = bubble (D92).
         // `body` carries the markdown renderer so bold / code / fences survive the trip.
         skin.MessageBubble(
             message = view,
@@ -275,7 +331,7 @@ private fun ToolRow(state: ChatState, call: ToolCall) {
                         }
                         if (!collapsible) {
                             BasicText(
-                                text = "risk=high · 审批卡永远展开（D94）",
+                                text = "risk=high · 高风险卡永远展开（D94）",
                                 style = skin.typography.caption.copy(color = skin.colors.warning),
                             )
                         }
@@ -286,110 +342,399 @@ private fun ToolRow(state: ChatState, call: ToolCall) {
     }
 }
 
-// --- composer ----------------------------------------------------------------
+// --- inline approval card (v2 §4) --------------------------------------------
 
+/**
+ * 审批卡插在会话时间线里触发它的位置 — 卡头「需要批准」+ 风险徽标、卡体脱敏 `args_preview`、
+ * 卡尾 ✓ / ✕ / ⏷ 图标按钮。状态在**同一张卡上**演进（待批准 → 已允许 / 已拒绝 / 已超时，
+ * 附经过时间），不新增任何消息行（FR-8.53 / v2 §4；`ApprovalDialog` 留给模块页面）。
+ *
+ * Static card per §8 row 4: hairline + very light shadow + the 3dp status bar, **no** red
+ * glow. Insert animation: fade + 12dp up-slide over 180ms on `Skin.motion.easing` (§7);
+ * resolving only transitions colour, never position.
+ */
 @Composable
-private fun Composer(state: ChatState) {
+private fun ApprovalCardRow(state: ChatState, call: ToolCall) {
     val skin = LocalSkin.current
+    val outcome = state.approvalOutcome(call.id)
+    val shape = RoundedCornerShape(skin.shapes.md)
+    val statusColor = when (outcome) {
+        ApprovalOutcome.Pending -> skin.colors.warning
+        ApprovalOutcome.Allowed -> skin.colors.success
+        ApprovalOutcome.Denied -> skin.colors.error
+        ApprovalOutcome.TimedOut -> skin.colors.onSurfaceVariant
+    }
 
-    Column(Modifier.fillMaxWidth().background(skin.colors.surface)) {
-        // 1px 发丝线代替阴影（视觉规范 §1.2）。
-        Box(Modifier.fillMaxWidth().height(1.dp).background(skin.colors.hairline))
-
-        // 队列徽标 (FR-8.35): one line, cancellable, and it disappears the moment it empties.
-        if (state.queue.isNotEmpty()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                StatusPill("${state.queue.size} 条排队", Tone.Accent)
-                Spacer(Modifier.width(8.dp))
-                BasicText(
-                    text = state.queue.mapIndexed { i, q -> "#${i + 1} ${q.text.take(12)}" }.joinToString(" · "),
-                    style = skin.typography.caption.copy(color = skin.colors.onSurfaceVariant),
-                    modifier = Modifier.weight(1f),
-                )
-                BasicText(
-                    text = "全部取消",
-                    style = skin.typography.caption.copy(
-                        color = skin.colors.primary,
-                        textDecoration = TextDecoration.Underline,
-                    ),
-                    modifier = Modifier.clickable {
-                        state.queue.map { it.clientMsgId }.forEach { state.cancelQueued(it) }
-                    },
-                )
-            }
-        }
-
-        Box(
-            Modifier
+    // §7：fade + 12dp 上滑，180ms。进场只跑一次；结果态不改位移。
+    val density = LocalDensity.current
+    val visible = remember { MutableTransitionState(false) }.apply { targetState = true }
+    AnimatedVisibility(
+        visibleState = visible,
+        enter = fadeIn(tween(durationMillis = skin.motion.standardMs, easing = skin.motion.easing)) +
+            slideInVertically(
+                animationSpec = tween(durationMillis = skin.motion.standardMs, easing = skin.motion.easing),
+            ) { with(density) { 12.dp.roundToPx() } },
+    ) {
+        Row(
+            modifier = Modifier
                 .fillMaxWidth()
-                // ⌘Enter / Ctrl+Enter sends; plain Enter stays a newline (multi-line composer).
-                // The preview pass on this ancestor sees the key before the focused field does,
-                // so returning true stops the newline from being inserted.
-                .onPreviewKeyEvent { event -> handleComposerKeys(event, state) },
+                .height(IntrinsicSize.Min)
+                .shadow(
+                    elevation = 2.dp,
+                    shape = shape,
+                    ambientColor = skin.colors.shadowSoft,
+                    spotColor = skin.colors.shadowSoft,
+                )
+                .clip(shape)
+                .background(skin.colors.surface)
+                .border(1.dp, skin.colors.hairline, shape),
         ) {
-            skin.InputBar(
-                value = state.draft,
-                onValueChange = state::updateDraft,
-                mode = state.inputMode,
-                onSend = { state.submit() },
-                onStop = { state.stop() },
-                enabled = true,
-                // D97: desktop has no on-device STT in this slice → draw nothing at all.
-                voiceAvailable = false,
-                // 空文本不可发送：按钮走禁用态（textMuted @30%），页面不再用一句 hint 顶替它。
-                sendEnabled = state.canSend || state.isStreaming,
-                maxLines = 6,
-                attachments = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (state.staged.isNotEmpty()) {
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                state.staged.take(2).forEach { staged ->
-                                    AttachmentRow(
-                                        like = AttachmentLike(staged.attachment, (staged.part as? ContentPart.Image)),
-                                        onOpen = {
-                                            (staged.part as? ContentPart.Image)?.let(state::openPreview)
-                                        },
-                                        onRemove = { state.removeStaged(staged.attachment.fileId) },
-                                        onRetry = if (staged.attachment.state == vade.ui.skin.AttachmentState.Failed) {
-                                            { state.removeStaged(staged.attachment.fileId); state.attach(staged) }
-                                        } else {
-                                            null
-                                        },
-                                    )
-                                }
-                            }
-                            if (state.staged.size > 2) {
+            // 左侧 3dp 状态条（§8 row 4）：warn / success / danger / muted。
+            Box(Modifier.width(3.dp).fillMaxHeight().background(statusColor))
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 13.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+            ) {
+                // 卡头：「需要批准」+ 风险徽标；resolved 时右侧变结果态 + 时间戳。
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    BasicText(
+                        text = "需要批准",
+                        style = skin.typography.body.copy(
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = statusColor,
+                        ),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    RiskBadge(call.risk)
+                    Spacer(Modifier.weight(1f))
+                    if (outcome == ApprovalOutcome.Pending) {
+                        BasicText(
+                            text = call.name,
+                            style = skin.typography.caption.copy(color = skin.colors.onSurfaceVariant),
+                            maxLines = 1,
+                        )
+                    } else {
+                        Column(horizontalAlignment = Alignment.End) {
+                            BasicText(
+                                text = outcome.label,
+                                style = skin.typography.caption.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = statusColor,
+                                ),
+                            )
+                            state.approvalDecidedLabel(call.id)?.let { stamp ->
                                 BasicText(
-                                    text = "还有 ${state.staged.size - 2} 个附件（单轮上限 ${ChatState.MAX_PER_TURN}）",
+                                    text = stamp,
                                     style = skin.typography.caption.copy(color = skin.colors.onSurfaceVariant),
                                 )
                             }
                         }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            // 次要按钮（sm 12dp、透明底 + hairline），不用 Material 的 text button 紫。
-                            skin.Button(
-                                text = "+ 附件",
-                                onClick = { state.attach() },
-                                style = BtnStyle.Secondary,
-                            )
-                            Spacer(Modifier.width(10.dp))
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+                // 卡体：脱敏 args_preview，凹陷 mono 块（xs 圆角）。
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(skin.shapes.xs))
+                        .background(skin.colors.surfaceVariant)
+                        .padding(10.dp),
+                ) {
+                    BasicText(
+                        text = call.argsPreview ?: "（本轮事件无 args_preview）",
+                        style = skin.typography.mono.copy(color = skin.colors.onSurface),
+                    )
+                }
+
+                if (state.approvalDetailOpen(call.id)) {
+                    Spacer(Modifier.height(8.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        toolMetaRows(call, state.batchSize(call.batchId)).forEach { row ->
                             BasicText(
-                                text = state.sendHint,
+                                text = "${row.label} · ${row.value}",
                                 style = skin.typography.caption.copy(color = skin.colors.onSurfaceVariant),
-                                modifier = Modifier.weight(1f),
                             )
                         }
                     }
-                },
-            )
+                }
+
+                if (outcome == ApprovalOutcome.Pending) {
+                    Spacer(Modifier.height(6.dp))
+                    // 卡尾：✓ 允许 / ✕ 拒绝 / ⏷ 详情 — 全图标，44dp 触摸区。
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        ChatIconButton(
+                            icon = ChatIcon.Check,
+                            contentDescription = "允许 ${call.name}",
+                            onClick = { state.decideApproval(call.id, vade.ui.skin.Decision.Approve) },
+                            tint = skin.colors.success,
+                        )
+                        ChatIconButton(
+                            icon = ChatIcon.Close,
+                            contentDescription = "拒绝 ${call.name}",
+                            onClick = { state.decideApproval(call.id, vade.ui.skin.Decision.Deny) },
+                            tint = skin.colors.error,
+                        )
+                        ChatIconButton(
+                            icon = ChatIcon.ChevronDown,
+                            contentDescription = if (state.approvalDetailOpen(call.id)) "收起详情" else "展开详情",
+                            onClick = { state.toggleApprovalDetail(call.id) },
+                            tint = skin.colors.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
         }
+    }
+}
+
+/** 风险徽标：`xs` 圆角小 pill，色随风险（high → danger / medium → warn / low → muted）。 */
+@Composable
+private fun RiskBadge(risk: String) {
+    val skin = LocalSkin.current
+    val color = when (risk) {
+        "high" -> skin.colors.error
+        "medium" -> skin.colors.warning
+        else -> skin.colors.onSurfaceVariant
+    }
+    BasicText(
+        text = "risk=$risk",
+        style = skin.typography.caption.copy(color = color),
+        modifier = Modifier
+            .clip(RoundedCornerShape(skin.shapes.xs))
+            .background(color.copy(alpha = 0.12f))
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    )
+}
+
+// --- floating composer (v2 §1) ------------------------------------------------
+
+/**
+ * The independent floating layer: queue strip + glass input + the out-of-frame send ball.
+ * Measures itself into [onHeightChanged] so the list can pad by 高度 + 24dp (§1).
+ */
+@Composable
+private fun BoxScope.ComposerOverlay(
+    state: ChatState,
+    gutter: Dp,
+    onHeightChanged: (Int) -> Unit,
+) {
+    val skin = LocalSkin.current
+
+    Column(
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .fillMaxWidth()
+            // 键盘弹出时浮层整体上移（§1；桌面 inset 为 0，此 modifier 无副作用）。
+            .imePadding()
+            .onPreviewKeyEvent { event -> handleComposerKeys(event, state) }
+            .padding(start = gutter, end = gutter, bottom = 16.dp)
+            .onSizeChanged { onHeightChanged(it.height) },
+    ) {
+        Column(
+            modifier = Modifier.widthIn(max = 760.dp).fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            // 队列徽标 (FR-8.35)：一行、可整队取消；取消是 ✕ 图标，不是文字按钮。
+            if (state.queue.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    StatusPill("${state.queue.size} 条排队", Tone.Accent)
+                    Spacer(Modifier.width(8.dp))
+                    BasicText(
+                        text = state.queue.mapIndexed { i, q -> "#${i + 1} ${q.text.take(12)}" }
+                            .joinToString(" · "),
+                        style = skin.typography.caption.copy(color = skin.colors.onSurfaceVariant),
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                    )
+                    ChatIconButton(
+                        icon = ChatIcon.Close,
+                        contentDescription = "取消全部排队",
+                        onClick = { state.queue.map { it.clientMsgId }.forEach { state.cancelQueued(it) } },
+                        tint = skin.colors.onSurfaceVariant,
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                GlassSurface(
+                    modifier = Modifier.weight(1f),
+                    // v2 §1：xl = 28dp 圆角，多行同圆角，不做胶囊变形。
+                    shape = RoundedCornerShape(skin.shapes.xl),
+                    skin = skin,
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            // §7：多行输入高度 200ms 跟随内容，不跳变。
+                            .animateContentSize(
+                                animationSpec = tween(durationMillis = 200, easing = skin.motion.easing),
+                            )
+                            .padding(start = 4.dp, end = 8.dp, top = 4.dp, bottom = 6.dp),
+                    ) {
+                        // 已暂存附件：玻璃层内、文本域上方（点击开预览 / × 移除）。
+                        if (state.staged.isNotEmpty()) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(start = 4.dp, bottom = 4.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    state.staged.take(2).forEach { staged ->
+                                        AttachmentRow(
+                                            like = AttachmentLike(
+                                                staged.attachment,
+                                                (staged.part as? ContentPart.Image),
+                                            ),
+                                            onOpen = {
+                                                (staged.part as? ContentPart.Image)?.let(state::openPreview)
+                                            },
+                                            onRemove = { state.removeStaged(staged.attachment.fileId) },
+                                            onRetry = if (staged.attachment.state == vade.ui.skin.AttachmentState.Failed) {
+                                                { state.removeStaged(staged.attachment.fileId); state.attach(staged) }
+                                            } else {
+                                                null
+                                            },
+                                        )
+                                    }
+                                }
+                                if (state.staged.size > 2) {
+                                    BasicText(
+                                        text = "还有 ${state.staged.size - 2} 个附件（单轮上限 ${ChatState.MAX_PER_TURN}）",
+                                        style = skin.typography.caption.copy(color = skin.colors.onSurfaceVariant),
+                                    )
+                                }
+                            }
+                        }
+
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            // ＋ 附件：输入框左侧，图标按钮（§1/§3）。
+                            ChatIconButton(
+                                icon = ChatIcon.Plus,
+                                contentDescription = "添加附件",
+                                onClick = { state.attach() },
+                                tint = skin.colors.onSurfaceVariant,
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    // 六行封顶（每行 ~23dp 行高 + 余量），再高内部滚动。
+                                    .heightIn(min = 44.dp, max = 156.dp),
+                                contentAlignment = Alignment.CenterStart,
+                            ) {
+                                if (state.draft.isEmpty()) {
+                                    BasicText(
+                                        text = state.sendHint,
+                                        style = skin.typography.body.copy(
+                                            fontSize = 15.sp,
+                                            lineHeight = (15 * 1.55f).sp,
+                                            color = skin.colors.onSurfaceVariant,
+                                        ),
+                                        maxLines = 1,
+                                    )
+                                }
+                                BasicTextField(
+                                    value = state.draft,
+                                    onValueChange = state::updateDraft,
+                                    textStyle = skin.typography.body.copy(
+                                        fontSize = 15.sp,
+                                        lineHeight = (15 * 1.55f).sp,
+                                        color = skin.colors.onSurface,
+                                    ),
+                                    cursorBrush = SolidColor(skin.colors.primary),
+                                    maxLines = 6,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // 发送球在**框外**：与输入框间距 12dp，独立元素（§2）。
+                Spacer(Modifier.width(12.dp))
+                SendBall(state)
+            }
+        }
+    }
+}
+
+// --- send ball (v2 §2) ---------------------------------------------------------
+
+/**
+ * 48dp 正圆，独立于输入框容器。有内容 = `accent` 实心 + 12dp `glowAccent` 柔光 + 反白 ↑；
+ * 空 = `surfaceGlass` + `hairline` + `muted` ↑（仍可点，静默 no-op，提示在占位文案里）；
+ * 生成中 = 同一球位变 ■，只染图标与描边为 `danger`，不整球变红。按压缩放 0.92 / 180ms。
+ */
+@Composable
+private fun SendBall(state: ChatState) {
+    val skin = LocalSkin.current
+    val streaming = state.isStreaming
+    val armed = state.canSend && !streaming
+
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.92f else 1f,
+        animationSpec = tween(durationMillis = skin.motion.standardMs, easing = skin.motion.easing),
+        label = "sendBallPress",
+    )
+
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .drawBehind {
+                // §8 row 3：辉光不是阴影 — accent 24–28%，向外 12dp 渐隐；只在上膛态画。
+                if (armed) {
+                    val outer = size.minDimension / 2f + 12.dp.toPx()
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            0.62f to skin.colors.glowAccent.copy(alpha = 0.28f),
+                            1f to skin.colors.glowAccent.copy(alpha = 0f),
+                            center = center,
+                            radius = outer,
+                        ),
+                        radius = outer,
+                    )
+                }
+            }
+            .clip(CircleShape)
+            .background(if (armed) skin.colors.primary else skin.colors.surfaceGlass)
+            .border(
+                width = if (streaming) 1.5.dp else 1.dp,
+                color = when {
+                    streaming -> skin.colors.error
+                    armed -> Color.Transparent
+                    else -> skin.colors.hairline
+                },
+                shape = CircleShape,
+            )
+            .clickable(interactionSource = interaction, indication = null) {
+                if (streaming) state.stop() else state.submit()
+            }
+            .semantics { contentDescription = if (streaming) "停止生成" else "发送" },
+        contentAlignment = Alignment.Center,
+    ) {
+        ChatIconCanvas(
+            icon = if (streaming) ChatIcon.Stop else ChatIcon.SendUp,
+            tint = when {
+                streaming -> skin.colors.error
+                armed -> skin.colors.onPrimary
+                else -> skin.colors.onSurfaceVariant
+            },
+            box = Modifier.size(20.dp),
+        )
     }
 }
 
@@ -415,48 +760,95 @@ internal fun handleComposerKeys(
     return true
 }
 
-// --- fullscreen image preview ------------------------------------------------
+// --- §9 floating image-preview sheet ------------------------------------------
+
+/**
+ * 附件预览 = §9 悬浮卡片，不是贴边全屏：遮罩 rgba(0,0,0,.24)（玻璃层退化 = 染色，背后仍隐约
+ * 可见），卡片四周 12dp 空隙、`sheet` 32dp 同圆角、玻璃底 + 浮层阴影 + 发丝线，顶部中央
+ * 36×4dp 白条手柄（亮色 黑 24% / 暗色 白 70%），关闭是 ✕ 图标。同一时刻只有这一个弹层。
+ */
 @Composable
-private fun ImagePreview(image: ContentPart.Image, onClose: () -> Unit) {
+private fun ImagePreviewSheet(image: ContentPart.Image, onClose: () -> Unit) {
     val skin = LocalSkin.current
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.86f))
-            .clickable(onClick = onClose),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+    val sheetShape = RoundedCornerShape(skin.shapes.sheet)
+    val grabber = if (skin.colors.isDark) Color.White.copy(alpha = 0.70f) else Color.Black.copy(alpha = 0.24f)
+
+    Box(Modifier.fillMaxSize()) {
+        // 遮罩：玻璃层（矩形）叠 24% 黑 — 点遮罩关闭；不用纯黑 60%（§9）。
+        GlassSurface(
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onClose,
+                ),
+            shape = RoundedCornerShape(0.dp),
+            skin = skin,
         ) {
-            Row(
-                modifier = Modifier.widthIn(max = 900.dp).fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                BasicText(
-                    text = image.name,
-                    style = skin.typography.body.copy(color = Color.White),
-                    modifier = Modifier.weight(1f),
-                )
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.24f)))
+        }
+
+        GlassSurface(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .widthIn(max = 900.dp)
+                .fillMaxWidth()
+                .padding(12.dp),
+            shape = sheetShape,
+            skin = skin,
+        ) {
+            Column {
+                // 白条手柄：36×4dp、2dp 圆角、距卡顶 8dp，只说明"可下拉关闭"。
                 Box(
-                    Modifier.size(32.dp).clip(RoundedCornerShape(skin.shapes.small))
-                        .background(Color.White.copy(alpha = 0.16f)).clickable(onClick = onClose),
-                    contentAlignment = Alignment.Center,
-                ) { BasicText("×", style = skin.typography.title.copy(color = Color.White)) }
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .padding(top = 8.dp)
+                        .size(width = 36.dp, height = 4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(grabber),
+                )
+
+                // 标题行：文件名 + ✕ 关闭（图标）。
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 8.dp, top = 2.dp, bottom = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    BasicText(
+                        text = image.name,
+                        style = skin.typography.title.copy(color = skin.colors.textOnGlass),
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                    )
+                    ChatIconButton(
+                        icon = ChatIcon.Close,
+                        contentDescription = "关闭预览",
+                        onClick = onClose,
+                        tint = skin.colors.textOnGlass,
+                    )
+                }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    MockImage(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(image.width.toFloat() / image.height.toFloat())
+                            .clip(RoundedCornerShape(skin.shapes.large)),
+                    )
+                    BasicText(
+                        text = "${formatBytes(image.size)} · ${image.width}×${image.height} · $COMPRESSED_NOTE（D96）",
+                        style = skin.typography.caption.copy(color = skin.colors.textOnGlass.copy(alpha = 0.78f)),
+                    )
+                }
             }
-            MockImage(
-                modifier = Modifier
-                    .widthIn(max = 900.dp)
-                    .fillMaxWidth()
-                    .aspectRatio(image.width.toFloat() / image.height.toFloat())
-                    .clip(RoundedCornerShape(skin.shapes.medium)),
-            )
-            BasicText(
-                text = "${formatBytes(image.size)} · ${image.width}×${image.height} · $COMPRESSED_NOTE（D96）",
-                style = skin.typography.caption.copy(color = Color.White.copy(alpha = 0.78f)),
-            )
         }
     }
 }
