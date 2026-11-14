@@ -145,11 +145,16 @@ class ComposerInsetsTest {
     }
 
     /**
-     * ⑤ (P1-3 shell-side target, pinned arithmetic only): `AppShell.kt:108
-     * BOTTOM_BAR_ZONE = 88.dp` belongs to another batch (g-glass) and is out of
-     * this batch's writable scope — this test pins the numbers the fix must
-     * reach: the floating pill stack is 64 dp + (8 dp + inset), i.e. 128 dp on
-     * 3-button nav and 96 dp on the gesture pill, both over the current 88 dp.
+     * ⑤ (P1-3 shell-side numbers, pinned arithmetic only): the shell's zone is **no longer**
+     * the old `AppShell.kt` `BOTTOM_BAR_ZONE = 88.dp` constant — that fix landed, and since
+     * g-zone-split the zone is derived per bar form: `floatingBarZone` = 104 / 108 / 132 dp
+     * at inset 0 / 24 / 48, `fixedBarZone` = 65 / 89 / 113 dp (no pill term). This test still
+     * pins the *pill stack* the floating zone must cover: 64 dp + (8 dp + inset), i.e.
+     * 120 dp on 3-button nav and 96 dp on the gesture pill — each dock-pad 12 dp below the
+     * zone (`FloatingBarPillHeight + floatingBarBottomMargin(i) == floatingBarZone(i) −
+     * BOTTOM_BAR_DOCK_PAD`). The `> 88.dp` assertion below is the historical lower bound,
+     * kept as a regression: the stack must never shrink back under the constant that used to
+     * slice the last row in half.
      */
     @Test
     fun floatingPillStackExceedsTheShell88dpZoneOnBothNavStyles() {

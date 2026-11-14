@@ -120,36 +120,85 @@ internal val TOP_BAR_ZONE = 72.dp
 internal val TopBarTopGap = 8.dp
 
 /**
- * Bottom-bar zone: the floating pill's **real footprint**, so it must be derived from the
- * inset — a constant cannot be right on both a gesture pill and a 3-button bar.
+ * Bottom-bar zone **per form**. The two forms do not share a footprint, so they must not
+ * share one formula:
  *
- * Terms (all from `BottomBar.kt`, the bar's own geometry):
- *  - [FloatingBarPillHeight] 64 dp — the pill row, padding included;
- *  - `floatingBarBottomMargin(inset)` — `8 dp + inset`, or KernelSU's 28 dp when the
- *    inset is 0 (desktop/wasm and Android devices without a nav bar);
- *  - [BOTTOM_BAR_DOCK_PAD] 12 dp — the shell's own dock padding under the pill
- *    ([ShellBody]'s `barInsets`).
+ *  - **Floating** ([floatingBarZone]): [FloatingBarPillHeight] 64 dp + the pill's own
+ *    `floatingBarBottomMargin(inset)` (`8 + inset`, or KernelSU's 28 dp when the inset is
+ *    0) + [BOTTOM_BAR_DOCK_PAD] 12 dp → **104 / 108 / 132 dp** at inset 0 / 24 (gesture) /
+ *    48 (3-button). This is the P1-3 fix: the last row scrolls clear of the capsule.
+ *  - **Fixed** ([fixedBarZone]): the docked bar's *own* row ([FixedBarRowHeight] 64 dp)
+ *    behind its 1 dp top hairline, extended through the navigation inset (the same
+ *    `navInset` term `FixedBottomBar` adds to its glass height) → **65 / 89 / 113 dp**.
+ *    No pill term: the docked bar has no capsule and no pill margin.
  *
- * That is 104 / 108 / 132 dp at inset 0 / 24 (gesture) / 48 (3-button). The previous
- * constant 88 dp was 64 + 12 + 12: it assumed a 12 dp pill margin, while the pill really
- * sits on `8 + inset` (28 dp when there is no inset) — the pill's top edge landed *below*
- * the reserved zone and the last row of every scrollable was sliced in half (P1-3).
+ * g-zone-split: before this split `bottomBarZone` served both forms, so the Fixed bar
+ * reserved a 64 dp pill it does not render — measured on desktop as a **39 dp blank tail**
+ * (104 reserve − 65 rendered; the pre-P1-3 88 dp constant left 23 dp). Deriving each form
+ * from its own terms keeps the capsule fix and drops the phantom padding.
  *
- * Not monotonic in the inset at the 0 → ε step, by construction: the KernelSU fallback
- * swaps 28 dp for `8 + ε`, and that is the pill's real margin too. The invariant that
- * matters holds for every value: `bottomBarZone(i) − (pill + margin(i)) == 12 dp`.
- * Pinned by `AppShellBottomZoneTest`.
+ * Both rows happen to be 64 dp (the same KernelSU 56 + 2×4 geometry), which is exactly why
+ * this can drift silently: [FixedBarRowHeight] is written as the Fixed form's own literal
+ * term — never as [FloatingBarPillHeight] — the rendered Fixed bar is measured against it
+ * (`BarStyleZoneSplitTest`), and `fixedZoneExpressionNeverMentionsThePillHeight` makes the
+ * re-coupling fail instead of shrinking the docked bar's reserve.
+ *
+ * The Floating zone is not monotonic in the inset at the 0 → ε step, by construction: the
+ * KernelSU fallback swaps 28 dp for `8 + ε`, and that is the pill's real margin too. The
+ * invariant that matters holds for every value:
+ * `floatingBarZone(i) − (pill + margin(i)) == 12 dp`. Pinned by `AppShellBottomZoneTest`
+ * and `BarStyleZoneSplitTest`.
  */
-internal fun bottomBarZone(navInset: Dp): Dp =
+internal fun floatingBarZone(navInset: Dp): Dp =
     FloatingBarPillHeight + floatingBarBottomMargin(navInset) + BOTTOM_BAR_DOCK_PAD
 
 /**
- * What scrollable content must reserve below itself: the bar zone while the bar is
- * composed, nothing when it is not (pushed detail / rail breakpoints — D88: the bar is
- * not composed there, so no zone may be reserved).
+ * Historical name of [floatingBarZone] — the single shared zone the shell used before
+ * g-zone-split. Kept (same numbers 104 / 108 / 132) so the tests written against it stay
+ * the regression pin for the capsule form.
  */
-internal fun contentBottomInset(showBar: Boolean, navInset: Dp): Dp =
-    if (showBar) bottomBarZone(navInset) else 0.dp
+internal fun bottomBarZone(navInset: Dp): Dp = floatingBarZone(navInset)
+
+/**
+ * The Fixed (docked) bar's row: the label row `FixedBottomBar` renders. **Its own term,
+ * not the pill's** — the docked bar has no capsule, no pill margin and no shell dock pad,
+ * so nothing here may be derived from [FloatingBarPillHeight] (that coupling is the
+ * phantom-blank bug g-zone-split removes). It reads 64 dp only because both forms use the
+ * KernelSU 56 + 2×4 row; the rendered-geometry test holds it to that.
+ */
+internal val FixedBarRowHeight: Dp = 64.dp
+
+/** The Fixed bar's 1 dp top hairline — part of its footprint, so part of its zone. */
+internal val FixedBarTopRule: Dp = 1.dp
+
+/**
+ * The docked bar's zone: its own row behind its hairline, extended through the navigation
+ * inset (the term `FixedBottomBar` also adds to its glass height, so labels sit above the
+ * system bar while the glass covers it). 65 / 89 / 113 dp. **No pill term** — see
+ * [FixedBarRowHeight].
+ */
+internal fun fixedBarZone(navInset: Dp): Dp =
+    FixedBarTopRule + FixedBarRowHeight + navInset
+
+/** The zone of the form actually composed: `Fixed` is docked, both Floating styles are pills. */
+internal fun barZoneFor(style: BottomBarStyle, navInset: Dp): Dp = when (style) {
+    BottomBarStyle.Fixed -> fixedBarZone(navInset)
+    BottomBarStyle.Floating, BottomBarStyle.FloatingBlur -> floatingBarZone(navInset)
+}
+
+/**
+ * What scrollable content must reserve below itself: the zone of the composed form while
+ * the bar is shown, nothing when it is not (pushed detail / rail breakpoints — D88: the
+ * bar is not composed there, so no zone may be reserved).
+ *
+ * `style` defaults to the floating form so pure-arithmetic callers keep their meaning;
+ * the shell always passes the state's real [BottomBarStyle].
+ */
+internal fun contentBottomInset(
+    showBar: Boolean,
+    navInset: Dp,
+    style: BottomBarStyle = BottomBarStyle.Floating,
+): Dp = if (showBar) barZoneFor(style, navInset) else 0.dp
 
 /** The shell's own dock padding under the floating pill (`barInsets` in [ShellBody]). */
 internal val BOTTOM_BAR_DOCK_PAD = 12.dp
@@ -170,19 +219,21 @@ private fun ShellBody(state: UiState) {
 
         // v2 bottom bar: compact single-pane only, never while a detail is pushed (D88).
         val showBar = !metrics.useRail && !detailOpen
-        // P1-3: the reserved zone is the pill's measured-in-code footprint, so it tracks
-        // the navigation inset (gesture ≈ 24 dp, 3-button ≈ 48 dp) instead of guessing one
-        // constant. Reading it here — not in the bar — keeps the one allowed
-        // `WindowInsets.navigationBars` read in `BottomBar.kt` (TopGlassGuardTest).
+        // P1-3 + g-zone-split: the reserved zone is the **composed form's** measured-in-code
+        // footprint, so it tracks the navigation inset (gesture ≈ 24 dp, 3-button ≈ 48 dp)
+        // instead of guessing one constant — and the docked form no longer reserves the
+        // floating pill it does not render. Reading the inset here — not in the bar — keeps
+        // the one allowed `WindowInsets.navigationBars` read in `BottomBar.kt`
+        // (TopGlassGuardTest).
         val navInset = navigationBarBottomInset()
-        // Every bar form reserves the bottom zone as *content* padding (never container
+        // Every bar form reserves its own bottom zone as *content* padding (never container
         // padding): the last row must be able to scroll clear of the bar, or it stays
         // permanently hidden behind it (the 能力 page's final card was clipped by the
         // window edge). Rows still pass *through* the bar zone mid-scroll, which is what
         // gives the glass something to blur — both behaviours come from content padding.
         val contentInsets = PaddingValues(
             top = TOP_BAR_ZONE,
-            bottom = contentBottomInset(showBar, navInset),
+            bottom = contentBottomInset(showBar, navInset, state.barStyle),
         )
 
         // --- backdrop: the ONLY haze source. Everything blurrable lives in here. ---
