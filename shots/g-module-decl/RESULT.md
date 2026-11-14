@@ -1,6 +1,6 @@
 # g-module-decl RESULT — A3 模块入口：侦察结论 + 客户端侧注册表（声明通道仍未通，需 RFC）
 
-分支 `tmp/g-module-decl`，基于 **main `09c7320`**。未 push、未合并。
+分支 `tmp/g-module-decl`，基于 **main `09c7320`**。代码 commit：**`0883675`**（5 文件，+929/−1）；本报告为 `docs(shots)` 单独提交（分支 HEAD）。未 push、未合并。
 改动范围：**协议层 2 个既有文件（+21/−1 行）+ 新建 `data/ModuleRegistry.kt` + 新建 `desktopTest/.../ModuleRegistryTest.kt` + 本报告**。
 `RealSessionSource.kt` / `VadeAdapters.kt` / `shell/**` / `destinations/**` / `chat/**` / `meta/**` / `model/**` / `usage/**` / `search/**` / `module/**` / `skin/**` / `icon/**` / `build.gradle.kts` / `contracts/**`：**零改动**（见文末红线自查）。
 
