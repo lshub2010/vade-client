@@ -73,12 +73,22 @@ data class BottomBarItem(
 /** Pill row height: 56 dp content + 2×4 dp padding (KernelSU geometry). */
 internal val FloatingBarPillHeight: Dp = 64.dp
 
+/**
+ * Navigation-bar bottom inset: the real gesture/3-button inset on Android (non-zero
+ * under edge-to-edge), 0 on desktop and wasm — CMP's `WindowInsets` actuals report no
+ * system bars there, so bar geometry is unchanged on those targets (c-inset).
+ */
+@Composable
+internal fun navigationBarBottomInset(): Dp =
+    WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
 /** `8 dp + inset` when the device has a nav inset, else KernelSU's 28 dp. */
 @Composable
-internal fun floatingBarBottomMargin(): Dp {
-    val inset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    return if (inset > 0.dp) 8.dp + inset else 28.dp
-}
+internal fun floatingBarBottomMargin(): Dp = floatingBarBottomMargin(navigationBarBottomInset())
+
+/** Pure form of [floatingBarBottomMargin]; the Dp branch is pinned by `InsetsGuardTest`. */
+internal fun floatingBarBottomMargin(navInset: Dp): Dp =
+    if (navInset > 0.dp) 8.dp + navInset else 28.dp
 
 /**
  * The three bottom-bar forms. [backdrop] is the app-content capture (attached
@@ -133,6 +143,12 @@ internal fun VadeBottomBar(
  * `BlurredBar(NavigationBar(color = Transparent))` shape. No vertical alpha
  * ramp anywhere: if the blur cannot run (no runtime shader), the surface
  * degrades to the plain tint, never to a fake gradient.
+ *
+ * c-inset: the glass surface extends through the navigation-bar inset and the
+ * label row is padded above it, so the labels sit clear of the system gesture
+ * pill / 3-button bar while the tint keeps covering the system area (KSU's
+ * BlurredBar semantics). [navigationBarBottomInset] is 0 on desktop/wasm, so
+ * the geometry there stays exactly 1 dp hairline + 64 dp glass.
  */
 @Composable
 private fun FixedBottomBar(
@@ -144,12 +160,13 @@ private fun FixedBottomBar(
 ) {
     val skin = LocalSkin.current
     val tint = if (skin.colors.isDark) skin.glass.tintDark else skin.glass.tintLight
+    val navInset = navigationBarBottomInset()
     Column(modifier = modifier.fillMaxWidth()) {
         Box(Modifier.fillMaxWidth().height(1.dp).background(skin.colors.hairline))
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(FloatingBarPillHeight)
+                .height(FloatingBarPillHeight + navInset)
                 .glassSurface(
                     backdrop = backdrop.asSurfaceBackdrop(),
                     shape = { RectangleShape },
@@ -157,7 +174,12 @@ private fun FixedBottomBar(
                     onDrawSurface = { drawRect(tint) },
                 ),
         ) {
-            Row(Modifier.fillMaxWidth().fillMaxHeight()) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight()
+                    .padding(bottom = navInset),
+            ) {
                 items.forEachIndexed { index, item ->
                     FixedBottomBarItem(
                         item = item,
