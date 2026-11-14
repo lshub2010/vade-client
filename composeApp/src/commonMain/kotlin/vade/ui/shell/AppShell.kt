@@ -102,11 +102,24 @@ fun AppShell(state: UiState) {
     }
 }
 
-/** Top-bar zone: 8dp top inset + 56dp glass bar + 8dp gap. Scrollables inset by this. */
-private val TOP_BAR_ZONE = 72.dp
+/**
+ * Top-bar zone: [TopBarTopGap] + TopBar's 56dp glass capsule + 8dp breathing gap = 72dp.
+ * Scrollables inset by this — as **content** padding (internal so TopGlassGuardTest can
+ * pin the arithmetic).
+ *
+ * The status-bar inset is NOT a term of this number and must never be added here: the
+ * root `statusBarsPadding()` in androidMain `MainActivity` consumes it exactly once
+ * before this composition runs (desktop/wasm read 0 — desktopTest `InsetsGuardTest`),
+ * so the glass bar's geometry is these constants alone on every platform. A shell-side
+ * status-bar term would double-pad Android and add a phantom band on desktop/wasm.
+ */
+internal val TOP_BAR_ZONE = 72.dp
+
+/** Window top → glass capsule gap. The status-bar inset above it is consumed at the root. */
+internal val TopBarTopGap = 8.dp
 
 /** Bottom-bar zone: 64dp glass bar + 12dp bottom inset + 12dp gap (floating form). */
-private val BOTTOM_BAR_ZONE = 88.dp
+internal val BOTTOM_BAR_ZONE = 88.dp
 
 @Composable
 private fun ShellBody(state: UiState) {
@@ -192,7 +205,7 @@ private fun ShellBody(state: UiState) {
                 .padding(
                     start = if (metrics.useRail) metrics.railWidth + 12.dp else 12.dp,
                     end = if (metrics.hasRightPanel && state.panelOpen) 12.dp + 320.dp + 1.dp else 12.dp,
-                    top = 8.dp,
+                    top = TopBarTopGap,
                 ),
         ) {
             if (detailOpen) {

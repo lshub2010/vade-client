@@ -1,5 +1,6 @@
 package vade.ui.shell
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -9,15 +10,19 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import vade.ui.UiText
+import vade.ui.icon.VadeIcons
 import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.NavItem
@@ -32,8 +37,8 @@ import vade.ui.skin.glass.GlassSurface
  * tint 26%/34%, 1px hairline, §8 float shadow) and must sit **outside** the haze backdrop
  * source (haze 2.1.0: an effect node cannot draw an ancestor source node).
  *
- * Selection (task item 2): the glyph switches to the "filled" reading — heavier weight in
- * `accent` — plus the label in accent. **No** pill/tinted block behind the selected item
+ * Selection (task item 2): the selected icon reads in `accent` (primary tint) plus the label
+ * in accent with heavier weight. **No** pill/tinted block behind the selected item
  * (Material You tell). Height exactly 64dp; whole cell is the touch target (≥44dp).
  *
  * [BottomBarStyle] survives as the *form* switch: `Fixed` docks the bar (square edges at
@@ -75,13 +80,17 @@ fun GlassNavBar(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
                 ) {
-                    // "图标填充 + accent"：单字形图标的填充态 = 加重字重 + accent 色；
-                    // 未选中 = 常规字重 + muted。选中态没有底色块（§12 明令禁止大色块 pill）。
-                    UiText(
-                        text = item.glyph ?: "•",
-                        size = 18,
-                        weight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                        color = if (isSelected) skin.colors.primary else skin.colors.onSurfaceVariant,
+                    // v2 §3（w-g-icons）：图标槽只出矢量——NavItem 是冻结模型没有 icon 槽，
+                    // 按 id 映射 VadeIcons（[VadeIcons.navIconOrNull]），未知 id 落中性
+                    // Circle，绝不回退 "•"。选中态由 tint + 下方 label 的字重/颜色表达
+                    // （矢量无字重可加重；无填充块，§12 禁大色块 pill）。
+                    Image(
+                        painter = rememberVectorPainter(VadeIcons.navIconOrNull(item.id) ?: VadeIcons.Circle),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        colorFilter = ColorFilter.tint(
+                            if (isSelected) skin.colors.primary else skin.colors.onSurfaceVariant,
+                        ),
                     )
                     Spacer(Modifier.height(3.dp))
                     UiText(

@@ -48,6 +48,7 @@ import com.composables.icons.tabler.outline.Check
 import com.composables.icons.tabler.outline.ChevronDown
 import com.composables.icons.tabler.outline.ChevronLeft
 import com.composables.icons.tabler.outline.ChevronRight
+import com.composables.icons.tabler.outline.Circle
 import com.composables.icons.tabler.outline.Dots
 import com.composables.icons.tabler.outline.Folder
 import com.composables.icons.tabler.outline.Ban
@@ -56,6 +57,7 @@ import com.composables.icons.tabler.outline.Shield
 import com.composables.icons.tabler.outline.Inbox
 import com.composables.icons.tabler.outline.LayoutGrid
 import com.composables.icons.tabler.outline.MessageCircle
+import com.composables.icons.tabler.outline.Microphone
 import com.composables.icons.tabler.outline.Palette
 import com.composables.icons.tabler.outline.Paperclip
 import com.composables.icons.tabler.outline.Pin
@@ -200,6 +202,33 @@ object VadeIcons {
 
     /** Page icon `file` and the fallback for missing/unknown icon declarations (`getFile`). */
     val PageFile: ImageVector = Tabler.Outline.File
+
+    // --- w-g-icons (2026-11-14) · 清最后一批字符图标时追加；getter 全部 javap 核实于 2.2.1 outline jar ---
+
+    /** 收藏 / favourite（demo 行的 `★` 字符占位的正身；白名单名 `star` 同源）。 */
+    val Star: ImageVector = Tabler.Outline.Star
+
+    /** 语音输入（D97 麦克风按钮——material/miuix 输入条的 `◍`/`◉` 字符占位的正身）。 */
+    val Mic: ImageVector = Tabler.Outline.Microphone
+
+    /** 中性占位圆：导航项图标缺省时的矢量兜底（替代 `"•"` 字符兜底，v2 §3）。 */
+    val Circle: ImageVector = Tabler.Outline.Circle
+
+    /**
+     * Nav destination id → vector（FR-8.77 的四个一级目的地）。
+     *
+     * C-09 冻结的 [vade.ui.skin.NavItem] 没有 icon 槽，导航渲染器只能按 id 映射；
+     * 字符串与 `vade.ui.destinations.Destination.id` 逐字对应（skin 层不得反向 import
+     * destinations 包，所以映射落在这里）。未知 id 返回 `null`，调用方落回中性
+     * [Circle] —— 绝不落回字符 glyph。
+     */
+    fun navIconOrNull(id: String): ImageVector? = when (id) {
+        "sessions" -> Chat
+        "activity" -> Activity
+        "capabilities" -> Grid
+        "me" -> Person
+        else -> null
+    }
 }
 
 /**

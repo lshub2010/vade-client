@@ -35,6 +35,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import vade.ui.icon.VadeIcon
+import vade.ui.icon.VadeIcons
 import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.BtnStyle
 import vade.ui.skin.NavItem
@@ -369,11 +371,14 @@ class MaterialSkin(
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Box(contentAlignment = Alignment.TopEnd) {
-                            Text(
-                                // v2 §12：选中 = icon 填充 + accent，不做大色块 pill 选中块。
-                                text = item.glyph ?: "•",
-                                fontSize = 20.sp,
-                                color = if (isSelected) c.primary else c.onSurfaceVariant,
+                            // v2 §12：选中 = accent tint + label 字重，不做大色块 pill 选中块。
+                            // w-g-icons：图标槽只出矢量——NavItem 冻结无 icon 槽，按 id 映射
+                            // VadeIcons，未知 id 落中性 Circle，绝不回退 "•" 字符。
+                            VadeIcon(
+                                vector = VadeIcons.navIconOrNull(item.id) ?: VadeIcons.Circle,
+                                contentDescription = null,
+                                size = 20.dp,
+                                tint = if (isSelected) c.primary else c.onSurfaceVariant,
                             )
                             if (item.badge != null) {
                                 Box(

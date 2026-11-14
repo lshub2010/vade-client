@@ -77,10 +77,11 @@ fun MiuixShowcasePage(
     }
 
     val nav = listOf(
-        NavItem("sessions", "会话", "话"),
-        NavItem("activity", "活动", "活", badge = "2"),
-        NavItem("capabilities", "能力", "能"),
-        NavItem("me", "我的", "我"),
+        // w-g-icons：底栏图标由 skin.BottomBar 按 id 映射 VadeIcons 矢量；NavItem.glyph 不再喂。
+        NavItem("sessions", "会话"),
+        NavItem("activity", "活动", badge = "2"),
+        NavItem("capabilities", "能力"),
+        NavItem("me", "我的"),
     )
 
     Box(Modifier.fillMaxSize().background(c.surfaceVariant)) {
@@ -95,10 +96,12 @@ fun MiuixShowcasePage(
                         Text("构建矩阵核对", fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = c.onSurface)
                         Text("miuix · chat showcase", fontSize = MiuixTokens.tinySize, color = c.onSurfaceVariant)
                     }
-                    // v2 §3 图标即按钮 —— 顶栏不放文字按钮。
-                    skin.Button("⋯", onClick = {}, style = BtnStyle.Text)
+                    // w-g-icons：顶栏按钮用真实文案。`skin.Button` 是冻结的 String 签名、
+                    // 无法携带 ImageVector，而字符图标（"⋯"/"↑"）被 v2 §3 明令禁止——
+                    // showcase 演示的是 Button 的样式本身，真文案不损其目的。
+                    skin.Button("更多", onClick = {}, style = BtnStyle.Text)
                     Spacer(Modifier.width(6.dp))
-                    skin.Button("↑", onClick = {}, style = BtnStyle.Primary)
+                    skin.Button("发送", onClick = {}, style = BtnStyle.Primary)
                 }
             }
 
@@ -188,17 +191,18 @@ fun MiuixShowcasePage(
                             trailing = { skin.Switch(checked = true, onCheckedChange = {}) },
                             onClick = {},
                         )
-                        // v2 §3 图标即按钮：五种 BtnStyle 全部用图标演示，11sp 说明文字
-                        // 只是标签（不是按钮）。
+                        // w-g-icons：五种 BtnStyle 用真实文案演示。字符图标（"↑"/"＋"/"✕"/"⋯"）
+                        // 被 v2 §3 禁止，而 Button 的 String 签名装不下矢量——真文案演示按钮
+                        // 样式不损目的，11sp 说明文字只是标签（不是按钮）。
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             listOf(
-                                "↑" to BtnStyle.Primary,
-                                "＋" to BtnStyle.Secondary,
-                                "✕" to BtnStyle.Danger,
-                                "⋯" to BtnStyle.Text,
-                            ).forEach { (glyph, style) ->
+                                "发送" to BtnStyle.Primary,
+                                "添加" to BtnStyle.Secondary,
+                                "删除" to BtnStyle.Danger,
+                                "更多" to BtnStyle.Text,
+                            ).forEach { (label, style) ->
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    skin.Button(glyph, {}, style)
+                                    skin.Button(label, {}, style)
                                     Text(
                                         when (style) {
                                             BtnStyle.Primary -> "主"
@@ -212,7 +216,7 @@ fun MiuixShowcasePage(
                                 }
                             }
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                skin.Button("＋", {}, BtnStyle.Secondary, enabled = false)
+                                skin.Button("添加", {}, BtnStyle.Secondary, enabled = false)
                                 Text("禁", fontSize = MiuixTokens.tinySize, color = c.onSurfaceVariant)
                             }
                         }

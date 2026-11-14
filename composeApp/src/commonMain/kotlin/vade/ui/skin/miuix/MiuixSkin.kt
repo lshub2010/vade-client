@@ -41,6 +41,8 @@ import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.SwitchDefaults
+import vade.ui.icon.VadeIcon
+import vade.ui.icon.VadeIcons
 import vade.ui.skin.BtnStyle
 import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.NavItem
@@ -466,14 +468,16 @@ class MiuixSkin(
                 verticalArrangement = Arrangement.Center,
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    // Icon slot is 20 dp per spec — no selection block, the glyph carries state
-                    // through colour + weight alone.
+                    // Icon slot is 20 dp per spec — no selection block; state is carried through
+                    // tint + the label's weight alone. w-g-icons: the slot renders a **vector**
+                    // (mapped by id via [VadeIcons.navIconOrNull], unknown ids fall back to the
+                    // neutral Circle) — never the "•" glyph fallback.
                     Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
-                        Text(
-                            text = item.glyph ?: "•",
-                            fontSize = 15.sp,
-                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                            color = tint,
+                        VadeIcon(
+                            vector = VadeIcons.navIconOrNull(item.id) ?: VadeIcons.Circle,
+                            contentDescription = null,
+                            size = 18.dp,
+                            tint = tint,
                         )
                     }
                     if (item.badge != null) {

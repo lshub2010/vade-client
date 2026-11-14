@@ -31,7 +31,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -42,11 +45,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import vade.ui.UiText
-import vade.ui.shell.TopBarButton
-import vade.ui.shell.UiState
 import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
+import vade.ui.shell.TopBarButton
+import vade.ui.shell.UiState
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.glass.GlassSurface
 
@@ -66,11 +71,17 @@ import vade.ui.skin.glass.GlassSurface
  * sit outside the haze backdrop source (sibling of `AppShell`'s content), so haze never
  * captures its own layer.
  *
- * Why a local index: C-05 (`schema/rpc.json`, frozen 2026-11-13) ships no `session/…` at all,
- * so there is no `session/search` to call. [LocalSessionIndex] scans the sessions this client
- * already holds and every state of this overlay prints 「范围：已缓存」 — a degraded search
- * that hides its scope is the defect FR-8.27 calls out. The seam for the real method is
- * [SessionSearchSource] (see the TODO there).
+ * ## Two tiers (RFC-0014 `session/search` is LIVE)
+ *
+ * Runs go where [SearchState.remoteEnabled] says: with a [RemoteSearch] seam injected
+ * (the wiring point is `shell/UiState.kt`'s `SearchState()` construction), the debounced
+ * runner below calls [SearchState.runRemote] — the real `session/search` through
+ * [RemoteSearchReal] — and a failed run renders [SearchFailureNotice] with a retry entry,
+ * never a fake "no results" (FR-8.27: 失败不是空结果). Without a seam nothing changes:
+ * the runner keeps scanning [LocalSessionIndex] over the cached sessions, byte for byte
+ * the pre-RFC-0014 behavior. Every scope text on this card is state-driven
+ * (`search.scope.label` / tier branches) — a hard-coded 「范围：已缓存」 or
+ * 「core 未提供 session/search」 would lie once the remote tier answers.
  */
 @Composable
 fun SearchHost(state: UiState) {
@@ -79,13 +90,18 @@ fun SearchHost(state: UiState) {
 
     val sessions = state.cachedSessions()
 
-    // FR-8.27: debounce ≤200 ms. Keyed on the query and on the cached corpus, so a new
-    // draft row also refreshes the results.
-    LaunchedEffect(search.query, sessions) {
+    // FR-8.27: debounce ≤200 ms. Keyed on the query, on the active tier and on the cached
+    // corpus, so a new draft row also refreshes the results. Tier flips re-run too —
+    // the rows on screen must come from the tier the label names.
+    LaunchedEffect(search.query, search.remoteEnabled, sessions) {
         when (search.phase) {
             SearchPhase.Ready -> {
                 delay(SEARCH_DEBOUNCE_MS)
-                search.applyResults(LocalSessionIndex(sessions).search(search.query))
+                if (search.remoteEnabled) {
+                    search.runRemote(search.trimmedQuery)
+                } else {
+                    search.applyResults(LocalSessionIndex(sessions).search(search.query))
+                }
             }
             else -> search.clearResults(sessions.size)
         }
@@ -129,14 +145,14 @@ private fun CompactSearchOverlay(state: UiState, onPick: (SearchHit) -> Unit) {
                         Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        TopBarButton("←", onClick = { state.closeSearch() }, contentDescription = "关闭搜索")
+                        TopBarIconButton(VadeIcons.Back, onClick = { state.closeSearch() }, contentDescription = "关闭搜索")
                         Spacer(Modifier.width(6.dp))
                         Column(Modifier.weight(1f)) {
                             UiText("搜索会话", size = 15, weight = FontWeight.SemiBold)
                             UiText("列表内覆盖层 · 不占一级目的地", size = 10, color = skin.colors.onSurfaceVariant)
                         }
                         if (search.query.isNotEmpty()) {
-                            TopBarButton("✕", onClick = { search.updateQuery("") }, contentDescription = "清空输入")
+                            TopBarIconButton(VadeIcons.Close, onClick = { search.updateQuery("") }, contentDescription = "清空输入")
                         }
                     }
                     Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
@@ -186,7 +202,7 @@ private fun CommandPalette(state: UiState, onPick: (SearchHit) -> Unit) {
                             UiText("命令面板", size = 15, weight = FontWeight.SemiBold)
                             UiText("会话搜索", size = 10, color = skin.colors.onSurfaceVariant)
                         }
-                        TopBarButton("✕", onClick = { state.closeSearch() }, contentDescription = "关闭面板")
+                        TopBarIconButton(VadeIcons.Close, onClick = { state.closeSearch() }, contentDescription = "关闭面板")
                     }
                     Column(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 10.dp)) {
                         SearchInput(search)
@@ -220,6 +236,26 @@ private fun CommandPalette(state: UiState, onPick: (SearchHit) -> Unit) {
 
 // --- shared pieces --------------------------------------------------------------
 
+/**
+ * v2 §3 icon button (44dp touch target) — the **vector** shape of `shell.TopBarButton`.
+ * That one takes a `String` glyph and is still called by `AppShell` (another stick's file),
+ * so its signature is frozen from here; this file renders [VadeIcons] vectors directly.
+ */
+@Composable
+private fun TopBarIconButton(icon: ImageVector, onClick: () -> Unit, contentDescription: String) {
+    val skin = LocalSkin.current
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .clip(RoundedCornerShape(skin.shapes.sm))
+            .semantics { this.contentDescription = contentDescription }
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        VadeIcon(icon, contentDescription = null, size = 16.dp, tint = skin.colors.textOnGlass)
+    }
+}
+
 @Composable
 private fun SearchInput(search: SearchState) {
     val skin = LocalSkin.current
@@ -246,9 +282,11 @@ private fun SearchInput(search: SearchState) {
 }
 
 /**
- * The permanent degradation label. It is **not** conditional: FR-8.27 requires the scope to
- * be visible on every state (empty input, no hits, too many characters), which is what stops
- * "cached only" from looking like "searched everything".
+ * The permanent scope line. The label comes from [SearchState.scope] (assigned by the
+ * real source — never a string literal here). When the remote seam is injected the pill
+ * IS the tier switch (tap = flip); its detail text follows the tier / failure state so
+ * it cannot claim 「已缓存」 while the rows came from core, or lie that
+ * `session/search` does not exist.
  */
 @Composable
 private fun ScopeLine(search: SearchState) {
@@ -262,15 +300,15 @@ private fun ScopeLine(search: SearchState) {
             Modifier
                 .clip(RoundedCornerShape(skin.shapes.pill))
                 .background(skin.colors.primary.copy(alpha = 0.12f))
+                .clickable(enabled = search.remoteAvailable) {
+                    if (search.remoteEnabled) search.useLocal() else search.useRemote()
+                }
                 .padding(horizontal = 8.dp, vertical = 3.dp),
         ) {
             UiText(search.scope.label, size = 9, weight = FontWeight.SemiBold, color = skin.colors.primary)
         }
         UiText(
-            text = buildString {
-                append("本机已缓存 ${search.indexedCount} 个会话的标题与摘要")
-                append(" · core 未提供 session/search，跨会话全文检索暂不可用")
-            },
+            text = scopeDetail(search),
             size = 9,
             color = skin.colors.onSurfaceVariant,
             maxLines = 2,
@@ -280,6 +318,18 @@ private fun ScopeLine(search: SearchState) {
     }
 }
 
+/** Tier-driven detail for [ScopeLine] — every branch reads state, nothing is constant. */
+private fun scopeDetail(search: SearchState): String = when {
+    search.remoteFailure != null ->
+        "远端搜索失败（${search.remoteFailure?.category?.label}）· 详情见下方，可重试"
+    search.scope == SearchScope.CrossSession ->
+        "core 命中 ${search.indexedCount} 个会话（服务端计数）· 点范围标签切回本机缓存"
+    search.remoteAvailable ->
+        "本机已缓存 ${search.indexedCount} 个会话 · 点范围标签切换远端全文搜索"
+    else ->
+        "本机已缓存 ${search.indexedCount} 个会话的标题与摘要 · 跨会话全文检索未接入"
+}
+
 @Composable
 private fun SearchBody(
     search: SearchState,
@@ -287,6 +337,9 @@ private fun SearchBody(
     modifier: Modifier = Modifier,
 ) {
     val skin = LocalSkin.current
+    // Retry runs outside the debounced effect (its keys did not change) — the state's
+    // generation guard is what keeps a retried run from racing anything else.
+    val retryScope = rememberCoroutineScope()
     // Restored from the state object, so closing the overlay (entering a session) and
     // reopening it lands on the same scroll offset — acceptance criterion U1-c.
     val listState = rememberLazyListState(
@@ -308,7 +361,11 @@ private fun SearchBody(
         when (search.phase) {
             SearchPhase.Empty -> SearchNotice(
                 title = "输入关键词搜索会话",
-                body = "至少 $SEARCH_MIN_CHARS 个字符触发；范围见上方标注——只有本机已缓存的会话可被搜到。",
+                body = if (search.remoteEnabled) {
+                    "至少 $SEARCH_MIN_CHARS 个字符触发；范围见上方标注——远端将搜索全部会话的标题与正文。"
+                } else {
+                    "至少 $SEARCH_MIN_CHARS 个字符触发；范围见上方标注——只有本机已缓存的会话可被搜到。"
+                },
             )
 
             SearchPhase.TooShort -> SearchNotice(
@@ -322,14 +379,32 @@ private fun SearchBody(
             )
 
             SearchPhase.Ready -> {
-                if (search.results.isEmpty()) {
-                    SearchNotice(
-                        title = "没有匹配「${search.trimmedQuery}」的会话",
-                        body = "范围：已缓存 · 已检索 ${search.indexedCount} 个会话的标题与摘要。" +
-                            "未命中的会话可能不在本机缓存里，或只出现在消息正文中（需 session/search）。",
+                // A failed remote run renders FIRST and never folds into "no results"
+                // (FR-8.27): category label + original message + the retry entry.
+                val failure = search.remoteFailure
+                when {
+                    failure != null -> SearchFailureNotice(
+                        failure = failure,
+                        retrying = search.remoteInFlight,
+                        onRetry = { retryScope.launch { search.retryRemote() } },
                     )
-                } else {
-                    LazyColumn(state = listState, modifier = Modifier.fillMaxWidth()) {
+
+                    search.results.isEmpty() -> SearchNotice(
+                        title = "没有匹配「${search.trimmedQuery}」的会话",
+                        body = when (search.scope) {
+                            SearchScope.CrossSession ->
+                                "范围：全部会话 · core 返回 0 命中（服务端计数）。换个词，或点范围标签切回本机缓存。"
+                            SearchScope.Cached ->
+                                "范围：已缓存 · 已检索 ${search.indexedCount} 个会话的标题与摘要。" +
+                                    if (search.remoteAvailable) {
+                                        "未命中的会话可能不在本机缓存里——点上方范围标签切换远端全文搜索。"
+                                    } else {
+                                        "未命中的会话可能不在本机缓存里，或只出现在消息正文中（远端全文搜索未接入）。"
+                                    }
+                        },
+                    )
+
+                    else -> LazyColumn(state = listState, modifier = Modifier.fillMaxWidth()) {
                         itemsIndexed(search.results, key = { _, hit -> hit.session.id }) { index, hit ->
                             ResultRow(
                                 hit = hit,
@@ -371,6 +446,58 @@ private fun SearchNotice(title: String, body: String) {
             style = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, textAlign = TextAlign.Center),
             color = skin.colors.onSurfaceVariant,
         )
+    }
+}
+
+/**
+ * §12 错误态 for a failed remote run — the same centered shape as [SearchNotice], tinted
+ * `error`, with the frozen [VadeErrorCategory.label] plus the ORIGINAL message on screen
+ * and ONE primary action: the retry entry. A failed search is never folded into
+ * 「没有匹配」 (FR-8.27: 失败不是空结果) — the message the core / transport produced
+ * stays visible, never swallowed.
+ */
+@Composable
+private fun SearchFailureNotice(failure: SearchFailure, retrying: Boolean, onRetry: () -> Unit) {
+    val skin = LocalSkin.current
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+            VadeIcon(VadeIcons.Search, contentDescription = null, size = 26.dp, tint = skin.colors.error)
+        }
+        Spacer(Modifier.height(8.dp))
+        UiText(
+            text = "远端搜索失败（${failure.category.label}）",
+            style = TextStyle(fontSize = 20.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center),
+            color = skin.colors.onSurface,
+        )
+        Spacer(Modifier.height(4.dp))
+        UiText(
+            text = failure.message,
+            style = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, textAlign = TextAlign.Center),
+            color = skin.colors.onSurfaceVariant,
+            maxLines = 4,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(12.dp))
+        // One primary action (§12): an icon retry button, ≥44dp touch target, disabled
+        // while a run is already in flight.
+        Box(
+            Modifier
+                .size(44.dp)
+                .clip(RoundedCornerShape(skin.shapes.pill))
+                .background(if (retrying) Color.Transparent else skin.colors.primary.copy(alpha = 0.12f))
+                .clickable(enabled = !retrying, onClick = onRetry),
+            contentAlignment = Alignment.Center,
+        ) {
+            VadeIcon(
+                VadeIcons.Refresh,
+                contentDescription = "重试搜索",
+                size = 20.dp,
+                tint = if (retrying) skin.colors.onSurfaceVariant else skin.colors.primary,
+            )
+        }
     }
 }
 
@@ -423,7 +550,17 @@ private fun ResultRow(hit: SearchHit, selected: Boolean, onClick: () -> Unit) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (hit.session.preview.isNotEmpty()) {
+            if (hit.snippet != null) {
+                // Remote row: the verbatim server snippet IS the preview line (its text
+                // is never re-derived here — the ranges only style the matched part).
+                UiText(
+                    text = highlight(hit.snippet, hit.snippetRanges, accent),
+                    size = 11,
+                    color = skin.colors.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            } else if (hit.session.preview.isNotEmpty()) {
                 UiText(
                     text = highlight(hit.session.preview, hit.snippetRanges, accent),
                     size = 11,
@@ -437,7 +574,11 @@ private fun ResultRow(hit: SearchHit, selected: Boolean, onClick: () -> Unit) {
         Column(horizontalAlignment = Alignment.End) {
             UiText(hit.session.updatedLabel, size = 9, color = skin.colors.onSurfaceVariant)
             UiText(
-                text = if (hit.titleMatched) hit.session.bucket.label else "摘要命中",
+                text = when {
+                    hit.titleMatched -> hit.session.bucket.label
+                    hit.snippet != null -> "正文命中" // remote body hit: the snippet came from a message body
+                    else -> "摘要命中"
+                },
                 size = 9,
                 color = if (hit.titleMatched) accent else skin.colors.onSurfaceVariant,
             )

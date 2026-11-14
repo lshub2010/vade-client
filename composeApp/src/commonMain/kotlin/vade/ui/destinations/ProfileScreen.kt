@@ -163,8 +163,10 @@ fun ProfileScreen(
 
 @Composable
 private fun SkinChip(id: String, current: String, onSelect: (String) -> Unit) {
+    // w-g-icons：选中标记不再往文字里塞 `●` 字符（v2 §3 禁字符图标）——选中态已由
+    // BtnStyle.Primary（accent 实底）与 Secondary 的对比表达，重复标记只会加噪音。
     LocalSkin.current.Button(
-        text = if (id == current) "● $id" else id,
+        text = id,
         onClick = { onSelect(id) },
         style = if (id == current) BtnStyle.Primary else BtnStyle.Secondary,
     )
@@ -177,8 +179,9 @@ private fun BarChip(
     current: BottomBarStyle,
     onSelect: (BottomBarStyle) -> Unit,
 ) {
+    // w-g-icons：同 SkinChip —— 选中态由样式表达，不用 `●` 字符。
     LocalSkin.current.Button(
-        text = if (style == current) "● $label" else label,
+        text = label,
         onClick = { onSelect(style) },
         style = if (style == current) BtnStyle.Primary else BtnStyle.Secondary,
     )
