@@ -275,3 +275,12 @@ bash tools/gitleaks-scan.sh D:/HermesWorkspace/Vade/Vade
 | `raw/run-client.log` / `raw/run-main.log` | 两次脚本整轮运行的终端输出（含目标 repo 的 sha） |
 | `grep_scan.py` | 私钥 grep 脚本（掩码输出） |
 | `tools/gitleaks-scan.sh` | 四扫 + grep 的可复跑入口 |
+
+## 12. 提交记录
+
+| 仓库 | commit | 内容 |
+|---|---|---|
+| `Vade-client`（`main`） | `0ed27b5` | `.gitleaks.toml`、`tools/gitleaks-scan.sh`、`shots/g-gitleaks/**` |
+| `Vade`（`dev_gingshan`） | `09a2ac5` | `.gitleaks.toml`（与客户端仓同一份，md5 一致） |
+
+两个提交都只在本地分支上，**没有 push、没有合并**。本节文字由紧随其后的 docs 提交补入，所以这里不写那个 docs 提交自己的 sha（自引用做不到）。
