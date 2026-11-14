@@ -160,33 +160,45 @@
 
 理由：字符图标有三个真问题——① 不同平台/字体的字形宽度与基线不一致，同一套界面在 Android/桌面/Wasm 上会错位；② 无法控制线宽与视觉重量，汉字和符号混排时粗细不齐；③ 字符会跟随 `fontSize` 缩放，和图标应有的固定尺寸语义冲突。
 
-### 3.2 图标规格
+### 3.2 图标库：Tabler Icons（2026-11-14 用户选定）
 
-- 统一 **24×24 viewport**，实际绘制 20dp 或 24dp 两档。
-- **线宽 2dp**（描边式），圆角端点（`StrokeCap.Round`）、圆角连接（`StrokeJoin.Round`）。
-- 只画描边不填充（`stroke` 而非 `fill`），除「选中态」可用填充表达状态。
-- 一套图标内线宽、端点、圆角必须完全一致。
-
-### 3.3 必需图标清单（15 个）
-
-| 用途 | 名字 |
+| 项 | 值 |
 |---|---|
-发送 | `Send`（向上箭头） |
-停止 | `Stop`（实心方块，唯一允许 fill 的） |
-附件 | `Attach`（回形针） |
-更多 | `More`（三点） |
-返回 | `Back`（左尖括号） |
-搜索 | `Search`（放大镜） |
-关闭 | `Close`（叉） |
-展开/收起 | `ChevronDown` / `ChevronRight` |
-新建 | `Compose`（铅笔） |
-批准 | `Check` |
-拒绝/删除 | `Trash` |
-重试 | `Refresh` |
-导航·会话 | `Chat`（对话气泡） |
-导航·活动 | `Activity`（脉冲线） |
-导航·能力 | `Grid`（四宫格） |
-导航·我的 | `Person`（人形） |
+库 | **Tabler Icons** — https://tabler.io/icons |
+许可证 | **MIT**（商用、修改、再分发均可，保留版权声明） |
+数量 | 6287（5233 描边 + 1054 填充） |
+规格 | **24×24 网格、2dp 描边** —— 与本节要求一字不差 |
+Compose MP | `com.composables:icons-tabler-cmp:2.2.1`（有 `wasmJsApiElements` / `jvmApiElements` / `androidApiElements`） |
+
+- 一律通过 `vade.ui.icon.VadeIcons` 暴露，**业务代码不得直接 import `com.composables.icons.tabler.*`**（换库时只改一处）。
+- 实际绘制 **20dp 或 24dp** 两档；颜色由调用方 `tint`，图标本身不带色。
+- 只用 **Outline** 系列；`Fill` 系列仅用于「选中态」（如底栏选中项、开关打开）。
+- 描边宽度保持库的 2dp，**不得**用 `strokeWidth` 改细（会与其他图标不齐）。
+- **不用 `compose.materialIconsExtended`**：该 artifact 最新只到 1.7.3，与 CMP 1.12 搭配有解析风险。
+
+### 3.3 必需图标清单（语义名 → Tabler 名）
+
+| 用途 | 语义名 | Tabler 图标 |
+|---|---|---|
+发送 | `Send` | `tabler-icons:arrow-up` |
+停止 | `Stop` | `tabler-icons:player-stop-filled`（唯一 fill） |
+附件 | `Attach` | `tabler-icons:paperclip` |
+更多 | `More` | `tabler-icons:dots` |
+返回 | `Back` | `tabler-icons:chevron-left` |
+搜索 | `Search` | `tabler-icons:search` |
+关闭 | `Close` | `tabler-icons:x` |
+展开/收起 | `ChevronDown` / `ChevronRight` | `tabler-icons:chevron-down` / `chevron-right` |
+新建 | `Compose` | `tabler-icons:pencil` |
+批准 | `Check` | `tabler-icons:check` |
+拒绝/删除 | `Trash` | `tabler-icons:trash` |
+重试 | `Refresh` | `tabler-icons:refresh` |
+导航·会话 | `Chat` | `tabler-icons:message-circle` |
+导航·活动 | `Activity` | `tabler-icons:activity` |
+导航·能力 | `Grid` | `tabler-icons:layout-grid` |
+导航·我的 | `Person` | `tabler-icons:user` |
+置顶 | `Pin` | `tabler-icons:pin` |
+分类/文件夹 | `Folder` | `tabler-icons:folder` |
+自定义图标 | `Palette` | `tabler-icons:palette` |
 
 ### 3.4 无障碍与触摸
 
@@ -241,20 +253,72 @@
 8. **不检查运动模糊**（§11 已废弃，v2 不做）。
 
 
-## 8. 阴影 / 辉光（v2 修正，**覆盖 §三 的“禁止阴影”**）
+## 8. 阴影 / 辉光（v2 · 2026-11-14 加严：必须是渐变 + 有方向）
 
-原来一刀切禁阴影是错的。正确规则是按**层级**分：
+用户原话：**「阴影这些都是有渐变的，不是后面糊一层就完事，然后阴影有方向」**。
 
-| 层 | 手段 | 参数 |
-|---|---|---|
-| 页面内的静态卡片（工具卡、附件卡、审批卡） | 发丝线为主；**允许极浅阴影**作为第二层 | `0 1 2 rgba(0,0,0,.06)`（亮）/`0 2 8 rgba(0,0,0,.35)`（暗） |
-| 浮层（悬浮 composer、底部 sheet、抽屉、搜索结果浮层） | **必须有阴影**，与模糊一起构成"浮起来" | `0 12 32 rgba(0,0,0,.18)`（亮）/`0 16 40 rgba(0,0,0,.55)`（暗） |
-| 主行动（发送球、当前会话指示） | **辉光**（不是阴影） | `0 0 24 accent@28%` + `0 8 16 accent@18%` |
-| 审批卡（高风险） | 阴影 + 左侧 3dp 状态条；**不用红色辉光**（会吵） | 同上静态卡阴影 + `warn/danger` 条 |
+### 8.1 三条硬规则
 
-- 阴影颜色一律用**中性黑**（或同色系加深），**禁止彩色阴影**（除发送球的 accent 辉光）。
-- 同一元素**不得同时**出现：边框 + 强阴影 + 底色三者都很重（发丝线 + 浅阴影 + 底色是允许的组合）。
-- 暗色下阴影要更深更长（暗底上浅阴影不可见），亮色下要更短更淡。
+1. **阴影是多层渐变叠加，不是单层半透明色块**。一层 `rgba(0,0,0,.18)` 铺在元素下面 = 糊一层，必须禁止。真实阴影是**至少 3 层**、每层不同 blur 与不同 alpha 叠加出的连续衰减。
+2. **阴影有方向**：光源固定在**正上方偏前**（`offsetY` 为正，`offsetX` 为 0 或极小）。阴影只往**下方**扩散，元素上方**不得有阴影**。
+3. **阴影随层级递增**，不是所有浮层用同一套。层级越高，blur 越大、扩散越远、alpha 越低（更柔和）。
+
+### 8.2 五级阴影（可直接落地的参数）
+
+| 级别 | 用途 | 层 1 | 层 2 | 层 3 |
+|---|---|---|---|---|
+`shadow0` | 页面内静态卡（工具卡、附件卡、审批卡） | `0 1 2 rgba(0,0,0,.05)` | `0 2 4 rgba(0,0,0,.03)` | — |
+`shadow1` | 列表项悬停、chip | `0 2 4 rgba(0,0,0,.06)` | `0 4 8 rgba(0,0,0,.04)` | — |
+`shadow2` | 悬浮 composer、搜索浮层 | `0 4 8 rgba(0,0,0,.07)` | `0 8 16 rgba(0,0,0,.05)` | `0 12 24 rgba(0,0,0,.03)` |
+`shadow3` | 全局弹窗 sheet、抽屉 | `0 8 16 rgba(0,0,0,.09)` | `0 16 32 rgba(0,0,0,.06)` | `0 24 48 rgba(0,0,0,.04)` |
+`shadow4` | 图片预览控制条、临时 toast | `0 12 24 rgba(0,0,0,.11)` | `0 24 48 rgba(0,0,0,.07)` | `0 32 64 rgba(0,0,0,.05)` |
+
+**暗色主题**：alpha 各层 × 1.8，blur 半径 × 1.2（暗底上阴影要更深更散才看得见）。
+
+**实现方式**：Compose 的 `Modifier.shadow(elevation, shape, ambientColor, spotColor)` 只有单层——**不够**。必须用 `drawBehind` 手动画多层：
+
+```kotlin
+fun Modifier.layeredShadow(spec: ShadowSpec, shape: Shape) = drawBehind {
+    spec.layers.forEach { layer ->
+        drawIntoCanvas { canvas ->
+            canvas.drawOutline(
+                outline = shape.createOutline(size, layoutDirection, this),
+                paint = Paint().apply {
+                    color = layer.color
+                    asFrameworkPaint().apply {
+                        maskFilter = MaskFilter.makeBlur(FilterBlurMode.NORMAL, layer.blurRadiusPx)
+                        // 方向性：只往下偏移
+                        this.color = android.graphics.Color.TRANSPARENT
+                    }
+                },
+                // 偏移由 translate 完成
+            )
+        }
+    }
+}
+```
+（具体 API 在 Compose MP 上要用 `Skia` 路径，桌面/Wasm/Android 都能走 `Paint.asFrameworkPaint()` 的 `MaskFilter`；实现时以能编译、真出图为准。）
+
+### 8.3 方向性细则
+
+- `offsetY` 与 `blur` 的比例约 **1 : 2**（例：`shadow2` 的层 2 是 `offsetY=8, blur=16`）。
+- `offsetX` **恒为 0**（界面是正上方光源，不玩斜射）。
+- **元素上方不得有阴影**：如果画出来顶部有暗边，说明用了对称 blur 且没偏移，必须修。
+- 玻璃层（`GlassSurface`）的阴影**画在玻璃外面**，不能画在玻璃里面（否则会污染模糊采样）。
+
+### 8.4 辉光（glow）与阴影不是一回事
+
+- **辉光**用于「主行动」与「当前活跃」（发送球、当前会话指示），是**彩色、向外扩散、无偏移**（对称），且**两层**：内层亮、外层淡。
+- 参数：`0 0 12 accent@32%` + `0 0 28 accent@16%`。
+- **禁止**给高风险审批卡加红色辉光（会吵），它只用 `shadow0` + 左侧 3dp `danger` 状态条。
+
+### 8.5 禁止清单
+
+- 单层半透明色块当阴影（"糊一层"）。
+- 对称 blur 且 `offsetY=0`（没有方向）。
+- 元素上方出现阴影。
+- 彩色阴影（除辉光）。
+- 同一元素同时出现：粗边框 + 强阴影 + 重底色（发丝线 + 浅阴影 + 底色是允许的组合）。
 
 ## 9. 全局弹窗 = 悬浮卡片（不是贴边、不是全屏对话框）
 
@@ -332,3 +396,44 @@ v2 要求：**整个客户端**都按 §1–§11 走，不允许只美化会话�
 | 全局弹窗 | §9：悬浮卡片 + 白条手柄 + 四周 12dp 空隙 |
 | 导航/底栏 | 玻璃层 + 发丝线；选中项用图标填充 + `accent`，**不用**大色块 pill |
 | 加载态 | 骨架屏用 `surfaceSunken` + `md` 圆角；禁止转圈超过 400ms 才出现的闪屏 |
+
+
+## 13. 卡片左侧强调色竖条（工具卡 / 审批卡）
+
+用户要求：**「那个工具和审批前那个高亮强调色竖条，上方要跟着圆角稍微弯一点然后变细消失」**。
+
+### 13.1 形状
+
+不是一根等宽的直条。它是一条**沿卡片左边缘走的描边**：
+
+1. **顶部**：从卡片圆角起点开始，**顺着圆角弧线弯曲**（跟随 `shape` 的 topLeft 半径），不是直角切进去。
+2. **上段**：弧线结束后向下延伸，**宽度从 3dp 渐变到 0**（变细）。
+3. **中段**：最宽处 3dp，直行。
+4. **下段**：再次**从 3dp 渐变到 0**，在卡片高度约 60–70% 处**消失**（不要走到卡片底边）。
+
+整体观感：像一道光从左边缘上方斜着扫下来然后淡出，而不是"贴了一条胶带"。
+
+### 13.2 参数
+
+| 项 | 值 |
+|---|---|
+最大宽度 | **3dp** |
+顶端 | 从圆角弧线起点开始，**沿弧走**（弧长 = 卡片圆角半径） |
+渐变 | 顶部 8dp 内 3dp → 0；底部 12dp 内 3dp → 0 |
+消失位置 | 卡片高度的 **60–70%**（不要到底） |
+颜色 | 成功 `success` / 失败 `danger` / 审批 `warn`（与卡片状态一致） |
+不透明度 | 中段 100%，两端渐隐到 0 |
+
+### 13.3 实现要点
+
+- 用 `Modifier.drawWithContent` + `Path` 手绘，**不要**用 `Box(width=3dp)` 那种矩形块（做不出圆角跟随与渐变）。
+- 路径要 `clip` 到卡片 shape 内（否则弧线会溢出）。
+- 渐变用 `Brush.verticalGradient` 或沿路径的 `Brush`；**宽度变化**用可变宽度路径（`Path` 的两条边分别收拢），不是靠 alpha 假装变细。
+- 桌面/Wasm/Android 用同一套 `Path` 代码（纯 Compose graphics，无平台差异）。
+
+### 13.4 禁止
+
+- 等宽直条（"贴胶带"）。
+- 顶端直角切进圆角。
+- 一直画到卡片底边。
+- 用 alpha 渐隐代替宽度变细（那是"变淡"，不是"变细"）。
