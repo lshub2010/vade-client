@@ -310,6 +310,31 @@ private fun DestinationHost(
     state: UiState,
     contentInsets: PaddingValues,
 ) {
+    // g-error-retry: one slot per READ (list vs thread), each with its own retry entry.
+    // The list slot only exists while that read is not Ready — otherwise the 假数据 note in
+    // SessionsScreen (fixture-path copy) would be hidden for no reason.
+    val sessionListBanner: (@Composable () -> Unit)? =
+        if (state.sessionsPhase == LoadPhase.Ready && state.sessionsError == null) {
+            null
+        } else {
+            {
+                SessionListLoadBanner(
+                    phase = state.sessionsPhase,
+                    error = state.sessionsError,
+                    onRetry = state::retrySessions,
+                )
+            }
+        }
+    // The thread banner is passed unconditionally: its in-flight state has to stay composed
+    // while a retry runs (it retains the failed classification) — see LoadErrorBanner.kt.
+    val messageThreadBanner: @Composable () -> Unit = {
+        MessageThreadLoadBanner(
+            phase = state.messagesPhase,
+            error = state.messagesError,
+            onRetry = state::retryMessages,
+        )
+    }
+
     when (state.dest) {
         Destination.Sessions -> {
             if (metrics.twoPane) {
@@ -321,6 +346,7 @@ private fun DestinationHost(
                         onOpen = { state.open(it.id) },
                         modifier = Modifier.width(metrics.listWidth),
                         contentPadding = PaddingValues(top = TOP_BAR_ZONE),
+                        banner = sessionListBanner,
                     )
                     VerticalRule()
                     // Two-pane detail: same content-padding contract as the pushed detail —
@@ -331,6 +357,7 @@ private fun DestinationHost(
                         animate = state.chatPreset == vade.ui.chat.ChatPreset.Live,
                         modifier = Modifier.weight(1f),
                         contentPadding = PaddingValues(top = TOP_BAR_ZONE),
+                        banner = messageThreadBanner,
                     )
                 }
             } else if (state.selectedSessionId != null) {
@@ -340,6 +367,7 @@ private fun DestinationHost(
                     animate = state.chatPreset == vade.ui.chat.ChatPreset.Live,
                     // The pushed-detail top bar above already carries this title.
                     showTitle = false,
+                    banner = messageThreadBanner,
                 )
             } else {
                 SessionsScreen(
@@ -348,6 +376,7 @@ private fun DestinationHost(
                     twoPane = false,
                     onOpen = { state.open(it.id) },
                     contentPadding = contentInsets,
+                    banner = sessionListBanner,
                 )
             }
         }

@@ -82,6 +82,12 @@ fun SessionDetailScreen(
      * under it.
      */
     contentPadding: PaddingValues = PaddingValues(0.dp),
+    /**
+     * Shell-owned failure banner (g-error-retry) for the **message-thread** read. A slot, so
+     * the screen keeps knowing nothing about the loader; the retry inside it calls
+     * `UiState.retryMessages()`, never the list retry.
+     */
+    banner: (@Composable () -> Unit)? = null,
 ) {
     val skin = LocalSkin.current
     if (session == null) {
@@ -116,6 +122,9 @@ fun SessionDetailScreen(
             DetailHeader(session, chat, showTitle, modelState, modelPickerOpen) {
                 modelPickerOpen = !modelPickerOpen
             }
+            // Load-failure banner sits right under the header, above the thread: the reader
+            // sees *why* the thread is empty before the (kept) old messages.
+            banner?.invoke()
             if (modelPickerOpen) {
                 ModelPickerCard(
                     state = modelState,

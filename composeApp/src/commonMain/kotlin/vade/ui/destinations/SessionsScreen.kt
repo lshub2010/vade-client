@@ -44,6 +44,10 @@ import vade.ui.skin.LocalSkin
  * In scope here: grouping + ordering, the row's information shape, and opening a
  * session (the ✎ button lives in the shell top bar; `⌘K` search is U1-c). Out of scope:
  * message tree, streaming — nothing here talks to core, and the header says so.
+ *
+ * [banner] is the shell's load-failure slot (g-error-retry): the session-list read failing
+ * must be visible *here*, above the rows, together with its retry entry. It is a slot and
+ * not a `LoadError?` parameter so this screen keeps knowing nothing about the loader.
  */
 @Composable
 fun SessionsScreen(
@@ -53,19 +57,27 @@ fun SessionsScreen(
     onOpen: (SessionSummary) -> Unit,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
+    /** Shell-owned failure banner (see `shell/LoadErrorBanner.kt`); null = nothing to say. */
+    banner: (@Composable () -> Unit)? = null,
 ) {
     val skin = LocalSkin.current
     LazyColumn(
         modifier = modifier.fillMaxSize().background(skin.colors.canvas),
         contentPadding = contentPadding,
     ) {
-        item(key = "u1a-note") {
-            UiText(
-                text = "假数据 · 未连接 core（U1-a 只做骨架，U1-b 接线）",
-                size = 10,
-                color = skin.colors.onSurfaceVariant,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-            )
+        if (banner != null) {
+            item(key = "load-error-banner") { banner() }
+        }
+        // 假数据说明只在没有真失败横幅时出现：横幅在时它和「加载失败」互相打脸。
+        if (banner == null) {
+            item(key = "u1a-note") {
+                UiText(
+                    text = "假数据 · 未连接 core（U1-a 只做骨架，U1-b 接线）",
+                    size = 10,
+                    color = skin.colors.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                )
+            }
         }
         groups.forEach { group ->
             item(key = "hdr-${group.bucket.name}") {
