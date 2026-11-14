@@ -82,6 +82,7 @@ fun main(args: Array<String>) {
     val skinId = args.flag("--skin=") ?: System.getenv("VADE_SKIN") ?: "material"
     val dark = args.has("--dark") || System.getenv("VADE_DARK") == "1"
     vade.ui.skin.miuix.MiuixSkinEntry.dark = dark
+    vade.ui.skin.material.MaterialSkinEntry.dark = dark
     // Kept out of `App()` on purpose: U1-b has no chat page yet, so the message-bubble /
     // tool-card / input-bar shots come from the skin's own page (see MiuixShowcase.kt).
     val showcase = args.has("--showcase")
