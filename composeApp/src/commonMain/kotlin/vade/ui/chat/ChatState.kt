@@ -9,6 +9,7 @@ import vade.ui.skin.AttachmentState
 import vade.ui.skin.Decision
 import vade.ui.skin.InputMode
 import vade.ui.chat.ApprovalOutcome
+import vade.ui.protocol.VadeEvent
 import kotlinx.coroutines.CancellationException
 import kotlin.time.TimeSource
 
@@ -39,10 +40,41 @@ class ChatState(
     private val uploader: AttachmentUploader = InMemoryAttachmentUploader(),
     /** `message/edit_resubmit` + `turn/regenerate` channel (injectable; fake this round). */
     private val turns: ChatTurnGateway = InMemoryTurnGateway(),
+    /**
+     * B2 · 真源的**读**通道（历史快照 + 事件流）。默认取自 [turns] 自己的能力：内存假实现
+     * 返回 `null`（演示路径），真适配器带上就自动接上 —— 构造点不必为它多写一行。
+     * 测试可直接注入一个假的读通道来驱动三态。
+     */
+    private val transcript: ChatTranscriptSource? = turns.transcript(),
 ) {
-    private val seed = ChatFixtures.threadFor(sessionId)
+    /**
+     * B2 · 真源模式：拿到真通道（[ChatTurnGateway.synthetic] == false）或显式给了读通道。
+     *
+     * **真源模式下一个预设消息都不渲染。** fixtures 是演示数据，曾经被当成 core 的内容
+     * 上屏（真会话 `E2E-cad91adc` 里 core 只有 1 条、界面却有 6 条）——这条分界线就是修复
+     * 本身：宁可空态/失败态，也不许显示不存在的消息。
+     */
+    val isRealSource: Boolean = !turns.synthetic || transcript != null
 
-    val items = mutableStateListOf<ChatItem>().apply { addAll(seed.items) }
+    /**
+     * 三态（B2）：[ChatPhase.Loading] 加载中 / [ChatPhase.Ready] 就绪（**就绪含「空」**）/
+     * [ChatPhase.Failed] 失败（[loadError] + [loadHistory] 重试）。三态各有各的文案与语义，
+     * 不能都渲染成同一张空卡。假源开局即就绪（fixtures 就是内容）。
+     */
+    var phase: ChatPhase by mutableStateOf(if (isRealSource) ChatPhase.Loading else ChatPhase.Ready)
+        private set
+
+    /** 失败原因；[phase] 不是 [ChatPhase.Failed] 时为 null。 */
+    var loadError: String? by mutableStateOf(null)
+        private set
+
+    /** 事件投影器 —— 与 `g-chatlive` 交付的是同一个 [LiveTranscript]，本类只负责喂。 */
+    private val live = LiveTranscript()
+
+    private val seed: List<ChatItem> =
+        if (isRealSource) emptyList() else ChatFixtures.threadFor(sessionId).items
+
+    val items = mutableStateListOf<ChatItem>().apply { addAll(seed) }
 
     /** The composer's text. Drafts are the textbook example of throwaway state (D98). */
     var draft by mutableStateOf("")
@@ -94,6 +126,73 @@ class ChatState(
             isStreaming -> "正在生成 · 点 ■ 停止"
             else -> "输入消息 · ⌘Enter / Ctrl+Enter 发送"
         }
+
+    // --- 真源：历史与实时事件（B2） ---------------------------------------------
+
+    /**
+     * 拉历史快照并渲染。真源模式下这是**唯一**的内容来源：
+     *  - 拉到 N 条 → `items` 恰好是这 N 条（外加同一时刻已投影的 live 行），[phase] = Ready；
+     *  - 拉到 0 条 → 同样 Ready，`items` 为空 —— 页面显示「还没有消息」空态；
+     *  - 抛异常 → [phase] = Failed + [loadError]，页面给重试；
+     *  - **任何情况下都不回退 [ChatFixtures]**（那正是 B2 的 bug）。
+     *
+     * 幂等：重复调用（重试 / 重进）按 id 重建，不会叠加重复行。[LiveTranscript.seed] 让
+     * 快照行对后续 `message.edited` / `turn.superseded` 可解析。
+     *
+     * @return 是否成功进入 Ready（假源直接返回 false：它没有读通道，也不需要）。
+     */
+    suspend fun loadHistory(): Boolean {
+        if (!isRealSource) return false
+        val channel = transcript
+        if (channel == null) {
+            phase = ChatPhase.Failed
+            loadError = NO_CHANNEL_MESSAGE
+            return false
+        }
+        phase = ChatPhase.Loading
+        loadError = null
+        return try {
+            val rows = channel.history(sessionId)
+            live.seed(rows)
+            // 用投影器的行序重建：快照行 + 加载期间已经到达的 live 行，一次到位、不叠行。
+            items.clear()
+            live.messages.forEach { items += ChatItem.Message(it) }
+            phase = ChatPhase.Ready
+            true
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            phase = ChatPhase.Failed
+            loadError = error.message?.takeIf { it.isNotBlank() } ?: LOAD_FAILED_FALLBACK
+            false
+        }
+    }
+
+    /** 失败态重试入口（页面按钮与测试共用同一条路径）。 */
+    suspend fun retryHistory(): Boolean = loadHistory()
+
+    /**
+     * 投影一条 core→UI 事件。**不另写投影** —— 直接复用 `g-chatlive` 的
+     * [vade.ui.chat.applyLive]：`items` 按 id upsert（就地替换 / 新行追加），seq 缺口、
+     * 重复、溢出全部由 [LiveTranscript] 裁决（[liveAnomalies] 零静默）。
+     */
+    fun applyLiveEvent(event: VadeEvent): List<ChatMessage> = this.applyLive(live, event)
+
+    /**
+     * 收集事件流直到协程被取消（页面在 `LaunchedEffect` 里调它）。读通道缺失时立即返回。
+     * 真源模式下事件与历史**并行**接：先开收集、再拉历史，加载期间到达的 delta 不会丢
+     * （[loadHistory] 重建时会把 live 行带上）。
+     */
+    suspend fun collectLiveEvents() {
+        val channel = transcript ?: return
+        channel.events().collect { event -> applyLiveEvent(event) }
+    }
+
+    /** 投影器的非静默决策（seq 缺口 / 丢弃 / 重复），供测试与调试 UI 读。 */
+    val liveAnomalies: List<TranscriptAnomaly> get() = live.anomalies
+
+    /** `seq <= lastSeq` 的幂等丢弃次数（重连重放是正常流量，不算 anomaly）。 */
+    val liveDuplicates: Int get() = live.duplicates
 
     // --- composer -------------------------------------------------------------
 
@@ -574,6 +673,9 @@ class ChatState(
     }
 
     private fun startAssistantTurn(userMessageId: String) {
+        // B2 · 真源模式下本地脚本一行都不许编：回复由 core 的 turn.delta 事件投影，
+        // 拿 ChatFixtures.streamScript 造一条「助手回复」就是同一个假数据病。
+        if (isRealSource) return
         val reply = script[scriptCursor % script.size]
         scriptCursor++
         val assistantId = "a-$userMessageId-${items.size}"
@@ -693,8 +795,9 @@ class ChatState(
     init {
         // The fixture ends mid-stream: adopt it as the live turn so `tick` continues the same
         // message instead of appending a second bubble (`turn.delta` never creates a row).
+        // 真源模式没有 fixtures，也就没有「续写中的预设回合」可接管（B2）。
         val last = (items.lastOrNull() as? ChatItem.Message)?.message
-        if (last != null && last.state == MessageState.Running && streamTarget.isEmpty()) {
+        if (!isRealSource && last != null && last.state == MessageState.Running && streamTarget.isEmpty()) {
             val target = ChatFixtures.streamingReply
             val visible = last.bodyText
             if (target.startsWith(visible)) {
@@ -703,7 +806,9 @@ class ChatState(
                 streamPos = visible.length
             }
         }
-        applyPreset(preset)
+        // 预置态（截图/测试用）本身就是 fixture 形状的派生状态：真源下一条都不套用，
+        // 否则 `--chat=queue` 之类会把假的草稿/气泡塞进真会话。
+        if (!isRealSource) applyPreset(preset)
     }
 
     /**
@@ -759,8 +864,35 @@ class ChatState(
     companion object {
         /** RFC-0004 §6.1: `attach.max_per_turn` default 10, hard cap 20. */
         const val MAX_PER_TURN = 10
+
+        // --- B2 · 三态文案（页面与测试共用同一份字面量，避免两处漂移） ---------------
+
+        /** 加载中（[ChatPhase.Loading]）。 */
+        const val LOADING_TEXT: String = "正在加载消息…"
+
+        /** 空态（[ChatPhase.Ready] 且没有一条消息）。 */
+        const val EMPTY_TEXT: String = "还没有消息"
+
+        /** 空态的副行：告诉读者「这里是空的」而不是「加载坏了」。 */
+        const val EMPTY_HINT: String = "在下面输入第一条消息"
+
+        /** 失败态前缀；后面接 [loadError]。 */
+        const val FAILED_TEXT: String = "消息加载失败"
+
+        /** 失败态的按钮。 */
+        const val RETRY_TEXT: String = "重试"
+
+        /** 真 gateway 但没有读通道（`ChatTurnGateway.transcript()` 为 null）时的原因。 */
+        const val NO_CHANNEL_MESSAGE: String =
+            "没有读历史的通道（turns 已接真源，缺 ChatTranscriptSource）"
+
+        /** 异常没带 message 时的兜底原因。 */
+        const val LOAD_FAILED_FALLBACK: String = "历史快照读取异常"
     }
 }
+
+/** B2 · 详情页对话的三态。[ChatPhase.Ready] 同时覆盖「有消息」与「真空」两种呈现。 */
+enum class ChatPhase { Loading, Ready, Failed }
 
 /** Screenshot / test seeds. Only client-derived state changes — the RPC shapes do not. */
 enum class ChatPreset { Live, ExpandedTools, Queue, Composer, Preview, Interrupted }

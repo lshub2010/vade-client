@@ -102,6 +102,17 @@ class LiveTranscript(
     fun messageById(id: String): ChatMessage? = rows[id]
 
     /**
+     * B2 · 补种：历史快照在构造之后才到（`ChatState.loadHistory`）时按 id 合并。
+     *
+     * 已存在的 id 视为幂等重放（重试 / 重进同一会话）而不覆盖 —— live 行（`live:<turn_id>`）
+     * 与快照 id 不冲突，真正撞上时事件流先到的那一行比快照新。种子行不计入 [changedIds]，
+     * 调用方负责它们自己的呈现（`ChatState` 用 [messages] 重建列表）。
+     */
+    fun seed(more: List<ChatMessage>) {
+        more.forEach { row -> if (!rows.containsKey(row.id)) rows[row.id] = row }
+    }
+
+    /**
      * Projects one event and returns the full transcript after it. The return value is
      * always the current state — even when the event itself was dropped — so a caller
      * can blindly re-render.
