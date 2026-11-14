@@ -63,6 +63,7 @@ import com.composables.icons.tabler.outline.PlayerPlay
 import com.composables.icons.tabler.outline.Refresh
 import com.composables.icons.tabler.outline.Rocket
 import com.composables.icons.tabler.outline.Search
+import com.composables.icons.tabler.outline.Sparkles
 import com.composables.icons.tabler.outline.Trash
 import com.composables.icons.tabler.outline.User
 import com.composables.icons.tabler.outline.X
@@ -179,6 +180,9 @@ object VadeIcons {
     val Spawned: ImageVector = Tabler.Outline.Rocket
     /** Sub-agent actively running its LLM loop. */
     val Running: ImageVector = Tabler.Outline.PlayerPlay
+
+    /** Model surface / picker header (FR-8.46 switcher, RFC-0005) — `Sparkles` verified in the 2.2.1 outline jar. */
+    val Model: ImageVector = Tabler.Outline.Sparkles
 }
 
 /**
