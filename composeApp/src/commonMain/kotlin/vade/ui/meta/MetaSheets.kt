@@ -161,6 +161,12 @@ internal fun DeleteConfirmSheet(
             size = 14,
             color = skin.colors.onSurfaceVariant,
         )
+        // 删除失败（例如 turn 还在跑 → INVALID_ARGUMENT）：会话仍在列表里，错误就摆在这里，
+        // 确认层**不关**，用户可以看完原因再决定重试还是取消。
+        if (editor.error != null) {
+            Spacer(Modifier.height(6.dp))
+            UiText(editor.error, size = 12, color = skin.colors.error)
+        }
         Spacer(Modifier.height(16.dp))
         Row(
             Modifier.fillMaxWidth(),
@@ -197,6 +203,11 @@ internal fun MoveToGroupSheet(
                 selected = editor.session.groupId == group.id,
                 onClick = { onPick(group.id) },
             )
+        }
+        // 移动失败：会话留在原分组，表单不关，原因可见（分类文案来自 MetaActionError）。
+        if (editor.error != null) {
+            Spacer(Modifier.height(6.dp))
+            UiText(editor.error, size = 12, color = skin.colors.error)
         }
     }
 }
@@ -245,6 +256,9 @@ private fun GroupOptionRow(
 /**
  * 分组编辑器（新建/编辑共用）：名称 + 39 白名单图标 + 10 预设色；
  * 编辑态下方是危险区 —— 说明文案（[MetaCopy.GROUP_DELETE_NOTE]）+ 删除分组按钮。
+ *
+ * 编辑态另有两个「清除」按钮：图标/颜色在线上是三态（缺省 / null / 值），清除就是
+ * 显式 JSON null；新建态不允许（`group.create` 要求有值），显示一条说明。
  */
 @Composable
 internal fun GroupEditorSheet(
@@ -252,6 +266,9 @@ internal fun GroupEditorSheet(
     onName: (String) -> Unit,
     onIcon: (String) -> Unit,
     onColor: (String) -> Unit,
+    onClearIcon: () -> Unit,
+    onClearColor: () -> Unit,
+    canClear: Boolean,
     onCommit: () -> Unit,
     onDelete: () -> Unit,
     onClose: () -> Unit,
@@ -276,6 +293,30 @@ internal fun GroupEditorSheet(
         SectionLabel(MetaCopy.GROUP_COLOR_SECTION, VadeIcons.Palette)
         Spacer(Modifier.height(6.dp))
         ColorPickerRow(selected = sheet.draftColor, onSelect = onColor)
+        Spacer(Modifier.height(8.dp))
+        // 三态写：键缺省 = 保持不变，JSON null = 清除。编辑态可以清；新建态必须选值。
+        if (sheet.isNew) {
+            UiText(MetaCopy.GROUP_CLEAR_EDIT_ONLY, size = 11, color = skin.colors.onSurfaceVariant)
+        } else {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                skin.Button(
+                    text = MetaCopy.GROUP_CLEAR_ICON,
+                    onClick = onClearIcon,
+                    style = BtnStyle.Secondary,
+                    enabled = canClear && sheet.draftIcon != null,
+                )
+                skin.Button(
+                    text = MetaCopy.GROUP_CLEAR_COLOR,
+                    onClick = onClearColor,
+                    style = BtnStyle.Secondary,
+                    enabled = canClear && sheet.draftColor != null,
+                )
+            }
+        }
         if (sheet.error != null) {
             Spacer(Modifier.height(6.dp))
             UiText(sheet.error, size = 12, color = skin.colors.error)

@@ -31,8 +31,8 @@ class GroupFlowTest {
         assertEquals(before + 1, fake.groups.value.size, "fake（服务端面）新增一档")
         val created = fake.groups.value.last()
         assertEquals("工作台", created.name)
-        assertTrue(MetaIcons[created.iconName] != null, "新建组的图标必须在白名单内")
-        assertTrue(MetaColors.isValid(created.colorHex), "新建组的颜色必须是 #RRGGBB")
+        assertTrue(created.iconName?.let { MetaIcons[it] } != null, "新建组的图标必须在白名单内")
+        assertTrue(created.colorHex?.let { MetaColors.isValid(it) } == true, "新建组的颜色必须是 #RRGGBB")
         assertEquals(created.id, s.groups.last().id, "本地也出现新组")
         assertNull(s.editor, "创建成功后表单关闭")
     }

@@ -2,6 +2,7 @@ package vade.ui.meta
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
@@ -26,6 +27,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -64,6 +66,16 @@ fun SessionMetaHost(
         modifier = modifier.fillMaxSize().background(skin.colors.canvas),
         contentPadding = contentPadding,
     ) {
+        // 最近一次写动作失败：可展示、可关闭、按 VadeErrorCategory 分类（绝不静默）。
+        state.actionError?.let { failure ->
+            item(key = "meta-action-error") {
+                MetaErrorBanner(
+                    text = failure.message,
+                    onDismiss = state::dismissActionError,
+                )
+            }
+        }
+
         // 顶栏动作：新建分组（矢量图标 + 44dp 触摸区，§3 图标即按钮）。
         item(key = "meta-header") {
             Row(
@@ -86,6 +98,32 @@ fun SessionMetaHost(
                 ) {
                     VadeIcon(VadeIcons.FolderPlus, contentDescription = MetaCopy.MENU_NEW_GROUP, size = 20.dp, tint = skin.colors.onSurfaceVariant)
                 }
+            }
+        }
+
+        // 分组列表加载失败：**不是空表** —— 一张重试卡（唯一主行动「重试」），
+        // 旧的权威快照（若有）继续渲染在下面，绝不因为一次读失败把组清空。
+        val loadFailure = state.groupsLoadError
+        if (loadFailure != null) {
+            item(key = "meta-groups-failed") {
+                EmptyStateCard(
+                    title = MetaCopy.GROUPS_LOAD_FAILED_TITLE,
+                    body = MetaCopy.GROUPS_LOAD_FAILED_BODY + "（" + loadFailure.category.label + "）",
+                    icon = VadeIcons.Empty,
+                    action = {
+                        skin.Button(MetaCopy.RETRY, { scope.launch { state.retryLoadGroups() } })
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+            }
+        } else if (state.groupsLoad == MetaGroupsLoad.Loading && state.groups.isEmpty()) {
+            item(key = "meta-groups-loading") {
+                UiText(
+                    text = MetaCopy.GROUPS_LOADING,
+                    size = 11,
+                    color = skin.colors.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                )
             }
         }
 
@@ -183,6 +221,9 @@ fun SessionMetaHost(
             onName = state::setGroupDraftName,
             onIcon = state::setGroupDraftIcon,
             onColor = state::setGroupDraftColor,
+            onClearIcon = { state.clearGroupDraftIcon() },
+            onClearColor = { state.clearGroupDraftColor() },
+            canClear = state.canClearGroupIconColor,
             onCommit = { scope.launch { state.commitGroupSheet() } },
             onDelete = { scope.launch { state.deleteGroupFromEditor() } },
             onClose = { state.closeEditor() },
@@ -205,6 +246,8 @@ private fun MetaSessionRow(
 ) {
     val skin = LocalSkin.current
     val shape = RoundedCornerShape(skin.shapes.sm)
+    // 工厂传入的焦点会话（`forReal(client, sessionId)`）：仅高亮，不改变任何动作语义。
+    val focused = state.focusSessionId == session.id
     Box {
         Row(
             Modifier
@@ -212,6 +255,10 @@ private fun MetaSessionRow(
                 .padding(horizontal = 8.dp, vertical = 3.dp)
                 .heightIn(min = 64.dp)
                 .clip(shape)
+                .background(
+                    if (focused) skin.colors.primary.copy(alpha = if (skin.colors.isDark) 0.14f else 0.08f)
+                    else Color.Transparent,
+                )
                 .combinedClickable(onClick = onOpen, onLongClick = onOpenMenu)
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -263,6 +310,48 @@ private fun MetaSessionRow(
                 state = state,
                 sessionId = session.id,
                 onDispatch = { item -> onDispatch(session.id, item) },
+            )
+        }
+    }
+}
+
+/**
+ * 失败横条（g-meta-wire）：一行分类后的可展示错误 + 44dp 关闭按钮。
+ * 只渲染 `SessionMetaState.actionError`（最近一条），不累积 —— 用户读完可关掉，
+ * 关掉不等于问题已修（重试入口在各自弹层/失败卡里）。
+ */
+@Composable
+private fun MetaErrorBanner(text: String, onDismiss: () -> Unit) {
+    val skin = LocalSkin.current
+    val shape = RoundedCornerShape(skin.shapes.sm)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .clip(shape)
+            .background(skin.colors.error.copy(alpha = if (skin.colors.isDark) 0.16f else 0.08f))
+            .border(1.dp, skin.colors.error.copy(alpha = 0.35f), shape)
+            .padding(start = 12.dp, top = 6.dp, bottom = 6.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        UiText(
+            text = text,
+            size = 12,
+            color = skin.colors.error,
+            modifier = Modifier.weight(1f),
+        )
+        Box(
+            Modifier
+                .size(44.dp)
+                .clip(RoundedCornerShape(skin.shapes.xs))
+                .clickable(onClick = onDismiss),
+            contentAlignment = Alignment.Center,
+        ) {
+            VadeIcon(
+                vector = VadeIcons.Close,
+                contentDescription = MetaCopy.ACTION_FAILED_DISMISS,
+                size = 16.dp,
+                tint = skin.colors.error,
             )
         }
     }
