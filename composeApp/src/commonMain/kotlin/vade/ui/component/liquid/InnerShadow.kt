@@ -24,10 +24,11 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
+import kotlin.math.pow
 
 /**
  * A shadow cast *inward* from the shape's edge — the pressed-state cue of the
@@ -53,8 +54,41 @@ data class InnerShadow(
     }
 }
 
-/** Number of falloff rings approximating a Gaussian of [InnerShadow.radius]. */
-private const val RING_STEPS = 12
+/** Layer count of the no-MaskFilter fallback (overlapping filled outline copies). */
+internal const val HALO_FALLBACK_LAYERS = 40
+
+/**
+ * Blur ink multiplier. The gaussian's visible below-edge peak is
+ * Φ(offset/σ)·ink (offset 5dp, σ 5dp → ≈0.84·ink), so the ink is raised by this
+ * factor to keep the *measured* peak — not the nominal ink — inside the ≤3 %
+ * (≤8/255) budget.
+ */
+internal const val HALO_BLUR_INK_FACTOR = 1.2f
+
+/** σ of the halo gaussian as a fraction of [radius] (50 %→5 % falloff spans ≈1.6σ). */
+internal const val HALO_BLUR_SIGMA_FACTOR = 0.5f
+
+/** Rings of the press-state inner shadow (a stepped approximation, fill only). */
+private const val INNER_SHADOW_RINGS = 12
+
+/**
+ * Per-layer alpha so that [layers] fully-overlapping copies accumulate to exactly
+ * [totalStrength]: `1 − (1 − strength)^(1/layers)`. At the pill's 0.03 strength
+ * over 40 layers this is ≈0.00075 — each layer's own antialiased edge steps
+ * ≈0.19/255, far below the 2-gray-level staircase bound.
+ */
+internal fun haloLayerAlpha(totalStrength: Float, layers: Int): Float =
+    1f - (1f - totalStrength.coerceIn(0f, 1f)).pow(1f / layers)
+
+/**
+ * Cumulative alpha at a point covered by [layersCovering] of [layers] overlapping
+ * halo layers: `1 − (1 − haloLayerAlpha) ^ layersCovering`. Non-increasing as
+ * coverage drops, peaks at exactly [totalStrength] when everything covers, and is
+ * 0 when nothing does — the monotonic, budget-exact falloff the acceptance
+ * criteria measure.
+ */
+internal fun haloCumulativeAlpha(totalStrength: Float, layersCovering: Int, layers: Int): Float =
+    1f - (1f - haloLayerAlpha(totalStrength, layers)).pow(layersCovering.coerceAtLeast(0))
 
 fun Modifier.innerShadow(
     shape: Shape,
@@ -81,12 +115,27 @@ fun Modifier.innerShadow(
     )
 }
 /**
- * A soft halo drawn **only outside** the shape — the float cue for translucent
+ * A soft halo drawn **outside** the shape — the float cue for translucent
  * surfaces. `Modifier.shadow` paints an elevation silhouette *under* the shape,
- * which bleeds through a 40 % glass tint and turns the pill grey; the ring bands
- * here stop exactly at the shape edge. Same stepped-falloff technique as the
- * inner shadow, mirrored outward. (KernelSU uses `Modifier.dropShadow`, which
- * this Compose version does not ship.)
+ * which bleeds through a 40 % glass tint and turns the pill grey. (KernelSU uses
+ * `Modifier.dropShadow`, which this Compose version does not ship.)
+ *
+ * g-float: **real gaussian blur first** — one blurred draw of the offset outline
+ * ([haloBlurSupported]); no rings anywhere, so the shadow simply fades out (the
+ * user: 「阴影为什么有边框，不应该直接淡出了吗」). Platforms without a working
+ * MaskFilter fall back to [HALO_FALLBACK_LAYERS] overlapping **filled** copies of
+ * the offset-dilated outline, each at [haloLayerAlpha]: coverage accumulates into
+ * a smooth monotonic ramp — ≈0.19 gray-level steps and 0.25dp per layer at the
+ * pill's 10dp radius, far under the 2-level staircase bound.
+ *
+ * The ORIGINAL construction is documented so it never comes back: 12 disjoint
+ * ring-difference bands (`outer − inner`) that cannot accumulate, with the alpha
+ * ramp INVERTED — the outermost ring carried the full strength and stepped
+ * ~25/255 against the canvas. The user first saw it as a hard-edged grey slab
+ * (「一坨灰块」, corners too square to hug the pill — the dilated-corner clamp),
+ * then as 「阴影有边框」. Drawn BEFORE the content: solid consumers cover the
+ * blur's inner half entirely; translucent glass shows it as a soft depth cue,
+ * and the offset's below-edge mass hugs the pill instead of detaching from it.
  */
 fun Modifier.dropHalo(
     shape: Shape,
@@ -95,23 +144,51 @@ fun Modifier.dropHalo(
     offset: DpOffset = DpOffset(0.dp, 0.dp),
     alpha: Float = 1f,
 ): Modifier = this.drawWithContent {
-    drawContent()
     val strength = alpha.coerceIn(0f, 1f)
-    if (strength <= 0.01f || radius <= 0.dp) return@drawWithContent
+    if (strength <= 0.01f || radius <= 0.dp) {
+        drawContent()
+        return@drawWithContent
+    }
 
     val radiusPx = radius.toPx()
     val dx = offset.x.toPx()
     val dy = offset.y.toPx()
     val outline = shape.createOutline(size, layoutDirection, this)
 
-    val step = radiusPx / RING_STEPS
-    for (k in RING_STEPS downTo 1) {
-        val outer = offsetDilatedOutline(outline, dx, dy, step * k)
-        val inner = offsetDilatedOutline(outline, dx, dy, step * (k - 1))
-        val band = Path().apply { op(outer, inner, PathOperation.Difference) }
-        // Closest band strongest: linear ramp up to the full strength at the edge.
-        drawPath(band, color.copy(alpha = strength * k / RING_STEPS))
+    if (outline is Outline.Rounded) {
+        // One gaussian-blurred draw. σ = radius·[HALO_BLUR_SIGMA_FACTOR]; the ink
+        // carries [HALO_BLUR_INK_FACTOR] because the visible below-edge peak is
+        // Φ(offset/σ)·ink < ink — the worst case still lands inside the ≤3 %
+        // (≤8/255) budget. offsetX stays 0 (§8.3: light from straight above).
+        val rr = outline.roundRect
+        val drew = drawBlurredHalo(
+            left = rr.left,
+            top = rr.top,
+            right = rr.right,
+            bottom = rr.bottom,
+            cornerRadius = dilatedCornerRadius(
+                originalRadius = rr.topLeftCornerRadius.x,
+                width = rr.width,
+                height = rr.height,
+                dilation = 0f,
+            ),
+            dx = dx,
+            dy = dy,
+            colorArgb = color.copy(alpha = (strength * HALO_BLUR_INK_FACTOR).coerceAtMost(1f)).toArgb(),
+            blurSigmaPx = radiusPx * HALO_BLUR_SIGMA_FACTOR,
+        )
+        if (drew) {
+            drawContent()
+            return@drawWithContent
+        }
     }
+
+    val layerAlpha = haloLayerAlpha(strength, HALO_FALLBACK_LAYERS)
+    val step = radiusPx / HALO_FALLBACK_LAYERS
+    for (k in HALO_FALLBACK_LAYERS downTo 1) {
+        drawPath(offsetDilatedOutline(outline, dx, dy, step * k), color.copy(alpha = layerAlpha))
+    }
+    drawContent()
 }
 
 /**
@@ -132,8 +209,8 @@ private fun ContentDrawScope.drawInnerShadow(
     val clip = outlineAsPath(outline)
 
     drawIntoShadowCanvas(clip) {
-        val step = if (radiusPx > 0f) radiusPx / RING_STEPS else 0f
-        for (k in RING_STEPS downTo 1) {
+        val step = if (radiusPx > 0f) radiusPx / INNER_SHADOW_RINGS else 0f
+        for (k in INNER_SHADOW_RINGS downTo 1) {
             val dilate = step * k
             val punch = offsetDilatedOutline(
                 outline = outline,
@@ -142,19 +219,12 @@ private fun ContentDrawScope.drawInnerShadow(
                 dilation = dilate,
             )
             val band = Path().apply { op(clip, punch, PathOperation.Difference) }
-            val ringAlpha = alpha / RING_STEPS
-            if (dilate > 0f) {
-                // Stroke *and* fill: the stroke covers the band's edge cleanly at
-                // small radii where 12 rings would otherwise show steps.
-                drawPath(band, color.copy(alpha = ringAlpha))
-                drawPath(
-                    band,
-                    color.copy(alpha = ringAlpha),
-                    style = Stroke(width = dilate.coerceAtLeast(1f)),
-                )
-            } else {
-                drawPath(band, color.copy(alpha = ringAlpha))
-            }
+            val ringAlpha = alpha / INNER_SHADOW_RINGS
+            // g-float: fill only. The old extra `Stroke(width = dilate)` pass was
+            // painting a crisp inner border around each band — read by the user as
+            // 「阴影有边框」. The remaining uniform-alpha rings are a documented
+            // approximation of the press-state cue (see the KDoc), not a fade.
+            drawPath(band, color.copy(alpha = ringAlpha))
         }
     }
 }
@@ -181,12 +251,27 @@ private fun outlineAsPath(outline: Outline): Path =
     }
 
 /**
+ * Corner radius of a rounded rect inflated by [dilation]: the radius grows with the
+ * dilation (a pill — radius == height/2 — inflates into a perfect capsule again:
+ * radius == dilatedHeight / 2) and is capped by the dilated rect's half-extent.
+ */
+internal fun dilatedCornerRadius(
+    originalRadius: Float,
+    width: Float,
+    height: Float,
+    dilation: Float,
+): Float = (originalRadius + dilation).coerceIn(
+    0f,
+    minOf(width + 2 * dilation, height + 2 * dilation) / 2f,
+)
+
+/**
  * The punch-out path: [outline] translated by (dx, dy) and inflated by
  * [dilation]. Exact for rectangles and corner-based shapes (rounded rect /
  * circle); a generic outline is translated only and the dilation is dropped
  * (documented limitation — the pill only ever uses rounded shapes).
  */
-private fun offsetDilatedOutline(
+internal fun offsetDilatedOutline(
     outline: Outline,
     dx: Float,
     dy: Float,
@@ -204,8 +289,18 @@ private fun offsetDilatedOutline(
 
     is Outline.Rounded -> {
         val rr = outline.roundRect
-        val maxRadius = minOf(rr.width, rr.height) / 2f
-        val radius = (rr.topLeftCornerRadius.x + dilation).coerceIn(0f, maxRadius)
+        // g-float: the corner cap must be sized from the DILATED rect and must grow
+        // with the dilation. The old code capped the radius at the ORIGINAL
+        // half-extent (`minOf(rr.width, rr.height) / 2f`), so inflating a pill
+        // (radius == height/2) kept the old radius while the edges grew — the halo
+        // came out as a non-concentric, too-square slab (the user's
+        // 「圆角太小了根本不贴合」). See [dilatedCornerRadius].
+        val radius = dilatedCornerRadius(
+            originalRadius = rr.topLeftCornerRadius.x,
+            width = rr.width,
+            height = rr.height,
+            dilation = dilation,
+        )
         Path().apply {
             addRoundRect(
                 androidx.compose.ui.geometry.RoundRect(
