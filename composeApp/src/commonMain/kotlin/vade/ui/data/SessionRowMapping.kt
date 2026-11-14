@@ -27,12 +27,30 @@ internal fun epochNowMs(): Long = Clock.System.now().toEpochMilliseconds()
  * turns ("content belongs to ui/attach", core models.py) — and this batch adds no
  * extra round trips per row. `model` is null: the list row carries no model field
  * (D101 badge lives on attach's snapshot.session.model).
+ *
+ * ## 元数据字段（g-summary-fields）
+ * - `archived` ← `archived_at: int|null`. **契约没有 `archived` 布尔字段**，归档是
+ *   「时间戳在不在」；读 `row["archived"]` 会永远得到 false（那是 `session/archive`
+ *   的**入参**，不是回包字段）。
+ * - `groupId` ← `group_id: string|null`。单归属列（§1 #1 文件夹语义，不是 `groups[]`），
+ *   缺键 / 显式 null 都投影成 null（未分组）；类型不对同样落 null —— 与 [str] 在
+ *   本文件其余字段上的宽松口径一致，宁可「未分组」也不要为一个畸形行炸掉整页。
+ *
+ * ## [includeArchived]
+ * 默认 `false` 保持既有行为：`sessions()` 不传 `archived`，core 按契约默认只回未归档行，
+ * 真回了归档行也不进列表（可见列表 = 未归档）。归档视图要传 `true`，否则本函数会把
+ * 每一行都丢掉（`return null`），归档筛选永远空白。
  */
-internal fun sessionRowToSummary(row: JsonObject, nowMs: Long): SessionSummary? {
+internal fun sessionRowToSummary(
+    row: JsonObject,
+    nowMs: Long,
+    includeArchived: Boolean = false,
+): SessionSummary? {
     val id = row.str("session_id") ?: return null
     val pinned = row.lng("pinned_at") != null
-    // Archived rows never reach the visible list even if a core sent them anyway.
-    if (row.lng("archived_at") != null) return null
+    val archivedAt = row.lng("archived_at")
+    // Archived rows never reach the default (archived=false) list even if a core sent them anyway.
+    if (archivedAt != null && !includeArchived) return null
     val updatedAt = row.lng("updated_at") ?: 0L
     return SessionSummary(
         id = id,
@@ -45,6 +63,8 @@ internal fun sessionRowToSummary(row: JsonObject, nowMs: Long): SessionSummary? 
         unread = (row.lng("unread") ?: 0L) > 0,
         model = null,
         isDraft = false,
+        archived = archivedAt != null,
+        groupId = row.str("group_id"),
     )
 }
 
