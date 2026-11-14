@@ -54,16 +54,34 @@ fun UsagePanel(
     lastTurn: VadeUsage?,
     budgetNotice: UsageBudgetPayload?,
     modifier: Modifier = Modifier,
+    /**
+     * G · 这份空态是不是「读数已经接通、服务端就是这样回」的。
+     *
+     * 接线前所有参数都是 `null`，空态说「接入后…」是对的；接线后 `session/usage.get`
+     * 成功返回了一份什么都没有的回包，再说「未接线」就是假话 —— 那是**真没数据**，
+     * 必须与「加载中」「加载失败」用不同文案区分开。默认 `false` 保持旧行为。
+     */
+    readWired: Boolean = false,
 ) {
     val projection = projectUsage(session, lastTurn, budgetNotice)
     if (!projection.hasAnyData) {
-        EmptyStateCard(
-            icon = VadeIcons.Empty,
-            title = "暂无数据",
-            body = "接入 session/usage.get 与 turn.completed.usage 后，这里显示真实的 token 统计与预算进度；" +
-                "未接线前不显示任何占位数字。",
-            modifier = modifier,
-        )
+        if (readWired) {
+            EmptyStateCard(
+                icon = VadeIcons.Empty,
+                title = "本会话暂无用量",
+                body = "session/usage.get 已成功返回（已加载），但回包里没有任何可显示的 token 统计或预算字段：" +
+                    "该会话还没有产生用量。这不是加载失败，也不是未接线。",
+                modifier = modifier,
+            )
+        } else {
+            EmptyStateCard(
+                icon = VadeIcons.Empty,
+                title = "暂无数据",
+                body = "接入 session/usage.get 与 turn.completed.usage 后，这里显示真实的 token 统计与预算进度；" +
+                    "未接线前不显示任何占位数字。",
+                modifier = modifier,
+            )
+        }
         return
     }
     PanelCard(modifier) {
@@ -153,6 +171,9 @@ fun UsageSection(
             lastTurn = lastTurn,
             budgetNotice = budgetNotice,
             modifier = modifier,
+            // 已接线读取：真空态用「已成功返回但没有可显示字段」的文案，
+            // 不能再说「接入后…」（那是接线前的说法，见真没数据/加载中/加载失败三态）。
+            readWired = true,
         )
     }
 }
