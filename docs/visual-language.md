@@ -43,8 +43,15 @@
 | `accent` | `#8B8BF0` | 强调（暗色下提亮） |
 | `accentSoft` | `#8B8BF0` @ 14% | 选中底 |
 | `danger` | `#F16A6A` | 失败 |
+| `warn` | `#E8A33D` | 审批/警告（亮色 `#B26A00` 保色相提亮） |
+| `success` | `#4FD1A0` | 成功态（亮色 `#2F7D5A` 保色相提亮） |
+| `surfaceSunken` | `#0E0E10` | 代码块/引用块/搜索框（暗色下比 surface 更深） |
+| `surfaceGlass` | `#1C1C1F` @ 78% | 玻璃退化底（无 blur 时的读色）；真模糊 tint = `#0E0E10` @ 34%（§5） |
+| `onAccent` | `#0E0E10`（accent 上）/ `#1A0503`（danger 上） | accent/danger 实色上的文字——白字在暗色 accent 上仅 2.9:1、danger 上 2.97:1，不达标 |
+| `shadow` | 黑 @ 54% / 90% | `shadowSoft` / `shadowFloat`（亮色 30% / 50% × 1.8，blur × 1.2，§8） |
 
 > 对比度要求：正文 ≥ 4.5:1，次要文本 ≥ 4.5:1（不要用 3:1 的“装饰灰”承载信息）。
+> material 暗色实现值 = 上表原文，落在 `skin/material/MaterialTokens.kt`；WCAG 实测（对 `#0E0E10`）：主文本 16.5:1、次要 6.9:1、accent 作文字 6.5:1、error 作文字 6.4:1，全部过线。
 
 ## 三、圆角刻度
 

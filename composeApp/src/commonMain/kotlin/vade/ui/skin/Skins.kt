@@ -1,6 +1,7 @@
 package vade.ui.skin
 
 import vade.ui.skin.material.MaterialSkin
+import vade.ui.skin.material.MaterialSkinEntry
 import vade.ui.skin.miuix.MiuixSkinEntry
 
 /**
@@ -18,7 +19,10 @@ object Skins {
     fun installBuiltIns() {
         if (installed) return
         installed = true
-        SkinRegistry.register("material") { MaterialSkin() }
+        // Same seam as miuix below: the factory closes over MaterialSkinEntry.dark so the
+        // host entry point (`--dark` / `VADE_DARK=1`) selects the dark token set for BOTH
+        // built-in skins, not just miuix.
+        MaterialSkinEntry.register()
         // U2: the real miuix skin replaces the U1 placeholder. `SkinRegistry.get` prefers
         // `impls` over `placeholders`, so registration is the whole seam — no caller (App,
         // Android, Wasm, desktop) needs to know `miuix` exists, and U1's placeholder entry

@@ -59,38 +59,36 @@ import vade.ui.skin.glass.GlassSurface
 class MaterialSkin(
     private val skinId: String = "material",
     private val notInstalledNotice: String? = null,
+    /**
+     * Dark tokens (visual language §2 暗色表). Selected by the host entry point the same
+     * way `MiuixSkinEntry.dark` feeds `MiuixSkin` — desktop `--dark` / `VADE_DARK=1` sets
+     * [MaterialSkinEntry.dark], and the registered factory closes over it.
+     */
+    private val dark: Boolean = false,
 ) : vade.ui.skin.Skin {
 
     override val id: String = skinId
 
-    override val colors = vade.ui.skin.SkinColors(
-        // Visual language §2 light tokens: graphite neutrals + one indigo accent. Colour
-        // appears only on accent/status surfaces — never as a large tonal block.
-        primary = Color(0xFF5B5BD6),
-        onPrimary = Color(0xFFFFFFFF),
-        surface = Color(0xFFFFFFFF),
-        surfaceVariant = Color(0xFFF0F0F2), // surfaceSunken: code blocks, chips, inputs
-        onSurface = Color(0xFF17171A),
-        onSurfaceVariant = Color(0xFF6B6B73),
-        outline = Color(0xFFE6E6E9), // hairline
-        error = Color(0xFFD93A3A),
-        onError = Color(0xFFFFFFFF),
-        isDark = false,
-        canvas = Color(0xFFF7F7F8),
-        hairline = Color(0xFFE6E6E9),
-        success = Color(0xFF2F7D5A),
-        warning = Color(0xFFB26A00),
-        // --- v2 §5/§8 glass + shadow tokens -----------------------------------------
-        // surfaceGlass is a *thin* translucent base so the hairline + shadow carry the
-        // float; the real backdrop blur is `skin/glass/GlassSurface` once shell/ wires the
-        // root hazeSource (MaterialParts documents this at the composer).
-        surfaceGlass = Color(0xFFFFFFFF).copy(alpha = 0.84f),
-        // §8 row 1 static-card shadow rendered at 2dp elevation; row 2 float shadow at 16dp.
-        shadowSoft = Color(0x4D000000), // black @30%  → ≈ 0 1 2 rgba(0,0,0,.06)
-        shadowFloat = Color(0x80000000), // black @50% → ≈ 0 12 32 rgba(0,0,0,.18)
-        glowAccent = Color(0xFF5B5BD6), // §8 row 3: the accent glow of a primary action
-        textOnGlass = Color(0xFF17171A),
-    )
+    override val colors = MaterialTokens.colors(dark)
+
+    /**
+     * §5 glass tokens: light keeps the probe defaults (white@26% tint); dark pins the
+     * documented `#0E0E10`@34% tint — `GlassSurface` reads [vade.ui.skin.SkinColors.isDark]
+     * to pick between [vade.ui.skin.SkinGlass.tintLight]/[vade.ui.skin.SkinGlass.tintDark],
+     * so the material dark flip switches the blur tint automatically.
+     */
+    override val glass: vade.ui.skin.SkinGlass = if (dark) {
+        vade.ui.skin.SkinGlass(tintDark = Color(0xFF0E0E10).copy(alpha = 0.34f))
+    } else {
+        vade.ui.skin.SkinGlass()
+    }
+
+    /** §8: dark shadows run ×1.8 deeper on alpha AND ×1.2 longer on blur (internal: pinned by MaterialSkinDarkTest). */
+    internal val shadowBlurSoft = if (dark) 2.4.dp else 2.dp
+    internal val shadowBlurFloat = if (dark) 19.2.dp else 16.dp
+
+    /** §2 accentSoft: 8% light / 14% dark — the documented per-theme alpha of the accent. */
+    internal val accentSoftAlpha = if (dark) 0.14f else 0.08f
 
     /**
      * Visual language §10 six-step scale (v2 覆盖 §三): xs 12 / sm 16 / md 20 / lg 24 /
@@ -227,7 +225,7 @@ class MaterialSkin(
         Box(
             modifier = modifier
                 .shadow(
-                    elevation = 2.dp,
+                    elevation = shadowBlurSoft,
                     shape = shape,
                     ambientColor = colors.shadowSoft,
                     spotColor = colors.shadowSoft,
@@ -266,7 +264,9 @@ class MaterialSkin(
                 .fillMaxWidth()
                 .heightIn(min = 56.dp)
                 .clip(RoundedCornerShape(shapes.sm))
-                .background(if (selected) colors.primary.copy(alpha = 0.08f) else Color.Transparent)
+                .background(
+                    if (selected) colors.primary.copy(alpha = accentSoftAlpha) else Color.Transparent,
+                )
                 .then(if (onClick != null && enabled) Modifier.clickable { onClick() } else Modifier)
                 .alpha(if (enabled) 1f else 0.45f)
                 .padding(horizontal = 12.dp, vertical = 10.dp),
@@ -416,7 +416,12 @@ class MaterialSkin(
                 Box(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp)) {
                     Box(
                         Modifier
-                            .shadow(16.dp, pillShape, ambientColor = c.shadowFloat, spotColor = c.shadowFloat)
+                            .shadow(
+                                elevation = shadowBlurFloat,
+                                shape = pillShape,
+                                ambientColor = c.shadowFloat,
+                                spotColor = c.shadowFloat,
+                            )
                             .clip(pillShape)
                             .background(c.surfaceGlass)
                             .border(1.dp, c.hairline, pillShape),
@@ -509,4 +514,17 @@ class MaterialSkin(
         motion = motion,
         colors = colors,
     )
+}
+
+/**
+ * The registration seam — same pattern as `MiuixSkinEntry` (U2): a plain var the host
+ * entry point sets **before** the first `SkinRegistry.get("material")`, plus a factory
+ * that closes over it. Desktop `--dark` / `VADE_DARK=1` writes [dark] (Main.kt); keeping
+ * the var outside the `() -> Skin` signature leaves C-09's registry contract untouched.
+ */
+object MaterialSkinEntry {
+    /** Dark selection for the *next* factory call; resettable by tests / appearance page. */
+    var dark: Boolean = false
+
+    fun register() = vade.ui.skin.SkinRegistry.register("material") { MaterialSkin(dark = dark) }
 }
