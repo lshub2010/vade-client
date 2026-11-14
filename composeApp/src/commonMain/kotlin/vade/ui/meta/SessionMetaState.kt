@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CancellationException
+import vade.ui.data.AdapterProvider
 import vade.ui.icon.MetaIcons
 
 /**
@@ -94,6 +95,14 @@ class SessionMetaState(
      * 拿不到就是「这个数据层只会两态」——`canClearGroupIconColor` 随之为 false。
      */
     private val groupEdit: SessionMetaGroupEdit? = actions as? SessionMetaGroupEdit,
+    /**
+     * 适配器查找失败的原因（非 null ⇒ 本状态机跑在内存假实现 [FakeMetaActions] 上）。
+     *
+     * 由 [Companion.forAdapters] 在 `adapters.meta(sessionId)` 抛异常时填入；面板可以把它
+     * 渲染成一行可读说明。**绝不静默**：拿到非 null 时用户看到的是「已退回内存假数据」，
+     * 而不是把 fixture 的改动当成 core 的改动。
+     */
+    val wiringDegradation: String? = null,
 ) {
 
     var sessions: List<MetaSession> by mutableStateOf(initialSessions)
@@ -544,5 +553,52 @@ class SessionMetaState(
         /** 新建表单的默认图标/颜色（folder + 蓝）。 */
         const val DEFAULT_GROUP_ICON = "folder"
         const val DEFAULT_GROUP_COLOR_INDEX = 5
+
+        /** 退化文案的前半句（与 `destinations` 的三个屏幕同一口径）。 */
+        const val ADAPTER_FALLBACK_NOTE: String = "适配器不可用，已退回内存假数据"
+
+        /**
+         * ③ 三段回退接线（g-wire-screens）：**形参 [actions] > [adapters] > [FakeMetaActions]**。
+         *
+         * 与 [SessionMetaState.Companion.forReal] 的分工：那条要 `VadeClient`（真适配器直接
+         * 由它构造），这条只认组合根交下来的 [AdapterProvider]，于是 UI 侧永远拿不到
+         * `VadeClient` —— `RealAdapters` 是 `internal`，泄漏在编译期就不可能。
+         *
+         * [sessionId] 同时是**索引**（`adapters.meta(sessionId)`）与**聚焦会话**
+         * （[focusSessionId]，行高亮用）。适配器把 `session_id` 当查找参数、不当校验参数，
+         * 所以空白 id 不会在这里被拒（真正的校验在 RPC 边界，`INVALID_ARGUMENT`）。
+         *
+         * 适配器查找抛异常 ⇒ 退回 [FakeMetaActions] 并把原因放进 [wiringDegradation]
+         * （不崩、不静默吞）。**不捕获 `Error`**。
+         *
+         * 已知边界：`AdapterProvider.meta()` 交出的是两态 [SessionMetaActions]，三态清除
+         * （`icon`/`color` 显式 null）仍要 `groupEdit`；本工厂不注入它，于是
+         * `canClearGroupIconColor == false` —— UI 会如实禁用「清除」，不会假装两态能清除。
+         */
+        fun forAdapters(
+            adapters: AdapterProvider?,
+            sessionId: String,
+            sessions: List<MetaSession> = emptyList(),
+            groups: List<MetaGroup> = emptyList(),
+            actions: SessionMetaActions? = null,
+        ): SessionMetaState {
+            if (actions != null) {
+                return SessionMetaState(sessions, groups, actions, focusSessionId = sessionId)
+            }
+            if (adapters == null) {
+                return SessionMetaState(sessions, groups, FakeMetaActions(), focusSessionId = sessionId)
+            }
+            return try {
+                SessionMetaState(sessions, groups, adapters.meta(sessionId), focusSessionId = sessionId)
+            } catch (error: Exception) {
+                SessionMetaState(
+                    initialSessions = sessions,
+                    initialGroups = groups,
+                    actions = FakeMetaActions(),
+                    focusSessionId = sessionId,
+                    wiringDegradation = "$ADAPTER_FALLBACK_NOTE（${error.message ?: "查找异常"}）",
+                )
+            }
+        }
     }
 }

@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import vade.ui.UiText
 import vade.ui.buildconfig.VadeBuildConfig
+import vade.ui.data.AdapterProvider
 import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
 import vade.ui.model.InMemoryModelActions
@@ -73,9 +74,23 @@ fun ProfileScreen(
      * one-object wiring path.
      */
     modelActions: ModelActions? = null,
+    /**
+     * 组合根交下来的适配器包（`data/AdapterProvider`）。默认 null ⇒ 走到内存假实现，
+     * 行为与接线前逐字节相同（`AppShell` 这一轮还没接线）。
+     *
+     * 三段回退：[modelActions]（形参）> [adapters] > `InMemoryModelActions()`。
+     * 设置页要的是**全局默认**视图，所以取的是 `modelDefault()` 而**不是** `model("")`：
+     * `AdapterProvider` 把两者刻意分成两个方法，用错一个就会拿到「没有会话上下文」的
+     * 会话级适配器（`model(sessionId)` 的语义是某个会话的覆盖值）。
+     */
+    adapters: AdapterProvider? = null,
 ) {
     val skin = LocalSkin.current
-    val modelActionsResolved = modelActions ?: remember { InMemoryModelActions() }
+    // ② 形参 > adapters.modelDefault() > 内存假实现；适配器查找异常时退回假实现并显示原因。
+    val seam = remember(modelActions, adapters) {
+        resolveProfileModelActions(modelActions, adapters)
+    }
+    val modelActionsResolved = seam.value
     val modelState = remember(modelActionsResolved) { ModelState.forDefault(modelActionsResolved) }
     // A5 · 关于 opens as a full-screen subpage over this screen (D91: 设置项打开为全屏子页，
     // 不做弹层). The state stays local to this page — the shell must not learn about
@@ -132,7 +147,15 @@ fun ProfileScreen(
             state = modelState,
             title = "默认模型",
             footerNote = "会话未单独设置模型时使用（D101：会话级 > 全局默认 > priority）" +
-                "· 假数据：未接 core，接真数据只需实现 vade.ui.model.ModelActions",
+                (
+                    // 同上：接上适配器后模型面来自 core，继续说「未接 core」就是撒谎（§8.5）。
+                    if (adapters == null || seam.degraded != null) {
+                        "· 假数据：未接 core，接真数据只需实现 vade.ui.model.ModelActions"
+                    } else {
+                        "· 模型面来自 core（AdapterProvider）；全局默认当前只读（契约无写入方法）"
+                    }
+                    ) +
+                seam.degraded?.let { " · $it" }.orEmpty(),
         )
 
         SectionLabel("其它")
@@ -160,6 +183,23 @@ fun ProfileScreen(
         }
     }
 }
+
+/**
+ * ② 设置页的模型 seam：**形参 > `adapters.modelDefault()` > 内存假实现**。
+ *
+ * 设置页要的是**全局默认**视图，所以取 `modelDefault()` 而**不是** `model("")`：
+ * `AdapterProvider` 刻意把两者分成两个方法，`model(sessionId)` 的语义是「某个会话的覆盖值」，
+ * 拿它冒充全局默认会让设置页显示一个不属于任何会话的覆盖值。独立成函数是为了让屏幕与
+ * 测试跑同一段代码（把这一行改成 `model("")`，`profileAsksForTheGlobalDefault…` 必红）。
+ */
+internal fun resolveProfileModelActions(
+    explicit: ModelActions?,
+    adapters: AdapterProvider?,
+): ScreenSeam<ModelActions> = pickScreenSeam(
+    explicit = explicit,
+    adapters = adapters,
+    lookup = { modelDefault() },
+) { InMemoryModelActions() }
 
 @Composable
 private fun SkinChip(id: String, current: String, onSelect: (String) -> Unit) {
