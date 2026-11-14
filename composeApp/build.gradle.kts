@@ -49,6 +49,11 @@ kotlin {
             implementation(compose.foundation)
             implementation(compose.ui)
             implementation(compose.material3)
+            // U2 · miuix skin. Version + matrix come straight from spike/miuix/versions.lock.md:
+            // 0.9.4 is the newest stable, compiled against Kotlin 2.4.20 / CMP 1.12.0 (both
+            // already pinned in the root build), and its four Android AARs declare
+            // minCompileSdk=37 (this module is already on 37). No AGP/Gradle/compileSdk change.
+            implementation("top.yukonga.miuix.kmp:miuix-ui:0.9.4")
         }
 
         desktopMain.dependencies {
