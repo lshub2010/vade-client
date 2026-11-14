@@ -38,14 +38,19 @@ import kotlin.test.assertTrue
  *  4. a failed write rolls the selection back and lands in `writeFailure`;
  *  5. `READ_ONLY_SESSION` (closed session) has its own copy and is never 致命;
  *  6. the global-default scope refuses with an explicit UNSUPPORTED, never silently;
- *  7. clearing the override is disabled + explained while `p-nullkey` is missing;
+ *  7. clearing an override puts an explicit `"model_id": null` on the wire — the KEY PRESENT
+ *     with a null value, which is what the core's missing-key gate demands (`p-nullkey`);
  *  8. a genuine load error is NOT the read-only degrade (no false 「旧 core」 badge);
  *  9. a later successful pull recovers from the degrade.
  */
 class ModelRealWiringTest {
 
-    /** A connected client + its transport + the scope the state's writes ride. */
-    private fun harness(block: suspend (VadeClient, FakeTransport, CoroutineScope) -> Unit) {
+    /**
+     * A connected client + its transport + the scope the state's writes ride. The block gets
+     * the `runBlocking` scope as its receiver so `async` in a test resolves to
+     * `CoroutineScope.async` (the top-level overload is deprecated/error).
+     */
+    private fun harness(block: suspend CoroutineScope.(VadeClient, FakeTransport, CoroutineScope) -> Unit) {
         val factory = FakeTransportFactory()
         val writeScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         runBlocking {
@@ -53,7 +58,7 @@ class ModelRealWiringTest {
             client.connect()
             assertTrue(client.awaitConnected(), "client must be connected before the picker pulls")
             try {
-                block(client, factory.transports[0], writeScope)
+                block(this, client, factory.transports[0], writeScope)
             } finally {
                 client.close()
                 writeScope.cancel()
@@ -72,7 +77,7 @@ class ModelRealWiringTest {
             """],"default":{"model_id":"$defaultId","source":"config","resolved":true}}"""
 
     /** Drive one full session-scope refresh: `model/list`, then `session/model.get`. */
-    private suspend fun refreshSession(
+    private suspend fun CoroutineScope.refreshSession(
         state: ModelState,
         transport: FakeTransport,
         listResultJson: String,
@@ -336,10 +341,10 @@ class ModelRealWiringTest {
         assertEquals("claude-sonnet", state.selectedId, "the selection did not move")
     }
 
-    // --- 7 · clearing an override is disabled until p-nullkey ---------------------------
+    // --- 7 · clearing an override: explicit JSON null, key present ---------------------
 
     @Test
-    fun clearingOverrideIsDisabledWithAnHonestReasonBeforePnullkey() = harness { client, transport, scope ->
+    fun clearingOverrideSendsAnExplicitNullModelIdKey() = harness { client, transport, scope ->
         val state = ModelState.forRealSession(client, "s-1", scope, autoRefresh = false)
         refreshSession(
             state,
@@ -348,16 +353,50 @@ class ModelRealWiringTest {
             overrideJson = """{"model_id":"local-qwen","source":"session","resolved":true,"global_default":"claude-sonnet"}""",
         )
         assertEquals("local-qwen", state.selectedId)
+        assertTrue(state.canClearOverride, "the clear write is usable now that p-nullkey landed")
 
-        assertFalse(state.canClearOverride, "the null write cannot be carried yet")
-        val reason = assertNotNull(state.clearOverrideBlockedReason, "the disabled entry must say why")
-        assertTrue(reason.contains("model_id"), "name the offending field: $reason")
-        assertTrue(reason.contains("null"), "name the missing JSON null: $reason")
+        val start = transport.record.size
+        val clear = async(Dispatchers.Default) { state.followGlobalDefaultAwaiting() }
+        waitUntil { transport.record.size >= start + 1 }
+        val (method, params) = requestOf(transport.record[start])
+        assertEquals("session/model.set", method)
+        // required-with-null: the KEY EXISTS with a null value. That is precisely what core's
+        // `if "model_id" not in params: raise INVALID_ARGUMENT` gate (session/rpc.py:275)
+        // checks for — an omitted key is rejected, an explicit null clears the override.
+        assertEquals("""{"session_id":"s-1","model_id":null}""", params, "explicit null, not a missing key")
+        assertTrue(params.contains("\"model_id\":null"), "the key must be present: $params")
+        transport.push(
+            responseFrame(
+                idOf(transport.record[start]),
+                """{"model_id":null,"source":"default","effective_at":"next_turn"}""",
+            ),
+        )
+        assertTrue(clear.await())
+        assertNull(state.selectedId, "the override is gone")
+        assertNull(state.writeFailure)
+        assertEquals("已清除会话覆盖，跟随全局默认", state.lastNotice)
+        assertFalse(state.writePending)
+    }
 
-        val frames = transport.record.size
-        assertFalse(state.followGlobalDefault(), "disabled ⇒ no write, no optimistic clear")
-        assertEquals(frames, transport.record.size, "zero frames for a blocked clear")
-        assertEquals("local-qwen", state.selectedId, "the selection did not move")
+    @Test
+    fun failedClearRestoresTheOverrideAndShowsWhy() = harness { client, transport, scope ->
+        val state = ModelState.forRealSession(client, "s-1", scope, autoRefresh = false)
+        refreshSession(
+            state,
+            transport,
+            listResult(entryJson("claude-sonnet", "anthropic", "Claude Sonnet", 10), entryJson("local-qwen", "ollama", "Qwen2.5 32B", 20)),
+            overrideJson = """{"model_id":"local-qwen","source":"session","resolved":true,"global_default":"claude-sonnet"}""",
+        )
+        val start = transport.record.size
+        val clear = async(Dispatchers.Default) { runCatching { state.followGlobalDefaultAwaiting() } }
+        waitUntil { transport.record.size >= start + 1 }
+        transport.push(errorFrame(idOf(transport.record[start]), "READ_ONLY_SESSION", "session is closed"))
+        val thrown = clear.await().exceptionOrNull()
+        assertTrue(thrown is VadeException && (thrown as VadeException).code == VadeErrorCodes.READ_ONLY_SESSION)
+        assertEquals("local-qwen", state.selectedId, "a failed clear must restore the override")
+        assertEquals(VadeErrorCodes.READ_ONLY_SESSION, state.writeFailure?.code)
+        assertFalse(state.writeFailure!!.fatal)
+        assertNull(state.lastNotice)
     }
 
     @Test
@@ -366,7 +405,6 @@ class ModelRealWiringTest {
         val actions = InMemoryModelActions(initialSessionOverrides = mapOf("s-1" to "claude-sonnet"))
         val state = ModelState.forSession(actions, "s-1")
         assertTrue(state.canClearOverride)
-        assertNull(state.clearOverrideBlockedReason)
         assertTrue(state.followGlobalDefault())
         assertNull(actions.sessionOverride("s-1"))
         assertNull(state.selectedId)

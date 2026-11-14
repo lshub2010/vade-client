@@ -15,8 +15,8 @@
 //  - icons carry a contentDescription, or are decorative inside an already-labeled row.
 //
 // What the card must SHOW (not merely compute): the 「只读」 chip + reason when the core has
-// no model surface (FR-8.46), the classified error of a failed pull / write, why the default
-// scope is read-only, and why 「跟随全局默认」 is disabled until `p-nullkey` lands.
+// no model surface (FR-8.46), the classified error of a failed pull / write, and why the
+// global-default scope is read-only (contract 1.5.0 has no default write method).
 
 package vade.ui.model
 
@@ -233,7 +233,6 @@ private fun PickerRows(state: ModelState, content: ModelPickerContent.Rows) {
             FollowDefaultRow(
                 selected = state.selectedId == null,
                 enabled = content.interactive && state.canClearOverride && !state.writePending,
-                blockedReason = state.clearOverrideBlockedReason,
             ) {
                 state.followGlobalDefault()
             }
@@ -250,17 +249,14 @@ private fun PickerRows(state: ModelState, content: ModelPickerContent.Rows) {
 
 /**
  * Session scope only: 「跟随全局默认」 — clearing the explicit override. Selected when no
- * override exists, so exactly one row of the whole picker is highlighted at any time.
- *
- * [blockedReason] is non-null while the clear frame cannot be carried (real wiring before
- * `p-nullkey`: the DTO omits a null `model_id`, so core answers INVALID_ARGUMENT). The row is
- * then disabled AND says why — offering an action the client cannot honour would be a lie.
+ * override exists, so exactly one row of the whole picker is highlighted at any time. The
+ * clear frame carries an explicit `"model_id": null` (required-with-null since `p-nullkey`),
+ * which is what core's missing-key gate needs — so this row is a real, working write.
  */
 @Composable
 private fun FollowDefaultRow(
     selected: Boolean,
     enabled: Boolean,
-    blockedReason: String?,
     onClick: () -> Unit,
 ) {
     val skin = LocalSkin.current
@@ -290,7 +286,7 @@ private fun FollowDefaultRow(
                 color = if (!enabled && !selected) skin.colors.onSurfaceVariant else style.titleColor,
             )
             UiText(
-                text = blockedReason ?: "清除本会话覆盖；按 全局默认 > priority 兜底",
+                text = "清除本会话覆盖；按 全局默认 > priority 兜底",
                 size = 11,
                 color = style.metaColor,
             )

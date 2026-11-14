@@ -21,9 +21,9 @@
 //    adapter's plain vals are backed by StateFlows and would not trigger recomposition;
 //  - the real path can FAIL: writes are optimistic, ride [RealWiring.writeScope], and a
 //    failure rolls the selection back and lands in [writeFailure];
-//  - clearing a session override is DISABLED on the real path until `p-nullkey` lands: today
-//    `SessionModelSetParams` omits a null `model_id`, so core answers INVALID_ARGUMENT.
-//    The UI must not offer a button whose frame cannot be accepted (`clearOverrideBlockedReason`).
+//  - clearing a session override is a REAL write: since `p-nullkey` the DTO puts an explicit
+//    `"model_id": null` on the wire (key present, value null), which is what core's
+//    missing-key gate requires — an omitted key would be INVALID_ARGUMENT.
 
 package vade.ui.model
 
@@ -176,21 +176,12 @@ class ModelState private constructor(
     val writesEnabled: Boolean get() = writeBlockedReason == null
 
     /**
-     * True only when 「恢复默认模型」 can honestly go on the wire. On the real path it is
-     * false until `p-nullkey` lands: `SessionModelSetParams` drops a null `model_id`, so the
-     * frame arrives without the key and core answers INVALID_ARGUMENT.
+     * True only when 「恢复默认模型」 can honestly go on the wire: session scope, writable core,
+     * and an override actually set. The clearing frame carries an explicit `"model_id": null`
+     * (required-with-null since `p-nullkey`), which is what core's `if "model_id" not in params`
+     * gate needs — an omitted key would be INVALID_ARGUMENT.
      */
-    val canClearOverride: Boolean
-        get() = scope is ModelScope.Session && !readOnly && (real == null || real.clearsOverride)
-
-    /** Why the clear entry is disabled; null when it is enabled (or not drawn at all). */
-    val clearOverrideBlockedReason: String?
-        get() = when {
-            scope !is ModelScope.Session -> null
-            readOnly -> READ_ONLY_BODY
-            canClearOverride -> null
-            else -> CLEAR_OVERRIDE_BODY
-        }
+    val canClearOverride: Boolean get() = scope is ModelScope.Session && !readOnly
 
     // --- reads ------------------------------------------------------------------------
 
@@ -278,7 +269,7 @@ class ModelState private constructor(
         val previous = optimistic(option)
         wiring.writeScope.launch {
             try {
-                writeSessionReal(wiring, option, previous)
+                writeSessionReal(wiring, (scope as ModelScope.Session).sessionId, option.id, previous)
             } catch (c: CancellationException) {
                 throw c
             } catch (_: Throwable) {
@@ -301,24 +292,69 @@ class ModelState private constructor(
         }
         if (scope is ModelScope.Default) return selectDefaultReal(option, rethrow = true)
         val previous = optimistic(option)
-        writeSessionReal(wiring, option, previous)
+        writeSessionReal(wiring, (scope as ModelScope.Session).sessionId, option.id, previous)
         return true
     }
 
     /**
      * Session scope only: clear the explicit override and fall back to 全局默认 / priority
      * (`session/model.set` with `model_id: null`). False when already cleared, on the
-     * default scope, read-only, or while the null-write frame cannot be carried (real wiring
-     * before `p-nullkey`) — see [clearOverrideBlockedReason].
+     * default scope, or read-only.
+     *
+     * Real wiring: the frame now carries an explicit `"model_id": null` (the `p-nullkey`
+     * fix), so this is a real, usable write — optimistic like [select], with the same revert +
+     * [writeFailure] on failure.
      */
     fun followGlobalDefault(): Boolean {
         val s = scope as? ModelScope.Session ?: return false
         if (!canClearOverride) return false
-        if (selectedId == null) return false
+        val previous = selectedId ?: return false
+        val wiring = real
+        if (wiring == null) {
+            selectedId = null
+            actions.setSessionModel(s.sessionId, null)
+            lastNotice = CLEAR_NOTICE
+            return true
+        }
         selectedId = null
-        actions.setSessionModel(s.sessionId, null)
-        lastNotice = "已清除会话覆盖，跟随全局默认"
+        lastNotice = CLEAR_NOTICE
+        wiring.writeScope.launch {
+            try {
+                writeSessionReal(wiring, s.sessionId, modelId = null, previous = previous)
+            } catch (c: CancellationException) {
+                throw c
+            } catch (_: Throwable) {
+                // writeSessionReal already restored the override and filled writeFailure.
+            }
+        }
         return true
+    }
+
+    /** Suspend variant of [followGlobalDefault]: revert + record, then RETHROW the failure. */
+    suspend fun followGlobalDefaultAwaiting(): Boolean {
+        val s = scope as? ModelScope.Session ?: return false
+        if (!canClearOverride) return false
+        val previous = selectedId ?: return false
+        val wiring = real ?: run {
+            selectedId = null
+            actions.setSessionModel(s.sessionId, null)
+            lastNotice = CLEAR_NOTICE
+            return true
+        }
+        selectedId = null
+        lastNotice = CLEAR_NOTICE
+        writeSessionReal(wiring, s.sessionId, modelId = null, previous = previous)
+        return true
+    }
+
+    /** Header line: what would answer the next turn (D101 resolution, shown not derived twice). */
+    fun currentLabel(): String = when {
+        scope is ModelScope.Session && selectedId == null -> "全局默认"
+        scope is ModelScope.Default && selectedId == null -> "按 priority 兜底"
+        else ->
+            models.orEmpty().map(ModelOption::of).firstOrNull { it.id == selectedId }?.title()
+                ?: selectedId
+                ?: "全局默认"
     }
 
     // --- internals --------------------------------------------------------------------
@@ -349,11 +385,15 @@ class ModelState private constructor(
         return previous
     }
 
-    private suspend fun writeSessionReal(wiring: RealWiring, option: ModelOption, previous: String?) {
-        val session = scope as ModelScope.Session
+    private suspend fun writeSessionReal(
+        wiring: RealWiring,
+        sessionId: String,
+        modelId: String?,
+        previous: String?,
+    ) {
         writePending = true
         try {
-            wiring.adapter.setSessionModelAwaiting(session.sessionId, option.id)
+            wiring.adapter.setSessionModelAwaiting(sessionId, modelId)
             writeFailure = null
         } catch (c: CancellationException) {
             selectedId = previous
@@ -393,19 +433,20 @@ class ModelState private constructor(
         ModelScope.Default -> "默认模型已设为：${option.title()}"
     }
 
-    private companion object {
-        const val READ_ONLY_BODY =
-            "此 core 不支持模型选择：旧版 core 没有 model/list（-32601 / unknown method），" +
-                "客户端降级为只读；列表保持「未知」而不是「没有模型」（FR-8.46）。"
-
-        const val DEFAULT_WRITE_BODY =
-            "core 契约 1.5.0 没有全局默认模型的写方法（UNSUPPORTED）——" +
-                "默认模型跟随 core 配置，此处只读。"
-
-        const val CLEAR_OVERRIDE_BODY =
-            "暂不可用：p-nullkey 合入前，清除覆盖的帧会省略 model_id 而被 core 判为 INVALID_ARGUMENT。"
-    }
 }
+
+// Copy that the state and the card share. File-private: these are this layer's words, not an
+// API. READ_ONLY_BODY is FR-8.46's degrade explanation; DEFAULT_WRITE_BODY names the missing
+// contract method so the 设置页 does not read like a bug.
+private const val READ_ONLY_BODY =
+    "此 core 不支持模型选择：旧版 core 没有 model/list（-32601 / unknown method），" +
+        "客户端降级为只读；列表保持「未知」而不是「没有模型」（FR-8.46）。"
+
+private const val DEFAULT_WRITE_BODY =
+    "core 契约 1.5.0 没有全局默认模型的写方法（UNSUPPORTED）——" +
+        "默认模型跟随 core 配置，此处只读。"
+
+private const val CLEAR_NOTICE = "已清除会话覆盖，跟随全局默认"
 
 /**
  * The real adapter plus the scope its suspend work rides. Held as one object so the in-memory
@@ -415,9 +456,4 @@ class ModelState private constructor(
 private class RealWiring(
     val adapter: ModelActionsReal,
     val writeScope: CoroutineScope,
-    /**
-     * Whether `session/model.set` with `model_id: null` can go out. False until `p-nullkey`
-     * makes the DTO emit an explicit JSON null; today the key is omitted and core rejects it.
-     */
-    val clearsOverride: Boolean = false,
 )
