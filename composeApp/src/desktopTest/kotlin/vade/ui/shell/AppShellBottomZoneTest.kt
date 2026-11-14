@@ -325,17 +325,18 @@ class AppShellBottomZoneTest {
 
     /**
      * Arithmetic in a helper nobody calls is not a fix. This pins the wiring: AppShell
-     * feeds `contentBottomInset(showBar, navInset)` into `contentInsets`, keeps the dock
-     * pad as the single source for the pill's outer padding, and no longer carries the
-     * 88 dp constant at all.
+     * feeds `contentBottomInset(showBar, navInset, state.barStyle)` into `contentInsets`
+     * (g-zone-split: the zone is per form now, so the call carries the style), keeps the
+     * dock pad as the single source for the pill's outer padding, and no longer carries
+     * the 88 dp constant at all.
      */
     @Test
     fun shellFeedsTheInsetDerivedZoneIntoTheContentInsets() {
         val appShell = codeOf(src("commonMain/kotlin/vade/ui/shell/AppShell.kt"))
         assertEquals(
             1,
-            count(appShell, """bottom = contentBottomInset\(showBar, navInset\)"""),
-            "contentInsets 的 bottom 必须走 contentBottomInset(showBar, navInset)",
+            count(appShell, """bottom = contentBottomInset\(showBar, navInset, state\.barStyle\)"""),
+            "contentInsets 的 bottom 必须走 contentBottomInset(showBar, navInset, state.barStyle)",
         )
         assertEquals(
             1,
