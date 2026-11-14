@@ -100,7 +100,7 @@ fun main(args: Array<String>) {
     application {
         Window(
             onCloseRequest = ::exitApplication,
-            title = "Vade · UI 骨架",
+            title = WINDOW_TITLE,
             state = rememberWindowState(width = width.dp, height = height.dp),
         ) {
             if (gallery) {
@@ -144,6 +144,19 @@ fun main(args: Array<String>) {
         }
     }
 }
+
+/**
+ * 桌面窗口标题。
+ *
+ * g-first-run · P5：首次真实验收抓到它在窗口上写的是「Vade · UI 骨架」（`capture-window.ps1`
+ * 的匹配行原文），那是脚手架期的占位符，Alpha 用户看到的是「骨架」两个字。产品名按仓库
+ * README 第 3 行：Vade Agent Runtime（中文「偕行」），所以标题是 `Vade · 偕行`。
+ *
+ * 提成常量是为了可被测试钉住（`WindowTitleTest`）：标题一变，「不再出现『UI 骨架』」这条
+ * 回归才有唯一的断言点。`tools/capture-window.ps1` 按**窗口类 + 尺寸**匹配（`SunAwt*`、
+ * >300×300），不按标题，所以改标题不会打断截图链路。
+ */
+internal const val WINDOW_TITLE: String = "Vade · 偕行"
 
 private fun Array<String>.has(flag: String): Boolean = any { it == flag }
 

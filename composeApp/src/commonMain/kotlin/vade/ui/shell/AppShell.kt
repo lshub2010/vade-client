@@ -34,12 +34,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import vade.ui.UiText
+import vade.ui.data.FakeSessionSource
+import vade.ui.data.RawSourceStrings
+import vade.ui.data.SourceConfig
+import vade.ui.data.VadeErrorCategory
+import vade.ui.data.rawSourceStrings
 import vade.ui.destinations.ActivityScreen
 import vade.ui.destinations.CapabilitiesScreen
 import vade.ui.destinations.Destination
+import vade.ui.destinations.ListStatus
 import vade.ui.destinations.ProfileScreen
 import vade.ui.destinations.SessionDetailScreen
 import vade.ui.destinations.SessionsScreen
+import vade.ui.destinations.settledListStatus
 import vade.ui.glass.GlassScope
 import vade.ui.glass.asGlassSource
 import vade.ui.glass.rememberGlassState
@@ -355,6 +362,119 @@ private fun ShellBody(state: UiState) {
     }
 }
 
+/**
+ * 列表头横幅的**唯一判定点**：把「源是什么 / 读到哪一步 / 失败成什么样 / 屏上有没有行」
+ * 投影成一条 [ListStatus]。渲染在 `destinations/ListStatusBanner.kt`，屏幕本身不碰
+ * `SessionSource`。
+ *
+ * ## 每一条判据都是可观测状态，不是猜的
+ *
+ * - **假源** = `state.source is FakeSessionSource`。这是唯一允许说「假数据」的条件
+ *   （P1 的修法：真源连着真 core 时那条横幅必须消失，因为它当时说的是假话）。
+ * - **失败** = `sessionsPhase == Failed` **或** `sessionsError != null`。两个条件取并集是
+ *   故意的：`SessionsLoader` 分两次 state 写发布这一对（先 phase、后 error），组合读到
+ *   `Failed + error == null` 的半发布窗口是合法的，那时也必须显示错误——空白的失败态
+ *   正是本棒要消灭的东西。反过来 `Ready` 不会带着非 null 的 error（每次尝试开头清空）。
+ * - **连接中** = `Loading` **且屏上一行都没有**。两个条件都要：这行字的职责是解释
+ *   「你为什么看到一张空列表」，列表里已经有真行时它就没有解释对象了。
+ * - **已连接** = 其余（`Ready`，或已有行）。不画横幅。
+ *
+ * ## 为什么「连接中」要加 `hasRows` 这一条（本棒实测出来的）
+ *
+ * 组合是一次 MVCC 快照：**在首次组合进行中**才落盘的 `mutableStateOf` 写入，那次组合
+ * 看不见，而且（在本环境实测）也不会再收到一次失效通知。loader 的协程恰好就在这个窗口
+ * 里完成（本地 core 的握手 ≪ 整棵 shell 的首帧），于是 `rows` 先落盘（后续读取看得到）、
+ * `phase=Ready` 后落盘（读取看不到）——屏上是真会话，横幅却停在「正在连接 core …」。
+ *
+ * 也就是说：**任何只由 `phase` 推出来的字都可能一辈子是错的**。把「连接中」限制在
+ * 「一行都没有」之后就变成了 fail-safe：
+ *  - 有行 → 静默（列表已经是真的，不需要解释，也不会说谎）；
+ *  - 没行 → 说「正在连接」/说真实错误（这两句都只在没有数据时出现，正是它们该出现的时候）。
+ *
+ * 这不是理论推演：`ListStatusBannerTest.appWithConnectedRealSourceNeverClaimsFixtures`
+ * 用「首帧就答完的源」把这个时序钉成了确定性用例。
+ *
+ * [raw] 是**惰性**的：只有 Failed / Connecting 分支才会去读原始配置（桌面是环境变量），
+ * 假源与「有行」路径连读都不读——fixtures 路径必须保持逐字节无副作用。
+ */
+internal fun listStatusOf(
+    fixture: Boolean,
+    phase: LoadPhase,
+    error: LoadError?,
+    hasRows: Boolean,
+    raw: () -> RawSourceStrings = ::rawSourceStrings,
+): ListStatus {
+    if (fixture) return ListStatus.Fixtures
+
+    if (phase == LoadPhase.Failed || error != null) {
+        val headline = when (error?.category) {
+            // 传输断了 / 需要重连 / 没有分类信息 → 用户视角就是「连不上」。UNAVAILABLE 是
+            // 真实无码启动时走的那条（AutoConnectingSessionSource 15 s 超时），AUTH/CODE_*
+            // 也在 NeedsReconnect / NeedsUserAction 里，文案都落到这一句 + 分类详情。
+            null, VadeErrorCategory.NeedsReconnect -> "无法连接 core"
+            else -> "无法读取会话列表"
+        }
+        return ListStatus.Failed(
+            headline = headline,
+            // 分类文案 + C-04 code + 传输原话。三者都是既有字段（LoadError），不在这里
+            // 重新翻译错误——分类表是 data 层的，UI 只显示。
+            detail = error?.let { e ->
+                buildString {
+                    append(e.category.label)
+                    if (e.code != null) append("（").append(e.code).append("）")
+                    append("：").append(e.detail)
+                }
+            } ?: "读取失败，但没有留下具体原因（上一轮尝试没有分类错误）",
+            remedy = selfRescueRemedy(raw()),
+        )
+    }
+
+    if (phase == LoadPhase.Loading && !hasRows) {
+        val r = raw()
+        return ListStatus.Connecting(endpoint = "${hostOf(r)}:${portOf(r)}")
+    }
+    return ListStatus.Connected
+}
+
+/** `host` 原始值为空/缺失时的**同一个**默认值（`SourceConfig.DEFAULT_HOST`）。 */
+internal fun hostOf(raw: RawSourceStrings): String =
+    raw.host?.trim()?.takeIf { it.isNotEmpty() } ?: SourceConfig.DEFAULT_HOST
+
+/** `port` 原始值为空/缺失时的**同一个**默认值（`SourceConfig.DEFAULT_PORT`）。 */
+internal fun portOf(raw: RawSourceStrings): String =
+    raw.port?.trim()?.takeIf { it.isNotEmpty() } ?: SourceConfig.DEFAULT_PORT.toString()
+
+/**
+ * 连不上时那张「自救卡」的正文：一行**可照抄**的启动命令 + 配对码从哪取。
+ *
+ * 首次真实验收的结论是「第一次用的人连不上」——唯一的通道是 `VADE_SOURCE` /
+ * `VADE_PAIR_CODE` 环境变量，而任何用户文档都没写过（D3/D4）。运行期改配对码在架构上
+ * 不存在（`sessionSourceFrom()` 在 `Main.kt` 里一次性建好 `BrowserPairing`，`VadeClientConfig`
+ * 不可变，`vade.ui.data` 也没有运行期改动入口），所以这里给的是**能自救**的东西：
+ *
+ *  - host/port **取本次运行的原始配置**，不是猜的默认值——否则用户照抄一条指向 8443 的
+ *    命令去连 18755 的 core，等于把同一个失败重演一遍；
+ *  - 配对码只出现为占位符 `<配对码>`（**绝不回显**：它是一次性凭证，`LoadError.detail`
+ *    里也可能带码，所以这里不拼 detail 进命令）；
+ *  - 已经给过码仍失败 → 明说「一次性码可能已过期」，这是最常见的原因；
+ *  - Android / Wasm 的通道与桌面不同，一句带过，不在桌面命令里假装统一。
+ */
+internal fun selfRescueRemedy(raw: RawSourceStrings): String {
+    val command = "VADE_SOURCE=real VADE_HOST=${hostOf(raw)} VADE_PORT=${portOf(raw)} " +
+        "VADE_PAIR_CODE=<配对码> gradle :composeApp:run"
+    val expired = if (raw.pairCode != null) {
+        "已经给了配对码仍连不上：一次性码可能已用或过期，回 core 重新取一个。\n"
+    } else {
+        ""
+    }
+    return expired +
+        "用环境变量重连（桌面照抄这一行）：\n" +
+        command + "\n" +
+        "配对码 = core 启动后 stdout 里 `pair_code=` 那一行。Android 用 " +
+        "`--es vade.source real --es vade.pair_code <码>`，Wasm 用 URL query " +
+        "`?source=real&pair_code=<码>`。"
+}
+
 @Composable
 private fun DestinationHost(
     metrics: ShellMetrics,
@@ -363,6 +483,19 @@ private fun DestinationHost(
 ) {
     when (state.dest) {
         Destination.Sessions -> {
+            // g-first-run · P1/P2：列表头横幅按**真实**连接状态画（假源才说「假数据」，
+            // 连不上就说真实错误）。`hasRows` 是 fail-safe 的第二个判据（见 listStatusOf 的
+            // KDoc）：屏上已经有真行时横幅一律静默，所以即使 loader 的写入落在首帧组合的
+            // 快照窗口里（实测会丢），界面也不会顶着一句过期的状态。
+            // 这就是「错误可见」的全部接线；重试入口留给 g-error-retry。
+            val status = settledListStatus {
+                listStatusOf(
+                    fixture = state.source is FakeSessionSource,
+                    phase = state.sessionsPhase,
+                    error = state.sessionsError,
+                    hasRows = state.sessionRows.isNotEmpty(),
+                )
+            }
             if (metrics.twoPane) {
                 Row(Modifier.fillMaxSize()) {
                     SessionsScreen(
@@ -372,6 +505,7 @@ private fun DestinationHost(
                         onOpen = { state.open(it.id) },
                         modifier = Modifier.width(metrics.listWidth),
                         contentPadding = PaddingValues(top = TOP_BAR_ZONE),
+                        status = status,
                     )
                     VerticalRule()
                     // Two-pane detail: same content-padding contract as the pushed detail —
@@ -399,6 +533,7 @@ private fun DestinationHost(
                     twoPane = false,
                     onOpen = { state.open(it.id) },
                     contentPadding = contentInsets,
+                    status = status,
                 )
             }
         }

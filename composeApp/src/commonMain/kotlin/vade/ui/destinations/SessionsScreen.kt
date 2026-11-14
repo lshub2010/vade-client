@@ -43,7 +43,11 @@ import vade.ui.skin.LocalSkin
  *
  * In scope here: grouping + ordering, the row's information shape, and opening a
  * session (the ✎ button lives in the shell top bar; `⌘K` search is U1-c). Out of scope:
- * message tree, streaming — nothing here talks to core, and the header says so.
+ * message tree, streaming — nothing here talks to core.
+ *
+ * g-first-run: 顶部那行不再硬编码「假数据 · 未连接 core」。屏幕不知道 `SessionSource`，
+ * 它只画调用方给的 [status]（判定在 `vade.ui.shell.listStatusOf`）：假源 → 「假数据」，
+ * 真源已连上 → 什么都没有，真源失败 → 真实错误 + 自救命令。见 [ListStatus]。
  */
 @Composable
 fun SessionsScreen(
@@ -53,20 +57,26 @@ fun SessionsScreen(
     onOpen: (SessionSummary) -> Unit,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
+    /**
+     * 列表头状态横幅要画什么。默认值 [ListStatus.Fixtures] 是**本棒之前**的行为（永远画
+     * 那行假数据提示），保留它是为了让任何没跟上接线的调用点行为逐字节不变；生产调用点
+     * （`AppShell`）必须显式传真实状态。
+     */
+    status: ListStatus = ListStatus.Fixtures,
 ) {
     val skin = LocalSkin.current
     LazyColumn(
         modifier = modifier.fillMaxSize().background(skin.colors.canvas),
         contentPadding = contentPadding,
     ) {
-        item(key = "u1a-note") {
-            UiText(
-                text = "假数据 · 未连接 core（U1-a 只做骨架，U1-b 接线）",
-                size = 10,
-                color = skin.colors.onSurfaceVariant,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-            )
+        // 已连接时整个 item 都不存在（不是渲染空文本）：空文本仍占 10+20 dp 的行高，
+        // 列表顶部会凭空多一段空白。
+        if (status != ListStatus.Connected) {
+            item(key = "list-status") {
+                ListStatusBanner(status)
+            }
         }
+
         groups.forEach { group ->
             item(key = "hdr-${group.bucket.name}") {
                 // 分组头：只有文字标签 + 数量，没有 1px 规则线——§12 要求列表靠间距分层。
