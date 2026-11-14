@@ -530,6 +530,7 @@ data class ModuleStatusPayload(
     val moduleId: String,
     val instanceId: String,
     val online: Boolean,
+    /** `string|null` in events.json and NOT required — absent and JSON null both decode to null, a wrong shape is malformed. */
     val version: String?,
 ) {
     companion object {
@@ -537,7 +538,10 @@ data class ModuleStatusPayload(
             moduleId = o.reqStr("module_id"),
             instanceId = o.reqStr("instance_id"),
             online = o.reqBool("online"),
-            version = o.str("version"),
+            // `version` is `string|null`: absence is legal, a NUMBER is a core bug — decode it
+            // strictly so the caller sees a malformed event (onMalformed) instead of an
+            // unversioned module that looks like a version-less one.
+            version = o.strStrict("version"),
         )
     }
 }
