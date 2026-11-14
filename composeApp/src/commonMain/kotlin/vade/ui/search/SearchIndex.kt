@@ -24,10 +24,32 @@ data class SearchHit(
     val session: SessionSummary,
     /** Inclusive ranges in [SessionSummary.title] — the acceptance criterion "标题命中高亮". */
     val titleRanges: List<IntRange>,
-    /** Inclusive ranges in [SessionSummary.preview] (abstract may match, title may not). */
+    /**
+     * Inclusive ranges in [SessionSummary.preview] — for remote rows (RFC-0014
+     * `session/search`), where the preview line IS the server's snippet: ranges in
+     * [snippet].
+     */
     val snippetRanges: List<IntRange>,
     /** True when at least one term hit the title, not just the preview (ranks first). */
     val titleMatched: Boolean,
+    /**
+     * Remote rows only: the server's clipped window (<= 120 code points incl. ellipses),
+     * passed through VERBATIM from `session/search` — this client never re-truncates,
+     * re-joins or re-derives it. null = local row / title hit.
+     */
+    val snippet: String? = null,
+    /**
+     * Remote rows only: the server's code-point index of the match start in the ORIGINAL
+     * content, verbatim. `0` (match at the very start) and null (no snippet) are
+     * different values — collapsing them is a decode defect.
+     */
+    val snippetOffset: Long? = null,
+    /**
+     * Remote rows only: the wire's `archived` flag, carried verbatim. The row UI does
+     * not render it yet (the session list filters archived rows; a search hit must not
+     * be silently dropped — a later batch renders the marker).
+     */
+    val archived: Boolean = false,
 )
 
 @Immutable
@@ -40,28 +62,10 @@ data class SearchResult(
 )
 
 /**
- * The seam for the *future* `session/search`.
- *
- * TODO(C-05 · `session/search`) — verified against `schema/rpc.json` (C-05 v1.0.0, frozen
- * 2026-11-13): the file declares **no `session/…` method at all**. `ui_to_core` is limited
- * to `ui/attach`, `ui/submit`, `ui/interrupt`, `ui/detach`, `approval/decide`,
- * `prompts/get` and `tools/…`. So this slice cannot call core for search and must not
- * invent a method in `schema/` (§十: 禁止改 `schema/` 或 `protocol/`).
- *
- * When C-05 grows `session/search`, add:
- *
- * ```kotlin
- * class RpcSessionSearchSource(private val client: ProtocolClient) : SessionSearchSource {
- *     override val scope = SearchScope.CrossSession
- *     override suspend fun search(query: String, limit: Int): SearchResult =
- *         client.sessionSearch(query, limit).toSearchResult()   // C-10 gains one method
- * }
- * ```
- *
- * …and switch [SearchState]'s source. The UI needs no change: it renders
- * `result.scope.label`, so the label flips from 「范围：已缓存」 to 「范围：全部会话」 by
- * itself. Never delete the label — a degraded search that hides its scope is the defect
- * FR-8.27 calls out ("不得出现搜得到摘要、点进去空白" + "降级路径必须可见").
+ * The local-tier seam (U1-c). The *remote* seam lives in [RemoteSearch] /
+ * [RemoteSearchReal] (RFC-0014 `session/search`, contract 1.5.0 — the codec ships in
+ * `VadeClient.sessionSearch`); [SearchState] runs whichever tier is active and assigns
+ * [SearchState.scope] from the applied result, so the label never lies about its source.
  */
 interface SessionSearchSource {
     val scope: SearchScope
