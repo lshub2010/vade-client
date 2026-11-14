@@ -249,14 +249,22 @@
 **参数（2026-11-14 探针实测校准，覆盖初版）**
 - 滚动：`radius = 6 * clamp((v - 1200) / (6000 - 1200), 0, 1)`，**上限 6dp**（初版写 10dp，实测过重、文字被抹成色块）。
 - sheet 开合：上限 14dp 保留（位移距离大，可承受更大半径）。
-- **必须是方向性的**：`sigmaX = radius × 0.12`、`sigmaY = radius × 0.55`（比值 4.6×）。两轴同 sigma 是"镜头失焦"，不是运动模糊——实测各向同性版本的 `gy/gx = 1.163`，方向性版本 `0.121`，差一个数量级。
-- `sigmaX` 不能取 0：配 `FilterTileMode.CLAMP` 会在图层边界留硬接缝。
+- **必须用 box 核，不是高斯**。运动模糊物理上是曝光时间内沿运动矢量的**积分**，积分核是矩形。实测（`shots/motion/RESULT.md`）：
+  | | 拖影剖面形状 | `slope_cv` | `end_ratio` | 细节保留 `lap_var` | 帧率 |
+  |---|---|---|---|---|---|
+  | **box**（1×13，权重 1/N） | **平台形** | **0.030** | **1.006** | **327.87** | **98.5 fps** |
+  | 高斯（σy=0.55r） | 钟形 | 0.426 | 0.526 | 78.44 | 97.8 fps |
+  高斯是"垂直失焦"（中心实、两侧渐淡），box 才是"快速拖影"（等强度、硬截断）。box 还**更快**（1×N 是可分离快路径，比高斯快 0.07ms），且细节保留高 4.2×。
+- 判据：`profile = step ⊛ kernel ⇒ d(profile)/dy = kernel`——拖影剖面的一阶差分**就是核本身**。box 的差分为常数，高斯的差分为钟形。
+- 高斯实现保留为降级路径（Android 无核选择），但**桌面/Wasm 默认走 box**。
+- 实现：`ImageFilter.makeMatrixConvolution`，垂直 1×N，`N = 2 × round(radiusDp × density) + 1`（奇数），权重全 `1/N`，`gain = 1`，`offsetY = N/2`（保证零位移）。
+- 亮度守恒必须验：`gain=1` 时总亮度不变（实测 34.420 → 34.390），过曝为 0。
 - 速度降到阈值以下后 **120ms 内线性归零**；静止时严格为 0（禁止残留）。
 - 不做时间拖影、不做重影、不做色散；模糊层不改变布局与命中区域。
 
 **实现路径（按平台，2026-11-14 探针验证）**
 - 桌面 / Wasm：Skiko 路径已实测可用 —— `drawWithContent` + `drawIntoCanvas { it.nativeCanvas }` + `canvas.saveLayer(null, paint)`，`paint.imageFilter = ImageFilter.makeBlur(sigmaX, sigmaY, mode = FilterTileMode.CLAMP)`。**第三参数名是 `mode`，不是 `tileMode`**。封装为 `expect fun Modifier.motionBlur(radiusDp)`。
-- Android 12+（API 31+）：`Modifier.blur(radiusDp.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)`。**无按轴参数 → 只能各向同性**，这是已知平台限制，视觉上会比桌面"更糊一点"，需把 Android 的上限再降 1dp 补偿。
+- Android 12+（API 31+）：`Modifier.blur(radiusDp.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)`。**无按轴参数、无核选择 → 只能各向同性高斯**，`kernel` 参数在该端被显式忽略。这是已知平台限制，视觉上会比桌面"更糊一点"，需把 Android 的上限再降 1dp 补偿。
 - Android 11 及以下：**直接降级为无模糊**（不做替代动画），并在设置里不暴露该选项。
 - 性能实测（桌面）：blur on 97.9 fps / off 100.1 fps，帧时间只多 **2.2%**。
 
