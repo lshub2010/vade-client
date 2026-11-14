@@ -177,6 +177,8 @@ python tools/wasm-interact.py            # 全流程，约 2 分钟，退出码 
 
 ## 9. 限制与抖动（读结论前请先看）
 
+- **基线是 `f8e991a`，不是当前 main**：本 worktree 从 `f8e991a` 切出，本轮期间 main 前进了 **24 个提交**（含 `g-glyph-clear`：导航的 `话/活/能/我` 汉字图标换成 `ImageVector`、删掉 `Destination.glyph`）。本报告**没有在新 main 上复跑**。脚本的断言不依赖被改掉的那些名字（只依赖 `返回`/`添加附件`/`textbox`/档位文本 `…dp · …`），但下一棒合并时应在最新 main 上重跑一次 `tools/wasm-interact.py` 确认。
+
 - **仅 Edge 157 / Chromium，headless，`--disable-gpu`（软渲染）**：真实 GPU、有头模式、Firefox/Safari（含 iOS）、移动浏览器全部未测。
 - **仅本机回环 HTTP、DPR=1**：公网首屏（4.9 MB + 8.6 MB wasm）会明显更慢；`DPR>1` 下 dp≠px，脚本里的坐标常量需要按缩放重算。
 - **Live 流式动画**：会话详情里假数据会自己往下流，帧随时间变化，所以脚本用「连续两帧逐字节相同」判定静止，个别步骤的字节数会有 ±180 B 的落帧差别（不影响 PASS）。
