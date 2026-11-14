@@ -50,6 +50,8 @@ import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.Button
+import vade.ui.icon.VadeIcon
+import vade.ui.icon.VadeIcons
 import vade.ui.skin.ApprovalRequest
 import vade.ui.skin.AttachmentState
 import vade.ui.skin.AttachmentView
@@ -438,12 +440,24 @@ internal fun MiuixAttachmentChip(
                 }
                 if (failed && onRetry != null) {
                     Spacer(Modifier.width(8.dp))
-                    // v2 §3 图标即按钮：重试用 ↻，不用文字。
-                    Text("↻", fontSize = 14.sp, color = colors.primary, modifier = Modifier.clickable { onRetry() })
+                    // v2 §3 图标即按钮：重试用 Refresh 矢量，不用文字（w-g-icons 起非 ↻ 字符）。
+                    VadeIcon(
+                        vector = VadeIcons.Refresh,
+                        contentDescription = "重试",
+                        size = 14.dp,
+                        tint = colors.primary,
+                        modifier = Modifier.clickable { onRetry() },
+                    )
                 }
                 if (onRemove != null) {
                     Spacer(Modifier.width(8.dp))
-                    Text("×", fontSize = 14.sp, color = colors.onSurfaceVariant, modifier = Modifier.clickable { onRemove() })
+                    VadeIcon(
+                        vector = VadeIcons.Close,
+                        contentDescription = "移除附件",
+                        size = 14.dp,
+                        tint = colors.onSurfaceVariant,
+                        modifier = Modifier.clickable { onRemove() },
+                    )
                 }
             }
         }
@@ -518,7 +532,13 @@ internal fun MiuixToolCallCard(
                         )
                         Text(label, fontSize = MiuixTokens.tinySize, color = accent)
                     }
-                    Text(if (expanded) "▾" else "▸", fontSize = 11.sp, color = colors.onSurfaceVariant)
+                    // 展开/收起 affordance：真矢量 chevron（v2 §3 禁字符图标）。
+                    VadeIcon(
+                        vector = if (expanded) VadeIcons.ChevronDown else VadeIcons.ChevronRight,
+                        contentDescription = null,
+                        size = 12.dp,
+                        tint = colors.onSurfaceVariant,
+                    )
                 }
                 if (expanded) {
                     Column(
@@ -726,11 +746,13 @@ internal fun MiuixSendOrb(
                 .semantics { contentDescription = if (streaming) "停止生成" else "发送消息" },
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = if (streaming) "■" else "↑",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = when {
+            // 发送/停止球心：矢量 Send / 唯一填充例外 Stop（v2 §3.1）。语义已挂在球的
+            // contentDescription 上（"发送消息"/"停止生成"），图标本身装饰性。
+            VadeIcon(
+                vector = if (streaming) VadeIcons.Stop else VadeIcons.Send,
+                contentDescription = null,
+                size = 20.dp,
+                tint = when {
                     streaming -> colors.error
                     armed -> colors.onPrimary
                     else -> colors.onSurfaceVariant
@@ -740,7 +762,7 @@ internal fun MiuixSendOrb(
     }
 }
 
-/** D97: mic placeholder — a hairline glass orb, only drawn when [voiceAvailable] is true. */
+/** D97: mic button — a hairline glass orb carrying the real mic vector (no `◉` glyph placeholder). */
 @Composable
 private fun GlassIconButton(colors: SkinColors, enabled: Boolean, onClick: () -> Unit) {
     Box(
@@ -752,6 +774,6 @@ private fun GlassIconButton(colors: SkinColors, enabled: Boolean, onClick: () ->
             .clickable(enabled = enabled, interactionSource = remember { MutableInteractionSource() }, indication = null) { onClick() },
         contentAlignment = Alignment.Center,
     ) {
-        Text("◉", fontSize = 14.sp, color = colors.onSurfaceVariant)
+        VadeIcon(VadeIcons.Mic, contentDescription = "语音输入", size = 14.dp, tint = colors.onSurfaceVariant)
     }
 }

@@ -31,12 +31,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import vade.ui.icon.VadeIcon
+import vade.ui.icon.VadeIcons
 import vade.ui.skin.glass.DEFAULT_MOTION_BLUR_KERNEL
 import vade.ui.skin.glass.MOTION_BLUR_DECAY_MS
 import vade.ui.skin.glass.MOTION_BLUR_FULL_VELOCITY_DP_PER_SEC
@@ -281,7 +284,8 @@ private data class RealRow(
     val meta: String? = null,
     val body: String? = null,
     val code: String? = null,
-    val icon: String? = null,
+    /** Leading icon — a Tabler vector via [VadeIcons]; never a character glyph (v2 §3). */
+    val icon: ImageVector? = null,
     val titleSize: Int = 20,
     val bodySize: Int = 15,
 )
@@ -293,7 +297,7 @@ private val REAL_ROWS = listOf(
         body = "把方向性高斯换成一维矩形核后，拖影两端变成硬截断，",
     ),
     RealRow("gradle :composeApp:desktopTest", code = "--rerun-tasks", titleSize = 15),
-    RealRow("★ 收藏", "12 个", titleSize = 15),
+    RealRow("收藏", "12 个", icon = VadeIcons.Star, titleSize = 15),
     RealRow(
         title = "构建产物",
         body = "desktopMainClasses 通过，43 个用例全绿，wasm 编译也过了。",
@@ -311,7 +315,7 @@ private val REAL_ROWS = listOf(
         body = "核长 13px 与字母横笔间距 4–7px 会产生等距回音，这是采样定理的必然结果，不是实现错误。",
     ),
     RealRow("makeMatrixConvolution", code = "kernelW = 1, kernelH = taps", titleSize = 13),
-    RealRow("● 运行中", "CPU 12%", titleSize = 15),
+    RealRow("运行中", "CPU 12%", icon = VadeIcons.Running, titleSize = 15),
     RealRow(
         title = "下一步",
         body = "把三角核设为默认，box 保留为选项，然后在真实内容上再拍一组对比。",
@@ -323,7 +327,7 @@ private val REAL_ROWS = listOf(
         body = "剖面的一阶差分就是核本身 —— profile = step ⊛ kernel，所以 d(profile)/dy = kernel。",
     ),
     RealRow("vade.ui.skin.glass", code = "enum class MotionBlurKernel", titleSize = 13),
-    RealRow("◆ 已归档", "2026-11-14", titleSize = 15),
+    RealRow("已归档", "2026-11-14", icon = VadeIcons.Archive, titleSize = 15),
     RealRow(
         title = "真实滚动",
         body = "5.7 dp 半径对应 5763 dp/s，帧率 98.5%，与冻结帧几乎一致。",
@@ -367,7 +371,7 @@ private fun RowItem(index: Int, content: ProbeContent) {
 
 /**
  * Real-content row body. Three type sizes, mixed CJK/Latin, an optional monospace code block and
- * an optional glyph "icon" — i.e. every property the pathological pattern holds constant is
+ * an optional vector icon — i.e. every property the pathological pattern holds constant is
  * varied here, which is what makes it a fair test of the kernel rather than of the fixture.
  */
 @Composable
@@ -375,10 +379,11 @@ private fun RealRowContent(row: RealRow) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.Center) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             row.icon?.let {
-                Text(
-                    text = it,
-                    color = Color(0xFF7AA2FF),
-                    fontSize = 16.sp,
+                VadeIcon(
+                    vector = it,
+                    contentDescription = null,
+                    size = 16.dp,
+                    tint = Color(0xFF7AA2FF),
                     modifier = Modifier.padding(end = 8.dp),
                 )
             }

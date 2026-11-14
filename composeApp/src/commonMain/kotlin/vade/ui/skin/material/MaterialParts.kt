@@ -429,8 +429,8 @@ internal fun MaterialAttachmentChip(
         }
         if (failed && onRetry != null) {
             Spacer(Modifier.width(4.dp))
-            // 纯图标 ↻（v2 §3：禁止文字按钮）；44dp 触摸区。
-            IconTap(onClick = onRetry) { Text("↻", fontSize = 16.sp, color = colors.primary) }
+            // 纯图标 Refresh（v2 §3：禁止文字按钮；w-g-icons 起为真矢量，非 ↻ 字符）；44dp 触摸区。
+            IconTap(onClick = onRetry) { VadeIcon(VadeIcons.Refresh, contentDescription = "重试", size = 16.dp, tint = colors.primary) }
         }
         if (onRemove != null) {
             Spacer(Modifier.width(4.dp))
@@ -512,10 +512,12 @@ internal fun MaterialToolCallCard(
                     Spacer(Modifier.weight(1f))
                     Text(stateLabel, fontSize = 11.sp, color = status)
                     Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = if (expanded) "▾" else "▸",
-                        fontSize = 12.sp,
-                        color = colors.onSurfaceVariant,
+                    // 展开/收起 affordance：真矢量 chevron（v2 §3 禁字符图标）。
+                    VadeIcon(
+                        vector = if (expanded) VadeIcons.ChevronDown else VadeIcons.ChevronRight,
+                        contentDescription = null,
+                        size = 12.dp,
+                        tint = colors.onSurfaceVariant,
                     )
                 }
                 if (expanded) {
@@ -682,7 +684,10 @@ internal fun MaterialInputBar(
                         .background(colors.surfaceVariant)
                         .clickable { },
                     contentAlignment = Alignment.Center,
-                ) { Text("◍", fontSize = 16.sp, color = colors.onSurfaceVariant) }
+                ) {
+                    // D97 的语音按钮：真麦克风矢量（w-g-icons 起，`◍` 字符占位退场）。
+                    VadeIcon(VadeIcons.Mic, contentDescription = "语音输入", size = 16.dp, tint = colors.onSurfaceVariant)
+                }
             }
         }
     }
