@@ -1,0 +1,234 @@
+{
+ "phase": "fix-offline",
+ "query": "",
+ "offline": true,
+ "url": "http://127.0.0.1:9181/index.html",
+ "edge_args_extra": [
+  "--host-resolver-rules=MAP * 127.0.0.1:9, EXCLUDE 127.0.0.1"
+ ],
+ "launch_s": 1794686092.178,
+ "frames_total": 2,
+ "frames": [
+  {
+   "idx": 0,
+   "t": 15.343,
+   "file": "frame-00.png",
+   "bytes": 4718,
+   "sha256": "e5b97ecddd557c83f5efa2785ae21bca99cfbad0d43995e8b2e40ca558420056",
+   "content": false,
+   "stddev": 0.0,
+   "colors": 1,
+   "ink": {
+    "region": "cjk_rows",
+    "pixels": 112464,
+    "dark": 0,
+    "dark_ratio": 0.0
+   }
+  },
+  {
+   "idx": 1,
+   "t": 18.573,
+   "file": "frame-01.png",
+   "bytes": 69488,
+   "sha256": "7ef52e63bb85de5a97aa56275cb84f7a98d1e1fa2bddafa51e0a8f3f04e30069",
+   "content": true,
+   "stddev": 16.57,
+   "colors": 920,
+   "ink": {
+    "region": "cjk_rows",
+    "pixels": 112464,
+    "dark": 3198,
+    "dark_ratio": 0.02844
+   }
+  }
+ ],
+ "late_frames": [],
+ "first_content_frame": {
+  "idx": 1,
+  "t": 18.573,
+  "file": "frame-01.png",
+  "bytes": 69488,
+  "sha256": "7ef52e63bb85de5a97aa56275cb84f7a98d1e1fa2bddafa51e0a8f3f04e30069",
+  "content": true,
+  "stddev": 16.57,
+  "colors": 920,
+  "ink": {
+   "region": "cjk_rows",
+   "pixels": 112464,
+   "dark": 3198,
+   "dark_ratio": 0.02844
+  }
+ },
+ "settled_frame": {
+  "idx": 1,
+  "t": 18.573,
+  "file": "frame-01.png",
+  "bytes": 69488,
+  "sha256": "7ef52e63bb85de5a97aa56275cb84f7a98d1e1fa2bddafa51e0a8f3f04e30069",
+  "content": true,
+  "stddev": 16.57,
+  "colors": 920,
+  "ink": {
+   "region": "cjk_rows",
+   "pixels": 112464,
+   "dark": 3198,
+   "dark_ratio": 0.02844
+  }
+ },
+ "idle": [
+  {
+   "t": 40.647,
+   "bytes": 69488,
+   "file": "idle-00.png",
+   "sha256": "7ef52e63bb85de5a97aa56275cb84f7a98d1e1fa2bddafa51e0a8f3f04e30069",
+   "same_as_first_idle": null,
+   "ink": {
+    "region": "cjk_rows",
+    "pixels": 112464,
+    "dark": 3198,
+    "dark_ratio": 0.02844
+   }
+  },
+  {
+   "t": 50.722,
+   "bytes": 69488,
+   "file": "idle-01.png",
+   "sha256": "7ef52e63bb85de5a97aa56275cb84f7a98d1e1fa2bddafa51e0a8f3f04e30069",
+   "same_as_first_idle": true,
+   "ink": {
+    "region": "cjk_rows",
+    "pixels": 112464,
+    "dark": 3198,
+    "dark_ratio": 0.02844
+   }
+  },
+  {
+   "t": 60.786,
+   "bytes": 69488,
+   "file": "idle-02.png",
+   "sha256": "7ef52e63bb85de5a97aa56275cb84f7a98d1e1fa2bddafa51e0a8f3f04e30069",
+   "same_as_first_idle": true,
+   "ink": {
+    "region": "cjk_rows",
+    "pixels": 112464,
+    "dark": 3198,
+    "dark_ratio": 0.02844
+   }
+  },
+  {
+   "t": 70.869,
+   "bytes": 69488,
+   "file": "idle-03.png",
+   "sha256": "7ef52e63bb85de5a97aa56275cb84f7a98d1e1fa2bddafa51e0a8f3f04e30069",
+   "same_as_first_idle": true,
+   "ink": {
+    "region": "cjk_rows",
+    "pixels": 112464,
+    "dark": 3198,
+    "dark_ratio": 0.02844
+   }
+  }
+ ],
+ "paint": {
+  "first-paint": 7725,
+  "first-contentful-paint": 12000
+ },
+ "dom": {
+  "canvases": 0,
+  "fontFaces": 0,
+  "bodyChildren": [
+   "DIV"
+  ]
+ },
+ "ax_nodes": 189,
+ "ax_sample": [
+  "Vade",
+  "搜索",
+  "新建会话",
+  "展开右面板",
+  "会话",
+  "活动",
+  "能力",
+  "我的",
+  "R RFC-0004 附件与多模态评审 把 POST /ui/blob 的分片与断点续传写进 §3… g-1 3 天前 置顶",
+  "v vade core 构建矩阵升级 AGP 9.5.1 + Gradle 9.6.1 已验证，出 APK 13.5 MB g-2 5 天前 置顶 claude-sonnet",
+  "U U1-a 骨架验收 四个一级目的地 + 三态底栏，等真窗口截图 12:40",
+  "皮 皮肤组件 11 个冻结 D93：+MessageBubble / AttachmentChip / ToolCallCard / InputBar 21:05",
+  "已归档",
+  "已归档",
+  "会话",
+  "≥1200dp · 双栏 + 右面板 · 6 个会话",
+  "会话",
+  "活动",
+  "能力",
+  "我的",
+  "U1-a",
+  "假数据 · 未连接 core（U1-a 只做骨架，U1-b 接线）",
+  "置顶",
+  "2",
+  "R",
+  "\n",
+  "RFC-0004 附件与多模态评审",
+  "\n",
+  "把 POST /ui/blob 的分片与断点续传写进 §3…",
+  "\n",
+  "g-1",
+  "\n",
+  "3 天前",
+  "\n",
+  "置顶",
+  "v",
+  "\n",
+  "vade core 构建矩阵升级",
+  "\n",
+  "AGP 9.5.1 + Gradle 9.6.1 已验证，出 APK 13.5 MB"
+ ],
+ "network": {
+  "requests": 5,
+  "urls": [
+   "http://127.0.0.1:9181/a31ca1b93bfa07fbdca9.wasm",
+   "http://127.0.0.1:9181/bfa5198fb2fe683c613a.wasm",
+   "http://127.0.0.1:9181/composeApp.js",
+   "http://127.0.0.1:9181/favicon.ico",
+   "http://127.0.0.1:9181/fonts/vade-sans-sc.woff2"
+  ],
+  "gstatic_requests": [],
+  "font_requests": [
+   "http://127.0.0.1:9181/fonts/vade-sans-sc.woff2"
+  ]
+ },
+ "console": [
+  {
+   "ts": 1794686107447.895,
+   "level": "error",
+   "text": "Failed to load resource: the server responded with a status of 404 (File not found)",
+   "url": "http://127.0.0.1:9181/favicon.ico"
+  },
+  {
+   "ts": 1794686109920.394,
+   "level": "log",
+   "text": "[vade-font] installed 'fonts/vade-sans-sc.woff2' (1012640 B, family Vade Sans SC)"
+  },
+  {
+   "ts": 1794686109988.724,
+   "level": "warning",
+   "text": "WebGL: INVALID_ENUM: getParameter: invalid parameter name, WEBGL_debug_renderer_info not enabled",
+   "url": "http://127.0.0.1:9181/composeApp.js"
+  },
+  {
+   "ts": 1794686109988.9,
+   "level": "warning",
+   "text": "WebGL: INVALID_ENUM: getParameter: invalid parameter name, WEBGL_debug_renderer_info not enabled",
+   "url": "http://127.0.0.1:9181/composeApp.js"
+  }
+ ],
+ "installed_line": "[vade-font] installed 'fonts/vade-sans-sc.woff2' (1012640 B, family Vade Sans SC)",
+ "first_frame_vs_last_idle": {
+  "all": 0.0,
+  "list": 0.0,
+  "detail": 0.0,
+  "topbar": 0.0,
+  "thread": 0.0,
+  "cjk_rows": 0.0
+ }
+}

@@ -1,0 +1,947 @@
+[
+ {
+  "role": "RootWebArea",
+  "name": "Vade",
+  "value": ""
+ },
+ {
+  "role": "none",
+  "name": "",
+  "value": ""
+ },
+ {
+  "role": "none",
+  "name": "",
+  "value": ""
+ },
+ {
+  "role": "generic",
+  "name": "",
+  "value": ""
+ },
+ {
+  "role": "generic",
+  "name": "",
+  "value": ""
+ },
+ {
+  "role": "generic",
+  "name": "",
+  "value": ""
+ },
+ {
+  "role": "generic",
+  "name": "",
+  "value": ""
+ },
+ {
+  "role": "generic",
+  "name": "",
+  "value": ""
+ },
+ {
+  "role": "generic",
+  "name": "",
+  "value": ""
+ },
+ {
+  "role": "generic",
+  "name": "",
+  "value": ""
+ },
+ {
+  "role": "generic",
+  "name": "",
+  "value": ""
+ },
+ {
+  "role": "generic",
+  "name": "",
+  "value": ""
+ },
+ {
+  "role": "generic",
+  "name": "",
+  "value": ""
+ },
+ {
+  "role": "generic",
+  "name": "",
+  "value": ""
+ },
+ {
+  "role": "list",
+  "name": "",
+  "value": ""
+ },
+ {
+  "role": "generic",
+  "name": "",
+  "value": ""
+ },
+ {
+  "role": "generic",
+  "name": "",
+  "value": ""
+ },
+ {
+  "role": "generic",
+  "name": "",
+  "value": ""
+ },
+ {
+  "role": "generic",
+  "name": "",
+  "value": ""
+ },
+ {
+  "role": "button",
+  "name": "搜索",
+  "value": ""
+ },
+ {
+  "role": "button",
+  "name": "新建会话",
+  "value": ""
+ },
+ {
+  "role": "button",
+  "name": "展开右面板",
+  "value": ""
+ },
+ {
+  "role": "button",
+  "name": "会话",
+  "value": ""
+ },
+ {
+  "role": "button",
+  "name": "活动",
+  "value": ""
+ },
+ {
+  "role": "button",
+  "name": "能力",
+  "value": ""
+ },
+ {
+  "role": "button",
+  "name": "我的",
+  "value": ""
+ },
+ {
+  "role": "generic",
+  "name": "",
+  "value": ""
+ },
+ {
+  "role": "generic",
+  "name": "",
+  "value": ""
+ },
+ {
+  "role": "generic",
+  "name": "",
+  "value": ""
+ },
+ {
+  "role": "generic",
+  "name": "",
+  "value": ""
+ },
+ {
+  "role": "button",
+  "name": "R RFC-0004 附件与多模态评审 把 POST /ui/blob 的分片与断点续传写进 §3… g-1 3 天前 置顶",
+  "value": ""
+ },
+ {
+  "role": "button",
+  "name": "v vade core 构建矩阵升级 AGP 9.5.1 + Gradle 9.6.1 已验证，出 APK 13.5 MB g-2 5 天前 置顶 claude-sonnet",
+  "value": ""
+ },
+ {
+  "role": "generic",
+  "name": "",
+  "value": ""
+ },
+ {
+  "role": "generic",
+  "name": "",
+  "value": ""
+ },
+ {
+  "role": "button",
+  "name": "U U1-a 骨架验收 四个一级目的地 + 三态底栏，等真窗口截图 12:40",
+  "value": ""
+ },
+ {
+  "role": "button",
+  "name": "皮 皮肤组件 11 个冻结 D93：+MessageBubble / AttachmentChip / ToolCallCard / InputBar 21:05",
+  "value": ""
+ },
+ {
+  "role": "generic",
+  "name": "",
+  "value": ""
+ },
+ {
+  "role": "generic",
+  "name": "",
+  "value": ""
+ },
+ {
+  "role": "button",
+  "name": "已归档",
+  "value": ""
+ },
+ {
+  "role": "generic",
+  "name": "",
+  "value": ""
+ },
+ {
+  "role": "generic",
+  "name": "",
+  "value": ""
+ },
+ {
+  "role": "button",
+  "name": "已归档",
+  "value": ""
+ },
+ {
+  "role": "generic",
+  "name": "",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "会话",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "≥1200dp · 双栏 + 右面板 · 6 个会话",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "会话",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "活动",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "能力",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "我的",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "U1-a",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "假数据 · 未连接 core（U1-a 只做骨架，U1-b 接线）",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "置顶",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "2",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "R",
+  "value": ""
+ },
+ {
+  "role": "LineBreak",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "RFC-0004 附件与多模态评审",
+  "value": ""
+ },
+ {
+  "role": "LineBreak",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "把 POST /ui/blob 的分片与断点续传写进 §3…",
+  "value": ""
+ },
+ {
+  "role": "LineBreak",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "g-1",
+  "value": ""
+ },
+ {
+  "role": "LineBreak",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "3 天前",
+  "value": ""
+ },
+ {
+  "role": "LineBreak",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "置顶",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "v",
+  "value": ""
+ },
+ {
+  "role": "LineBreak",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "vade core 构建矩阵升级",
+  "value": ""
+ },
+ {
+  "role": "LineBreak",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "AGP 9.5.1 + Gradle 9.6.1 已验证，出 APK 13.5 MB",
+  "value": ""
+ },
+ {
+  "role": "LineBreak",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "g-2",
+  "value": ""
+ },
+ {
+  "role": "LineBreak",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "5 天前",
+  "value": ""
+ },
+ {
+  "role": "LineBreak",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "置顶",
+  "value": ""
+ },
+ {
+  "role": "LineBreak",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "claude-sonnet",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "今天",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "2",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "U",
+  "value": ""
+ },
+ {
+  "role": "LineBreak",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "U1-a 骨架验收",
+  "value": ""
+ },
+ {
+  "role": "LineBreak",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "四个一级目的地 + 三态底栏，等真窗口截图",
+  "value": ""
+ },
+ {
+  "role": "LineBreak",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "12:40",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "皮",
+  "value": ""
+ },
+ {
+  "role": "LineBreak",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "皮肤组件 11 个冻结",
+  "value": ""
+ },
+ {
+  "role": "LineBreak",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "D93：+MessageBubble / AttachmentChip / ToolCallCard / InputBar",
+  "value": ""
+ },
+ {
+  "role": "LineBreak",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "21:05",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "昨天",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "1",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "w",
+  "value": ""
+ },
+ {
+  "role": "LineBreak",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "wasm 体积回归",
+  "value": ""
+ },
+ {
+  "role": "LineBreak",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "app.wasm + 主 JS gzip 1.04 MB，留 10% 余量",
+  "value": ""
+ },
+ {
+  "role": "LineBreak",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "昨天 19:12",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "7 天内",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "1",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "A",
+  "value": ""
+ },
+ {
+  "role": "LineBreak",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "AGP 9.5.1 矩阵验证",
+  "value": ""
+ },
+ {
+  "role": "LineBreak",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "两个开关缺一不可：builtInKotlin + newDsl",
+  "value": ""
+ },
+ {
+  "role": "LineBreak",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "g-1",
+  "value": ""
+ },
+ {
+  "role": "LineBreak",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "4 天前",
+  "value": ""
+ },
+ {
+  "role": "LineBreak",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "local-qwen",
+  "value": ""
+ },
+ {
+  "role": "StaticText",
+  "name": "在左侧选择一个会话",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "会话",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "≥1200dp · 双栏 + 右面板 · 6 个会话",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "会话",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "活动",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "能力",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "我的",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "U1-a",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "假数据 · 未连接 core（U1-a 只做骨架，U1-b 接线）",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "置顶",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "2",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "R",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "RFC-0004 附件与多模态评审",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "把 POST /ui/blob 的分片与断点续传写进 §3…",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "g-1",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "3 天前",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "置顶",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "v",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "vade core 构建矩阵升级",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "AGP 9.5.1 + Gradle 9.6.1 已验证，出 APK 13.5 MB",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "g-2",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "5 天前",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "置顶",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "claude-sonnet",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "今天",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "2",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "U",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "U1-a 骨架验收",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "四个一级目的地 + 三态底栏，等真窗口截图",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "12:40",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "皮",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "皮肤组件 11 个冻结",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "D93：+MessageBubble / AttachmentChip / ToolCallCard / InputBar",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "21:05",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "昨天",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "1",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "w",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "wasm 体积回归",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "app.wasm + 主 JS gzip 1.04 MB，留 10% 余量",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "昨天 19:12",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "7 天内",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "1",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "A",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "AGP 9.5.1 矩阵验证",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "两个开关缺一不可：builtInKotlin + newDsl",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "g-1",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "4 天前",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "\n",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "local-qwen",
+  "value": ""
+ },
+ {
+  "role": "InlineTextBox",
+  "name": "在左侧选择一个会话",
+  "value": ""
+ }
+]

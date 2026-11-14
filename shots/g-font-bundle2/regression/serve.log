@@ -1,0 +1,9 @@
+serving D:\HermesWorkspace\Vade-client-wt\g-font-bundle2\composeApp\build\wasm-web at http://127.0.0.1:9173/ (COOP/COEP on, wasm MIME ok)
+04:10:17.779 | 127.0.0.1 | "GET /index.html HTTP/1.1" 200 -
+04:10:22.468 | 127.0.0.1 | "GET /index.html HTTP/1.1" 200 -
+04:10:23.025 | 127.0.0.1 | "GET /composeApp.js HTTP/1.1" 200 -
+04:10:23.734 | 127.0.0.1 | "GET /bfa5198fb2fe683c613a.wasm HTTP/1.1" 200 -
+04:10:23.783 | 127.0.0.1 | "GET /a31ca1b93bfa07fbdca9.wasm HTTP/1.1" 200 -
+04:10:23.855 | 127.0.0.1 | code 404, message File not found
+04:10:23.855 | 127.0.0.1 | "GET /favicon.ico HTTP/1.1" 404 -
+04:10:24.586 | 127.0.0.1 | "GET /fonts/vade-sans-sc.woff2 HTTP/1.1" 200 -

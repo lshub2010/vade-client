@@ -1,0 +1,902 @@
+[
+ {
+  "ts": 1794688754397.573,
+  "level": "error",
+  "text": "Failed to load resource: the server responded with a status of 404 (File not found)",
+  "url": "http://127.0.0.1:9181/favicon.ico"
+ },
+ {
+  "ts": 1794688755687.072,
+  "level": "warning",
+  "text": "WebGL: INVALID_ENUM: getParameter: invalid parameter name, WEBGL_debug_renderer_info not enabled",
+  "url": "http://127.0.0.1:9181/composeApp.js"
+ },
+ {
+  "ts": 1794688755687.249,
+  "level": "warning",
+  "text": "WebGL: INVALID_ENUM: getParameter: invalid parameter name, WEBGL_debug_renderer_info not enabled",
+  "url": "http://127.0.0.1:9181/composeApp.js"
+ },
+ {
+  "ts": 1794688756096.917,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.117.woff2"
+ },
+ {
+  "ts": 1794688756097.438,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.117.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756116.629,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.118.woff2"
+ },
+ {
+  "ts": 1794688756116.82,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.118.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756130.094,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.116.woff2"
+ },
+ {
+  "ts": 1794688756130.258,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.116.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756139.843,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.115.woff2"
+ },
+ {
+  "ts": 1794688756140.02,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.115.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756158.645,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.114.woff2"
+ },
+ {
+  "ts": 1794688756158.929,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.114.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756178.196,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.119.woff2"
+ },
+ {
+  "ts": 1794688756178.461,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.119.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756196.906,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.112.woff2"
+ },
+ {
+  "ts": 1794688756197.062,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.112.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756215.947,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.113.woff2"
+ },
+ {
+  "ts": 1794688756216.121,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.113.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756222.791,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.106.woff2"
+ },
+ {
+  "ts": 1794688756223.003,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.106.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756241.04,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.111.woff2"
+ },
+ {
+  "ts": 1794688756241.203,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.111.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756255.026,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.108.woff2"
+ },
+ {
+  "ts": 1794688756255.275,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.108.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756260.228,
+  "level": "log",
+  "text": "FallbackFontDownloader error: kotlin.IllegalStateException: Failed to download fallback fonts for codepoints: [20250, 35805, 27963, 21160, 33021, 21147, 25105, 30340, 65289, 32447, 21482, 26410, 25509, 39592, 65288, 26550, 20570, 65292, 36830, 20551, 25968, 25454, 32622, 39030, 22825, 21069, 38468, "
+ },
+ {
+  "ts": 1794688756261.812,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.117.woff2"
+ },
+ {
+  "ts": 1794688756261.918,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.117.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756282.879,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.118.woff2"
+ },
+ {
+  "ts": 1794688756283.047,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.118.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756288.841,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.116.woff2"
+ },
+ {
+  "ts": 1794688756289.026,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.116.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756295.82,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.115.woff2"
+ },
+ {
+  "ts": 1794688756295.941,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.115.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756313.73,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.114.woff2"
+ },
+ {
+  "ts": 1794688756313.882,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.114.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756330.902,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.119.woff2"
+ },
+ {
+  "ts": 1794688756331.348,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.119.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756358.568,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.112.woff2"
+ },
+ {
+  "ts": 1794688756358.823,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.112.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756384.142,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.113.woff2"
+ },
+ {
+  "ts": 1794688756384.351,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.113.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756395.327,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.106.woff2"
+ },
+ {
+  "ts": 1794688756395.56,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.106.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756405.612,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.111.woff2"
+ },
+ {
+  "ts": 1794688756406.017,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.111.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756412.92,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.108.woff2"
+ },
+ {
+  "ts": 1794688756413.172,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.108.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756413.707,
+  "level": "log",
+  "text": "FallbackFontDownloader error: kotlin.IllegalStateException: Failed to download fallback fonts for codepoints: [20250, 35805, 27963, 21160, 33021, 21147, 25105, 30340, 65289, 32447, 21482, 26410, 25509, 39592, 65288, 26550, 20570, 65292, 36830, 20551, 25968, 25454, 32622, 39030, 22825, 21069, 38468, "
+ },
+ {
+  "ts": 1794688756492.561,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.117.woff2"
+ },
+ {
+  "ts": 1794688756492.802,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.117.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756524.043,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.118.woff2"
+ },
+ {
+  "ts": 1794688756524.219,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.118.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756531.156,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.116.woff2"
+ },
+ {
+  "ts": 1794688756531.303,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.116.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756558.783,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.115.woff2"
+ },
+ {
+  "ts": 1794688756558.96,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.115.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756564.706,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.114.woff2"
+ },
+ {
+  "ts": 1794688756564.889,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.114.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756586.653,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.119.woff2"
+ },
+ {
+  "ts": 1794688756586.862,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.119.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756597.558,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.112.woff2"
+ },
+ {
+  "ts": 1794688756597.715,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.112.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756602.164,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.113.woff2"
+ },
+ {
+  "ts": 1794688756602.294,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.113.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756631.846,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.106.woff2"
+ },
+ {
+  "ts": 1794688756632.013,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.106.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756656.025,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.111.woff2"
+ },
+ {
+  "ts": 1794688756656.196,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.111.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756669.42,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.108.woff2"
+ },
+ {
+  "ts": 1794688756669.605,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.108.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688756669.796,
+  "level": "log",
+  "text": "FallbackFontDownloader error: kotlin.IllegalStateException: Failed to download fallback fonts for codepoints: [20250, 35805, 27963, 21160, 33021, 21147, 25105, 30340, 65289, 32447, 21482, 26410, 25509, 39592, 65288, 26550, 20570, 65292, 36830, 20551, 25968, 25454, 32622, 39030, 22825, 21069, 38468, "
+ },
+ {
+  "ts": 1794688761496.12,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.117.woff2"
+ },
+ {
+  "ts": 1794688761496.265,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.117.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688761505.17,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.118.woff2"
+ },
+ {
+  "ts": 1794688761505.312,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.118.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688761517.25,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.116.woff2"
+ },
+ {
+  "ts": 1794688761517.411,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.116.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688761530.614,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.115.woff2"
+ },
+ {
+  "ts": 1794688761530.76,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.115.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688761539.888,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.114.woff2"
+ },
+ {
+  "ts": 1794688761540.058,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.114.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688761555.619,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.119.woff2"
+ },
+ {
+  "ts": 1794688761555.779,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.119.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688761563.061,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.112.woff2"
+ },
+ {
+  "ts": 1794688761563.176,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.112.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688761572.568,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.113.woff2"
+ },
+ {
+  "ts": 1794688761572.716,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.113.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688761593.782,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.106.woff2"
+ },
+ {
+  "ts": 1794688761593.937,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.106.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688761604.518,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.111.woff2"
+ },
+ {
+  "ts": 1794688761604.68,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.111.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688761622.621,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.108.woff2"
+ },
+ {
+  "ts": 1794688761622.768,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.108.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688761622.978,
+  "level": "log",
+  "text": "FallbackFontDownloader error: kotlin.IllegalStateException: Failed to download fallback fonts for codepoints: [20250, 35805, 27963, 21160, 33021, 21147, 25105, 30340, 65289, 32447, 21482, 26410, 25509, 39592, 65288, 26550, 20570, 65292, 36830, 20551, 25968, 25454, 32622, 39030, 22825, 21069, 38468, "
+ },
+ {
+  "ts": 1794688766768.14,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.117.woff2"
+ },
+ {
+  "ts": 1794688766768.503,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.117.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688766801.759,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.118.woff2"
+ },
+ {
+  "ts": 1794688766801.918,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.118.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688766832.401,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.116.woff2"
+ },
+ {
+  "ts": 1794688766832.601,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.116.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688766848.484,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.115.woff2"
+ },
+ {
+  "ts": 1794688766848.628,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.115.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688766874.103,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.114.woff2"
+ },
+ {
+  "ts": 1794688766874.334,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.114.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688766883.547,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.119.woff2"
+ },
+ {
+  "ts": 1794688766883.693,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.119.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688766908.361,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.112.woff2"
+ },
+ {
+  "ts": 1794688766908.62,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.112.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688766935.993,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.113.woff2"
+ },
+ {
+  "ts": 1794688766936.142,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.113.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688766961.069,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.106.woff2"
+ },
+ {
+  "ts": 1794688766961.312,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.106.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688766992.76,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.111.woff2"
+ },
+ {
+  "ts": 1794688766992.993,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.111.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688767014.281,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.108.woff2"
+ },
+ {
+  "ts": 1794688767014.513,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.108.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688767014.825,
+  "level": "log",
+  "text": "FallbackFontDownloader error: kotlin.IllegalStateException: Failed to download fallback fonts for codepoints: [20250, 35805, 27963, 21160, 33021, 21147, 25105, 30340, 65289, 32447, 21482, 26410, 25509, 39592, 65288, 26550, 20570, 65292, 36830, 20551, 25968, 25454, 32622, 39030, 22825, 21069, 38468, "
+ },
+ {
+  "ts": 1794688776733.548,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.117.woff2"
+ },
+ {
+  "ts": 1794688776733.728,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.117.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688776764.992,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.118.woff2"
+ },
+ {
+  "ts": 1794688776765.164,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.118.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688776797.945,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.116.woff2"
+ },
+ {
+  "ts": 1794688776798.116,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.116.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688776818.337,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.115.woff2"
+ },
+ {
+  "ts": 1794688776818.497,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.115.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688776856.389,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.114.woff2"
+ },
+ {
+  "ts": 1794688776856.695,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.114.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688776897.816,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.119.woff2"
+ },
+ {
+  "ts": 1794688776898.128,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.119.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688776937.024,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.112.woff2"
+ },
+ {
+  "ts": 1794688776937.187,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.112.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688776957.982,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.113.woff2"
+ },
+ {
+  "ts": 1794688776958.176,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.113.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688777001.525,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.106.woff2"
+ },
+ {
+  "ts": 1794688777001.694,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.106.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688777032.746,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.111.woff2"
+ },
+ {
+  "ts": 1794688777032.944,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.111.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688777047.292,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.108.woff2"
+ },
+ {
+  "ts": 1794688777047.463,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.108.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688777048.225,
+  "level": "log",
+  "text": "FallbackFontDownloader error: kotlin.IllegalStateException: Failed to download fallback fonts for codepoints: [20250, 35805, 27963, 21160, 33021, 21147, 25105, 30340, 65289, 32447, 21482, 26410, 25509, 39592, 65288, 26550, 20570, 65292, 36830, 20551, 25968, 25454, 32622, 39030, 22825, 21069, 38468, "
+ },
+ {
+  "ts": 1794688787106.312,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.117.woff2"
+ },
+ {
+  "ts": 1794688787106.536,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.117.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688787120.661,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.118.woff2"
+ },
+ {
+  "ts": 1794688787120.845,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.118.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688787153.974,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.116.woff2"
+ },
+ {
+  "ts": 1794688787154.132,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.116.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688787180.457,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.115.woff2"
+ },
+ {
+  "ts": 1794688787181.297,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.115.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688787193.673,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.114.woff2"
+ },
+ {
+  "ts": 1794688787194.326,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.114.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688787227.141,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.119.woff2"
+ },
+ {
+  "ts": 1794688787227.32,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.119.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688787264.149,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.112.woff2"
+ },
+ {
+  "ts": 1794688787264.538,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.112.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688787291.213,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.113.woff2"
+ },
+ {
+  "ts": 1794688787291.39,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.113.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688787310.673,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.106.woff2"
+ },
+ {
+  "ts": 1794688787310.911,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.106.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688787344.143,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.111.woff2"
+ },
+ {
+  "ts": 1794688787344.339,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.111.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688787356.818,
+  "level": "error",
+  "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "url": "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.108.woff2"
+ },
+ {
+  "ts": 1794688787356.984,
+  "level": "log",
+  "text": "Failed to download fallback font [https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.108.woff2]: kotlin.js.JsException: Failed to fetch"
+ },
+ {
+  "ts": 1794688787357.431,
+  "level": "log",
+  "text": "FallbackFontDownloader error: kotlin.IllegalStateException: Failed to download fallback fonts for codepoints: [20250, 35805, 27963, 21160, 33021, 21147, 25105, 30340, 65289, 32447, 21482, 26410, 25509, 39592, 65288, 26550, 20570, 65292, 36830, 20551, 25968, 25454, 32622, 39030, 22825, 21069, 38468, "
+ }
+]

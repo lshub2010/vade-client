@@ -1,0 +1,14 @@
+{
+ "requests": 5,
+ "urls": [
+  "http://127.0.0.1:9181/a31ca1b93bfa07fbdca9.wasm",
+  "http://127.0.0.1:9181/bfa5198fb2fe683c613a.wasm",
+  "http://127.0.0.1:9181/composeApp.js",
+  "http://127.0.0.1:9181/favicon.ico",
+  "http://127.0.0.1:9181/fonts/vade-sans-sc.woff2"
+ ],
+ "gstatic_requests": [],
+ "font_requests": [
+  "http://127.0.0.1:9181/fonts/vade-sans-sc.woff2"
+ ]
+}
