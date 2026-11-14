@@ -293,7 +293,6 @@ class Harness:
         self.font_ts: list[float] = []
         self.consumed = 0
         self.profile_dir = ""
-        self.report: dict = {}
 
     # --- environment ---------------------------------------------------------------
     def stage_bundle(self) -> str:
