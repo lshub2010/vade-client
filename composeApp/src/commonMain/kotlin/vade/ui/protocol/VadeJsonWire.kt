@@ -57,6 +57,78 @@ fun JsonObject.strOrNull(key: String): String? = this[key]?.let {
     (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content
 }
 
+// ------------------------------------------------------------------ required-key accessors
+//
+// A missing REQUIRED key in a result/payload is a decode failure — [PayloadDecodeException]
+// — never a silent zero-value fallback (the "all-zero row" bug class). The safe accessors
+// above treat absent and null alike; these demand presence.
+
+fun JsonObject.mustStr(key: String): String =
+    str(key) ?: throw PayloadDecodeException("wire object misses required string '$key'")
+
+fun JsonObject.mustLng(key: String): Long =
+    lng(key) ?: throw PayloadDecodeException("wire object misses required number '$key'")
+
+fun JsonObject.mustInt(key: String): Int =
+    int(key) ?: throw PayloadDecodeException("wire object misses required number '$key'")
+
+fun JsonObject.mustBool(key: String): Boolean =
+    bool(key) ?: throw PayloadDecodeException("wire object misses required bool '$key'")
+
+fun JsonObject.mustObj(key: String): JsonObject =
+    obj(key) ?: throw PayloadDecodeException("wire object misses required object '$key'")
+
+fun JsonObject.mustArr(key: String): JsonArray =
+    arr(key) ?: throw PayloadDecodeException("wire object misses required array '$key'")
+
+/** The key must be PRESENT; its value may be JSON null ("required-with-null", RFC-0012 §5.2). */
+fun JsonObject.mustKey(key: String): JsonElement =
+    this[key] ?: throw PayloadDecodeException("wire object misses required key '$key' (may be null)")
+
+/** required-with-null string: key present (value may be null), a wrong shape is rejected. */
+fun JsonObject.mustStrOrNull(key: String): String? {
+    val v = mustKey(key)
+    if (v is JsonNull) return null
+    return (v as? JsonPrimitive)?.takeIf { it.isString }?.content
+        ?: throw PayloadDecodeException("wire object field '$key' is not string|null")
+}
+
+// ------------------------------------------------------------------ tri-state wire value
+//
+// Some contract params have THREE states, not two: key omitted / key present with JSON
+// null / key present with a value — each with different semantics (session/list.group_id:
+// omitted = all groups, null = ungrouped only, a string = that group). A nullable Kotlin
+// type cannot express the middle state, so params that need it carry [Optional].
+
+sealed class Optional<out T> {
+    /** The key is NOT written to the wire at all. */
+    object Absent : Optional<Nothing>()
+
+    /** The key is written as JSON null. */
+    object Null : Optional<Nothing>()
+
+    /** The key is written with this value. */
+    data class Value<out T>(val value: T) : Optional<T>()
+
+    companion object {
+        /** Shorthand for a present value. */
+        fun <T> of(value: T): Optional<T> = Value(value)
+    }
+}
+
+/** Writes [value] honoring the three [Optional] states (absent → no key at all). */
+fun <T> JsonObjectBuilderCompat.putOpt(key: String, value: Optional<T>, wire: (T) -> JsonElement) {
+    when (value) {
+        is Optional.Absent -> Unit
+        is Optional.Null -> put(key, JsonNull)
+        is Optional.Value -> put(key, wire(value.value))
+    }
+}
+
+/** The overwhelmingly common string tri-state. */
+fun JsonObjectBuilderCompat.putOptStr(key: String, value: Optional<String>) =
+    putOpt(key, value) { JsonPrimitive(it) }
+
 // ------------------------------------------------------------------ encode helpers
 
 /** Only present keys are written — absent optional contract keys stay absent on the wire. */

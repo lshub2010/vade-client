@@ -167,3 +167,29 @@ enum class TaskKind(val raw: String) {
     SUBAGENT("subagent"),
     JOB("job"),
 }
+
+/**
+ * `subagent.state` (RFC-0012 §4.3 — top-level `subagent_states`, frozen 5 values). Serves
+ * both roles: client-authored `subagent/list.states` filters (send [raw]) and core-authored
+ * run/event states (read via [fromRaw]; UNKNOWN keeps a future value visible, never silent).
+ */
+enum class SubagentState(val raw: String) {
+    SPAWNED("spawned"),
+    RUNNING("running"),
+    COMPLETED("completed"),
+    FAILED("failed"),
+    CANCELLED("cancelled"),
+    UNKNOWN("unknown");
+
+    companion object {
+        fun fromRaw(value: String?): SubagentState = when (value) {
+            "spawned" -> SPAWNED
+            "running" -> RUNNING
+            "completed" -> COMPLETED
+            "failed" -> FAILED
+            "cancelled" -> CANCELLED
+            // Forward compat: an unknown run state is visible as UNKNOWN, never a crash.
+            else -> UNKNOWN
+        }
+    }
+}
