@@ -10,7 +10,9 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -24,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -32,22 +35,28 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -63,10 +72,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import vade.ui.chat.ApprovalOutcome
+import vade.ui.icon.VadeIcons
+import vade.ui.skin.AttachmentState
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.MessageView
+import vade.ui.component.liquid.VadeShadows
+import vade.ui.component.liquid.layeredShadow
 import vade.ui.skin.glass.GlassSurface
 import vade.ui.skin.glass.LocalGlassHazeState
 
@@ -200,6 +215,7 @@ fun ChatThread(
         ComposerOverlay(
             state = state,
             gutter = gutter,
+            animate = animate,
             onHeightChanged = { composerHeightPx = it },
         )
 
@@ -216,6 +232,7 @@ fun ChatThread(
 @Composable
 private fun MessageRow(state: ChatState, message: ChatMessage) {
     val skin = LocalSkin.current
+    val scope = rememberCoroutineScope()
     val view: MessageView = message.toView()
     val isUser = message.role == ChatRole.User
 
@@ -261,19 +278,60 @@ private fun MessageRow(state: ChatState, message: ChatMessage) {
             }
         }
 
-        // One component, two chrome treatments: assistant = no bubble, user = bubble (D92).
-        // `body` carries the markdown renderer so bold / code / fences survive the trip.
-        skin.MessageBubble(
-            message = view,
-            role = message.role.toBubbleRole(),
-            maxWidth = 760.dp,
-            body = {
-                MarkdownText(
-                    source = message.bodyText,
-                    color = if (message.state == MessageState.Failed) skin.colors.error else skin.colors.onSurface,
+        if (state.editingId == message.id) {
+            // 编辑重发（v1.1）：内联编辑卡**替换**气泡本身 — 不是弹窗（任务书 #1）。
+            InlineEditCard(state)
+        } else {
+            // 编辑入口只挂在可编辑的行上（最后一条用户消息，见 canEditMessage）；
+            // hover 显示铅笔图标按钮。hoverable 包住整行，按钮出现不丢 hover。
+            val editable = isUser && state.canEditMessage(message.id)
+            val hoverInteraction = remember { MutableInteractionSource() }
+            val hovered by hoverInteraction.collectIsHoveredAsState()
+            // 旧版本灰化保留（turn/regenerate）：同一行、降透明度、不删除。
+            Row(
+                modifier = Modifier.then(if (editable) Modifier.hoverable(hoverInteraction) else Modifier),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (editable) {
+                    androidx.compose.animation.AnimatedVisibility(visible = hovered) {
+                        ChatVectorIconButton(
+                            vector = VadeIcons.Compose,
+                            contentDescription = "编辑这条消息并重发",
+                            onClick = { state.startEdit(message.id) },
+                            tint = skin.colors.onSurfaceVariant,
+                        )
+                    }
+                }
+                Box(Modifier.alpha(if (message.superseded) 0.55f else 1f)) {
+                    // One component, two chrome treatments: assistant = no bubble, user =
+                    // bubble (D92). `body` carries the markdown renderer so bold / code /
+                    // fences survive the trip.
+                    skin.MessageBubble(
+                        message = view,
+                        role = message.role.toBubbleRole(),
+                        maxWidth = 760.dp,
+                        body = {
+                            MarkdownText(
+                                source = message.bodyText,
+                                color = if (message.state == MessageState.Failed) skin.colors.error else skin.colors.onSurface,
+                            )
+                        },
+                    )
+                }
+            }
+        }
+
+        // 重新生成（v1.1）：只在最后一条助手消息、且已收尾、且空闲时出现（canRegenerate）。
+        if (message.role == ChatRole.Assistant && state.canRegenerate(message.id)) {
+            Row(Modifier.padding(top = 2.dp)) {
+                ChatVectorIconButton(
+                    vector = VadeIcons.Refresh,
+                    contentDescription = "重新生成这条回复",
+                    onClick = { scope.launch { state.regenerate(message.id) } },
+                    tint = skin.colors.onSurfaceVariant,
                 )
-            },
-        )
+            }
+        }
 
         if (message.isStreaming) {
             Row(Modifier.padding(top = 4.dp)) {
@@ -281,6 +339,96 @@ private fun MessageRow(state: ChatState, message: ChatMessage) {
             }
         }
     }
+}
+
+// --- inline edit card (v1.1 · message/edit_resubmit) ---------------------------
+
+/**
+ * 内联编辑卡 — replaces the user bubble while editing (NOT a dialog): `lg`(24) 圆角 +
+ * 发丝线 + float 阴影（§8.2 shadow2, `Modifier.layeredShadow`），多行 foundation 输入域
+ * （冻结的 `Skin.TextField` 是 singleLine，页面用与 composer 相同的 foundation 先例），
+ * ✓ 确认重发 / ✕ 取消，均为 44dp 图标按钮。确认 = ⌘/Ctrl+Enter，取消 = Esc。
+ */
+@Composable
+private fun InlineEditCard(state: ChatState) {
+    val skin = LocalSkin.current
+    val scope = rememberCoroutineScope()
+    val shape = RoundedCornerShape(skin.shapes.lg)
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(state.editingId) { focusRequester.requestFocus() }
+
+    Column(
+        modifier = Modifier
+            .widthIn(max = 560.dp)
+            .fillMaxWidth()
+            .layeredShadow(shadow = VadeShadows.float, shape = shape, dark = skin.colors.isDark)
+            .clip(shape)
+            .background(skin.colors.surface)
+            .border(1.dp, skin.colors.hairline, shape)
+            .onPreviewKeyEvent { event ->
+                when (handleEditKeys(event, state)) {
+                    EditKeyAction.Confirm -> {
+                        scope.launch { state.confirmEdit() }
+                        true
+                    }
+                    EditKeyAction.Cancel -> {
+                        state.cancelEdit()
+                        true
+                    }
+                    EditKeyAction.None -> false
+                }
+            }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        BasicTextField(
+            value = state.editDraft,
+            onValueChange = state::updateEditDraft,
+            enabled = true,
+            textStyle = skin.typography.body.copy(color = skin.colors.onSurface),
+            cursorBrush = SolidColor(skin.colors.primary),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 44.dp)
+                .focusRequester(focusRequester),
+        )
+        Spacer(Modifier.height(6.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            BasicText(
+                text = "⌘/Ctrl+Enter 重发 · Esc 取消",
+                style = skin.typography.caption.copy(color = skin.colors.onSurfaceVariant),
+                modifier = Modifier.weight(1f),
+            )
+            ChatVectorIconButton(
+                vector = VadeIcons.Check,
+                contentDescription = if (state.canConfirmEdit) "确认重发" else "内容为空，不能重发",
+                enabled = state.canConfirmEdit,
+                onClick = { scope.launch { state.confirmEdit() } },
+                tint = skin.colors.success,
+            )
+            ChatVectorIconButton(
+                vector = VadeIcons.Close,
+                contentDescription = "取消编辑",
+                onClick = { state.cancelEdit() },
+                tint = skin.colors.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** The inline editor's key policy, pure so the flow test drives the real handler. */
+internal enum class EditKeyAction { None, Confirm, Cancel }
+
+internal fun handleEditKeys(
+    event: androidx.compose.ui.input.key.KeyEvent,
+    state: ChatState,
+): EditKeyAction {
+    if (event.type != KeyEventType.KeyDown) return EditKeyAction.None
+    if (event.key == Key.Escape) return EditKeyAction.Cancel
+    val primary = event.isMetaPressed || event.isCtrlPressed
+    val enter = event.key == Key.Enter || event.key == Key.NumPadEnter
+    if (!primary || !enter) return EditKeyAction.None
+    // Consumed even on an empty draft — a stray newline must not land in the editor.
+    return EditKeyAction.Confirm
 }
 
 /**
@@ -537,14 +685,39 @@ private fun Modifier.glassFallback(skin: vade.ui.skin.Skin): Modifier {
  * The independent floating layer: queue strip + the skin's InputBar + the out-of-frame
  * SendOrb (both C-09 components — RFC-0011 removed the page-built composer).
  * Measures itself into [onHeightChanged] so the list can pad by 高度 + 24dp (§1).
+ *
+ * Owns the upload runner: every staged uploader chip gets exactly one job running
+ * `ChatState.runUpload`; the page (not the state) owns the scope, so 取消上传 = cancel the
+ * job + drop the chip. A retry flips the chip back to 上传中 and the snapshotFlow re-fires.
  */
 @Composable
 private fun BoxScope.ComposerOverlay(
     state: ChatState,
     gutter: Dp,
+    animate: Boolean,
     onHeightChanged: (Int) -> Unit,
 ) {
     val skin = LocalSkin.current
+    val uploadScope = rememberCoroutineScope()
+    val uploadJobs = remember { mutableMapOf<String, Job>() }
+
+    LaunchedEffect(state, animate) {
+        if (!animate) return@LaunchedEffect
+        snapshotFlow { state.staged.map { it.uploadId to it.attachment.state } }.collect { chips ->
+            chips.forEach { (id, chipState) ->
+                if (id != null && chipState == AttachmentState.Uploading && uploadJobs[id]?.isActive != true) {
+                    uploadJobs[id] = uploadScope.launch { state.runUpload(id) }
+                }
+            }
+            val liveIds = chips.mapNotNull { it.first }.toSet()
+            uploadJobs.keys.toList().forEach { id -> if (id !in liveIds) uploadJobs.remove(id) }
+        }
+    }
+
+    fun cancelUpload(uploadId: String) {
+        uploadJobs.remove(uploadId)?.cancel()
+        state.cancelUpload(uploadId)
+    }
 
     Column(
         modifier = Modifier
@@ -588,12 +761,13 @@ private fun BoxScope.ComposerOverlay(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // ＋ 附件：v2 §1 把「左侧附件图标」列在框内，但冻结的 InputBar 签名没有
-                // leading 槽位（RFC-0011 §7.1）—— 页面层暂把它放在框外左侧，图标按钮。
-                ChatIconButton(
-                    icon = ChatIcon.Plus,
+                // 回形针附件（v1.1）：本轮没有文件选择器（shell 层职责），点击把一个内置
+                // 样例文件送进可注入的 AttachmentUploader 通道——chip、进度、取消/重试全是
+                // 真流程；接真上传 = 换掉 uploader 实现 + 传真 PendingAttachment。
+                ChatVectorIconButton(
+                    vector = VadeIcons.Attach,
                     contentDescription = "添加附件",
-                    onClick = { state.attach() },
+                    onClick = { state.stageUpload(ChatFixtures.nextPending(state.staged.size)) },
                     tint = skin.colors.onSurfaceVariant,
                 )
                 Spacer(Modifier.width(6.dp))
@@ -609,7 +783,13 @@ private fun BoxScope.ComposerOverlay(
                     // 浮层阴影、多行封顶都在皮肤里；页面只传语义状态。已暂存附件走
                     // attachments 槽（面板内、文本域上方）。
                     val stagedSlot: (@Composable () -> Unit)? = if (state.staged.isNotEmpty()) {
-                        { StagedAttachments(state) }
+                        {
+                            StagedAttachments(
+                                state = state,
+                                onCancelUpload = { uploadId -> cancelUpload(uploadId) },
+                                onRetryUpload = { uploadId -> state.retryUpload(uploadId) },
+                            )
+                        }
                     } else {
                         null
                     }
@@ -638,10 +818,16 @@ private fun BoxScope.ComposerOverlay(
 
 /**
  * 已暂存附件行 —— 传给 `Skin.InputBar` 的 `attachments` 槽（面板内、文本域上方）：
- * 点击开预览 / ✕ 移除 / 失败 ↻ 重试；超出两个折叠成一行提示（单轮上限 RFC-0004 §6.1）。
+ * 点击开预览 / ✕ 移除·取消 / 失败 ↻ 重试；超出两个折叠成一行提示（单轮上限 RFC-0004 §6.1）。
+ * Uploader chips（uploadId != null）的 ✕ = 取消上传（job + chip 一起没），↻ = 原位重试；
+ * 遗留 fixture chips 走原来的 remove+re-attach 路径。
  */
 @Composable
-private fun StagedAttachments(state: ChatState) {
+private fun StagedAttachments(
+    state: ChatState,
+    onCancelUpload: (String) -> Unit,
+    onRetryUpload: (String) -> Unit,
+) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(start = 4.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -652,6 +838,7 @@ private fun StagedAttachments(state: ChatState) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             state.staged.take(2).forEach { staged ->
+                val uploadId = staged.uploadId
                 AttachmentRow(
                     like = AttachmentLike(
                         staged.attachment,
@@ -660,11 +847,23 @@ private fun StagedAttachments(state: ChatState) {
                     onOpen = {
                         (staged.part as? ContentPart.Image)?.let(state::openPreview)
                     },
-                    onRemove = { state.removeStaged(staged.attachment.fileId) },
-                    onRetry = if (staged.attachment.state == vade.ui.skin.AttachmentState.Failed) {
-                        { state.removeStaged(staged.attachment.fileId); state.attach(staged) }
+                    onRemove = if (uploadId != null) {
+                        { onCancelUpload(uploadId) }
                     } else {
-                        null
+                        { state.removeStaged(staged.attachment.fileId) }
+                    },
+                    onRetry = when {
+                        uploadId != null && staged.attachment.state == AttachmentState.Failed ->
+                            ({ onRetryUpload(uploadId) })
+
+                        uploadId == null && staged.attachment.state == AttachmentState.Failed -> {
+                            {
+                                state.removeStaged(staged.attachment.fileId)
+                                state.attach(staged)
+                            }
+                        }
+
+                        else -> null
                     },
                 )
             }

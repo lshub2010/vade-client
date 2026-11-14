@@ -235,6 +235,20 @@ object ChatFixtures {
 
     fun nextStaged(index: Int): StagedAttachment = stagedFixtures[index % stagedFixtures.size]
 
+    /**
+     * Canned picks for the composer's paperclip button — **no file picker exists in this
+     * slice** (the real picker is shell-level, outside this batch): a click stages one of
+     * these through the real injectable [AttachmentUploader] channel, progress and all.
+     * Swapping in a platform picker = pass a real `PendingAttachment` instead.
+     */
+    private val pendingFixtures = listOf(
+        PendingAttachment("IMG_0042.jpg", "image/jpeg", 1_834_211, width = 2048, height = 1536),
+        PendingAttachment("spec.pdf", "application/pdf", 902_144),
+        PendingAttachment("trace.txt", "text/plain", 14_336),
+    )
+
+    fun nextPending(index: Int): PendingAttachment = pendingFixtures[index % pendingFixtures.size]
+
     /** The image the fullscreen preview opens — same object the chip and the bubble use. */
     val previewImage: ContentPart.Image get() = screenshot
 }
