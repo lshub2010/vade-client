@@ -2,13 +2,17 @@ package vade.ui.destinations
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -105,5 +109,82 @@ fun EmptyStateCard(
                 action()
             }
         }
+    }
+}
+
+/**
+ * w-c-meta · 带元数据头的分组卡（最小侵入的入口挂点）：在 [GroupCard] 上加一行
+ * 「图标章 + 组名 + 数量 + 更多按钮」。**这里没有任何业务逻辑** —— 点击只把回调原样
+ * 抛给调用方（真实编辑流在 `vade/ui.meta.SessionMetaState` / `SessionMetaHost`）。
+ *
+ * [iconName] / [colorHex] 是服务端白名单值（`MetaIcons` 39 名 / `#RRGGBB`）；
+ * 传 null（未分组）时图标章退回 [VadeIcons.Empty] + muted 色。更多按钮是 44dp 触摸区的
+ * 纯矢量图标（§3.4）。
+ */
+@Composable
+fun GroupCardWithMeta(
+    name: String,
+    iconName: String?,
+    colorHex: String?,
+    sessionCount: Int,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    onMore: (() -> Unit)? = null,
+    content: @Composable () -> Unit,
+) {
+    val skin = LocalSkin.current
+    GroupCard(modifier = modifier) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(start = 12.dp, end = 6.dp, top = 8.dp, bottom = 4.dp)
+                .heightIn(min = 44.dp)
+                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // 图标章：组色 12/18% 底 + 组色图标；无效/缺省给 muted（颜色由 MetaColors.parse 兜底）。
+            val accent = colorHex?.let { vade.ui.meta.MetaColors.parse(it) } ?: skin.colors.onSurfaceVariant
+            Box(
+                Modifier
+                    .padding(start = 4.dp)
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(skin.shapes.sm))
+                    .background(accent.copy(alpha = if (skin.colors.isDark) 0.18f else 0.12f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                VadeIcon(
+                    vector = iconName?.let { vade.ui.icon.MetaIcons[it] } ?: VadeIcons.Empty,
+                    contentDescription = name,
+                    size = 20.dp,
+                    tint = accent,
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                UiText(
+                    text = name,
+                    size = 15,
+                    weight = FontWeight.SemiBold,
+                    color = skin.colors.onSurface,
+                )
+                UiText(
+                    text = "$sessionCount",
+                    size = 11,
+                    color = skin.colors.onSurfaceVariant,
+                )
+            }
+            if (onMore != null) {
+                Box(
+                    Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(skin.shapes.xs))
+                        .clickable(onClick = onMore),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    VadeIcon(VadeIcons.More, contentDescription = "分组选项", size = 18.dp, tint = skin.colors.onSurfaceVariant)
+                }
+            }
+        }
+        content()
     }
 }
