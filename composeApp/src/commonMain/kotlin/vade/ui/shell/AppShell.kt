@@ -123,9 +123,15 @@ private fun ShellBody(state: UiState) {
 
         // v2 bottom bar: compact single-pane only, never while a detail is pushed (D88).
         val showBar = !metrics.useRail && !detailOpen
+        // Bottom reserve ONLY for the docked (Fixed) bar: it covers the last rows, so the
+        // list must stop above it. The floating capsule deliberately reserves NOTHING —
+        // rows scroll *behind* it, which is the only way its glass has something to blur.
+        // (Reserving 88 dp here was what made the pill sample empty canvas and read as an
+        // opaque white board; w2-bottombar's RESULT warned about exactly this.)
+        val dockedBar = showBar && state.barStyle == BottomBarStyle.Fixed
         val contentInsets = PaddingValues(
             top = TOP_BAR_ZONE,
-            bottom = if (showBar) BOTTOM_BAR_ZONE else 0.dp,
+            bottom = if (dockedBar) BOTTOM_BAR_ZONE else 0.dp,
         )
 
         // --- backdrop: the ONLY haze source. Everything blurrable lives in here. ---

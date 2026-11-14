@@ -142,7 +142,14 @@ internal fun FloatingBottomBar(
     val pillShape: Shape = remember { CircleShape }
     val accentColor = skin.colors.primary
     val tabContentColor = skin.colors.onSurface
-    val containerColor = if (isBlurEnabled) skin.colors.surfaceGlass.copy(alpha = 0.4f) else skin.colors.surfaceGlass
+    // §5 tint budget: 26 % light / 34 % dark. Anything heavier washes the blurred
+    // backdrop into an opaque white board (the 0.4 × surfaceGlass(0.84) = 33.6 % form
+    // read as "糊一层" in the phone-light shot).
+    val containerColor = if (isBlurEnabled) {
+        if (dark) Color(0xFF0E0E10).copy(alpha = 0.34f) else Color.White.copy(alpha = 0.26f)
+    } else {
+        skin.colors.surfaceGlass
+    }
     val density = LocalDensity.current
     val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
     val animationScope = rememberCoroutineScope()
@@ -272,7 +279,7 @@ internal fun FloatingBottomBar(
                         Modifier.glassSurface(
                             backdrop = contentBackdrop,
                             shape = { pillShape },
-                            blurRadiusDp = 4f,
+                            blurRadiusDp = 24f,
                             vibrancy = true,
                             extraPaddingDp = 40f,
                             refraction = { LiquidRefraction(refractionHeight = 24.dp, refractionAmount = 24.dp) },
@@ -323,7 +330,7 @@ internal fun FloatingBottomBar(
                         .glassSurface(
                             backdrop = contentBackdrop,
                             shape = { pillShape },
-                            blurRadiusDp = 4f,
+                            blurRadiusDp = 24f,
                             vibrancy = true,
                             refraction = { LiquidRefraction(refractionHeight = 24.dp, refractionAmount = 24.dp) },
                             onDrawSurface = { drawRect(containerColor) },
@@ -385,11 +392,14 @@ internal fun FloatingBottomBar(
                             },
                             onDrawSurface = {
                                 val progress = dampedDragAnimation.pressProgress
+                                // Accent wash, not black: a 10 % black wash over blurred
+                                // content reads as a grey smear (the zoomed phone-light
+                                // shot). Selection is carried by the accent, per §8.
                                 drawRect(
-                                    color = if (!dark) Color.Black.copy(alpha = 0.1f) else Color.White.copy(alpha = 0.1f),
-                                    alpha = 1f - progress,
+                                    color = accentColor.copy(alpha = if (dark) 0.20f else 0.12f),
+                                    alpha = 1f - progress * 0.5f,
                                 )
-                                drawRect(Color.Black.copy(alpha = 0.03f * progress))
+                                drawRect(accentColor.copy(alpha = 0.04f * progress))
                             },
                         )
                         .innerShadow(shape = pillShape) {

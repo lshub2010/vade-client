@@ -109,6 +109,11 @@ if ($Chat -ne '') { $arguments += "--chat=$Chat" }
 # w2-icons: gallery page passthrough.
 if ($Gallery) { $arguments += '--gallery' }
 if ($GalleryLight) { $arguments += '--light' }
+# Stale java.exe from an earlier capture keeps its window alive and WindowsOf(pid) can
+# still match it when a fresh launch reuses the pid range -> the shot silently renders the
+# PREVIOUS build. Kill leftovers first; the whole capture is single-shot anyway.
+Get-Process java -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 600
 $p = Start-Process -FilePath $Java -ArgumentList $arguments -PassThru -WindowStyle Hidden
 Write-Output "launched pid=$($p.Id) bar=$Bar size=$Size dest=$Dest"
 
