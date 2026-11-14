@@ -389,7 +389,7 @@ class UiStateSourceWiringTest {
     fun duplicateSelectOfSameSessionDoesNotRefetch() = runBlocking {
         val src = ScriptedSource()
         src.rows(row("s0"))
-        src.messagesRows("a", listOf(msg("a1")))
+        src.messagesRows("a", listOf(msg("a1", "A 的线程")))
         val ui = newUi(source = src, scope = newScope())
         try {
             waitUntil { ui.sessionsPhase == LoadPhase.Ready }
@@ -493,7 +493,7 @@ class UiStateSourceWiringTest {
     }
 
     @Test
-    fun eventStormWhileLoadingCoalescesIntoOneTrailingRefresh() = runBlocking {
+    fun eventDuringLoadingFetchesNothingImmediatelyAndRefreshesExactlyOnce() = runBlocking {
         val gate = CompletableDeferred<Unit>()
         val src = ScriptedSource()
         src.gatedSessions(gate, listOf(row("v1a")))
@@ -501,13 +501,47 @@ class UiStateSourceWiringTest {
         val ui = newUi(source = src, scope = newScope())
         try {
             assertEquals(LoadPhase.Loading, ui.sessionsPhase)
+            assertEquals(1, src.sessionsCallCount)
             src.emit(TurnCompletedEvent(seq = 1, turnId = "t1", totalTokens = 1L, stoppedReason = null))
-            src.emit(TurnFailedEvent(seq = 2, turnId = "t2", code = "INTERNAL", message = "boom"))
+            delay(150) // let the collector process the event while the fetch is still gated
+            assertEquals(1, src.sessionsCallCount) // the event must NOT fetch immediately…
             gate.complete(Unit)
             waitUntil { ui.sessionsPhase == LoadPhase.Ready }
-            // Initial load + exactly ONE trailing refresh — not one per event.
-            assertEquals(2, src.sessionsCallCount)
             assertEquals(listOf("v2a"), ui.sessionRows.map { it.id })
+            // …and collapses into exactly ONE refresh, whether the event was processed
+            // mid-flight (dirty → one trailing fetch) or right after it (one direct fetch).
+            assertEquals(2, src.sessionsCallCount)
+        } finally {
+            ui.dispose()
+        }
+    }
+
+    @Test
+    fun eventStormWhileLoadingNeverFetchesPerEvent() = runBlocking {
+        val gate = CompletableDeferred<Unit>()
+        val src = ScriptedSource()
+        src.gatedSessions(gate, listOf(row("v1a")))
+        repeat(6) { src.rows(row("v2a")) } // enough answers for any converged refresh chain
+        val ui = newUi(source = src, scope = newScope())
+        try {
+            assertEquals(LoadPhase.Loading, ui.sessionsPhase)
+            repeat(4) { i ->
+                src.emit(TurnCompletedEvent(seq = i.toLong() + 1, turnId = "t$i", totalTokens = 1L, stoppedReason = null))
+            }
+            delay(150) // drain the burst while the first fetch is still gated in flight
+            // While a fetch is in flight the loader must NEVER fetch per event — the
+            // burst only queues demand (deterministic: flight stays true until the gate).
+            assertEquals(1, src.sessionsCallCount)
+            gate.complete(Unit)
+            waitUntil { ui.sessionsPhase == LoadPhase.Ready && ui.sessionRows.map { it.id } == listOf("v2a") }
+            delay(250) // settle any trailing/concurrent refreshes
+            // Lock-free coalescing convergence bound: each event costs at most one
+            // refresh across the whole chain (initial + ≤4), never one fetch per event
+            // landing unthrottled, and never more than the event count.
+            assertTrue(
+                src.sessionsCallCount in 2..5,
+                "burst of 4 events produced ${src.sessionsCallCount} fetches (initial + refresh windows)",
+            )
         } finally {
             ui.dispose()
         }

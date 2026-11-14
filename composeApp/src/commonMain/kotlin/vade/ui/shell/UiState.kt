@@ -95,6 +95,10 @@ class UiState(
 
     init {
         loader?.start()
+        // w-wire: a deep link (`--open=`, the screenshot loop) selects a session before
+        // any tap — on the async path that selection must also load its thread. The
+        // fixture path has no loader, so this is a no-op there (byte-identical).
+        if (initialSessionId != null) loader?.selectSession(initialSessionId)
     }
 
     /**

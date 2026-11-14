@@ -9,7 +9,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import vade.ui.chat.ChatMessage
 import kotlin.concurrent.Volatile
-import kotlin.concurrent.atomic.AtomicLong
 import vade.ui.data.SessionAttachedEvent
 import vade.ui.data.SessionSource
 import vade.ui.data.SessionSummary
@@ -123,7 +122,15 @@ class SessionsLoader(
     @Volatile
     private var disposed = false
 
-    private val messagesGen = AtomicLong()
+    /**
+     * Generation counter for stale-request invalidation. Bumped and captured in the
+     * same thread that issues the fetch (the UI thread / the sequential test thread),
+     * read back on the loader thread only for the drop check — a plain `@Volatile`
+     * Long is sufficient; there is no cross-thread `++` (wasm has no JVM AtomicLong,
+     * and adding one would be ceremony around a single-threaded mutation).
+     */
+    @Volatile
+    private var messagesGen = 0L
 
     @Volatile
     private var sessionsFlight = false
@@ -178,13 +185,13 @@ class SessionsLoader(
         launchJob {
             try {
                 val fetched = source.sessions()
-                if (disposed) return@launch
+                if (disposed) return@launchJob
                 rows = fetched
                 sessionsPhase = LoadPhase.Ready
             } catch (e: CancellationException) {
-                return@launch // disposed/cancelled — no state write, never a fake failure
+                return@launchJob // disposed/cancelled — no state write, never a fake failure
             } catch (t: Throwable) {
-                if (disposed) return@launch
+                if (disposed) return@launchJob
                 sessionsPhase = LoadPhase.Failed
                 sessionsError = loadErrorOf(t)
             } finally {
@@ -208,7 +215,7 @@ class SessionsLoader(
     fun selectSession(sessionId: String, isDraft: Boolean = false) {
         if (disposed) return
         if (isDraft) {
-            messagesGen.incrementAndGet() // invalidate anything still in flight
+            messagesGen += 1 // invalidate anything still in flight
             messagesSessionId = sessionId
             messages = emptyList()
             messagesPhase = LoadPhase.Ready
@@ -216,20 +223,21 @@ class SessionsLoader(
             return
         }
         if (sessionId == messagesSessionId && messagesPhase != LoadPhase.Failed) return
-        val gen = messagesGen.incrementAndGet()
+        messagesGen += 1
+        val gen = messagesGen
         messagesSessionId = sessionId
         messagesPhase = LoadPhase.Loading
         messagesError = null
         launchJob {
             try {
                 val fetched = source.messages(sessionId)
-                if (disposed || gen != messagesGen.get()) return@launch // stale: drop silently
+                if (disposed || gen != messagesGen) return@launchJob // stale: drop silently
                 messages = fetched
                 messagesPhase = LoadPhase.Ready
             } catch (e: CancellationException) {
-                return@launch
+                return@launchJob
             } catch (t: Throwable) {
-                if (disposed || gen != messagesGen.get()) return@launch
+                if (disposed || gen != messagesGen) return@launchJob
                 messagesPhase = LoadPhase.Failed
                 messagesError = loadErrorOf(t)
             }
