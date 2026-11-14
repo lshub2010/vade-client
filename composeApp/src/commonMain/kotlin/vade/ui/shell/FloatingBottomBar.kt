@@ -23,6 +23,7 @@ import androidx.compose.animation.core.EaseOut
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -296,6 +297,10 @@ internal fun FloatingBottomBar(
                         Modifier.background(containerColor, pillShape)
                     }
                 )
+                // §5: "玻璃与内容之间必须有 1px hairline". Without it a 26 % white glass
+                // over the white canvas reads as nothing at all — the pill only showed its
+                // shadow in the light-mode shots.
+                .border(1.dp, skin.colors.hairline, pillShape)
                 .then(dampedDragAnimation.modifier)
                 .height(64.dp)
                 .padding(4.dp),
