@@ -1,6 +1,7 @@
 package vade.ui.shell
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,14 +15,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
@@ -30,6 +35,8 @@ import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -43,9 +50,10 @@ import vade.ui.destinations.SessionsScreen
 import vade.ui.glass.GlassScope
 import vade.ui.glass.asGlassSource
 import vade.ui.glass.rememberGlassState
+import vade.ui.icon.ShellGlyphs
+import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
 import vade.ui.search.SearchHost
-import vade.ui.skin.BtnStyle
 import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.NavItem
@@ -317,10 +325,12 @@ private fun ShellBody(state: UiState) {
                             TopBarButton(VadeIcons.Compose, onClick = { state.newSession() }, contentDescription = "新建会话")
                         }
                         if (metrics.hasRightPanel) {
-                            // w2-icons 遗留：◂/▸ 仍是字符（VadeIcons 里暂无左向 chevron 的
-                            // 既有语义名，本棒不得往 VadeIcons 追加——三批合并的冲突源头）。
+                            // g-glyph-clear: 这处曾是 `glyph = if (open) "▸" else "◂"` —— 源码
+                            // 注释自己写着「w2-icons 遗留」：VadeIcons 里没有侧栏语义名，本棒
+                            // 又不许往那个文件追加。两态矢量因此落在 vade/ui/icon/ShellGlyphs.kt
+                            // （同包，Tabler 命名空间仍只在 icon/ 里）。
                             TopBarButton(
-                                glyph = if (state.panelOpen) "▸" else "◂",
+                                icon = panelToggleIcon(state.panelOpen),
                                 onClick = { state.togglePanel() },
                                 contentDescription = if (state.panelOpen) "收起右面板" else "展开右面板",
                             )
@@ -428,7 +438,25 @@ private fun RightPanel(onClose: () -> Unit) {
                 UiText("右面板", size = 13, weight = FontWeight.SemiBold)
                 UiText("模块页面宿主（U1-h · 等 C-19）", size = 10, color = skin.colors.onSurfaceVariant)
             }
-            skin.Button("×", onClick = onClose, style = BtnStyle.Text)
+            // g-glyph-clear: 原来是 `skin.Button("×", style = BtnStyle.Text)` —— 文本按钮里
+            // 塞一个乘号当图标。`Skin.Button` 只有 String 签名（C-09 冻结，本棒不能加
+            // ImageVector 重载），所以这里直接画矢量：44dp 触控目标 + 20dp 图标 + 读屏描述。
+            // 视觉上仍是同一个「关掉这一栏」的 X，只是不再是一个字。
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(skin.shapes.sm))
+                    .semantics { contentDescription = "关闭右面板" }
+                    .clickable(onClick = onClose),
+                contentAlignment = Alignment.Center,
+            ) {
+                VadeIcon(
+                    vector = VadeIcons.Close,
+                    contentDescription = null, // the button box above carries the description
+                    size = 20.dp,
+                    tint = skin.colors.onSurfaceVariant,
+                )
+            }
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(skin.colors.hairline))
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -440,7 +468,7 @@ private fun RightPanel(onClose: () -> Unit) {
             )
             Spacer(Modifier.height(4.dp))
             UiText(
-                text = "默认收起；本切片用顶栏 ◂ 按钮开合，⌘\\ 属 U1-g。开合不改变会话滚动位置。",
+                text = "默认收起；本切片用顶栏的侧栏按钮开合，⌘\\ 属 U1-g。开合不改变会话滚动位置。",
                 size = 10,
                 color = skin.colors.onSurfaceVariant,
             )
@@ -452,6 +480,19 @@ private fun RightPanel(onClose: () -> Unit) {
 private fun VerticalRule() {
     Box(Modifier.width(1.dp).fillMaxHeight().background(LocalSkin.current.colors.hairline))
 }
+
+/**
+ * Right-panel toggle icon — **one vector per state**, the two-state contract the `◂` / `▸`
+ * character pair used to carry:
+ *  - panel closed → [ShellGlyphs.PanelExpand]  (点它把面板拉出来)
+ *  - panel open   → [ShellGlyphs.PanelCollapse] (点它收回去)
+ *
+ * Extracted from the call site so a test can pin the pair without standing up a ≥1200 dp
+ * window: `ShellMetrics.hasRightPanel` is false below 1200 dp, which makes the button
+ * unreachable in the default 1024×768 desktop test window.
+ */
+internal fun panelToggleIcon(open: Boolean): ImageVector =
+    if (open) ShellGlyphs.PanelCollapse else ShellGlyphs.PanelExpand
 
 /** Bottom-bar rows: the four destinations, in contract order (FR-8.77). */
 private fun navItems(): List<BottomBarItem> = Destination.entries.map {
