@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="RealCoreUiE2ETest[desktop]" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-11-14T18:32:19.144Z" hostname="WIN-SOHFNBA79AT" time="9.976">
+  <properties/>
+  <testcase name="realCoreSessionTitlesRenderInAppAndFixturesStayAway[desktop]" classname="vade.ui.e2e.RealCoreUiE2ETest" time="9.976"/>
+  <system-out><![CDATA[E2E-UI-CORE-READY spawnMs=187 waitMs=6862 port=49381
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

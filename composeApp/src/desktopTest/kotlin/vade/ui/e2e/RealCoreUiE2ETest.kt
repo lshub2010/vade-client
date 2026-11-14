@@ -3,6 +3,8 @@ package vade.ui.e2e
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.runComposeUiTest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -19,6 +21,7 @@ import kotlin.test.Test
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import kotlin.test.fail
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * g-live · THE machine evidence for alpha A1/W4: a **real Python core** (uvicorn +
@@ -67,7 +70,11 @@ class RealCoreUiE2ETest {
         )
         handle = created
         created.start()
-        return created.awaitReady(timeoutMs = 30_000)
+        // 预算 = 死锁保险（180 s），不是性能断言：实测 12 路并发下 READY 中位 11.1–31.6 s、
+        // 最长 37.7 s（shots/g-e2e-budget/）。旧的 30 s 正压在满负载中位数上。
+        val ready = created.awaitReady(timeoutMs = CoreBootBudget.READY_TIMEOUT_MS)
+        println("E2E-UI-CORE-READY spawnMs=${created.spawnMillis} waitMs=${created.waitedMillis} port=${ready.port}")
+        return ready
     }
 
     /** RealSessionSource over the booted core, pair-code bootstrap, fast backoff. */
@@ -94,7 +101,7 @@ class RealCoreUiE2ETest {
             val source = realSource(ready)
             try {
                 source.connect()
-                withTimeout(20_000) {
+                withTimeout(CoreBootBudget.WAIT_TIMEOUT_MS) {
                     source.state.first { it is RealSessionState.Connected }
                 }
                 // The loader path (the same one the composition drives) first,
@@ -105,10 +112,29 @@ class RealCoreUiE2ETest {
                     "the core must serve the seeded sessions through the loader (got: ${uiRows.map { it.title }})",
                 )
 
-                runComposeUiTest {
+                runComposeUiTest(testTimeout = 240.seconds) {
                     setContent { App(source = source) }
-                    waitUntil(timeoutMillis = 45_000) {
-                        onAllNodesWithText(SEEDED_TITLES.first()).fetchSemanticsNodes().isNotEmpty()
+                    // 180 s = 死锁保险，不是「渲染预算」：真渲染通常 < 2 s，但在 12 路抢 CPU 时
+                    // Compose 首次组合 + 真 WS 首帧曾被 45 s 吃掉（ComposeTimeoutException）。
+                    // 条件驱动，节点一出现立刻返回。
+                    //
+                    // 外层 `timeout = 240s` 是 runComposeUiTest 自己的 runTest 看门狗（默认 60 s）：
+                    // 必须**大于**下面的 180 s，否则框架会先抛 UncompletedCoroutinesError，
+                    // 把一条带诊断的 ComposeTimeoutException 盖成「test body did not run to completion」。
+                    try {
+                        waitUntil(timeoutMillis = CoreBootBudget.WAIT_TIMEOUT_MS) {
+                            onAllNodesWithText(SEEDED_TITLES.first()).fetchSemanticsNodes().isNotEmpty()
+                        }
+                    } catch (t: Throwable) {
+                        // 取证：屏幕到底渲染了什么（语义树）+ 测试帧钟走过多少 —— 这两样能直接
+                        // 区分「组合根本没跑」「跑了但显示错误/空列表」「渲染对了但文案不对」。
+                        val dump = runCatching {
+                            onRoot(useUnmergedTree = true).printToString(maxDepth = 25)
+                        }.getOrElse { "semantics dump failed: ${it::class.simpleName}: ${it.message}" }
+                        throw AssertionError(
+                            composeFailureDiagnostics(source, t, mainClock.currentTime, dump),
+                            t,
+                        )
                     }
                     SEEDED_TITLES.forEach { title ->
                         onNodeWithText(title).assertExists()
@@ -135,6 +161,63 @@ class RealCoreUiE2ETest {
     }
 
     /**
+     * 组合 UI 超时的取证包：光有 `ComposeTimeoutException: Condition still not satisfied`
+     * 分不清是「App 没拿到数据」还是「拿到数据但没渲染」。
+     *
+     * 这里补三件事：
+     *  1. `source.state` —— 共享的真源当时连没连上；
+     *  2. 一个**独立探针** [uiStateProbe]：用同一个 source 新建一个 UiState（异步读路径），
+     *     15 s 内能不能到 Ready、拿到几行 —— 它 Ready 而 App 没渲染，就是 UI 层的事；
+     *  3. core 进程还活着没 + 完整命令行。
+     */
+    private fun composeFailureDiagnostics(
+        source: RealSessionSource,
+        cause: Throwable,
+        mainClockTimeMs: Long,
+        semanticsDump: String,
+    ): String = buildString {
+        append("composed App never rendered the seeded title '").append(SEEDED_TITLES.first()).append("': ")
+        append(cause::class.simpleName).append(": ").append(cause.message)
+        append("\n--- compose e2e diagnostics ----------------------------------------------")
+        append("\nmainClock    : ").append(mainClockTimeMs).append("ms advanced")
+        append("\nsource state : ").append(runCatching { source.state.value.toString() }.getOrElse { "unreadable: $it" })
+        append("\nloader probe : ").append(runCatching { uiStateProbe(source) }.getOrElse { "probe failed: $it" })
+        append("\ncore         : alive=").append(handle?.isAlive ?: false)
+            .append(" command=").append(handle?.commandLine ?: "n/a")
+        append("\nsemantics tree:")
+        semanticsDump.lines().forEach { append("\n  | ").append(it) }
+        append("\nhint         : if the probe reached Ready with rows, the data path works and this is a ")
+        append("Compose/rendering stall (read the semantics tree: empty list = rows never reached the ")
+        append("composition, error banner = the app's own loader failed); if the probe is also non-Ready, ")
+        append("the shared source never delivered — a real failure, not a timeout budget problem.")
+    }
+
+    /** 用同一个真源新建一个 UiState，最多等 15 s 到 Ready，返回可读结论（不抛异常）。 */
+    private fun uiStateProbe(source: RealSessionSource): String {
+        val probe = UiState(
+            initialBar = vade.ui.skin.BottomBarStyle.Fixed,
+            initialSkinId = "material",
+            initialDest = vade.ui.destinations.Destination.Sessions,
+            source = source,
+            loaderScope = kotlinx.coroutines.CoroutineScope(
+                kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default,
+            ),
+        )
+        return try {
+            val deadline = System.currentTimeMillis() + 15_000
+            while (probe.sessionsPhase != vade.ui.shell.LoadPhase.Ready &&
+                System.currentTimeMillis() < deadline
+            ) {
+                Thread.sleep(50)
+            }
+            "phase=${probe.sessionsPhase} rows=${probe.sessionRows.map { it.title }} " +
+                "error=${probe.sessionsError}"
+        } finally {
+            runCatching { probe.dispose() }
+        }
+    }
+
+    /**
      * Drive [UiState] directly (the shell's async read path) and wait until its
      * loader reports Ready — the non-UI half of the same evidence.
      */
@@ -149,10 +232,14 @@ class RealCoreUiE2ETest {
             ),
         ).let { state ->
             try {
-                val deadline = System.currentTimeMillis() + 20_000
+                val deadline = System.currentTimeMillis() + CoreBootBudget.WAIT_TIMEOUT_MS
                 while (state.sessionsPhase != vade.ui.shell.LoadPhase.Ready) {
                     if (System.currentTimeMillis() > deadline) {
-                        fail("UiState loader never reached Ready (phase=${state.sessionsPhase}, error=${state.sessionsError})")
+                        fail(
+                            "UiState loader never reached Ready within ${CoreBootBudget.WAIT_TIMEOUT_MS}ms " +
+                                "(phase=${state.sessionsPhase}, error=${state.sessionsError}, " +
+                                "core=${handle?.commandLine ?: "n/a"})",
+                        )
                     }
                     Thread.sleep(50)
                 }
