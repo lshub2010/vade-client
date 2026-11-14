@@ -161,13 +161,15 @@ VADE_SOURCE=real VADE_HOST=127.0.0.1 VADE_PORT=18755 VADE_PAIR_CODE=<配对码> 
 
 ## 7. 三门禁（原始数字）
 
+全量测试**跑了两次**：一次在改动完成后、一次在最终提交上（`3d7dd21`，工作树干净）。
+
 | 门禁 | 命令 | 结果 |
 |---|---|---|
-| 全量测试 | `/d/Hermes/tools/gradle-9.6.1/bin/gradle :composeApp:desktopTest --rerun` | **902 tests / 0 failures / 0 errors / 1 skipped**（`VadeClientSmokeTest`，环境变量门控，QUICKSTART 记载）。基线 874 + 本棒 28 = 902。`BUILD SUCCESSFUL in 1m 54s` |
+| 全量测试 | `/d/Hermes/tools/gradle-9.6.1/bin/gradle :composeApp:desktopTest --rerun` | **902 tests / 0 failures / 0 errors / 1 skipped**，两次一致（`BUILD SUCCESSFUL in 1m 54s` / 最终树 `2m 47s`）。唯一 skipped 是 `VadeClientSmokeTest`（环境变量门控，QUICKSTART 记载）。基线 874 + 本棒 28 = 902 |
 | Android | `... :composeApp:assembleDebug` | `BUILD SUCCESSFUL`；`composeApp/build/outputs/apk/debug/composeApp-debug.apk` **22,173,859 B** |
-| Wasm | `... :composeApp:compileKotlinWasmJs` | `BUILD SUCCESSFUL`（41 actionable tasks: 22 executed, 18 from cache, 1 up-to-date；两目标同批 2m 24s） |
+| Wasm | `... :composeApp:compileKotlinWasmJs` | `BUILD SUCCESSFUL`（首次 41 actionable tasks: 22 executed, 18 from cache, 1 up-to-date，连同 assembleDebug 共 2m 24s；最终树复跑 13s，2 executed / 39 up-to-date） |
 
-`RealCoreE2ETest`(6) / `RealCoreUiE2ETest`(1) 本轮**跑绿**（未超时）；本棒没有改任何断言、
+`RealCoreE2ETest`(6) / `RealCoreUiE2ETest`(1) 两轮都**跑绿**（未超时）；本棒没有改任何断言、
 没有 skip、没有调超时。
 
 ## 8. 提交
@@ -175,6 +177,7 @@ VADE_SOURCE=real VADE_HOST=127.0.0.1 VADE_PORT=18755 VADE_PAIR_CODE=<配对码> 
 | sha | 内容 |
 |---|---|
 | `63c4ac4` | 代码 + 测试 + 本文件初版（8 files, +1095/−9） |
+| `3d7dd21` | 本文件补记 sha（无代码改动）；三门禁在它上面复跑（§7） |
 
 ---
 
