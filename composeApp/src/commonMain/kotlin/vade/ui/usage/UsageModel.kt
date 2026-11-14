@@ -207,13 +207,22 @@ data class SessionUsageRows(
     /** Turns whose usage.source=none — surfaced, not hidden. */
     val partialTurns: TokenCell,
     val auxTotal: TokenCell,
+    /** `by_model`, already ordered by tokens descending (server's own order, re-pinned). */
     val models: List<ModelRow>,
     val day: TokenCell?,
+    /**
+     * The server's `total_tokens`, verbatim. The contract defines it as `chat + aux`
+     * (schema/rpc.json §session/usage.get notes: `total_tokens` = chat + aux); this cell is never recomputed client-side, so a contradictory
+     * server number stays visible instead of being silently "fixed".
+     */
+    val total: TokenCell,
+    /** `true` when the server's total equals chat+aux; `null` when it was absent. */
+    val totalMatches: Boolean?,
 ) {
     data class ModelRow(val name: TokenCell, val total: TokenCell, val turns: TokenCell)
 
     val hasData: Boolean
-        get() = listOf(chatPrompt, chatCompletion, chatTotal, turns, partialTurns, auxTotal)
+        get() = listOf(chatPrompt, chatCompletion, chatTotal, turns, partialTurns, auxTotal, total)
             .any { it is TokenCell.Value } || models.isNotEmpty() || day is TokenCell.Value
 }
 
@@ -229,6 +238,11 @@ data class BudgetRows(
     val state: TokenCell,
     /** enforce=block surfaced: true →「超出即阻断」, false →「仅警告不阻断」, null → 暂无数据. */
     val enforced: TokenCell,
+    /**
+     * `limit > 0` — a budget is actually configured. When false the server's `ratio` is
+     * `null` (state=off) and the caption MUST read「未启用」; 0% would be a lie.
+     */
+    val enabled: Boolean,
 ) {
     val hasData: Boolean get() = level != BudgetLevel.NONE || state is TokenCell.Value
 }
@@ -276,14 +290,19 @@ fun projectSessionUsage(result: SessionUsageGetResult?): SessionUsageRows? {
 
     val chat = chatRow(result.chat)
     val aux: AuxUsage? = result.aux
-    val models = result.byModel.map { m: ModelUsage ->
-        SessionUsageRows.ModelRow(
-            // model_id is `string|null` in the contract — an absent id is honest「未知模型」.
-            name = m.modelId?.let { TokenCell.Value(it) } ?: TokenCell.Value("未知模型"),
-            total = cell(m.totalTokens),
-            turns = cell(m.turns),
-        )
-    }
+    // `by_model` is ordered by tokens descending. The server already sorts it
+    // (`(-total_tokens, model_id)`); re-applying the same comparator here pins the
+    // order for any other producer and makes the "多行按 toks 降序" guarantee local.
+    val models = result.byModel
+        .sortedWith(compareByDescending<ModelUsage> { it.totalTokens }.thenBy { it.modelId ?: "" })
+        .map { m: ModelUsage ->
+            SessionUsageRows.ModelRow(
+                // model_id is `string|null` in the contract — an absent id is honest「未知模型」.
+                name = m.modelId?.let { TokenCell.Value(it) } ?: TokenCell.Value("未知模型"),
+                total = cell(m.totalTokens),
+                turns = cell(m.turns),
+            )
+        }
     val day: DayUsage? = result.day
     val dayCell: TokenCell? = day?.let {
         // limit=0 = no day budget configured — say so instead of printing "x / 0".
@@ -303,6 +322,11 @@ fun projectSessionUsage(result: SessionUsageGetResult?): SessionUsageRows? {
         auxTotal = aux?.totalTokens?.let { cell(it) } ?: TokenCell.NotReported,
         models = models,
         day = dayCell,
+        total = result.totalTokens?.let { cell(it) } ?: TokenCell.NotReported,
+        totalMatches = result.totalTokens?.let { total ->
+            // The invariant is the contract's, checked — never recomputed into the cell.
+            total == ((result.chat?.totalTokens ?: 0L) + (aux?.totalTokens ?: 0L))
+        },
     )
 }
 
@@ -329,7 +353,48 @@ fun projectBudget(budget: BudgetUsage?): BudgetRows? {
             true -> TokenCell.Value("超出即阻断（enforce=block）")
             false -> TokenCell.Value("仅警告，不阻断")
         },
+        // limit=0 ⇒ the server sends ratio=null + state=off (rpc.json notes): no budget is
+        // configured, so the caption says「未启用」and never a fabricated 0%.
+        enabled = budget.limit > 0L,
     )
+}
+
+// ----------------------------------------------------------------- budget text
+
+/**
+ * `budget.state` → a human label that keeps the raw value visible.
+ *
+ * The four contract values must all be distinguishable on the page (off / ok / warn /
+ * exceeded); a raw string we do not know is shown verbatim rather than guessed at.
+ */
+fun budgetStateText(raw: String?): String = when (raw?.trim()?.lowercase()) {
+    "off" -> "未启用（off）"
+    "ok" -> "正常（ok）"
+    "warn" -> "警告（warn）"
+    "exceeded" -> "已超限（exceeded）"
+    null, "" -> "暂无数据"
+    else -> raw.trim()
+}
+
+/** [BudgetRows.state] as text (NotReported →「暂无数据」, never an invented state). */
+fun budgetStateText(rows: BudgetRows): String = when (val s = rows.state) {
+    is TokenCell.Value -> budgetStateText(s.text)
+    TokenCell.NotReported -> "暂无数据"
+}
+
+/**
+ * The one caption line under the budget bar.
+ *
+ * `enabled=false` (limit=0, ratio=null) prints「未启用」and NO percentage at all — 0% is
+ * the classic lie of a missing budget. The enabled branch always carries used/limit,
+ * the percent cell and the contract state word.
+ */
+fun budgetCaption(rows: BudgetRows): String = if (!rows.enabled) {
+    "预算未启用：未设置上限（limit=0，服务端 ratio 为 null，不计算占用比例）" +
+        " · 已用 ${rows.used.display()} · 状态 ${budgetStateText(rows)}"
+} else {
+    "已用 ${rows.used.display()} / 上限 ${rows.limit.display()}（${rows.percent.display()}）" +
+        " · 状态 ${budgetStateText(rows)} · ${rows.enforced.display()}"
 }
 
 /** Project the whole panel from the three real DTO snapshots the shell will pass in. */

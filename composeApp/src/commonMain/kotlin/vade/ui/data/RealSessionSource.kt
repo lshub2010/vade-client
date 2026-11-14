@@ -74,7 +74,7 @@ import vade.ui.protocol.ContentPart as ProtocolContentPart
 class RealSessionSource(
     private val config: VadeClientConfig,
     transportFactory: VadeTransportFactory? = null,
-) : SessionSource {
+) : SessionSource, AdapterHost {
 
     /** Convenience production constructor: device-session attach at [host]:[port]. */
     constructor(
@@ -102,6 +102,21 @@ class RealSessionSource(
 
     /** The live protocol client; `null` while disconnected. Test/diagnostic access. */
     internal val client: VadeClient? get() = _client
+
+    /**
+     * Adapter bundle for the CURRENT connection — the ONE seam through which UI pages get
+     * the five real adapters without ever seeing [VadeClient]. `null` while disconnected
+     * (there is no client to bind), and a fake source never implements [AdapterHost] at
+     * all, so `(source as? AdapterHost)?.adapters` is null there too.
+     *
+     * Rebuilt together with the client instead of kept across reconnects: the protocol
+     * client is not restartable after `close()`, so adapters holding a dead client must be
+     * dropped — a stale bundle would fail every call with UNAVAILABLE.
+     */
+    override val adapters: AdapterProvider? get() = _adapters
+
+    @Volatile
+    private var _adapters: AdapterProvider? = null
 
     private var collectorJobs: List<Job> = emptyList()
     private var scope: CoroutineScope? = null
@@ -135,6 +150,9 @@ class RealSessionSource(
         if (_client == null) {
             val created = VadeClient(config, tapFactory)
             _client = created
+            // Same lifetime as the client: the adapters ARE the client, just behind the
+            // five narrow seams (see AdapterProvider).
+            _adapters = RealAdapters(created)
             val s = scope ?: CoroutineScope(SupervisorJob() + Dispatchers.Default).also { scope = it }
             // Both collectors must be SUBSCRIBED before connect() — client.events is a
             // hot SharedFlow without replay, and late subscribers miss early events
@@ -167,6 +185,8 @@ class RealSessionSource(
         collectorJobs = emptyList()
         _client?.close()
         _client = null
+        // The closed client cannot be revived, so its adapters go with it.
+        _adapters = null
         tapFactory.reset()
         _state.value = RealSessionState.Disconnected
     }
