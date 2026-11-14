@@ -39,6 +39,21 @@ data class SessionSummary(
     val model: String? = null,
     /** Drafts created with ✎ in this run — never persisted (U1-b owns submit). */
     val isDraft: Boolean = false,
+    /**
+     * `session/list` 行的 `archived_at: int|null` → 布尔投影（`archived_at != null`）。
+     *
+     * 契约没有 `archived` 布尔字段 —— 归档是「时间戳在不在」，不是「标志位真不真」；
+     * 从线上回包直接读 `row["archived"]` 是编字段。这里保留布尔是因为 UI 只需要
+     * 「要不要打归档标记 / 该不该出现在归档筛选里」，时间戳对列表无用。
+     *
+     * 默认 `false`：现有 40+ 处构造与 [SessionSummary.copy] 不传即「未归档」。
+     */
+    val archived: Boolean = false,
+    /**
+     * `session/list` 行的 `group_id: string|null` 逐字保留（契约 §1 #1：文件夹式单归属，
+     * 不是 `groups[]` 标签集）。`null` = 未分组。
+     */
+    val groupId: String? = null,
 )
 
 data class SessionGroup(val bucket: TimeBucket, val sessions: List<SessionSummary>)
@@ -63,7 +78,16 @@ object FakeSessions : SessionSource {
     private const val D = 1L
     private const val H = 60L
 
-    /** Six rows: two pinned + today(2) + yesterday(1) + last-7-days(1) = 3 buckets. */
+    /**
+     * Six rows: two pinned + today(2) + yesterday(1) + last-7-days(1) = 3 buckets.
+     *
+     * `archived` / `groupId` coverage is deliberate (g-summary-fields): TWO archived rows and
+     * THREE grouped rows, so the list has something to show for both dimensions — with one
+     * row in BOTH (s-agp: archived and in g-1) and rows in NEITHER, since a filter UI must
+     * prove it can tell "not archived" from "archived" and "ungrouped" from "grouped".
+     * Group ids reuse the fake groups in `vade.ui.meta.FakeMetaActions` (g-1 项目 / g-2 灵感)
+     * so a group-name lookup has a real target.
+     */
     val all: List<SessionSummary> = listOf(
         SessionSummary(
             id = "s-rfc0004",
@@ -73,6 +97,7 @@ object FakeSessions : SessionSource {
             updatedAt = 3 * D + 2 * H,
             updatedLabel = "3 天前",
             pinned = true,
+            groupId = "g-1",
         ),
         SessionSummary(
             id = "s-matrix",
@@ -83,6 +108,7 @@ object FakeSessions : SessionSource {
             updatedLabel = "5 天前",
             pinned = true,
             model = "claude-sonnet",
+            groupId = "g-2",
         ),
         SessionSummary(
             id = "s-u1a",
@@ -108,6 +134,7 @@ object FakeSessions : SessionSource {
             bucket = TimeBucket.Yesterday,
             updatedAt = 26 * H,
             updatedLabel = "昨天 19:12",
+            archived = true,
         ),
         SessionSummary(
             id = "s-agp",
@@ -117,6 +144,8 @@ object FakeSessions : SessionSource {
             updatedAt = 4 * D,
             updatedLabel = "4 天前",
             model = "local-qwen",
+            archived = true,
+            groupId = "g-1",
         ),
     )
 
