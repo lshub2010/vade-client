@@ -1,0 +1,24 @@
+# main (d825690) does not compile its own test sources — NOT caused by this branch.
+#
+# g-archive-ui (a3288b6) added the default parameter
+#   SessionSource.sessions(includeArchived: Boolean = false)
+# and g-error-retry (7433a6f / 34d1ee7) wrote a fake that overrides the old signature:
+#   composeApp/src/desktopTest/kotlin/vade/ui/shell/LoadErrorBannerTest.kt
+#
+# `gradle :composeApp:desktopTest` therefore dies in compileTestKotlinDesktop with
+#   Class 'LoadErrorBannerTest.RecordingSource' is not abstract and does not implement
+#   abstract member: suspend fun sessions(includeArchived: Boolean = ...): List<SessionSummary>
+#
+# This branch must not touch shell/**, so the one-line alignment is handed back instead.
+# Apply with:  git apply shots/g-composer-corner/evidence/main-build-break.patch
+--- a/composeApp/src/desktopTest/kotlin/vade/ui/shell/LoadErrorBannerTest.kt
++++ b/composeApp/src/desktopTest/kotlin/vade/ui/shell/LoadErrorBannerTest.kt
+@@ -125,7 +125,7 @@
+         var sessionsGate: CompletableDeferred<Unit>? = null
+         var messagesGate: CompletableDeferred<Unit>? = null
+
+-        override suspend fun sessions(): List<SessionSummary> {
++        override suspend fun sessions(includeArchived: Boolean): List<SessionSummary> {
+             sessionsCalls.incrementAndGet()
+             sessionsGate?.await()
+             sessionsFailure?.let { throw it }

@@ -129,12 +129,18 @@ object VadeShadows {
  * The layer order matters: `dropHalo` draws each falloff *over* what is already there,
  * so iterating the list in order puts the wide faint layer last, which is what produces
  * the smooth ramp rather than a hard edge.
+ *
+ * @param outsideOnly keep every layer strictly outside [shape] (see [dropHalo]): a
+ *   translucent consumer then keeps its own tint instead of compositing 5–7/255 of
+ *   shadow ink into its fill. The composer sets this — its `surfaceGlass` is 84 %
+ *   opaque, and the blended-in ink used to read as 「玻璃底发灰」.
  */
 fun Modifier.layeredShadow(
     shadow: LayeredShadow,
     shape: Shape,
     color: Color = Color.Black,
     dark: Boolean = false,
+    outsideOnly: Boolean = false,
 ): Modifier {
     val effective = if (dark) shadow.forDark() else shadow
     var chain: Modifier = this
@@ -145,6 +151,7 @@ fun Modifier.layeredShadow(
             color = color,
             offset = DpOffset(x = 0.dp, y = layer.offsetY),
             alpha = layer.alpha,
+            outsideOnly = outsideOnly,
         )
     }
     return chain
