@@ -6,6 +6,7 @@ import kotlinx.browser.document
 import kotlinx.browser.window
 import vade.ui.demo.MotionProbe
 import vade.ui.demo.MotionProbeConfig
+import vade.ui.motion.MotionBlurKernel
 
 /**
  * Wasm entry point. ComposeViewport creates its own canvas inside the given DOM node, so
@@ -15,7 +16,8 @@ import vade.ui.demo.MotionProbeConfig
  * app shell, mirroring the desktop flags (`--motion-probe --freeze-blur=10`). With no query
  * string the wasm build is the ordinary app, so the existing deployment target is unchanged.
  *
- * Query keys: `freeze=<dp>` (pins the radius), `blur=off`, `autoscroll`, `fps`.
+ * Query keys: `freeze=<dp>` (pins the radius), `blur=off`, `autoscroll`, `fps`,
+ * `kernel=gaussian` (pins the fallback kernel for the A/B; default is the shipped box kernel).
  */
 @OptIn(ExperimentalComposeUiApi::class)
 fun main() {
@@ -33,6 +35,9 @@ fun main() {
         MotionProbeConfig.blurEnabled = value("blur")?.equals("off", ignoreCase = true) != true
         MotionProbeConfig.autoScroll = params.contains("autoscroll")
         MotionProbeConfig.measureFps = params.contains("fps")
+        if (value("kernel")?.equals("gaussian", ignoreCase = true) == true) {
+            MotionProbeConfig.kernel = MotionBlurKernel.Gaussian
+        }
     }
 
     ComposeViewport(document.body!!) {

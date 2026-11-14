@@ -37,13 +37,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import vade.ui.motion.DEFAULT_MOTION_BLUR_KERNEL
 import vade.ui.motion.MOTION_BLUR_DECAY_MS
 import vade.ui.motion.MOTION_BLUR_FULL_VELOCITY_DP_PER_SEC
 import vade.ui.motion.MOTION_BLUR_MAX_RADIUS_DP
 import vade.ui.motion.MOTION_BLUR_SIGMA_X_PER_RADIUS
 import vade.ui.motion.MOTION_BLUR_SIGMA_Y_PER_RADIUS
 import vade.ui.motion.MOTION_BLUR_START_VELOCITY_DP_PER_SEC
+import vade.ui.motion.MotionBlurKernel
 import vade.ui.motion.blurForVelocity
+import vade.ui.motion.boxKernelTaps
 import vade.ui.motion.motionBlur
 import kotlin.math.abs
 import kotlin.math.pow
@@ -73,6 +76,12 @@ object MotionProbeConfig {
 
     /** `--fps`: run the 5 s frame-time measurement, print one result line, then stop scrolling. */
     var measureFps: Boolean = false
+
+    /**
+     * Kernel under test. Defaults to the shipped default; `--kernel=gaussian|box` pins it so the
+     * A/B in RESULT.md can be reproduced against the same build.
+     */
+    var kernel: MotionBlurKernel = DEFAULT_MOTION_BLUR_KERNEL
 }
 
 private const val ITEM_COUNT = 30
@@ -99,6 +108,7 @@ fun MotionProbe(
     blurEnabled: Boolean = MotionProbeConfig.blurEnabled,
     autoScroll: Boolean = MotionProbeConfig.autoScroll,
     measureFps: Boolean = MotionProbeConfig.measureFps,
+    kernel: MotionBlurKernel = MotionProbeConfig.kernel,
     onMeasurementDone: (String) -> Unit = {},
 ) {
     val listState = rememberLazyListState()
@@ -199,7 +209,8 @@ fun MotionProbe(
         val avgMs = sorted.average() / 1_000_000.0
         val p95 = sorted[(sorted.size * 95 / 100).coerceAtMost(sorted.size - 1)] / 1_000_000.0
         val maxMs = sorted.last() / 1_000_000.0
-        val line = "FPS_RESULT blur=${if (blurEnabled) "on" else "off"} frames=${sorted.size} " +
+        val line = "FPS_RESULT blur=${if (blurEnabled) "on" else "off"} kernel=${kernel.name.lowercase()} " +
+            "frames=${sorted.size} " +
             "avgMs=${fmt(avgMs, 2)} p95Ms=${fmt(p95, 2)} maxMs=${fmt(maxMs, 2)} " +
             "fps=${fmt(1000.0 / avgMs, 1)}"
         println(line)
@@ -212,7 +223,7 @@ fun MotionProbe(
                 state = listState,
                 modifier = Modifier
                     .fillMaxSize()
-                    .motionBlur(radiusDp),
+                    .motionBlur(radiusDp, kernel),
                 verticalArrangement = Arrangement.spacedBy(ITEM_SPACING),
                 contentPadding = PaddingValues(12.dp),
             ) {
@@ -225,6 +236,7 @@ fun MotionProbe(
             blurEnabled = blurEnabled,
             frozen = freezeBlurDp != null,
             tracking = tracking,
+            kernel = kernel,
         )
     }
 }
@@ -272,7 +284,9 @@ private fun Hud(
     blurEnabled: Boolean,
     frozen: Boolean,
     tracking: Boolean,
+    kernel: MotionBlurKernel,
 ) {
+    val density = LocalDensity.current
     Column(
         Modifier
             .width(214.dp)
@@ -324,22 +338,29 @@ private fun Hud(
         Spacer(Modifier.height(10.dp))
         // The same radius on a static pattern: a frozen screenshot then shows the blur both on
         // moving content and in isolation, so "is it actually blurring?" needs no scrolling.
-        // Directional blur is legible here as *vertical* smearing of the vertical strokes — the
-        // glyphs stretch down the page while their horizontal width stays crisp.
+        // A box kernel reads here as a *uniform* vertical streak with hard ends; the Gaussian
+        // fallback reads as a soft bell — that difference is what the A/B measures.
         Text("same radius, static", color = Color(0xFF6E7681), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
         Box(
             Modifier
                 .fillMaxWidth()
                 .height(46.dp)
-                .motionBlur(radiusDp)
+                .motionBlur(radiusDp, kernel)
                 .background(Color(0xFF262A31)),
             contentAlignment = Alignment.Center,
         ) {
             Text("REFERENCE", color = Color(0xFFF2F3F5), fontSize = 18.sp, fontFamily = FontFamily.Monospace)
         }
         Text(
-            "sigmaY = r×density×${fmt(MOTION_BLUR_SIGMA_Y_PER_RADIUS, 2)}\n" +
-                "sigmaX = r×density×${fmt(MOTION_BLUR_SIGMA_X_PER_RADIUS, 2)} (token)",
+            when (kernel) {
+                MotionBlurKernel.Box ->
+                    "kernel = box 1x${boxKernelTaps(radiusDp, density.density)}\n" +
+                        "N = 2*round(r*density)+1, w=1/N"
+                MotionBlurKernel.Gaussian ->
+                    "kernel = gaussian (fallback)\n" +
+                        "sigmaY = r*density*${fmt(MOTION_BLUR_SIGMA_Y_PER_RADIUS, 2)}\n" +
+                        "sigmaX = r*density*${fmt(MOTION_BLUR_SIGMA_X_PER_RADIUS, 2)} (token)"
+            },
             color = Color(0xFF4A505B),
             fontSize = 9.sp,
             fontFamily = FontFamily.Monospace,

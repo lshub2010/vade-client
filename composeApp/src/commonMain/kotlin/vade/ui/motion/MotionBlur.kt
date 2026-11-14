@@ -2,14 +2,16 @@ package vade.ui.motion
 
 import androidx.compose.ui.Modifier
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * docs/visual-language.md §11 — motion blur.
  *
  * The contract lives here in `commonMain`; only the *painting* is platform code, because the
  * doc's implementation path differs per target (Android 12+ `Modifier.blur`, desktop/wasm
- * Skiko `ImageFilter.makeBlur`). The velocity → radius mapping is deliberately shared: two
- * hand-copied formulas would drift, and §11 is part of the visual single-source-of-truth.
+ * Skiko `ImageFilter` — `makeMatrixConvolution` for the box kernel, `makeBlur` for the
+ * Gaussian fallback). The velocity → radius mapping is deliberately shared: two hand-copied
+ * formulas would drift, and §11 is part of the visual single-source-of-truth.
  */
 
 /** Below this speed nothing moves fast enough to smear (§11: 1200 dp/s). */
@@ -43,15 +45,76 @@ const val MOTION_BLUR_DECAY_MS: Int = 120
 const val MOTION_BLUR_SIGMA_X_PER_RADIUS: Float = 0.12f
 
 /**
- * Vertical Gaussian sigma per dp of radius — the *dominant* axis.
+ * Vertical Gaussian sigma per dp of radius — the *dominant* axis of the Gaussian fallback.
  *
  * `0.55 × radius` puts the 6 dp cap at sigmaY ≈ 3.3 px (density 1). Physically a motion-blurred
- * edge is a box of length `speed × exposure`; a Gaussian with sigma ≈ box/3.5 is the usual
- * visual stand-in, so this factor is a look, not a measurement (RESULT.md §已知限制). Chosen by
- * eye against `shots/motion/freeze-6.png`: 34 sp monospace glyphs collapse into a vertical
- * streak whose outlines stay readable — the old isotropic `sigmaX = sigmaY = 5 px` erased them.
+ * point is a rectangle of length `speed × exposure`; a Gaussian with sigma ≈ box/3.5 is the
+ * usual visual stand-in, so this factor is a look, not a measurement. Chosen by eye against
+ * `shots/motion/freeze-6.png`: 34 sp monospace glyphs collapse into a vertical streak whose
+ * outlines stay readable — the old isotropic `sigmaX = sigmaY = 5 px` erased them.
+ *
+ * **This is the fallback path.** [MotionBlurKernel.Box] reproduces the real kernel (a plateau,
+ * not a bell) and is the default; the Gaussian stays selectable so the A/B in RESULT.md can be
+ * re-run, and as the degradation path where a convolution kernel is unavailable.
  */
 const val MOTION_BLUR_SIGMA_Y_PER_RADIUS: Float = 0.55f
+
+/**
+ * Which kernel the platform should paint.
+ *
+ * - [Box] — the honest physics. Over one exposure the content sweeps continuously along the
+ *   motion vector, so every position in that span contributes for an equal share of the
+ *   exposure. Convolving with a rectangle of that length *is* the integral, and it is what a
+ *   real camera produces: a uniform streak with hard ends, not a soft bell.
+ * - [Gaussian] — the visual stand-in used before this probe measured the difference. A bell
+ *   profile makes a moving list look like a defocused photograph: the streak fades out at both
+ *   ends instead of stopping.
+ *
+ * Android cannot select: `Modifier.blur` takes one radius and no kernel, so it is always an
+ * isotropic Gaussian (see [motionBlur] and RESULT.md §已知限制).
+ */
+enum class MotionBlurKernel {
+    Box,
+    Gaussian,
+}
+
+/**
+ * Kernel the probe ships with. Decided by measurement, not by taste — RESULT.md §三/§五 record
+ * the streak profile and the frame times that chose it.
+ */
+val DEFAULT_MOTION_BLUR_KERNEL: MotionBlurKernel = MotionBlurKernel.Box
+
+/**
+ * Number of taps in the vertical box kernel, in **device pixels**.
+ *
+ * `N = 2 × max(1, round(radiusDp × density)) + 1`, always odd.
+ *
+ * The intent is "smear length = 2 × radius px, sampled at 1 tap per px", i.e.
+ * `round(2 × radiusPx) + 1` taps. Writing it as `2 × round(radiusPx) + 1` keeps the oddness
+ * *structural* instead of hoped-for: Skia's `makeMatrixConvolution` rejects an even kernel
+ * dimension, and the naive form produces an even N at every half-pixel radius (1.5 dp @ 1×
+ * → 4), so half the curve would need a special case. Both forms agree where it matters:
+ * 6 dp @ 1× → **13** taps, and `N − 1` = the smear span in px.
+ */
+fun boxKernelTaps(radiusDp: Float, density: Float): Int {
+    if (!radiusDp.isFinite() || !density.isFinite()) return 1
+    val radiusPx = radiusDp * density
+    if (radiusPx <= 0f) return 1
+    val half = radiusPx.roundToInt().coerceAtLeast(1)
+    return 2 * half + 1
+}
+
+/**
+ * Weights for the box kernel: `1 / N` each.
+ *
+ * They sum to exactly 1, so the caller passes `gain = 1` and the layer keeps its brightness —
+ * a kernel that summed to anything else would darken or blow out the list.
+ */
+fun boxKernelWeights(taps: Int): FloatArray {
+    require(taps >= 1) { "kernel needs at least one tap, got $taps" }
+    val weight = 1f / taps
+    return FloatArray(taps) { weight }
+}
 
 /**
  * The one and only velocity → radius curve.
@@ -94,9 +157,15 @@ expect fun blurForVelocity(velocityDpPerSec: Float): Float
  *  - Layout and hit-testing are untouched: this only changes painting.
  *  - The blur is applied to the node's own content, not to whatever is behind it (that is
  *    haze's job for glass surfaces, and §11 forbids stacking the two).
- *  - Desktop/wasm smear **only along Y** ([MOTION_BLUR_SIGMA_X_PER_RADIUS] vs
- *    [MOTION_BLUR_SIGMA_Y_PER_RADIUS]). Android's `Modifier.blur` takes one radius with no
- *    per-axis parameter, so that target stays isotropic — a documented platform gap, see
- *    RESULT.md §已知限制.
+ *  - Desktop/wasm smear **only along Y**: [MotionBlurKernel.Box] (default) convolves with a
+ *    1×N rectangle — the integral of the motion over the exposure, so the streak has a flat
+ *    top and hard ends. [MotionBlurKernel.Gaussian] is the retained fallback, asymmetric
+ *    ([MOTION_BLUR_SIGMA_X_PER_RADIUS] vs [MOTION_BLUR_SIGMA_Y_PER_RADIUS]).
+ *  - Android's `Modifier.blur` takes one radius, with no per-axis and no kernel parameter, so
+ *    that target is always an isotropic Gaussian regardless of [kernel] — a documented
+ *    platform gap, see RESULT.md §已知限制.
  */
-expect fun Modifier.motionBlur(radiusDp: Float): Modifier
+expect fun Modifier.motionBlur(
+    radiusDp: Float,
+    kernel: MotionBlurKernel = DEFAULT_MOTION_BLUR_KERNEL,
+): Modifier

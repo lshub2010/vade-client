@@ -13,16 +13,16 @@ import kotlin.math.round
  * Wasm (Skiko/CanvasKit) actual for §11 motion blur.
  *
  * Same technique as `MotionBlur.desktop.kt`, because wasm and desktop share the skiko backend:
- * `Modifier.drawWithContent` + `drawIntoCanvas { it.nativeCanvas }` + `saveLayer` with
- * `ImageFilter.makeBlur(sigmaX, sigmaY, FilterTileMode.CLAMP)` on the layer paint. The two
- * sigmas are asymmetric for the same reason as on desktop — the smear must be directional
- * (mostly Y), not isotropic defocus; see [MOTION_BLUR_SIGMA_X_PER_RADIUS] /
- * [MOTION_BLUR_SIGMA_Y_PER_RADIUS].
+ * `Modifier.drawWithContent` + `drawIntoCanvas { it.nativeCanvas }` + `saveLayer` with an
+ * `ImageFilter` on the layer paint. Both kernels are available here for the same reason as on
+ * desktop — [MotionBlurKernel.Box] via `ImageFilter.makeMatrixConvolution` (a 1×N rectangle, i.e.
+ * the integral of the motion over the exposure) and [MotionBlurKernel.Gaussian] via
+ * `makeBlur(sigmaX, sigmaY)` with the asymmetric pair, which is directional but bell-profiled.
  *
  * Kept as a separate file rather than hoisted into a shared source set on purpose: the two
  * targets stay independently compilable, so if CanvasKit ever diverges (e.g. `saveLayer` is
- * missing or `makeBlur` is a no-op there) only this file degrades and desktop keeps working.
- * RESULT.md records which of the two was actually photographed.
+ * missing or `makeMatrixConvolution` is a no-op there) only this file degrades and desktop keeps
+ * working. RESULT.md records which of the two was actually photographed.
  *
  * §11 requires wasm to be able to turn this OFF (`[ui].motion_blur`); the switch lives at the
  * call site (`MotionProbe`'s `blurEnabled`), not here — `radiusDp = 0` is the single off-path and
@@ -33,14 +33,19 @@ private const val SIGMA_STEP_PX = 0.25f
 
 actual fun blurForVelocity(velocityDpPerSec: Float): Float = velocityToBlurRadiusDp(velocityDpPerSec)
 
-actual fun Modifier.motionBlur(radiusDp: Float): Modifier {
+actual fun Modifier.motionBlur(radiusDp: Float, kernel: MotionBlurKernel): Modifier {
     if (radiusDp <= 0f) return this
     return this.drawWithContent {
-        val sigmaX = quantize(radiusDp * density * MOTION_BLUR_SIGMA_X_PER_RADIUS)
-        val sigmaY = quantize(radiusDp * density * MOTION_BLUR_SIGMA_Y_PER_RADIUS)
         drawIntoCanvas { composeCanvas ->
             val canvas = composeCanvas.nativeCanvas
-            canvas.saveLayer(null, SkiaBlurPaints.forSigmas(sigmaX, sigmaY))
+            val paint = when (kernel) {
+                MotionBlurKernel.Box -> SkiaMotionPaints.forBox(boxKernelTaps(radiusDp, density))
+                MotionBlurKernel.Gaussian -> SkiaMotionPaints.forGaussian(
+                    sigmaX = quantize(radiusDp * density * MOTION_BLUR_SIGMA_X_PER_RADIUS),
+                    sigmaY = quantize(radiusDp * density * MOTION_BLUR_SIGMA_Y_PER_RADIUS),
+                )
+            }
+            canvas.saveLayer(null, paint)
             drawContent()
             canvas.restore()
         }
@@ -51,27 +56,52 @@ actual fun Modifier.motionBlur(radiusDp: Float): Modifier {
 private fun quantize(sigma: Float): Float =
     (round(sigma / SIGMA_STEP_PX) * SIGMA_STEP_PX).coerceAtLeast(SIGMA_STEP_PX)
 
-private object SkiaBlurPaints {
+/** Same one-entry, kernel-aware cache as desktop — see that file for the reasoning. */
+private object SkiaMotionPaints {
     private var paint: Paint? = null
     private var filter: ImageFilter? = null
-    private var sigmaX: Float = Float.NaN
-    private var sigmaY: Float = Float.NaN
+    private var key: Any? = null
 
-    fun forSigmas(nextX: Float, nextY: Float): Paint {
-        paint?.let { if (nextX == sigmaX && nextY == sigmaY) return it }
+    fun forBox(taps: Int): Paint {
+        val wanted = BoxKey(taps)
+        paint?.let { if (key == wanted) return it }
+        return replace(wanted) {
+            ImageFilter.makeMatrixConvolution(
+                kernelW = 1,
+                kernelH = taps,
+                kernel = boxKernelWeights(taps),
+                gain = 1f,
+                bias = 0f,
+                offsetX = 0,
+                offsetY = taps / 2,
+                tileMode = FilterTileMode.CLAMP,
+                convolveAlpha = true,
+                input = null,
+                crop = null,
+            )
+        }
+    }
+
+    fun forGaussian(sigmaX: Float, sigmaY: Float): Paint {
+        val wanted = GaussianKey(sigmaX, sigmaY)
+        paint?.let { if (key == wanted) return it }
+        return replace(wanted) {
+            ImageFilter.makeBlur(sigmaX = sigmaX, sigmaY = sigmaY, mode = FilterTileMode.CLAMP)
+        }
+    }
+
+    private inline fun replace(newKey: Any, create: () -> ImageFilter): Paint {
         filter?.close()
         paint?.close()
-        val created = ImageFilter.makeBlur(
-            sigmaX = nextX,
-            sigmaY = nextY,
-            mode = FilterTileMode.CLAMP,
-        )
+        val created = create()
         filter = created
         return Paint().also {
             it.imageFilter = created
             paint = it
-            sigmaX = nextX
-            sigmaY = nextY
+            key = newKey
         }
     }
+
+    private data class BoxKey(val taps: Int)
+    private data class GaussianKey(val sigmaX: Float, val sigmaY: Float)
 }

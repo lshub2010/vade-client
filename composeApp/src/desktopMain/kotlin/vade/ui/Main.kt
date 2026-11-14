@@ -6,6 +6,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import vade.ui.demo.MotionProbe
 import vade.ui.demo.MotionProbeConfig
+import vade.ui.motion.MotionBlurKernel
 import vade.ui.destinations.Destination
 import vade.ui.skin.BottomBarStyle
 import kotlin.system.exitProcess
@@ -31,6 +32,9 @@ import kotlin.system.exitProcess
  *                                  and the baseline half of the frame-time comparison).
  *   --autoscroll                   with --motion-probe: drive the list with a sawtooth so the
  *                                  live velocity→radius loop can be photographed.
+ *   --kernel=box|gaussian          with --motion-probe: pin the blur kernel. Default is the
+ *                                  shipped one (box — see MotionBlur.kt); this flag exists so the
+ *                                  A/B in shots/motion/RESULT.md is reproducible from one build.
  *   --fps                          with --motion-probe: measure 5 s of frame times, print
  *                                  `FPS_RESULT …`, then exit. Exit code 0.
  *
@@ -80,11 +84,17 @@ private fun runMotionProbe(args: Array<String>) {
     MotionProbeConfig.blurEnabled = args.flag("--blur=")?.equals("off", ignoreCase = true) != true
     MotionProbeConfig.autoScroll = args.contains("--autoscroll")
     MotionProbeConfig.measureFps = args.contains("--fps")
+    // Anything other than an explicit "gaussian" stays on the shipped default, so a typo cannot
+    // silently change which kernel the screenshots prove.
+    if (args.flag("--kernel=")?.equals("gaussian", ignoreCase = true) == true) {
+        MotionProbeConfig.kernel = MotionBlurKernel.Gaussian
+    }
     val (width, height) = args.flag("--size=")?.let(::parseSize) ?: (900 to 760)
 
     println(
         "MOTION_PROBE freeze=${MotionProbeConfig.freezeBlurDp ?: "-"} " +
             "blur=${if (MotionProbeConfig.blurEnabled) "on" else "off"} " +
+            "kernel=${MotionProbeConfig.kernel.name.lowercase()} " +
             "autoscroll=${MotionProbeConfig.autoScroll} fps=${MotionProbeConfig.measureFps} " +
             "size=${width}x$height",
     )
