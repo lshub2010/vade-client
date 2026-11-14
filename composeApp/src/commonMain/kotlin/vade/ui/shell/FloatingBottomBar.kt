@@ -120,6 +120,38 @@ internal val FloatingHaloAlphaLight: Float = 0.03f
 internal val FloatingHaloAlphaDark: Float = 0.05f
 
 /**
+ * g-nav-fix ③: opacity of the capsule on the **no-blur** form (`BottomBarStyle.Floating`).
+ *
+ * With no blur behind it the pill is the only thing between the list and the eye, so its
+ * base colour is its *entire* opacity budget. `skin.colors.surfaceGlass` is 0.78–0.84 — i.e.
+ * 16–22 % of whatever scrolls under the bar is added on top of the label: the n08 shot had
+ * 「下载队列」 reading straight through 「会话」. Translucency buys nothing here (there is no
+ * blur to see), so the capsule is composited **opaque**: bleed = (1 − α) × 255 = 0, against
+ * 63/255 at α = 0.84.
+ *
+ * Scoped to this one branch **deliberately**. The shared glass tokens
+ * (`skin.glass.tintLight`/`tintDark`, `colors.surfaceGlass`) are the app's approved visual
+ * baseline — the top bar is the reference and must not move; the blurred pill keeps its
+ * 26 %/34 % tint untouched (see [blurPillContainer]).
+ */
+internal const val NoBlurPillContainerAlpha: Float = 1f
+
+/**
+ * No-blur capsule base: the skin's glass hue, composited to [NoBlurPillContainerAlpha].
+ * Pure function so the opacity is assertable without rendering.
+ */
+internal fun noBlurPillContainer(glass: Color): Color = glass.copy(alpha = NoBlurPillContainerAlpha)
+
+/**
+ * Blurred capsule tint: §5 budget, 26 % light / 34 % dark. Anything heavier washes the
+ * blurred backdrop into an opaque white board (the 0.4 × surfaceGlass(0.84) = 33.6 % form
+ * read as "糊一层" in the phone-light shot). Extracted verbatim from the composable so
+ * "the blur path did not move" is a test, not a promise.
+ */
+internal fun blurPillContainer(dark: Boolean): Color =
+    if (dark) Color(0xFF0E0E10).copy(alpha = 0.34f) else Color.White.copy(alpha = 0.26f)
+
+/**
  * KernelSU's floating liquid-glass pill, parameter-for-parameter:
  *
  *  - pill rows are 64 dp tall (56 dp content + 4 dp padding per side); the
@@ -153,13 +185,13 @@ internal fun FloatingBottomBar(
     val pillShape: Shape = remember { CircleShape }
     val accentColor = skin.colors.primary
     val tabContentColor = skin.colors.onSurface
-    // §5 tint budget: 26 % light / 34 % dark. Anything heavier washes the blurred
-    // backdrop into an opaque white board (the 0.4 × surfaceGlass(0.84) = 33.6 % form
-    // read as "糊一层" in the phone-light shot).
+    // Blurred: §5 tint budget (26 % light / 34 % dark) over the real backdrop. No-blur: the
+    // capsule has no blur to hide behind, so it is composited opaque — otherwise the list
+    // scrolls straight through the labels (g-nav-fix ③; see [noBlurPillContainer]).
     val containerColor = if (isBlurEnabled) {
-        if (dark) Color(0xFF0E0E10).copy(alpha = 0.34f) else Color.White.copy(alpha = 0.26f)
+        blurPillContainer(dark)
     } else {
-        skin.colors.surfaceGlass
+        noBlurPillContainer(skin.colors.surfaceGlass)
     }
     val density = LocalDensity.current
     val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr

@@ -44,6 +44,10 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -208,6 +212,20 @@ private fun RowScope.FixedBottomBarItem(
         modifier = Modifier
             .weight(1f)
             .fillMaxHeight()
+            // g-nav-fix ①: the *third* nav form was the one without two-state semantics.
+            // `NavRail` and `FloatingBottomBarItem` both publish `selected` + `Role.Tab`;
+            // this item only had `.clickable`, so on the default mobile form (`App(initialBar
+            // = BottomBarStyle.Fixed)`) "which tab am I on" existed as colour + font weight
+            // alone — inaudible to a screen reader and unassertable in a test (device dump:
+            // 0 nodes with `selected=true`, against 1 for rail and 1 for the pill).
+            //
+            // Same shape as the other two on purpose — one semantics model, three renderers.
+            // `selected` is written on BOTH states (false, never absent): "tab, not selected"
+            // and "no selection information at all" are different announcements.
+            .semantics(mergeDescendants = true) {
+                this.selected = selected
+                role = Role.Tab
+            }
             .clickable(onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
