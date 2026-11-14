@@ -1,0 +1,33 @@
+# g-flake-gen · hostile-scheduler probe output (throwaway probe, deleted from the tree)
+
+Probe: `GFProbeHostileOrderTest` — ran the exact `staleMessageRequestNeverOverwritesNewSession`
+scenario on a hand-pumped LIFO single-threaded dispatcher (a LEGAL schedule for a loaded
+`Dispatchers.Default` pool). Deleted before commit; only this output remains.
+
+Command:
+    gradle :composeApp:desktopTest --rerun --tests "vade.ui.shell.GFProbeHostileOrderTest" -i
+
+Output:
+    PROBE parked-calls=[b, a] (LIFO drain: b before a)
+    PROBE final-calls=[b, a]
+    PROBE messagesSessionId=b phase=Ready messages=[b1]
+    PROBE old-assertion: expected=<[a, b]> actual=<[b, a]> => RED
+    BUILD SUCCESSFUL in 2m 21s
+
+Reading: the call-recording order inverts to [b, a] (the old assertion
+`assertEquals(listOf("a","b"), src.messagesCalls)` goes red) while the applied thread is
+still b1 only and messagesSessionId is still "b" — i.e. the generation guard held; the red
+was pure scheduler order, not a product race.
+
+Second probe (`GFProbeSchedulerTest`, also deleted) established the harness fact used by the
+fix:
+
+    PROBE backgroundScope ran=false
+    PROBE foreground launch ran=true
+    PROBE own-scope ran=true
+    PROBE ui sessionsCalls=1 phase=Ready
+
+i.e. `TestScope.backgroundScope` is NOT driven by `testScheduler.advanceUntilIdle()` in this
+repo's kotlinx-coroutines-test 1.11.0, while a self-owned
+`CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))` is. That is why
+`newScope()` owns the scope instead of using `backgroundScope`.

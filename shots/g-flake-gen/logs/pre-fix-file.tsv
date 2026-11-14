@@ -1,0 +1,6 @@
+pre-fix-file run1 rc=0 49s tests=20 failures=0 errors=0 skipped=0
+pre-fix-file run2 rc=0 69s tests=20 failures=0 errors=0 skipped=0
+pre-fix-file run3 rc=0 14s tests=20 failures=0 errors=0 skipped=0
+pre-fix-file run4 rc=0 10s tests=20 failures=0 errors=0 skipped=0
+pre-fix-file run5 rc=0 20s tests=20 failures=0 errors=0 skipped=0
+pre-fix-file run6 rc=0 23s tests=20 failures=0 errors=0 skipped=0
