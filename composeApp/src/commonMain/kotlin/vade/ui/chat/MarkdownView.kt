@@ -96,8 +96,10 @@ fun MarkdownBlocks(
                 is MdBlock.Code -> Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        // 视觉规范 §5：代码块 surfaceSunken + sm(12dp) 圆角 + 顶部语言标签。
-                        .clip(RoundedCornerShape(skin.shapes.small))
+                        // v2 §6/§10：代码块凹陷底色 + xs(12dp) 圆角 + 顶部语言标签。
+                        // 皮肤冻结色板上没有独立 sunken token，surfaceVariant 即凹陷层；
+                        // 「surfaceSunken」命名留待下一次可加可选 token 的机会。
+                        .clip(RoundedCornerShape(skin.shapes.xs))
                         .background(skin.colors.surfaceVariant),
                 ) {
                     Row(

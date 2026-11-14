@@ -2,9 +2,13 @@ package vade.ui.chat
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import vade.ui.skin.Decision
 import vade.ui.skin.InputMode
+import vade.ui.chat.ApprovalOutcome
+import kotlin.time.TimeSource
 
 /**
  * U1-b · chat state — **derived, disposable, client-only** (D98).
@@ -69,8 +73,7 @@ class ChatState(
     val sendHint: String
         get() = when {
             isStreaming -> "正在生成 · 点 ■ 停止"
-            canSend -> "⌘Enter / Ctrl+Enter 发送 · 空文本不可发送"
-            else -> "空文本不可发送"
+            else -> "输入消息 · ⌘Enter / Ctrl+Enter 发送"
         }
 
     // --- composer -------------------------------------------------------------
@@ -284,6 +287,71 @@ class ChatState(
     fun cardState(call: ToolCall): vade.ui.skin.ToolCardState =
         toolCardState(call, openedByUser = opened.contains(call.id))
 
+    // --- inline approvals (v2 §4) ------------------------------------------------
+
+    /**
+     * The client-side projection of `turn.approval_resolved`. The card evolves **in place**
+     * (待批准 → 已允许 / 已拒绝 / 已超时) and **never adds a message row** — the [items]
+     * list is untouched by every method below, which is what the tests pin.
+     *
+     * No clock: the resolved card's 「时间戳」 is honest elapsed-since-screen-open (`T+Ns`,
+     * monotonic). A real socket swap replaces it with the event's own timestamp — a source
+     * change, not a view change (D98).
+     */
+    private val approvals = mutableStateMapOf<String, ApprovalOutcome>()
+    private val approvalDetailRows = mutableStateListOf<String>()
+    private val approvalDecidedAt = mutableMapOf<String, String>()
+    private val screenOpenMark = TimeSource.Monotonic.markNow()
+
+    /** Outcome of the inline approval card for [callId]; [ApprovalOutcome.Pending] until decided. */
+    fun approvalOutcome(callId: String): ApprovalOutcome =
+        approvals[callId] ?: ApprovalOutcome.Pending
+
+    /** The elapsed label rendered next to a resolved outcome; null while pending. */
+    fun approvalDecidedLabel(callId: String): String? = approvalDecidedAt[callId]
+
+    /** `⏷` detail expansion — tool name / batch / started-at rows under the args preview. */
+    fun approvalDetailOpen(callId: String): Boolean = callId in approvalDetailRows
+
+    fun toggleApprovalDetail(callId: String) {
+        if (callId in approvalDetailRows) approvalDetailRows.remove(callId) else approvalDetailRows += callId
+    }
+
+    /**
+     * ✓ 允许 / ✕ 拒绝. Succeeds only for a real `PendingApproval` tool row that is still
+     * undecided — deciding twice is a no-op (`turn.approval_resolved` arrives once).
+     */
+    fun decideApproval(callId: String, decision: Decision): Boolean {
+        val call = toolCallById(callId) ?: return false
+        if (call.state != ToolRunState.PendingApproval) return false
+        if (approvalOutcome(callId) != ApprovalOutcome.Pending) return false
+        approvals[callId] =
+            if (decision == Decision.Approve) ApprovalOutcome.Allowed else ApprovalOutcome.Denied
+        approvalDecidedAt[callId] = "T+${screenOpenMark.elapsedNow().inWholeSeconds}s"
+        return true
+    }
+
+    /** Timeout projection: the same card flips to 「已超时」 without a user decision. */
+    fun expireApproval(callId: String): Boolean {
+        val call = toolCallById(callId) ?: return false
+        if (call.state != ToolRunState.PendingApproval) return false
+        if (approvalOutcome(callId) != ApprovalOutcome.Pending) return false
+        approvals[callId] = ApprovalOutcome.TimedOut
+        approvalDecidedAt[callId] = "T+${screenOpenMark.elapsedNow().inWholeSeconds}s"
+        return true
+    }
+
+    /** True while any timeline approval card is still waiting (list badge / a11y hint). */
+    val hasPendingApproval: Boolean
+        get() = items.any {
+            it is ChatItem.Tool &&
+                it.call.state == ToolRunState.PendingApproval &&
+                approvalOutcome(it.call.id) == ApprovalOutcome.Pending
+        }
+
+    private fun toolCallById(callId: String): ToolCall? =
+        (items.firstOrNull { it is ChatItem.Tool && it.call.id == callId } as? ChatItem.Tool)?.call
+
     // --- preview --------------------------------------------------------------
 
     fun openPreview(image: ContentPart.Image) {
@@ -338,11 +406,14 @@ class ChatState(
             }
 
             ChatPreset.Composer -> {
-                draft = "第一行：把 132dp 的高度上限再核一遍。\n" +
+                // 多行输入的截图要的是「上膛」的发送球（accent + 辉光 + ↑）；流式中同一
+                // 球位是 ■ 停止键，所以先把夹具遗留的流式回合收尾（正常中断，不报错）。
+                if (isStreaming) stop()
+                updateDraft("第一行：把 132dp 的高度上限再核一遍。\n" +
                     "第二行：⌘Enter 与 Enter 的行为要分开写进注释。\n" +
                     "第三行：附件条最多显示 2 个，其余折叠成计数。\n" +
                     "第四行：停止后必须保留已生成文本。\n" +
-                    "第五行：队列 #1/#2/#3 的编号要随取消前移。"
+                    "第五行：队列 #1/#2/#3 的编号要随取消前移。")
                 attach()
                 attach()
                 // A still frame has no ticker (`animate = false`), so advance the two chips to a

@@ -4,6 +4,7 @@ import androidx.compose.ui.InternalComposeUiApi
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
+import vade.ui.chat.ApprovalOutcome
 import vade.ui.chat.ChatFixtures
 import vade.ui.chat.ChatItem
 import vade.ui.chat.ChatMessage
@@ -19,11 +20,13 @@ import vade.ui.chat.bodyText
 import vade.ui.chat.formatBytes
 import vade.ui.chat.formatDuration
 import vade.ui.chat.handleComposerKeys
+import vade.ui.chat.isApprovalCard
 import vade.ui.chat.textProjection
 import vade.ui.chat.toolCardCollapsible
 import vade.ui.chat.toolCardState
 import vade.ui.chat.toolMetaRows
 import vade.ui.chat.toAttachmentLike
+import vade.ui.skin.Decision
 import vade.ui.skin.InputMode
 import vade.ui.skin.ToolCardState
 import kotlin.test.Test
@@ -414,5 +417,81 @@ class ChatFlowTest {
         val up = KeyEvent(key = Key.Enter, type = KeyEventType.KeyUp, isCtrlPressed = true)
         assertFalse(handleComposerKeys(up, chat))
         assertFalse(handleComposerKeys(keyDown(Key.A), chat))
+    }
+
+    // --- inline approval (v2 §4) ------------------------------------------------
+
+    private fun pendingApproval(state: ChatState): ToolCall =
+        state.items.filterIsInstance<ChatItem.Tool>()
+            .first { it.call.state == ToolRunState.PendingApproval }.call
+
+    @Test
+    fun fixtureCarriesOnePendingApprovalRenderedInline() {
+        val chat = state()
+        val call = pendingApproval(chat)
+        assertEquals("tc-3", call.id)
+        assertTrue(isApprovalCard(call, chat.approvalOutcome(call.id)), "pending ⇒ card, not a tool card")
+        assertFalse(chat.approvalDetailOpen(call.id), "detail starts closed")
+    }
+
+    @Test
+    fun allowingEvolvesTheCardInPlaceWithoutNewRows() {
+        val chat = state()
+        val call = pendingApproval(chat)
+        val rowsBefore = chat.items.size
+        val messagesBefore = chat.messages.size
+
+        assertTrue(chat.decideApproval(call.id, Decision.Approve))
+        assertEquals(ApprovalOutcome.Allowed, chat.approvalOutcome(call.id))
+        assertEquals(rowsBefore, chat.items.size, "the decision adds no message / no row")
+        assertEquals(messagesBefore, chat.messages.size)
+        assertNotNull(chat.approvalDecidedLabel(call.id), "the resolved card carries a timestamp")
+        assertTrue(isApprovalCard(call, chat.approvalOutcome(call.id)), "resolved keeps the card form")
+
+        assertFalse(
+            chat.decideApproval(call.id, Decision.Deny),
+            "`turn.approval_resolved` arrives once — a second decision is a no-op",
+        )
+        assertEquals(ApprovalOutcome.Allowed, chat.approvalOutcome(call.id))
+    }
+
+    @Test
+    fun denyAndTimeoutAreDistinctTerminalStates() {
+        val denied = state()
+        val deniedCall = pendingApproval(denied)
+        assertTrue(denied.decideApproval(deniedCall.id, Decision.Deny))
+        assertEquals(ApprovalOutcome.Denied, denied.approvalOutcome(deniedCall.id))
+
+        val timedOut = state()
+        val timedOutCall = pendingApproval(timedOut)
+        assertTrue(timedOut.expireApproval(timedOutCall.id), "timeout resolves without a user decision")
+        assertEquals(ApprovalOutcome.TimedOut, timedOut.approvalOutcome(timedOutCall.id))
+        assertNotNull(timedOut.approvalDecidedLabel(timedOutCall.id))
+        assertEquals(timedOut.items.size, timedOut.messages.size + timedOut.items.count { it is ChatItem.Tool })
+    }
+
+    @Test
+    fun decisionsOnlyApplyToUndecidedPendingApprovals() {
+        val chat = state()
+        assertFalse(chat.decideApproval("tc-404", Decision.Approve), "unknown call id")
+        assertFalse(
+            chat.decideApproval("tc-1", Decision.Approve),
+            "tc-1 already succeeded — never an approval target",
+        )
+        val call = pendingApproval(chat)
+        assertTrue(chat.expireApproval(call.id))
+        assertFalse(chat.expireApproval(call.id), "already resolved")
+        assertFalse(chat.decideApproval(call.id, Decision.Approve), "already resolved")
+        assertFalse(chat.hasPendingApproval, "nothing is waiting any more")
+    }
+
+    @Test
+    fun approvalDetailTogglesOpenAndShut() {
+        val chat = state()
+        val call = pendingApproval(chat)
+        chat.toggleApprovalDetail(call.id)
+        assertTrue(chat.approvalDetailOpen(call.id))
+        chat.toggleApprovalDetail(call.id)
+        assertFalse(chat.approvalDetailOpen(call.id))
     }
 }

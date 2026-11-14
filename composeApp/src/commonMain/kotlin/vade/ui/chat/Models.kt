@@ -184,6 +184,32 @@ data class ToolCall(
     )
 }
 
+// --- inline approval card (v2 §4) ---------------------------------------------
+
+/**
+ * Lifecycle of the inline approval card (`visual-language.md` v2 §4).
+ *
+ * The card evolves **in place** — 待批准 → 已允许 / 已拒绝 / 已超时 — and never adds a
+ * message row to the thread. The outcome lives in [vade.ui.chat.ChatState] (client-side
+ * projection of `turn.approval_resolved`); [ToolCall.state] stays the RFC shape.
+ */
+enum class ApprovalOutcome { Pending, Allowed, Denied, TimedOut }
+
+val ApprovalOutcome.label: String
+    get() = when (this) {
+        ApprovalOutcome.Pending -> "待批准"
+        ApprovalOutcome.Allowed -> "已允许"
+        ApprovalOutcome.Denied -> "已拒绝"
+        ApprovalOutcome.TimedOut -> "已超时"
+    }
+
+/**
+ * A timeline tool row renders as an inline approval card (not a [ToolCallCard]) while the
+ * call is `PendingApproval`, and keeps the card form after it resolves (状态就地演进).
+ */
+fun isApprovalCard(call: ToolCall, outcome: ApprovalOutcome): Boolean =
+    call.state == ToolRunState.PendingApproval || outcome != ApprovalOutcome.Pending
+
 // --- timeline ----------------------------------------------------------------
 
 /** One row of the thread. Tool cards sit between messages, where the engine emitted them. */
