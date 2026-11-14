@@ -49,7 +49,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
@@ -538,12 +537,11 @@ private fun ApprovalCardRow(state: ChatState, call: ToolCall) {
             modifier = Modifier
                 .fillMaxWidth()
                 .height(IntrinsicSize.Min)
-                .shadow(
-                    elevation = 2.dp,
-                    shape = shape,
-                    ambientColor = skin.colors.shadowSoft,
-                    spotColor = skin.colors.shadowSoft,
-                )
+                // §8 row-4 static card: layered + directional `shadow0`, NOT
+                // `Modifier.shadow` (Material's single symmetric elevation silhouette —
+                // banned by §8.1「单层半透明色块」and §8.2「上方不得有阴影」; measured on
+                // the emulator it put 13/255 below and 3/255 ABOVE the card, a rim).
+                .layeredShadow(VadeShadows.card, shape, dark = skin.colors.isDark)
                 .clip(shape)
                 .background(skin.colors.surface)
                 .border(1.dp, skin.colors.hairline, shape),

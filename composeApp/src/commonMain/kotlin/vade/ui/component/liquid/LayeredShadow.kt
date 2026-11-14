@@ -59,11 +59,28 @@ data class LayeredShadow(val layers: List<ShadowLayer>) {
  */
 object VadeShadows {
 
-    /** §8.2 `shadow0` — a static card in the page flow (tool card, attachment card). */
+    /**
+     * §8.2 `shadow0` — a static card in the page flow (tool card, attachment card, approval card).
+     *
+     * g-cards-audit retune. The documented pair (`0 1 2 .05` + `0 2 4 .03`) was copied from
+     * CSS box-shadow, where "blur 2" already means σ≈1. Here σ = blur·0.5 and offsetY stays
+     * tiny, so every layer's gaussian was *narrower than its own offset*: the whole shadow
+     * collapsed into a 11–16 px rim that is 18/255 (7 %) darker than the canvas and steps
+     * 3–4 levels per pixel — measured on the emulator at capabilities/profile/模块页面, it
+     * reads as 「卡片有一圈暗边框」, exactly the user's 第二句「卡片的也不行」.
+     *
+     * Static cards are hairline-first (§8 prologue: 静态卡片靠 hairline 分隔) and 阴影是
+     * 「允许极浅」— so shadow0 is now a *wide, very faint, downward-only* pair:
+     * offsetY:blur = 1:2 still (§8.3), but σ (2dp / 5dp) is twice the offset, so the ink
+     * spreads over ~30 px instead of 15 px while the peak drops to Φ(1)·ink ≈ 6/255
+     * (2.4 %, inside the ≤8/255 budget) and the top edge gets Φ(-1)·ink ≈ 1.2/255
+     * (no visible shadow above the card). Nothing here is a slab: the two layers are
+     * different blurs at different alphas, offset straight down.
+     */
     val card: LayeredShadow = LayeredShadow(
         listOf(
-            ShadowLayer(offsetY = 1.dp, blur = 2.dp, alpha = 0.05f),
-            ShadowLayer(offsetY = 2.dp, blur = 4.dp, alpha = 0.03f),
+            ShadowLayer(offsetY = 2.dp, blur = 4.dp, alpha = 0.014f),
+            ShadowLayer(offsetY = 5.dp, blur = 10.dp, alpha = 0.010f),
         ),
     )
 
