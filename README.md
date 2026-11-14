@@ -77,6 +77,10 @@ done
 | Android / Wasm 运行时与截图 | **未验证**（只验了构建） |
 | 无障碍（字体缩放 / TalkBack） | **未验证**（U1-g） |
 
+## 前置：原生协议库
+
+`core` 的测试需要 `protocol/core/python/vade_protocol.dll`（约 32 MB，**不入库**，见 `.gitignore`）。缺失时 `pytest core/tests` 会有 22 条失败——那是环境问题，不是 UI 代码问题。重建方法见 `docs/dev-windows.md` 的 `build-protocol-dll.sh`。
+
 ## 两条防回退测试
 
 `desktopTest` 里有两个真跑的断言：
