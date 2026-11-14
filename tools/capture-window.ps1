@@ -30,6 +30,13 @@ param(
   # top-bar 搜索 button, so the capture is a real overlay, not a mock.
   [string]$Search = '',
   [switch]$SearchEmpty,
+  # U2: skin selection + showcase page. `-Skin miuix` selects the Miuix skin in the real app;
+  # `-Showcase` opens the skin's own chat page (message bubbles / tool cards / input bar), and
+  # `-Approval` adds the approval sheet on top of it. `-Dark` picks the dark token set.
+  [string]$Skin = '',
+  [switch]$Showcase,
+  [switch]$Approval,
+  [switch]$Dark,
   [int]$WaitSec = 45,
   [int]$SettleMs = 2600
 )
@@ -83,6 +90,11 @@ $arguments = @(
 )
 if ($SearchEmpty) { $arguments += '--search' }
 elseif ($PSBoundParameters.ContainsKey('Search') -and $Search -ne '') { $arguments += "--search=$Search" }
+# U2: pass the skin / showcase / approval / dark switches straight through to Main.kt.
+if ($PSBoundParameters.ContainsKey('Skin') -and $Skin -ne '') { $arguments += "--skin=$Skin" }
+if ($Showcase) { $arguments += '--showcase' }
+if ($Approval) { $arguments += '--approval' }
+if ($Dark) { $arguments += '--dark' }
 $p = Start-Process -FilePath $Java -ArgumentList $arguments -PassThru -WindowStyle Hidden
 Write-Output "launched pid=$($p.Id) bar=$Bar size=$Size dest=$Dest"
 

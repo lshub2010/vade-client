@@ -27,6 +27,15 @@ fun main(args: Array<String>) {
     val bar = args.flag("--bar=")?.let(::parseBar) ?: BottomBarStyle.Fixed
     val dest = args.flag("--dest=")?.let { Destination.fromId(it) } ?: Destination.Sessions
     val (width, height) = args.flag("--size=")?.let(::parseSize) ?: (466 to 893)
+    // U2: skin selection. `--skin=miuix` (or `VADE_SKIN=miuix`, so a shell can pin it without
+    // touching the app) selects the Miuix skin; `--dark` / `VADE_DARK=1` picks its dark tokens.
+    // The flag starts the real `App()` — not the showcase — so the shots are the product.
+    val skinId = args.flag("--skin=") ?: System.getenv("VADE_SKIN") ?: "material"
+    val dark = args.has("--dark") || System.getenv("VADE_DARK") == "1"
+    vade.ui.skin.miuix.MiuixSkinEntry.dark = dark
+    // Kept out of `App()` on purpose: U1-b has no chat page yet, so the message-bubble /
+    // tool-card / input-bar shots come from the skin's own page (see MiuixShowcase.kt).
+    val showcase = args.has("--showcase")
     val panelOpen = args.flag("--panel=")?.equals("open", ignoreCase = true) == true
     // U1-c: `--search=AGP` opens the overlay with a preset query; bare `--search` opens it
     // empty. Empty string is meaningful here, so this does not go through `flag()`.
@@ -40,15 +49,26 @@ fun main(args: Array<String>) {
             title = "Vade · UI 骨架",
             state = rememberWindowState(width = width.dp, height = height.dp),
         ) {
-            App(
-                initialBar = bar,
-                initialDest = dest,
-                initialPanelOpen = panelOpen,
-                initialSearchQuery = searchPreset,
-            )
+            if (showcase) {
+                vade.ui.skin.miuix.MiuixShowcasePage(
+                    skin = vade.ui.skin.miuix.MiuixSkin(dark),
+                    bar = bar,
+                    showApproval = args.has("--approval"),
+                )
+            } else {
+                App(
+                    initialBar = bar,
+                    initialSkinId = skinId,
+                    initialDest = dest,
+                    initialPanelOpen = panelOpen,
+                    initialSearchQuery = searchPreset,
+                )
+            }
         }
     }
 }
+
+private fun Array<String>.has(flag: String): Boolean = any { it == flag }
 
 private fun Array<String>.flag(prefix: String): String? =
     firstOrNull { it.startsWith(prefix) }?.removePrefix(prefix)?.trim()?.takeIf { it.isNotEmpty() }

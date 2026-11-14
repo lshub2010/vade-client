@@ -1,16 +1,16 @@
 package vade.ui.skin
 
 import vade.ui.skin.material.MaterialSkin
+import vade.ui.skin.miuix.MiuixSkinEntry
 
 /**
  * Built-in skin installation. Called once from [vade.ui.App] before the first
  * composition.
  *
- * `material` is a real implementation; `miuix` (U2) and `glass` (U3) are *placeholders*
- * that reuse material's tokens and show an "[… 未安装]" tag, exactly as the task book
- * §T2 requires — the appearance selector can list them as "待安装" instead of crashing,
- * and U2/U3 replace them by calling `SkinRegistry.register("miuix") { MiuixSkin() }`
- * from their own package without touching this file.
+ * `material` and `miuix` (U2) are real implementations; `glass` (U3) is still a *placeholder*
+ * that reuses material's tokens and shows an "[glass 未安装]" tag, exactly as the task book
+ * §T2 requires — the appearance selector can list it as "待安装" instead of crashing, and U3
+ * replaces it by calling `SkinRegistry.register("glass") { … }` from its own package.
  */
 object Skins {
     private var installed = false
@@ -19,7 +19,11 @@ object Skins {
         if (installed) return
         installed = true
         SkinRegistry.register("material") { MaterialSkin() }
-        SkinRegistry.registerPlaceholder("miuix", MaterialSkin("miuix", "[miuix 未安装]"))
+        // U2: the real miuix skin replaces the U1 placeholder. `SkinRegistry.get` prefers
+        // `impls` over `placeholders`, so registration is the whole seam — no caller (App,
+        // Android, Wasm, desktop) needs to know `miuix` exists, and U1's placeholder entry
+        // for `miuix` is gone rather than shadowed, so `placeholderIds()` stays truthful.
+        MiuixSkinEntry.register()
         SkinRegistry.registerPlaceholder("glass", MaterialSkin("glass", "[glass 未安装]"))
     }
 }
