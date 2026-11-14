@@ -183,9 +183,12 @@ class ModelRealWiringTest {
         assertNull(state.models)
         assertEquals(VadeErrorCodes.INTERNAL, state.loadFailure?.code)
         assertNotNull(state.loadFailure?.label)
-        // Not read-only ⇒ the empty state is the honest one (a real load failure is shown
-        // separately in `loadFailure`), never the read-only badge.
-        assertTrue(state.content() is ModelPickerContent.NoModels, "got ${state.content()}")
+        // Not read-only ⇒ never the read-only badge. g-activate tightened the other half: a
+        // FAILED pull is its own state (`LoadFailed`, with the classified error above it in the
+        // card), not 「无可用模型」 — that copy blames the core's provider configuration for what
+        // was our failed RPC. Pinned by `ModelStateSeamPathTest.failedPullIsAFailureStateNotNullAnEmptyList`.
+        assertTrue(state.content() is ModelPickerContent.LoadFailed, "got ${state.content()}")
+        assertFalse(state.content() is ModelPickerContent.ReadOnly, "a genuine failure is not the degrade")
     }
 
     // --- 5b · the override pull ---------------------------------------------------------

@@ -128,6 +128,8 @@ fun ModelPickerCard(
             Box(Modifier.fillMaxWidth().height(1.dp).background(skin.colors.hairline))
             when (val content = state.content()) {
                 is ModelPickerContent.ReadOnly -> PickerEmptyState(content.title, content.body)
+                is ModelPickerContent.Loading -> PickerEmptyState(content.title, content.body)
+                is ModelPickerContent.LoadFailed -> PickerEmptyState(content.title, content.body)
                 is ModelPickerContent.NoModels -> PickerEmptyState(content.title, content.body)
                 is ModelPickerContent.Rows -> PickerRows(state, content)
             }

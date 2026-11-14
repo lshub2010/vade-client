@@ -13,14 +13,20 @@
 //
 // ## Two wirings, one state
 // [forSession] / [forDefault] take a [ModelActions] seam object — synchronous, cannot fail,
-// used by the fixture and by every state test. [forRealSession] / [forRealDefault] build the
-// real adapter (`ModelActionsReal`) from a connected `VadeClient`, so a screen's wiring is one
-// line. The differences are deliberate and visible below:
+// used by the fixture and by every state test — and RECOGNIZE a real `ModelActionsReal`
+// handed in by an adapter bundle (`AdapterProvider.model/modelDefault`), taking the real path
+// for it instead of the seam path. [forRealSession] / [forRealDefault] build that adapter from
+// a connected `VadeClient`, so a screen's wiring is one line. All four go through one
+// [ModelState.Companion.wired] so there is exactly one place where "real" is decided.
+// The differences are deliberate and visible below:
 //  - the real path MIRRORS the adapter's pulled values into snapshot state (`models`,
 //    `readOnly`, `defaultModelId`) so the badge/list actually recompose after a pull — the
 //    adapter's plain vals are backed by StateFlows and would not trigger recomposition;
-//  - the real path can FAIL: writes are optimistic, ride [RealWiring.writeScope], and a
+//  - the real path can FAIL: writes are optimistic, ride [RealWiring.scope], and a
 //    failure rolls the selection back and lands in [writeFailure];
+//  - the real path starts with `models == null` that means 「还没问过」 — [loadAttempted]
+//    separates that from the seam's 「这个 seam 没有模型面」, so the picker never claims
+//    「无可用模型」 before the first `model/list` answer or after a failed one;
 //  - clearing a session override is a REAL write: since `p-nullkey` the DTO puts an explicit
 //    `"model_id": null` on the wire (key present, value null), which is what core's
 //    missing-key gate requires — an omitted key would be INVALID_ARGUMENT.
@@ -60,7 +66,13 @@ sealed interface ModelScope {
 class ModelState private constructor(
     private val actions: ModelActions,
     val scope: ModelScope,
-    /** Real wiring; `null` = the in-memory seam (synchronous writes that cannot fail). */
+    /**
+     * Real wiring; `null` = the in-memory seam (synchronous writes that cannot fail).
+     *
+     * Non-null is what turns on the *pull* half of this state as well: [refresh] is a no-op
+     * without it, so a state built over a real adapter must not leave this `null` — see
+     * [forSession]'s KDoc for the exact failure that produces.
+     */
     private val real: RealWiring?,
 ) {
     /** The selected model id for this scope; null = session follows the global default. */
@@ -76,6 +88,30 @@ class ModelState private constructor(
      * (degraded / not pulled yet) — the picker must NOT turn that into an empty list.
      */
     var models: List<ModelEntry>? by mutableStateOf(actions.models)
+        private set
+
+    /**
+     * Whether a pull has been **attempted** for this state.
+     *
+     * Starts `true` on the in-memory seam (there is nothing to pull — its vals already ARE
+     * the truth) and `false` on the real path, where `models` is `null` until the first
+     * `model/list` answer arrives. That difference is the whole point: 「无可用模型」 is a
+     * claim about the CORE, and before the first answer we cannot make it — the picker owes
+     * the reader 「正在加载」 instead. Without this, wiring the real adapter would flash a
+     * false 「无可用模型」 on every screen entry (the adapter starts at `models = null`).
+     */
+    var loadAttempted: Boolean by mutableStateOf(real == null)
+        private set
+
+    /**
+     * A pull is between "request sent" and "answer handled".
+     *
+     * Separate from [loadAttempted] because the picker must keep saying 「正在加载」 for the
+     * whole RPC window: `models` is still `null` there, and for those milliseconds the naive
+     * `models == null ⇒ 无可用模型` branch would put the false empty state on screen after a
+     * real `model/list` had already gone out.
+     */
+    var loadInFlight: Boolean by mutableStateOf(false)
         private set
 
     /** FR-8.46 degrade switch — true after a `-32601` / `unknown method` answer. */
@@ -99,13 +135,66 @@ class ModelState private constructor(
         private set
 
     companion object {
-        /** Wires the picker to an arbitrary seam object (fixture, preview, test double). */
-        fun forSession(actions: ModelActions, sessionId: String): ModelState =
-            ModelState(actions, ModelScope.Session(sessionId), real = null)
+        /**
+         * Wires the picker to a seam object (fixture, preview, test double) — or to the
+         * **real** adapter, which is recognized by type.
+         *
+         * ## Why the type test is not optional
+         * `ModelActionsReal` starts at `models = null` and only fills it from its suspend
+         * `refreshModels()`; on the seam path [refresh] is a deliberate no-op ("the seam
+         * already IS the truth"). Handing a real adapter to a state that stays on the seam
+         * path therefore breaks both halves of the picker:
+         *  - the list stays `null` forever ⇒ the card renders 「无可用模型」, a claim about the
+         *    core that nobody ever asked the core about (the pull never happened);
+         *  - writes go through the synchronous seam call, whose fire-and-forget adapter
+         *    launch swallows the failure into `ModelActionsReal.lastWriteError` — [writeFailure]
+         *    (and therefore the card's error line) never sees it, and the optimistic selection
+         *    is never reverted.
+         * Recognizing the adapter gives the real path its pull + optimistic write + revert,
+         * exactly like [forRealSession].
+         *
+         * Every OTHER [ModelActions] keeps the pre-existing behaviour byte for byte: no scope
+         * is created, no coroutine is launched, [refresh] stays a no-op and the seam write
+         * stays synchronous.
+         *
+         * @param scope carries the pull and the writes; only touched on the real path.
+         * @param autoRefresh `false` when the caller drives [refresh] itself (tests do).
+         */
+        fun forSession(
+            actions: ModelActions,
+            sessionId: String,
+            scope: CoroutineScope? = null,
+            autoRefresh: Boolean = true,
+        ): ModelState = wired(actions, ModelScope.Session(sessionId), scope, autoRefresh)
 
-        /** Wires the default-scope picker to an arbitrary seam object. */
-        fun forDefault(actions: ModelActions): ModelState =
-            ModelState(actions, ModelScope.Default, real = null)
+        /** Default-scope twin of [forSession]; same real-adapter recognition. */
+        fun forDefault(
+            actions: ModelActions,
+            scope: CoroutineScope? = null,
+            autoRefresh: Boolean = true,
+        ): ModelState = wired(actions, ModelScope.Default, scope, autoRefresh)
+
+        /**
+         * The one place that decides seam-vs-real for a handed-in [actions]: a
+         * `ModelActionsReal` gets the [RealWiring] (and, unless suppressed, its first pull),
+         * anything else gets `null` — i.e. exactly the pre-wiring state object.
+         */
+        private fun wired(
+            actions: ModelActions,
+            scope: ModelScope,
+            coroutineScope: CoroutineScope?,
+            autoRefresh: Boolean,
+        ): ModelState {
+            val wiring = (actions as? ModelActionsReal)?.let { adapter ->
+                RealWiring(
+                    adapter = adapter,
+                    scope = coroutineScope ?: CoroutineScope(SupervisorJob() + Dispatchers.Default),
+                )
+            }
+            val state = ModelState(actions, scope, wiring)
+            if (wiring != null && autoRefresh) wiring.scope.launch { state.refresh() }
+            return state
+        }
 
         /**
          * One-line wiring for a real session picker: builds `ModelActionsReal` over the shared
@@ -120,16 +209,12 @@ class ModelState private constructor(
             sessionId: String,
             scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
             autoRefresh: Boolean = true,
-        ): ModelState {
-            val adapter = ModelActionsReal(client, scope)
-            val state = ModelState(
-                actions = adapter,
-                scope = ModelScope.Session(sessionId),
-                real = RealWiring(adapter, scope),
-            )
-            if (autoRefresh) scope.launch { state.refresh() }
-            return state
-        }
+        ): ModelState = wired(
+            actions = ModelActionsReal(client, scope),
+            scope = ModelScope.Session(sessionId),
+            coroutineScope = scope,
+            autoRefresh = autoRefresh,
+        )
 
         /**
          * One-line wiring for the 设置页 default picker. Refreshes `model/list` (which also
@@ -140,16 +225,12 @@ class ModelState private constructor(
             client: VadeClient,
             scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
             autoRefresh: Boolean = true,
-        ): ModelState {
-            val adapter = ModelActionsReal(client, scope)
-            val state = ModelState(
-                actions = adapter,
-                scope = ModelScope.Default,
-                real = RealWiring(adapter, scope),
-            )
-            if (autoRefresh) scope.launch { state.refresh() }
-            return state
-        }
+        ): ModelState = wired(
+            actions = ModelActionsReal(client, scope),
+            scope = ModelScope.Default,
+            coroutineScope = scope,
+            autoRefresh = autoRefresh,
+        )
     }
 
     // --- degrade / refusal copy -------------------------------------------------------
@@ -200,52 +281,73 @@ class ModelState private constructor(
      */
     suspend fun refresh() {
         val wiring = real ?: return
+        // From here on the picker is 「正在加载」, not 「无可用模型」: the request is out and no
+        // answer has been handled yet (`models` is still null on a first pull).
+        loadAttempted = true
+        loadInFlight = true
         loadFailure = null
-        val sessionId = (scope as? ModelScope.Session)?.sessionId
         try {
-            wiring.adapter.refreshModels()
-        } catch (c: CancellationException) {
-            throw c
-        } catch (t: Throwable) {
-            loadFailure = modelLoadFailureOf(t)
-        }
-        models = wiring.adapter.models
-        readOnly = wiring.adapter.readOnly
-        defaultModelId = wiring.adapter.defaultModelId
-        // A degraded core has no model surface at all — do not chase session/model.get.
-        if (readOnly) return
-
-        if (sessionId != null) {
+            val sessionId = (scope as? ModelScope.Session)?.sessionId
             try {
-                wiring.adapter.refreshSessionOverride(sessionId)
-                // Only adopt the pulled override into an empty selection: a pick made while
-                // the pull was in flight must not be clobbered by a stale answer.
-                if (selectedId == null) selectedId = wiring.adapter.sessionOverride(sessionId)
+                wiring.adapter.refreshModels()
             } catch (c: CancellationException) {
                 throw c
             } catch (t: Throwable) {
-                if (loadFailure == null) loadFailure = modelLoadFailureOf(t)
+                loadFailure = modelLoadFailureOf(t)
             }
-        } else if (selectedId == null) {
-            selectedId = wiring.adapter.defaultModelId
+            models = wiring.adapter.models
+            readOnly = wiring.adapter.readOnly
+            defaultModelId = wiring.adapter.defaultModelId
+            // A degraded core has no model surface at all — do not chase session/model.get.
+            if (readOnly) return
+
+            if (sessionId != null) {
+                try {
+                    wiring.adapter.refreshSessionOverride(sessionId)
+                    // Only adopt the pulled override into an empty selection: a pick made while
+                    // the pull was in flight must not be clobbered by a stale answer.
+                    if (selectedId == null) selectedId = wiring.adapter.sessionOverride(sessionId)
+                } catch (c: CancellationException) {
+                    throw c
+                } catch (t: Throwable) {
+                    if (loadFailure == null) loadFailure = modelLoadFailureOf(t)
+                }
+            } else if (selectedId == null) {
+                selectedId = wiring.adapter.defaultModelId
+            }
+        } finally {
+            loadInFlight = false
         }
     }
 
     /** Every drawable row with its selection / clickability decision (server order kept). */
     fun rows(): List<ModelRow> = when (val content = content()) {
         is ModelPickerContent.Rows -> content.rows
-        // The read-only degrade and the empty state have no rows BY CONSTRUCTION — returning
-        // an empty row list here is not the same as claiming "no models configured".
+        // The read-only degrade, the in-flight pull, a failed pull and the empty state have
+        // no rows BY CONSTRUCTION — returning an empty row list here is not the same as
+        // claiming "no models configured".
         is ModelPickerContent.ReadOnly -> emptyList()
+        is ModelPickerContent.Loading -> emptyList()
+        is ModelPickerContent.LoadFailed -> emptyList()
         is ModelPickerContent.NoModels -> emptyList()
     }
 
-    /** Rows / read-only degrade / 「无可用模型」 — computed from the seam, never hard-coded. */
+    /**
+     * Rows / read-only degrade / first-pull-in-flight / failed pull / 「无可用模型」 —
+     * computed from the seam, never hard-coded.
+     *
+     * The two middle states are what keep a *real* adapter honest before its first answer:
+     * `models == null` there means "not asked yet" or "the ask failed", never "the core has
+     * none" (that is [ModelPickerContent.NoModels], which the seam path still reaches
+     * exactly as before because [loadAttempted] starts `true` there).
+     */
     fun content(): ModelPickerContent = modelPickerContent(
         models = models,
         readOnly = readOnly,
         selectedId = selectedId,
         writesEnabled = writesEnabled,
+        loadFailure = loadFailure,
+        awaitingFirstPull = models == null && (loadInFlight || !loadAttempted),
     )
 
     // --- writes -----------------------------------------------------------------------
@@ -254,7 +356,7 @@ class ModelState private constructor(
      * Select [modelId]. Returns true only when a request actually went out; false is a
      * no-op: same id (no duplicate request), unknown id, offline entry, or read-only core.
      *
-     * Real wiring: the selection flips immediately and the write rides [RealWiring.writeScope];
+     * Real wiring: the selection flips immediately and the write rides [RealWiring.scope];
      * a failure reverts it and lands in [writeFailure] (that is the fire-and-forget path).
      */
     fun select(modelId: String): Boolean {
@@ -267,7 +369,7 @@ class ModelState private constructor(
         if (scope is ModelScope.Default) return selectDefaultReal(option, rethrow = false)
 
         val previous = optimistic(option)
-        wiring.writeScope.launch {
+        wiring.scope.launch {
             try {
                 writeSessionReal(wiring, (scope as ModelScope.Session).sessionId, option.id, previous)
             } catch (c: CancellationException) {
@@ -318,7 +420,7 @@ class ModelState private constructor(
         }
         selectedId = null
         lastNotice = CLEAR_NOTICE
-        wiring.writeScope.launch {
+        wiring.scope.launch {
             try {
                 writeSessionReal(wiring, s.sessionId, modelId = null, previous = previous)
             } catch (c: CancellationException) {
@@ -455,5 +557,5 @@ private const val CLEAR_NOTICE = "已清除会话覆盖，跟随全局默认"
  */
 private class RealWiring(
     val adapter: ModelActionsReal,
-    val writeScope: CoroutineScope,
+    val scope: CoroutineScope,
 )

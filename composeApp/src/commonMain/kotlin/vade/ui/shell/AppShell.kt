@@ -34,6 +34,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import vade.ui.UiText
+import vade.ui.data.AdapterHost
+import vade.ui.data.AdapterProvider
 import vade.ui.destinations.ActivityScreen
 import vade.ui.destinations.CapabilitiesScreen
 import vade.ui.destinations.Destination
@@ -203,6 +205,18 @@ internal fun contentBottomInset(
 /** The shell's own dock padding under the floating pill (`barInsets` in [ShellBody]). */
 internal val BOTTOM_BAR_DOCK_PAD = 12.dp
 
+/**
+ * The adapter bundle this shell hands to every screen — `null` whenever the state's source
+ * cannot host one (the fixtures do not implement [AdapterHost], and a connected source clears
+ * its bundle on disconnect), which is exactly the pre-wiring state: screens fall back to their
+ * in-memory seams and every one of their `adapters` defaults stays `null`.
+ *
+ * One place, two callers ([ShellBody] for the pushed detail, [DestinationHost] for the rest):
+ * a per-call `(state.source as? AdapterHost)?.adapters` would drift the moment one of the five
+ * call sites is edited.
+ */
+internal fun adaptersOf(state: UiState): AdapterProvider? = (state.source as? AdapterHost)?.adapters
+
 @Composable
 private fun ShellBody(state: UiState) {
     val skin = LocalSkin.current
@@ -215,6 +229,8 @@ private fun ShellBody(state: UiState) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val metrics = metricsFor(maxWidth)
         val session = state.selectedSession
+        // 接线（g-activate）：真数据源的适配器包从这里往下传；假源不实现 AdapterHost ⇒ null。
+        val adapters = adaptersOf(state)
         val detailOpen = state.dest == Destination.Sessions && session != null && !metrics.twoPane
 
         // v2 bottom bar: compact single-pane only, never while a detail is pushed (D88).
@@ -272,6 +288,7 @@ private fun ShellBody(state: UiState) {
                         preset = state.chatPreset,
                         animate = state.chatPreset == vade.ui.chat.ChatPreset.Live,
                         showTitle = false,
+                        adapters = adapters,
                         contentPadding = PaddingValues(top = TOP_BAR_ZONE),
                     )
                 } else {
@@ -361,6 +378,8 @@ private fun DestinationHost(
     state: UiState,
     contentInsets: PaddingValues,
 ) {
+    // 接线（g-activate）：与 [ShellBody] 同一处推导，四处屏幕共用这一个值。
+    val adapters = adaptersOf(state)
     when (state.dest) {
         Destination.Sessions -> {
             if (metrics.twoPane) {
@@ -381,6 +400,7 @@ private fun DestinationHost(
                         preset = state.chatPreset,
                         animate = state.chatPreset == vade.ui.chat.ChatPreset.Live,
                         modifier = Modifier.weight(1f),
+                        adapters = adapters,
                         contentPadding = PaddingValues(top = TOP_BAR_ZONE),
                     )
                 }
@@ -391,6 +411,7 @@ private fun DestinationHost(
                     animate = state.chatPreset == vade.ui.chat.ChatPreset.Live,
                     // The pushed-detail top bar above already carries this title.
                     showTitle = false,
+                    adapters = adapters,
                 )
             } else {
                 SessionsScreen(
@@ -404,7 +425,10 @@ private fun DestinationHost(
         }
 
         Destination.Activity -> ActivityScreen(contentPadding = contentInsets)
-        Destination.Capabilities -> CapabilitiesScreen(contentPadding = contentInsets)
+        Destination.Capabilities -> CapabilitiesScreen(
+            contentPadding = contentInsets,
+            adapters = adapters,
+        )
         Destination.Me -> ProfileScreen(
             skinId = state.skinId,
             barStyle = state.barStyle,
@@ -412,6 +436,7 @@ private fun DestinationHost(
             onSkinChange = state::setSkin,
             onBarChange = state::setBar,
             contentPadding = contentInsets,
+            adapters = adapters,
         )
     }
 }
