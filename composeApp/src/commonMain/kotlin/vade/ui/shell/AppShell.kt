@@ -31,6 +31,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import vade.ui.UiText
 import vade.ui.destinations.ActivityScreen
@@ -72,7 +73,7 @@ import vade.ui.component.liquid.rememberGlassBackdrop
  *    That is why the bars are aligned over the content from *outside* the source Row
  *    instead of living inside the content Column.
  *  - The floating bars are edge-to-edge glass: scrollable screens take [TOP_BAR_ZONE] /
- *    [BOTTOM_BAR_ZONE] as *content* insets (not container padding), so rows really scroll
+ *    [bottomBarZone] as *content* insets (not container padding), so rows really scroll
  *    behind the glass — without that there is nothing behind the bar to blur.
  *  - `⌘K` / `Ctrl+K` opens the search palette; `↑ ↓ Enter Esc` drive it. The right panel
  *    toggle is a button so the shell is usable (and screenshottable) without U1-g.
@@ -118,8 +119,40 @@ internal val TOP_BAR_ZONE = 72.dp
 /** Window top → glass capsule gap. The status-bar inset above it is consumed at the root. */
 internal val TopBarTopGap = 8.dp
 
-/** Bottom-bar zone: 64dp glass bar + 12dp bottom inset + 12dp gap (floating form). */
-internal val BOTTOM_BAR_ZONE = 88.dp
+/**
+ * Bottom-bar zone: the floating pill's **real footprint**, so it must be derived from the
+ * inset — a constant cannot be right on both a gesture pill and a 3-button bar.
+ *
+ * Terms (all from `BottomBar.kt`, the bar's own geometry):
+ *  - [FloatingBarPillHeight] 64 dp — the pill row, padding included;
+ *  - `floatingBarBottomMargin(inset)` — `8 dp + inset`, or KernelSU's 28 dp when the
+ *    inset is 0 (desktop/wasm and Android devices without a nav bar);
+ *  - [BOTTOM_BAR_DOCK_PAD] 12 dp — the shell's own dock padding under the pill
+ *    ([ShellBody]'s `barInsets`).
+ *
+ * That is 104 / 108 / 132 dp at inset 0 / 24 (gesture) / 48 (3-button). The previous
+ * constant 88 dp was 64 + 12 + 12: it assumed a 12 dp pill margin, while the pill really
+ * sits on `8 + inset` (28 dp when there is no inset) — the pill's top edge landed *below*
+ * the reserved zone and the last row of every scrollable was sliced in half (P1-3).
+ *
+ * Not monotonic in the inset at the 0 → ε step, by construction: the KernelSU fallback
+ * swaps 28 dp for `8 + ε`, and that is the pill's real margin too. The invariant that
+ * matters holds for every value: `bottomBarZone(i) − (pill + margin(i)) == 12 dp`.
+ * Pinned by `AppShellBottomZoneTest`.
+ */
+internal fun bottomBarZone(navInset: Dp): Dp =
+    FloatingBarPillHeight + floatingBarBottomMargin(navInset) + BOTTOM_BAR_DOCK_PAD
+
+/**
+ * What scrollable content must reserve below itself: the bar zone while the bar is
+ * composed, nothing when it is not (pushed detail / rail breakpoints — D88: the bar is
+ * not composed there, so no zone may be reserved).
+ */
+internal fun contentBottomInset(showBar: Boolean, navInset: Dp): Dp =
+    if (showBar) bottomBarZone(navInset) else 0.dp
+
+/** The shell's own dock padding under the floating pill (`barInsets` in [ShellBody]). */
+internal val BOTTOM_BAR_DOCK_PAD = 12.dp
 
 @Composable
 private fun ShellBody(state: UiState) {
@@ -137,6 +170,11 @@ private fun ShellBody(state: UiState) {
 
         // v2 bottom bar: compact single-pane only, never while a detail is pushed (D88).
         val showBar = !metrics.useRail && !detailOpen
+        // P1-3: the reserved zone is the pill's measured-in-code footprint, so it tracks
+        // the navigation inset (gesture ≈ 24 dp, 3-button ≈ 48 dp) instead of guessing one
+        // constant. Reading it here — not in the bar — keeps the one allowed
+        // `WindowInsets.navigationBars` read in `BottomBar.kt` (TopGlassGuardTest).
+        val navInset = navigationBarBottomInset()
         // Every bar form reserves the bottom zone as *content* padding (never container
         // padding): the last row must be able to scroll clear of the bar, or it stays
         // permanently hidden behind it (the 能力 page's final card was clipped by the
@@ -144,7 +182,7 @@ private fun ShellBody(state: UiState) {
         // gives the glass something to blur — both behaviours come from content padding.
         val contentInsets = PaddingValues(
             top = TOP_BAR_ZONE,
-            bottom = if (showBar) BOTTOM_BAR_ZONE else 0.dp,
+            bottom = contentBottomInset(showBar, navInset),
         )
 
         // --- backdrop: the ONLY haze source. Everything blurrable lives in here. ---
@@ -245,7 +283,7 @@ private fun ShellBody(state: UiState) {
         if (showBar) {
             val floating = state.barStyle != BottomBarStyle.Fixed
             val barInsets = if (floating) {
-                PaddingValues(start = 12.dp, end = 12.dp, bottom = 12.dp)
+                PaddingValues(start = 12.dp, end = 12.dp, bottom = BOTTOM_BAR_DOCK_PAD)
             } else {
                 PaddingValues(0.dp)
             }

@@ -139,8 +139,12 @@ class TopGlassGuardTest {
             TopBarTopGap + TopBarHeight < TOP_BAR_ZONE,
             "玻璃胶囊 + 顶部间隙必须装进 TOP_BAR_ZONE（余量是胶囊下的呼吸间隙，首行内容静置在玻璃之下）",
         )
-        // Bottom counterpart unchanged (④ 对称)：底部 zone 同样不携带 inset 项。
-        assertEquals(88.dp, BOTTOM_BAR_ZONE)
+        // Bottom counterpart: no longer a constant (P1-3). It is derived from the pill's
+        // real footprint, and on desktop/wasm the nav-inset actual is 0 → KernelSU's 28 dp
+        // fallback margin: 64 + 28 + 12 = 104. The old 88 dp assumed a 12 dp margin and
+        // sliced the last row of every scrollable in half. Same value the zone math must
+        // produce on a platform with no system bars (`AppShellBottomZoneTest`).
+        assertEquals(104.dp, bottomBarZone(0.dp))
     }
 
     // --- 5 · desktop renders the capsule flush with the window top, 56dp tall --------
