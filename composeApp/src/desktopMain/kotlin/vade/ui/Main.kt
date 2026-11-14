@@ -1,5 +1,6 @@
 package vade.ui
 
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
@@ -8,6 +9,7 @@ import vade.ui.chat.ChatPreset
 import vade.ui.demo.MotionProbe
 import vade.ui.demo.MotionProbeConfig
 import vade.ui.demo.ProbeContent
+import vade.ui.icon.IconGallery
 import vade.ui.skin.glass.MotionBlurKernel
 import vade.ui.destinations.Destination
 import vade.ui.skin.BottomBarStyle
@@ -52,6 +54,10 @@ import kotlin.system.exitProcess
  *                                  8×-identical MOTION BLUR pattern that makes the beat visible.
  *   --fps                          with --motion-probe: measure 5 s of frame times, print
  *                                  `FPS_RESULT …`, then exit. Exit code 0.
+ *   --gallery                      w2-icons: the IconGallery grid (every VadeIcons vector on
+ *                                  the §2 dark canvas) instead of the app shell. `--light`
+ *                                  flips it to the §2 light canvas. Screenshot-only branch.
+ *   --light                        with --gallery: use the light token set.
  *
  * Default size is deliberately phone-shaped: the U1-a acceptance screenshots are the three
  * bottom-bar forms at 466×893, and a phone-shaped window is the only way to see the
@@ -67,6 +73,9 @@ fun main(args: Array<String>) {
     val bar = args.flag("--bar=")?.let(::parseBar) ?: BottomBarStyle.Fixed
     val dest = args.flag("--dest=")?.let { Destination.fromId(it) } ?: Destination.Sessions
     val (width, height) = args.flag("--size=")?.let(::parseSize) ?: (466 to 893)
+    // w2-icons: IconGallery acceptance page (--gallery), dark §2 canvas unless --light.
+    val gallery = args.has("--gallery")
+    val galleryLight = args.has("--light")
     // U2: skin selection. `--skin=miuix` (or `VADE_SKIN=miuix`, so a shell can pin it without
     // touching the app) selects the Miuix skin; `--dark` / `VADE_DARK=1` picks its dark tokens.
     // The flag starts the real `App()` — not the showcase — so the shots are the product.
@@ -92,7 +101,17 @@ fun main(args: Array<String>) {
             title = "Vade · UI 骨架",
             state = rememberWindowState(width = width.dp, height = height.dp),
         ) {
-            if (showcase) {
+            if (gallery) {
+                // w2-icons: the icon vocabulary page. Colours are the documented §2 tokens
+                // (dark 0x0E0E10/0xEDEDF0/0x9A9AA3, light 0xF7F7F8/0x17171A/0x6B6B73) — the
+                // gallery is a shape-verification page, not a product surface, so it does not
+                // pull a skin. See shots/w2-icons/RESULT.md.
+                IconGallery(
+                    tint = if (galleryLight) Color(0xFF17171A) else Color(0xFFEDEDF0),
+                    labelColor = if (galleryLight) Color(0xFF6B6B73) else Color(0xFF9A9AA3),
+                    background = if (galleryLight) Color(0xFFF7F7F8) else Color(0xFF0E0E10),
+                )
+            } else if (showcase) {
                 vade.ui.skin.miuix.MiuixShowcasePage(
                     skin = vade.ui.skin.miuix.MiuixSkin(dark),
                     bar = bar,

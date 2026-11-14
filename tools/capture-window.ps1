@@ -41,6 +41,10 @@ param(
   # (`-Chat live|tools|queue|compose|preview|stopped`). Same code path as tapping a row.
   [string]$Open = '',
   [string]$Chat = '',
+  # w2-icons: capture the IconGallery acceptance page instead of the app shell
+  # (`-GalleryLight` flips it to the §2 light canvas).
+  [switch]$Gallery,
+  [switch]$GalleryLight,
   [int]$WaitSec = 45,
   [int]$SettleMs = 2600
 )
@@ -102,6 +106,9 @@ if ($Dark) { $arguments += '--dark' }
 # U1-b: the detail screen. `-Chat` implies `-Open` when only the preset is given.
 if ($Open -ne '') { $arguments += "--open=$Open" }
 if ($Chat -ne '') { $arguments += "--chat=$Chat" }
+# w2-icons: gallery page passthrough.
+if ($Gallery) { $arguments += '--gallery' }
+if ($GalleryLight) { $arguments += '--light' }
 $p = Start-Process -FilePath $Java -ArgumentList $arguments -PassThru -WindowStyle Hidden
 Write-Output "launched pid=$($p.Id) bar=$Bar size=$Size dest=$Dest"
 

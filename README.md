@@ -98,7 +98,7 @@ done
 | Android / Wasm 运行时与截图 | **未验证**（只验了构建） |
 | 无障碍（字体缩放 / TalkBack） | **未验证**（U1-g） |
 
-## 两条防回退测试
+## 防回退测试
 
 `desktopTest` 里有真跑的断言：
 
@@ -109,17 +109,26 @@ done
 
 ### KernelSU
 底栏的浮动胶囊交互（阻尼拖拽指示器、按压缩放、速度拉伸、橡皮筋、内层阴影）移植自
-KernelSU（https://github.com/tiann/KernelSU），Copyright (c) 2023-2026 weishu &
-contributors，以 Apache License 2.0 授权。原实现改编自 compose-miuix-ui 示例
-`IosLiquidGlassNavigationBar`（Apache 2.0）。本项目的移植版本保持同一许可。
+[KernelSU](https://github.com/tiann/KernelSU)，Copyright (c) 2023-2026 weishu &
+contributors，以 **Apache License 2.0** 授权。原实现改编自 compose-miuix-ui 示例
+`IosLiquidGlassNavigationBar`（Apache 2.0）。本项目的移植版本保持同一许可
+（`ui/component/liquid/` 与 `ui/shell/FloatingBottomBar.kt` 文件头均带来源声明）。
 
 ### Miuix
-毛玻璃、回弹与主题基础组件来自 Miuix（top.yukonga.miuix.kmp），Apache License 2.0。
+毛玻璃、回弹与主题基础组件来自 [Miuix](https://github.com/miuix-kotlin-multiplatform/miuix)
+（`top.yukonga.miuix.kmp`，含 `miuix-ui` 与 `miuix-blur`），**Apache License 2.0**。
 
 ### Tabler Icons
-图标来自 Tabler Icons（https://tabler.io/icons），MIT License，Copyright (c) 2018-2026
-Tabler contributors。
+矢量图标来自 [Tabler Icons](https://tabler.io/icons)，经
+`com.composables:icons-tabler-cmp` 2.2.1（打包：[Composable Horizons
+composeicons](https://github.com/composablehorizons/composeicons)）接入，统一重导出于
+`vade.ui.icon.VadeIcons`。
+
+Tabler Icons 以 **MIT License** 发布，版权行：**Copyright (c) 2018-2026 Tabler
+contributors**（[许可原文](https://github.com/tabler/tabler-icons/blob/main/LICENSE)）。
+`shell/`、`skin/` 之外的业务代码不得直接 import `com.composables.icons.tabler.*`。
 
 ### HarmonyOS Sans（待定）
 若后续采用，需在此声明：本软件使用 HarmonyOS Sans 字体（© Huawei Device Co., Ltd.），
 按 HarmonyOS Sans Fonts License Agreement 使用。
+
