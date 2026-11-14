@@ -141,6 +141,15 @@ fun ChatThread(
         while (state.tickUploads()) delay(160)
     }
 
+    // B2 · 真源的两个挂载点：先开事件收集（不丢加载期间到达的 delta），再拉历史快照。
+    // 假源的读通道是 null，整段短路（fixtures 就是内容）。`animate` **不参与 key**：
+    // 截图（animate=false）看到的也必须是真内容，而不是永远停在「加载中」。
+    LaunchedEffect(state) {
+        if (!state.isRealSource) return@LaunchedEffect
+        launch { state.collectLiveEvents() }
+        state.loadHistory()
+    }
+
     // Pin the thread to its newest row (FR-8.35: a streaming reply must stay visible).
     //
     // With `reverseScrolling = true` the newest row is already on screen at offset 0 from the
@@ -187,6 +196,7 @@ fun ChatThread(
                 // 消息之间 20dp（视觉规范 §4）。
                 verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
+                ThreadPhaseRow(state)
                 state.items.forEach { item ->
                     when (item) {
                         is ChatItem.Message -> MessageRow(state, item.message)
@@ -226,6 +236,67 @@ fun ChatThread(
         // not decide windowing (same reasoning as the approval card above).
         state.preview?.let { image ->
             ImagePreviewSheet(image, onClose = state::closePreview)
+        }
+    }
+}
+
+// --- 三态行 (B2) --------------------------------------------------------------
+
+/**
+ * B2 · 加载中 / 空 / 失败（可重试）—— **三态各有各的文案与颜色**，不会都渲染成同一张
+ * 空卡：加载中是中性提示、空态是「还没有消息」+ 怎么开始、失败是错误色 + 原因 + 「重试」。
+ * 就绪且有消息时本行不组成任何东西（返回空），因此假源（fixtures 非空）的呈现不变。
+ */
+@Composable
+private fun ThreadPhaseRow(state: ChatState) {
+    val skin = LocalSkin.current
+    val scope = rememberCoroutineScope()
+    when {
+        state.phase == ChatPhase.Loading -> PhaseRow(
+            title = ChatState.LOADING_TEXT,
+            detail = null,
+            fg = skin.colors.onSurfaceVariant,
+        )
+
+        state.phase == ChatPhase.Failed -> PhaseRow(
+            title = ChatState.FAILED_TEXT,
+            detail = state.loadError,
+            fg = skin.colors.error,
+            retry = { scope.launch { state.retryHistory() } },
+        )
+
+        state.items.isEmpty() -> PhaseRow(
+            title = ChatState.EMPTY_TEXT,
+            detail = ChatState.EMPTY_HINT,
+            fg = skin.colors.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun PhaseRow(
+    title: String,
+    detail: String?,
+    fg: Color,
+    retry: (() -> Unit)? = null,
+) {
+    val skin = LocalSkin.current
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        BasicText(text = title, style = skin.typography.body.copy(color = fg))
+        if (detail != null) {
+            BasicText(
+                text = detail,
+                style = skin.typography.caption.copy(color = skin.colors.onSurfaceVariant),
+            )
+        }
+        if (retry != null) {
+            Box(Modifier.clip(RoundedCornerShape(skin.shapes.pill)).clickable(onClick = retry)) {
+                StatusPill(ChatState.RETRY_TEXT, Tone.Accent)
+            }
         }
     }
 }

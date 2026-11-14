@@ -108,6 +108,9 @@ class ScreenAdapterWiringTest {
         val edits = mutableListOf<Pair<String, String>>()
         val regenerates = mutableListOf<Pair<String, String>>()
 
+        /** 探针是假通道：留在 fixtures 形态（真通道下 ChatState 不会渲染预设消息）。 */
+        override val synthetic: Boolean get() = true
+
         override suspend fun editResubmit(
             sessionId: String,
             messageId: String,

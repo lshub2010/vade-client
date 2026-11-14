@@ -16,6 +16,19 @@ import androidx.compose.runtime.Immutable
 interface ChatTurnGateway {
 
     /**
+     * B2 · `true` = 内存假实现（fixtures 演示路径）。**默认 `false`（真通道）是故意的**：
+     * 新实现若忘了声明，[ChatState] 会按真源处理 —— 宁可少显示（空态/失败态），也不许
+     * 把预设消息当成 core 的内容。假实现必须显式声明（[InMemoryTurnGateway] 就是）。
+     */
+    val synthetic: Boolean get() = false
+
+    /**
+     * B2 · 本通道的**读**能力（历史 + 事件）。默认 `null` = 本实现不提供 —— 那不是错误，
+     * 只是这个实现答不了读问题（`ChatState` 会进失败态并给出重试，绝不回退 fixtures）。
+     */
+    fun transcript(): ChatTranscriptSource? = null
+
+    /**
      * `message/edit_resubmit` — [messageId] MUST be the **original** user message id
      * (rows are immutable: core appends a NEW user message and points the old one at it;
      * only the last user message is editable). [content] is the edited `parts[]`.
@@ -61,6 +74,9 @@ data class RegenerateReceipt(
  * wire adapter.
  */
 class InMemoryTurnGateway : ChatTurnGateway {
+
+    /** 演示路径：没有读通道，[ChatState] 于是显示 fixtures（并自带「假数据」提示行）。 */
+    override val synthetic: Boolean get() = true
 
     override suspend fun editResubmit(
         sessionId: String,
