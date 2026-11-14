@@ -1,0 +1,3 @@
+[submodule "contracts/vade"]
+	path = contracts/vade
+	url = https://github.com/lshub2010/Vade.git
