@@ -30,13 +30,46 @@ class IconGuardTest {
     private fun uiDir() = File(commonMainDir(), "vade/ui")
 
     /**
-     * 行内白名单。当前**为空**。
+     * 行内白名单。
      *
-     * 本轮实扫出 4 处，全部在 `shell` 目录（`AppShell.kt` 的 `▸` / `◂` / `×`，
-     * `FloatingBottomBar.kt` 的 `•`），归 g-glass 尾款与 g-float；按母棒规则
-     * 「>3 处不放白名单、留红待处置」处理，清单见 shots/g-icon-guard/RESULT.md。
+     * g-glyph-clear：4 处符号存量（`AppShell` 的 `▸`/`◂`/`×`、`FloatingBottomBar` 的 `•`）
+     * 与 4 处汉字图标（`Destination.glyph` 的 `话`/`活`/`能`/`我`）**都已从源码删除**，
+     * 所以符号那条清单是空的。
+     *
+     * 剩下的 6 条全是**单汉字字面量但确实不是图标**的展示页/探针文案：每条写清它渲在
+     * 哪里、为什么不是图标、以及什么时候该复查。删掉文案或行号漂移 → 报 stale → 强制清理。
      */
-    private val allowed: List<GlyphLiteralScan.Allow> = emptyList()
+    private val allowed: List<GlyphLiteralScan.Allow> = listOf(
+        // miuix 展示页：四种 BtnStyle 的演示按钮下方 11sp 的**样式名缩写**（主/次/危/文），
+        // 不是图标也不是按钮内容——按钮本身的文字是「发送/添加/删除/更多」（多字，不在扫描范围）。
+        GlyphLiteralScan.Allow(
+            "vade/ui/skin/miuix/MiuixShowcase.kt", 208, "主",
+            "演示页按钮下方的样式名缩写（主按钮），11sp 文字标签；g-glyph-clear 已核，不渲染在任何图标槽",
+        ),
+        GlyphLiteralScan.Allow(
+            "vade/ui/skin/miuix/MiuixShowcase.kt", 209, "次",
+            "演示页按钮下方的样式名缩写（次按钮），11sp 文字标签；同上",
+        ),
+        GlyphLiteralScan.Allow(
+            "vade/ui/skin/miuix/MiuixShowcase.kt", 210, "危",
+            "演示页按钮下方的样式名缩写（危险按钮），11sp 文字标签；同上",
+        ),
+        GlyphLiteralScan.Allow(
+            "vade/ui/skin/miuix/MiuixShowcase.kt", 211, "文",
+            "演示页按钮下方的样式名缩写（文字按钮），11sp 文字标签；同上",
+        ),
+        // 同一行那枚 disabled 按钮的说明文字（"禁" = 禁用态）。
+        GlyphLiteralScan.Allow(
+            "vade/ui/skin/miuix/MiuixShowcase.kt", 220, "禁",
+            "禁用态演示按钮的说明文字（禁），11sp 文字标签；g-glyph-clear 已核",
+        ),
+        // 动效探针的假会话行标题：`RealRow("好", meta = "2 分钟前")` 是一行**会话标题**，
+        // 15sp 行首文字（和它上面那句「为什么」同一类），不是图标槽。
+        GlyphLiteralScan.Allow(
+            "vade/ui/demo/MotionProbe.kt", 312, "好",
+            "探针夹具的会话标题（15sp 行首文字，隔壁行是「为什么」），演示用假数据；不是图标槽",
+        ),
+    )
 
     @Test
     fun noCharacterIconTextLiterals() {
@@ -50,12 +83,12 @@ class IconGuardTest {
         assertTrue(
             result.offenders.isEmpty(),
             buildString {
-                appendLine("字符当图标回退（图标必须用 vade.ui.icon.VadeIcons + VadeIcon，docs/visual-language.md §3）：")
+                appendLine("字符/汉字当图标回退（图标必须用 vade.ui.icon.VadeIcons + VadeIcon，docs/visual-language.md §3）：")
                 result.offenders.forEach { appendLine("  " + it.render()) }
                 appendLine("共 ${result.offenders.size} 处。")
-                appendLine("若确需放行（仅限本棒无权改的文件），在 IconGuardTest.allowed 追加：")
+                appendLine("若确是文字标签（展示页说明、按钮文案），在 IconGuardTest.allowed 追加并写理由：")
                 result.offenders.forEach {
-                    appendLine("    GlyphLiteralScan.Allow(\"${it.path}\", ${it.line}, \"${it.glyph}\", \"谁在改 / 何时删\"),")
+                    appendLine("    GlyphLiteralScan.Allow(\"${it.path}\", ${it.line}, \"${it.glyph}\", \"为什么它不是图标\"),")
                 }
             },
         )
@@ -106,13 +139,14 @@ class IconGuardTest {
             "目的地图标映射缺失或不符：$missing（Chat/Activity/Grid/Person，FR-8.77 顺序）",
         )
 
-        // The deprecated CJK glyph field is transitional: allowed to linger ONLY with its
-        // @Deprecated marker. When the parent stick deletes the field this test still
-        // passes; re-adding it without the marker fails here.
-        val glyphDecl = Regex("""@Deprecated\([^)]*\)\s*val glyph""")
-        if (text.contains(Regex("""\bval glyph\b""")) && !glyphDecl.containsMatchIn(text)) {
-            assertTrue(false, "Destinations.glyph 若仍存在必须带 @Deprecated（过渡字段，随 shell 合入删除）")
-        }
+        // g-glyph-clear: the legacy CJK glyph field (`话`/`活`/`能`/`我`) is deleted — its last
+        // reader, `shell/NavRail`, draws [icon] now. Pin the deletion: re-adding a `glyph`
+        // field here (with or without @Deprecated) is the exact regression this batch removed.
+        assertTrue(
+            !text.contains(Regex("""\bval glyph\b""")),
+            "Destinations.glyph 必须保持删除——它就是四个导航汉字图标（话/活/能/我）的载体；" +
+                "导航图标只走 icon: ImageVector + VadeIcon",
+        )
     }
 
     @Test
@@ -125,4 +159,10 @@ class IconGuardTest {
             "VadeIcons 公开矢量不足 20（当前 $count）——图标词表被删减了",
         )
     }
+
+    /**
+     * 白名单本体，供 `GlyphClearTest.wholeTreeScanFindsOnlyTheAllowlistedDemoLabels` 复核
+     * 「全仓 offender 恰好等于白名单那 6 条」时复用同一份——两份清单一定会漂，守卫就又有缝了。
+     */
+    internal fun allowList(): List<GlyphLiteralScan.Allow> = allowed
 }

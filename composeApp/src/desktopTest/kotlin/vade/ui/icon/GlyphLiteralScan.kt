@@ -45,6 +45,20 @@ internal object GlyphLiteralScan {
      */
     val PROSE: Regex = Regex("[\\u4e00-\\u9fff]{6,}")
 
+    /**
+     * 单汉字图标：**整串只有 1 个汉字**。
+     *
+     * g-glyph-clear 补的第二类。词表（[VOCAB]）只管符号，所以 `Destination.glyph` 的
+     * `"话"` / `"活"` / `"能"` / `"我"` 在导航栏里当了整整一个版本的图标，守卫一声不响——
+     * 「汉字当图标」比字符图标更难看见（它读起来像文案），也就更需要机器盯。
+     *
+     * 只认 **1 个字**：`"会话"` / `"发送"` / `"重试"` 这类两字以上的标签是正常文案，
+     * 全仓有 100+ 处，把 2 字也算进来只会把守卫淹死。1 字字面量在 commonMain 里目前只有
+     * 10 处（本棒清掉 4 处导航图标，剩 6 处展示页文案进白名单），噪声为零——这条规则
+     * 的成本几乎全部落在「真图标」上。
+     */
+    val SINGLE_CJK: Regex = Regex("[\\u4e00-\\u9fff]")
+
     /** 源码里的一个字符串字面量：[line] 是起始行，[text] 是内容（`\uXXXX` 已还原）。 */
     data class Literal(val line: Int, val text: String, val raw: Boolean)
 
@@ -75,11 +89,26 @@ internal object GlyphLiteralScan {
         return ICON_LITERAL.matches(text.trim())
     }
 
-    /** 从源码里摘出全部字符串字面量（注释与字符字面量已剔除）。 */
+    /**
+     * 判类：整串只有 1 个汉字 → 汉字当图标的候选。
+     *
+     * 与 [isIconLiteral] 分开两个判类，理由有二：
+     *  - 语义不同：符号字面量按定义就是图标（没有别的用途）；单汉字既可能是图标，也可能是
+     *    被缩写到 1 个字的标签（演示页的 `"主"`/`"次"`/`"危"`/`"文"`/`"禁"`），只能靠
+     *    [Allow] 逐个表态；
+     *  - 反过来也重要：把汉字塞进 [VOCAB] 会让 `"1.7 MB · 2048×1536"` 这类判类代码更难读，
+     *    而 `GlyphLiteralScanTest` 已经按符号词表钉死了 [ICON_LITERAL] 的 pattern。
+     */
+    fun isSingleCjkLiteral(text: String): Boolean = SINGLE_CJK.matches(text.trim())
+
+    /** 源码里全部字符串字面量（注释与字符字面量已剔除）。 */
     fun literals(source: String): List<Literal> = lex(source)
 
     /** 源码里全部字符图标字面量。 */
     fun hits(source: String): List<Literal> = lex(source).filter { isIconLiteral(it.text) }
+
+    /** 源码里全部单汉字字面量（汉字当图标的候选，见 [isSingleCjkLiteral]）。 */
+    fun cjkHits(source: String): List<Literal> = lex(source).filter { isSingleCjkLiteral(it.text) }
 
     /**
      * 行内白名单过滤：只放过 path + line + glyph 三者都对得上的那一处。
@@ -113,7 +142,10 @@ internal object GlyphLiteralScan {
             val path = file.relativeTo(root).invariantSeparatorsPath
             val source = file.readText()
             val lines = source.lines()
-            for (hit in hits(source)) {
+            // 两类 offender 合成一张表（白名单按 path+line+glyph 匹配，两类共用同一份）：
+            // 稳定排序按行号，符号命中保持原有顺序。
+            val fileHits = (hits(source) + cjkHits(source)).sortedBy { it.line }
+            for (hit in fileHits) {
                 offenders += Offender(
                     path = path,
                     line = hit.line,

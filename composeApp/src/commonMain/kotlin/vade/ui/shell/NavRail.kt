@@ -16,11 +16,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import vade.ui.UiText
 import vade.ui.destinations.Destination
+import vade.ui.icon.VadeIcon
 import vade.ui.skin.LocalSkin
 
 /**
@@ -54,6 +60,13 @@ fun NavRail(
                     .fillMaxWidth()
                     .padding(horizontal = 6.dp, vertical = 3.dp)
                     .clip(RoundedCornerShape(skin.shapes.small))
+                    // Two-state semantics: the rail's selected item used to survive only as a
+                    // font weight + a 16 % tint, which no test could assert. `selected` +
+                    // `Role.Tab` mirror what the floating bar already publishes.
+                    .semantics(mergeDescendants = true) {
+                        this.selected = isSelected
+                        role = Role.Tab
+                    }
                     .clickable { onSelect(destination) }
                     .padding(vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -68,11 +81,18 @@ fun NavRail(
                             ),
                         contentAlignment = Alignment.Center,
                     ) {
-                        UiText(
-                            text = destination.glyph,
-                            size = 13,
-                            weight = FontWeight.SemiBold,
-                            color = if (isSelected) skin.colors.primary else skin.colors.onSurfaceVariant,
+                        // g-glyph-clear: the rail used to draw `Destination.glyph` (话/活/能/我)
+                        // as 13 sp text inside a 30 dp tinted box — a CJK character standing in
+                        // for an icon, which §3 bans and which no guard could see (its
+                        // vocabulary only covered punctuation). It is now the destination's
+                        // Tabler vector; the two states stay distinguishable by tint (accent vs
+                        // onSurfaceVariant) exactly as the character version was.
+                        VadeIcon(
+                            vector = destination.icon,
+                            contentDescription = null, // the label below carries the name
+                            modifier = Modifier.testTag("vade.nav.rail.icon.${destination.id}"),
+                            size = 20.dp,
+                            tint = if (isSelected) skin.colors.primary else skin.colors.onSurfaceVariant,
                         )
                     }
                     val badge = badgeOf(destination)

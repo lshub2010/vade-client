@@ -97,6 +97,7 @@ import vade.ui.component.liquid.rememberGlassBackdrop
 import vade.ui.component.liquid.rememberPillHighlight
 import vade.ui.component.liquid.innerShadow
 import vade.ui.component.liquid.InnerShadow
+import vade.ui.icon.VadeIcons
 import vade.ui.skin.LocalSkin
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -478,7 +479,18 @@ internal fun FloatingBottomBar(
     }
 }
 
-/** One pill tab: stacked icon-or-glyph over label, KernelSU's item semantics. */
+/**
+ * The vector a pill tab draws. Three-step resolution, **never a character**:
+ * explicit `item.icon` → [VadeIcons.navIconOrNull] by id → neutral [VadeIcons.Circle].
+ *
+ * Extracted from the item composable so the fallback chain is assertable without rendering
+ * (the old `item.glyph ?: "•"` branch was unreachable from every test because the four real
+ * destinations always pass an icon — which is exactly how the bullet survived).
+ */
+internal fun bottomBarIcon(item: BottomBarItem): ImageVector =
+    item.icon ?: VadeIcons.navIconOrNull(item.id) ?: VadeIcons.Circle
+
+/** One pill tab: stacked icon over label, KernelSU's item semantics. */
 @Composable
 internal fun RowScope.FloatingBottomBarItem(
     selected: Boolean,
@@ -521,22 +533,18 @@ internal fun RowScope.FloatingBottomBarItem(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(contentAlignment = Alignment.TopEnd) {
-            if (item.icon != null) {
-                val painter = rememberVectorPainter(item.icon)
-                Image(
-                    painter = painter,
-                    contentDescription = item.label,
-                    modifier = Modifier.size(20.dp),
-                    colorFilter = ColorFilter.tint(tint),
-                )
-            } else {
-                UiText(
-                    text = item.glyph ?: "•",
-                    size = 13,
-                    weight = FontWeight.SemiBold,
-                    color = tint,
-                )
-            }
+            // g-glyph-clear: this slot used to fall through to `item.glyph ?: "•"` — a bullet
+            // character standing in for an icon. The `?:` kept the branch alive long after
+            // every caller stopped feeding `glyph`, and no render test ever hit it because the
+            // four real items always pass an icon. Resolution order matches `GlassNavBar`:
+            // explicit icon → id lookup → neutral Circle. Never a character.
+            val icon = bottomBarIcon(item)
+            Image(
+                painter = rememberVectorPainter(icon),
+                contentDescription = item.label,
+                modifier = Modifier.size(20.dp),
+                colorFilter = ColorFilter.tint(tint),
+            )
             if (item.badge != null) {
                 Box(
                     Modifier
