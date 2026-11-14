@@ -12,6 +12,7 @@ import vade.ui.demo.ProbeContent
 import vade.ui.icon.IconGallery
 import vade.ui.skin.glass.MotionBlurKernel
 import vade.ui.destinations.Destination
+import vade.ui.data.FakeSessionSource
 import vade.ui.skin.BottomBarStyle
 import kotlin.system.exitProcess
 
@@ -127,6 +128,17 @@ fun main(args: Array<String>) {
                     initialSearchQuery = searchPreset,
                     initialSessionId = sessionId,
                     chatPreset = chatPreset,
+                    // c-data: real-data switch — default stays the fake fixtures;
+                    // VADE_SOURCE=real constructs the protocol-backed source
+                    // (VADE_HOST/VADE_PORT pick the core endpoint, 127.0.0.1:8443).
+                    // UI pages do not READ `source` yet, so this flag changes nothing
+                    // visible (see shots/c-data/RESULT.md · 未接线清单).
+                    source = if (System.getenv("VADE_SOURCE") == "real")
+                        vade.ui.data.RealSessionSource(
+                            System.getenv("VADE_HOST") ?: "127.0.0.1",
+                            System.getenv("VADE_PORT")?.toIntOrNull() ?: 8443,
+                        )
+                    else FakeSessionSource(),
                 )
             }
         }
