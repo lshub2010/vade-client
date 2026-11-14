@@ -235,7 +235,7 @@ internal object MiuixTokens {
 
     /**
      * Maps the semantic [SkinColors] onto Miuix's much wider `Colors` bag. Only the slots
-     * the eleven components can actually reach are filled; the rest keep Miuix's defaults so
+     * the twelve components can actually reach are filled; the rest keep Miuix's defaults so
      * an upstream default change cannot silently repaint the skin.
      */
     fun miuixColors(c: SkinColors): Colors {

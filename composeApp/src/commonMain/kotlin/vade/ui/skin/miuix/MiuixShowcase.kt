@@ -220,17 +220,27 @@ fun MiuixShowcasePage(
                 }
             }
 
-            // D88 composer + the bar under test.
-            skin.InputBar(
-                value = draft,
-                onValueChange = { draft = it },
-                mode = InputMode.Composing,
-                onSend = {},
-                onStop = {},
-                attachments = null,
-                enabled = true,
-                voiceAvailable = false,
-            )
+            // D88 composer + the bar under test. RFC-0011: the send/stop ball is the
+            // separate `SendOrb` (C-09 component 12) composed beside the field — this row
+            // is exactly what a business page writes, minus the page-side ＋ button.
+            // InputBar has no modifier param (frozen signature), so the weight sits on a Box.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) {
+                    skin.InputBar(
+                        value = draft,
+                        onValueChange = { draft = it },
+                        mode = if (draft.isEmpty()) InputMode.Idle else InputMode.Composing,
+                        attachments = null,
+                        enabled = true,
+                        voiceAvailable = false,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                skin.SendOrb(
+                    mode = if (draft.isEmpty()) InputMode.Idle else InputMode.Composing,
+                    onClick = { draft = "" },
+                )
+            }
             skin.BottomBar(items = nav, selected = selected, onSelect = { selected = it }, style = bar)
         }
 

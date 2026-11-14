@@ -1,10 +1,14 @@
 package vade.ui.skin.material
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -34,9 +38,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -52,6 +66,8 @@ import vade.ui.skin.MessageAction
 import vade.ui.skin.MessageView
 import vade.ui.skin.Scope
 import vade.ui.skin.SkinColors
+import vade.ui.skin.SkinMotion
+import vade.ui.skin.SkinOrb
 import vade.ui.skin.SkinShapes
 import vade.ui.skin.SkinTypography
 import vade.ui.skin.ToolCallView
@@ -586,12 +602,9 @@ internal fun MaterialInputBar(
     value: String,
     onValueChange: (String) -> Unit,
     mode: InputMode,
-    onSend: () -> Unit,
-    onStop: () -> Unit,
     attachments: (@Composable () -> Unit)?,
     enabled: Boolean,
     voiceAvailable: Boolean,
-    sendEnabled: Boolean,
     maxLines: Int,
     colors: SkinColors,
     shapes: SkinShapes,
@@ -600,21 +613,20 @@ internal fun MaterialInputBar(
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
 
-    // v2 §1 悬浮 composer：不再是贴底满宽的一行，而是一个独立浮层 —— 四周留白 16dp、
-    // xl(28) 圆角（多行同圆角，不做胶囊变形）、玻璃底 surfaceGlass、发丝线 + 浮层阴影
-    // （§8 row 2：浮层必须有阴影）。真正的背景模糊由 shell/ 在根上接 hazeSource 后换
-    // skin/glass/GlassSurface；页面结构（composer 浮在列表上）也是 chat/ 的活，这里只
-    // 负责“浮起来”的形状与质感。
+    // v2 §1 悬浮 composer 的**形状**：xl(28) 圆角（多行同圆角，不做胶囊变形）、玻璃底
+    // surfaceGlass、发丝线 + 浮层阴影（§8 row 2：浮层必须有阴影）。真正的背景模糊由
+    // 皮肤在内部接 skin/glass/GlassSurface（RFC-0011 §7.2）；页面结构（composer 浮在
+    // 列表上、四周留白）是 chat/ 的活。
     //
-    // v2 §2：发送/停止控件不在框内 —— 它们是框外一颗 48dp 正圆球（页面层绘制：有内容 =
-    // accent 实心 + glowAccent 辉光，空 = 玻璃 + 发丝线，生成中同一球位变 ■ 停止态）。
-    // 冻结签名里的 onSend / onStop / sendEnabled 原样保留，由页面层接到那颗球上；
-    // ⌘Enter / Ctrl+Enter 的发送路径在 ChatThread.handleComposerKeys，不受影响。
+    // RFC-0011：面板**不再自带 16dp 浮层外边距** —— 页面把 [＋] [InputBar] [12dp] [SendOrb]
+    // 拼进同一行时，组件内边距会叠加成 32dp、框球间距变成 28dp，§1/§2 的数字全部失真
+    // （RFC §4.1/D5）。面板紧贴自身槽位，边距归页面布局。
+    //
+    // 发送/停止控件不在这里：v2 §2 把它们移出框外成独立圆球 —— Skin.SendOrb（组件 12）。
     val panelShape = RoundedCornerShape(shapes.xl)
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp)
             .shadow(
                 elevation = 16.dp,
                 shape = panelShape,
@@ -672,4 +684,112 @@ internal fun MaterialInputBar(
             }
         }
     }
+}
+
+/**
+ * v2 §2 发送球（RFC-0011 · C-09 组件 12）：48dp 正圆、**框外独立元素** —— 页面把它拼在
+ * InputBar 右侧 12dp 处。三态由 [mode] 驱动（页面握 policy，皮肤握像素）：
+ *
+ *  - Idle      = 空态：surfaceGlass + 1px hairline，图标 muted，**仍可点**（§2 触发提示）；
+ *  - Composing = armed：accent 实心 + 向外 glowRadius(12dp) 柔光（glowAccent @28% 渐隐，
+ *                §8 row 3 辉光不是阴影）+ 反白箭头；
+ *  - Streaming = 停止：同一球位变 ■，只染图标与 1.5dp 描边为 danger，**不整球变红**（§2）。
+ *
+ * 按压 = scale [SkinOrb.pressScale] / [SkinOrb.pressDurationMs]，曲线 [SkinMotion.easing]。
+ * 图标是 Canvas 描边矢量（v2 §3.1）：皮肤层不能 import chat/ 的图标包，两枚自绘。
+ */
+@Composable
+internal fun MaterialSendOrb(
+    mode: InputMode,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier,
+    orb: SkinOrb,
+    motion: SkinMotion,
+    colors: SkinColors,
+) {
+    val streaming = mode == InputMode.Streaming
+    val armed = mode == InputMode.Composing
+
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) orb.pressScale else 1f,
+        animationSpec = tween(durationMillis = orb.pressDurationMs, easing = motion.easing),
+        label = "sendOrbPress",
+    )
+
+    Box(
+        modifier = modifier
+            .size(orb.size)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                alpha = if (!enabled && !streaming) 0.45f else 1f
+            }
+            .drawBehind {
+                // §8 row 3：辉光不是阴影 — accent 28%，向外 glowRadius 渐隐；只在 armed 画。
+                if (armed) {
+                    val outer = size.minDimension / 2f + orb.glowRadius.toPx()
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            0.62f to colors.glowAccent.copy(alpha = 0.28f),
+                            1f to colors.glowAccent.copy(alpha = 0f),
+                            center = center,
+                            radius = outer,
+                        ),
+                        radius = outer,
+                    )
+                }
+            }
+            .clip(CircleShape)
+            .background(if (armed) colors.primary else colors.surfaceGlass)
+            .border(
+                width = if (streaming) 1.5.dp else 1.dp,
+                color = when {
+                    streaming -> colors.error
+                    armed -> Color.Transparent
+                    else -> colors.hairline
+                },
+                shape = CircleShape,
+            )
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                // §2：空球仍可点（触发提示）；只有页面显式禁用（enabled=false）时静止，
+                // 流式停止不受 enabled 影响 —— 中断生成永远可用。
+                enabled = streaming || enabled,
+            ) { onClick() }
+            .semantics { contentDescription = if (streaming) "停止生成" else "发送消息" },
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.size(orb.size * 0.42f)) {
+            if (streaming) {
+                paintOrbStop(colors.error)
+            } else {
+                paintOrbSend(if (armed) colors.onPrimary else colors.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+/** ↑ 发送箭头 — Canvas 描边（v2 §3.1 矢量、线宽随尺寸缩放）。 */
+private fun DrawScope.paintOrbSend(color: Color) {
+    val s = size.minDimension
+    val cx = size.width / 2f
+    val stroke = s * 0.10f
+    drawLine(color, Offset(cx, s * 0.80f), Offset(cx, s * 0.24f), strokeWidth = stroke, cap = StrokeCap.Round)
+    drawLine(color, Offset(cx, s * 0.24f), Offset(cx - s * 0.24f, s * 0.48f), strokeWidth = stroke, cap = StrokeCap.Round)
+    drawLine(color, Offset(cx, s * 0.24f), Offset(cx + s * 0.24f, s * 0.48f), strokeWidth = stroke, cap = StrokeCap.Round)
+}
+
+/** ■ 停止 — 填充圆角方块（§2：方形图标，不是红球）。 */
+private fun DrawScope.paintOrbStop(color: Color) {
+    val s = size.minDimension
+    drawRoundRect(
+        color = color,
+        topLeft = Offset(s * 0.22f, s * 0.22f),
+        size = Size(s * 0.56f, s * 0.56f),
+        cornerRadius = CornerRadius(s * 0.09f),
+    )
 }

@@ -545,27 +545,38 @@ class MiuixSkin(
         value: String,
         onValueChange: (String) -> Unit,
         mode: vade.ui.skin.InputMode,
-        onSend: () -> Unit,
-        onStop: () -> Unit,
         attachments: (@Composable () -> Unit)?,
         enabled: Boolean,
         voiceAvailable: Boolean,
-        sendEnabled: Boolean,
         maxLines: Int,
     ) = MiuixInputBar(
         value = value,
         onValueChange = onValueChange,
         mode = mode,
-        onSend = onSend,
-        onStop = onStop,
         attachments = attachments,
         enabled = enabled,
         voiceAvailable = voiceAvailable,
-        sendEnabled = sendEnabled,
         maxLines = maxLines,
         colors = colors,
         shapes = shapes,
         typography = typography,
+    )
+
+    /** 12 · SendOrb（RFC-0011）：框外 48dp 球，三态由 mode 驱动。 */
+    @Composable
+    override fun SendOrb(
+        mode: vade.ui.skin.InputMode,
+        enabled: Boolean,
+        onClick: () -> Unit,
+        modifier: Modifier,
+    ) = MiuixSendOrb(
+        mode = mode,
+        enabled = enabled,
+        onClick = onClick,
+        modifier = modifier,
+        orb = orb,
+        motion = motion,
+        colors = colors,
     )
 }
 
