@@ -93,7 +93,7 @@ done
 | C-09 Skin 11 组件 | 接口 + material 实现；`miuix`/`glass` 仅占位 |
 | 会话列表 | 6 条假数据（2 置顶 + 今天 2 + 昨天 1 + 7 天内 1），**未连 core** |
 | 搜索（手机全屏覆盖层 / 桌面 ⌘K） | 已实现（U1-c）；**降级为本地缓存索引**并常驻「范围：已缓存」——`schema/rpc.json` 里没有 `session/search` |
-| 消息流 / 输入区 / 附件 / 工具卡页面 | **未实现**（U1-b） |
+| 消息流 / 输入区 / 附件 / 工具卡页面 | 已实现（U1-b，**全假数据，未连 core**）：流式、队列、中断、工具卡折叠策略、Markdown、图片预览、多行输入。视觉 v2（悬浮输入/发送球/纯图标/内联审批/高斯模糊）未落地，待统一重构。见 `shots/u1b/RESULT.md` |
 | 快捷键（⌘N/⌘1–4/⌘B/⌘\\/Esc） | **未实现**（U1-g）；`⌘K` / `Ctrl+K` 已随 U1-c 落地 |
 | Android / Wasm 运行时与截图 | **未验证**（只验了构建） |
 | 无障碍（字体缩放 / TalkBack） | **未验证**（U1-g） |
@@ -102,5 +102,5 @@ done
 
 `desktopTest` 里有真跑的断言：
 
-1. 业务页面**不得** import `material3` / `miuix` / `glass`（只能经 `Skin`）；扫描目录含 `destinations`、`shell`、`search`。
+1. 业务页面**不得** import `material3` / `miuix` / `glass`（只能经 `Skin`）；扫描目录含 `destinations`、`shell`、`search`、`chat`。
 2. `Skin.kt` **恰好 11 个** `@Composable fun` —— 少一个说明组件被删，多一个说明有人绕过 C-09 流程加了第 12 个。

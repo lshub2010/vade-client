@@ -78,7 +78,7 @@ fun TopBar(
     } else {
         Column(Modifier.fillMaxWidth().background(skin.colors.surface)) {
             content()
-            Box(Modifier.fillMaxWidth().height(1.dp).background(skin.colors.outline.copy(alpha = 0.30f)))
+            Box(Modifier.fillMaxWidth().height(1.dp).background(skin.colors.hairline))
         }
     }
 }

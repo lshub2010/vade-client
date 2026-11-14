@@ -120,7 +120,7 @@ private fun CompactSearchOverlay(state: UiState, onPick: (SearchHit) -> Unit) {
             Spacer(Modifier.height(8.dp))
             ScopeLine(search)
         }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(skin.colors.outline.copy(alpha = 0.30f)))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(skin.colors.hairline))
         SearchBody(search = search, onPick = onPick, modifier = Modifier.fillMaxWidth().weight(1f))
     }
 }
@@ -159,13 +159,13 @@ private fun CommandPalette(state: UiState, onPick: (SearchHit) -> Unit) {
                         Spacer(Modifier.height(8.dp))
                         ScopeLine(search)
                     }
-                    Box(Modifier.fillMaxWidth().height(1.dp).background(skin.colors.outline.copy(alpha = 0.30f)))
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(skin.colors.hairline))
                     SearchBody(
                         search = search,
                         onPick = onPick,
                         modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp),
                     )
-                    Box(Modifier.fillMaxWidth().height(1.dp).background(skin.colors.outline.copy(alpha = 0.30f)))
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(skin.colors.hairline))
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,

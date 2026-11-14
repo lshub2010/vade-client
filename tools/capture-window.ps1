@@ -37,6 +37,10 @@ param(
   [switch]$Showcase,
   [switch]$Approval,
   [switch]$Dark,
+  # U1-b: open a session's detail (`-Open s-rfc0004`) and seed its derived state
+  # (`-Chat live|tools|queue|compose|preview|stopped`). Same code path as tapping a row.
+  [string]$Open = '',
+  [string]$Chat = '',
   [int]$WaitSec = 45,
   [int]$SettleMs = 2600
 )
@@ -95,6 +99,9 @@ if ($PSBoundParameters.ContainsKey('Skin') -and $Skin -ne '') { $arguments += "-
 if ($Showcase) { $arguments += '--showcase' }
 if ($Approval) { $arguments += '--approval' }
 if ($Dark) { $arguments += '--dark' }
+# U1-b: the detail screen. `-Chat` implies `-Open` when only the preset is given.
+if ($Open -ne '') { $arguments += "--open=$Open" }
+if ($Chat -ne '') { $arguments += "--chat=$Chat" }
 $p = Start-Process -FilePath $Java -ArgumentList $arguments -PassThru -WindowStyle Hidden
 Write-Output "launched pid=$($p.Id) bar=$Bar size=$Size dest=$Dest"
 

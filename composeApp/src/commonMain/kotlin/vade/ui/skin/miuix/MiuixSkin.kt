@@ -469,21 +469,24 @@ class MiuixSkin(
         maxWidth: Dp,
         actions: List<vade.ui.skin.MessageAction>,
         onAction: (vade.ui.skin.MessageAction) -> Unit,
-    ) = MiuixMessageBubble(message, role, maxWidth, actions, onAction, colors, shapes, typography)
+        body: (@Composable () -> Unit)?,
+    ) = MiuixMessageBubble(message, role, maxWidth, actions, onAction, body, colors, shapes, typography)
 
     @Composable
     override fun AttachmentChip(
         attachment: vade.ui.skin.AttachmentView,
         onRetry: (() -> Unit)?,
         onRemove: (() -> Unit)?,
-    ) = MiuixAttachmentChip(attachment, onRetry, onRemove, colors, shapes, typography)
+        leading: (@Composable () -> Unit)?,
+    ) = MiuixAttachmentChip(attachment, onRetry, onRemove, leading, colors, shapes, typography)
 
     @Composable
     override fun ToolCallCard(
         call: vade.ui.skin.ToolCallView,
         state: vade.ui.skin.ToolCardState,
         onToggle: () -> Unit,
-    ) = MiuixToolCallCard(call, state, onToggle, colors, shapes, typography)
+        meta: (@Composable () -> Unit)?,
+    ) = MiuixToolCallCard(call, state, onToggle, meta, colors, shapes, typography)
 
     @Composable
     override fun InputBar(
@@ -495,6 +498,8 @@ class MiuixSkin(
         attachments: (@Composable () -> Unit)?,
         enabled: Boolean,
         voiceAvailable: Boolean,
+        sendEnabled: Boolean,
+        maxLines: Int,
     ) = MiuixInputBar(
         value = value,
         onValueChange = onValueChange,
@@ -504,6 +509,8 @@ class MiuixSkin(
         attachments = attachments,
         enabled = enabled,
         voiceAvailable = voiceAvailable,
+        sendEnabled = sendEnabled,
+        maxLines = maxLines,
         colors = colors,
         shapes = shapes,
         typography = typography,
