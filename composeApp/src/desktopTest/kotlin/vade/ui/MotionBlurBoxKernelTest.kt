@@ -7,13 +7,13 @@ import kotlin.math.sqrt
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import vade.ui.motion.DEFAULT_MOTION_BLUR_KERNEL
-import vade.ui.motion.MOTION_BLUR_MAX_RADIUS_DP
-import vade.ui.motion.MOTION_BLUR_SIGMA_X_PER_RADIUS
-import vade.ui.motion.MOTION_BLUR_SIGMA_Y_PER_RADIUS
-import vade.ui.motion.MotionBlurKernel
-import vade.ui.motion.boxKernelTaps
-import vade.ui.motion.boxKernelWeights
+import vade.ui.skin.glass.DEFAULT_MOTION_BLUR_KERNEL
+import vade.ui.skin.glass.MOTION_BLUR_MAX_RADIUS_DP
+import vade.ui.skin.glass.MOTION_BLUR_SIGMA_X_PER_RADIUS
+import vade.ui.skin.glass.MOTION_BLUR_SIGMA_Y_PER_RADIUS
+import vade.ui.skin.glass.MotionBlurKernel
+import vade.ui.skin.glass.boxKernelTaps
+import vade.ui.skin.glass.boxKernelWeights
 
 /**
  * The box kernel, and the shape difference that made it the default.

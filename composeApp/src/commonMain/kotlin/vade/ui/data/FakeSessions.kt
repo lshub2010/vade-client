@@ -1,6 +1,11 @@
 package vade.ui.data
 
 import androidx.compose.runtime.Immutable
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
+import vade.ui.chat.ChatFixtures
+import vade.ui.chat.ChatItem
+import vade.ui.chat.ChatMessage
 
 /**
  * List-side session model for U1-a. **Fake data by design**: this slice does not touch
@@ -38,7 +43,23 @@ data class SessionSummary(
 
 data class SessionGroup(val bucket: TimeBucket, val sessions: List<SessionSummary>)
 
-object FakeSessions {
+/**
+ * The default [SessionSource] (v2 Wave 0): same fixtures, same behaviour as before the
+ * seam existed — `sessions()` is [all], `messages()` is exactly what
+ * `ChatFixtures.threadFor(sessionId)` feeds `ChatState`'s seed (the `ChatItem.Message`
+ * projections; system/tool/approval rows are not messages and are not included), and
+ * `observeEvents()` is empty because no fixture ever emits an event.
+ */
+object FakeSessions : SessionSource {
+    override suspend fun sessions(): List<SessionSummary> = all
+
+    override suspend fun messages(sessionId: String): List<ChatMessage> =
+        ChatFixtures.threadFor(sessionId).items
+            .filterIsInstance<ChatItem.Message>()
+            .map { it.message }
+
+    override fun observeEvents(): Flow<VadeEvent> = emptyFlow()
+
     private const val D = 1L
     private const val H = 60L
 

@@ -37,17 +37,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import vade.ui.motion.DEFAULT_MOTION_BLUR_KERNEL
-import vade.ui.motion.MOTION_BLUR_DECAY_MS
-import vade.ui.motion.MOTION_BLUR_FULL_VELOCITY_DP_PER_SEC
-import vade.ui.motion.MOTION_BLUR_MAX_RADIUS_DP
-import vade.ui.motion.MOTION_BLUR_SIGMA_X_PER_RADIUS
-import vade.ui.motion.MOTION_BLUR_SIGMA_Y_PER_RADIUS
-import vade.ui.motion.MOTION_BLUR_START_VELOCITY_DP_PER_SEC
-import vade.ui.motion.MotionBlurKernel
-import vade.ui.motion.blurForVelocity
-import vade.ui.motion.boxKernelTaps
-import vade.ui.motion.motionBlur
+import vade.ui.skin.glass.DEFAULT_MOTION_BLUR_KERNEL
+import vade.ui.skin.glass.MOTION_BLUR_DECAY_MS
+import vade.ui.skin.glass.MOTION_BLUR_FULL_VELOCITY_DP_PER_SEC
+import vade.ui.skin.glass.MOTION_BLUR_MAX_RADIUS_DP
+import vade.ui.skin.glass.MOTION_BLUR_SIGMA_X_PER_RADIUS
+import vade.ui.skin.glass.MOTION_BLUR_SIGMA_Y_PER_RADIUS
+import vade.ui.skin.glass.MOTION_BLUR_START_VELOCITY_DP_PER_SEC
+import vade.ui.skin.glass.MotionBlurKernel
+import vade.ui.skin.glass.blurForVelocity
+import vade.ui.skin.glass.boxKernelTaps
+import vade.ui.skin.glass.motionBlur
 import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.math.roundToInt
@@ -322,7 +322,7 @@ private val REAL_ROWS = listOf(
         title = "拖影剖面",
         body = "剖面的一阶差分就是核本身 —— profile = step ⊛ kernel，所以 d(profile)/dy = kernel。",
     ),
-    RealRow("vade.ui.motion", code = "enum class MotionBlurKernel", titleSize = 13),
+    RealRow("vade.ui.skin.glass", code = "enum class MotionBlurKernel", titleSize = 13),
     RealRow("◆ 已归档", "2026-11-14", titleSize = 15),
     RealRow(
         title = "真实滚动",

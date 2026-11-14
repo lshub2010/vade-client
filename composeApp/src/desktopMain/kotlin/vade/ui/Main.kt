@@ -8,7 +8,7 @@ import vade.ui.chat.ChatPreset
 import vade.ui.demo.MotionProbe
 import vade.ui.demo.MotionProbeConfig
 import vade.ui.demo.ProbeContent
-import vade.ui.motion.MotionBlurKernel
+import vade.ui.skin.glass.MotionBlurKernel
 import vade.ui.destinations.Destination
 import vade.ui.skin.BottomBarStyle
 import kotlin.system.exitProcess

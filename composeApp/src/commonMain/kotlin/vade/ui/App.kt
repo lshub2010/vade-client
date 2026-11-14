@@ -5,6 +5,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import vade.ui.destinations.Destination
 import vade.ui.chat.ChatPreset
+import vade.ui.data.FakeSessionSource
+import vade.ui.data.SessionSource
 import vade.ui.shell.AppShell
 import vade.ui.shell.UiState
 import vade.ui.skin.BottomBarStyle
@@ -32,6 +34,12 @@ fun App(
     initialSessionId: String? = null,
     /** U1-b: seed the detail screen's derived state (`--chat=`); `Live` for the real app. */
     chatPreset: ChatPreset = ChatPreset.Live,
+    /**
+     * v2 Wave 0 · state-source injection point, threaded straight into [UiState]. The
+     * default keeps today's fixture behaviour; a later batch injects the transport-backed
+     * source the same way the skin is injected here.
+     */
+    source: SessionSource = FakeSessionSource(),
 ) {
     Skins.installBuiltIns()
     val state = remember {
@@ -42,6 +50,7 @@ fun App(
             initialPanelOpen = initialPanelOpen,
             initialSessionId = initialSessionId,
             chatPreset = chatPreset,
+            source = source,
         ).also { created ->
             // U1-c screenshot / deep-link hook: same path as tapping 搜索 in the top bar.
             if (initialSearchQuery != null) {

@@ -4,14 +4,14 @@ import androidx.compose.ui.Modifier
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import vade.ui.motion.MOTION_BLUR_FULL_VELOCITY_DP_PER_SEC
-import vade.ui.motion.MOTION_BLUR_MAX_RADIUS_DP
-import vade.ui.motion.MOTION_BLUR_SIGMA_X_PER_RADIUS
-import vade.ui.motion.MOTION_BLUR_SIGMA_Y_PER_RADIUS
-import vade.ui.motion.MOTION_BLUR_START_VELOCITY_DP_PER_SEC
-import vade.ui.motion.blurForVelocity
-import vade.ui.motion.motionBlur
-import vade.ui.motion.velocityToBlurRadiusDp
+import vade.ui.skin.glass.MOTION_BLUR_FULL_VELOCITY_DP_PER_SEC
+import vade.ui.skin.glass.MOTION_BLUR_MAX_RADIUS_DP
+import vade.ui.skin.glass.MOTION_BLUR_SIGMA_X_PER_RADIUS
+import vade.ui.skin.glass.MOTION_BLUR_SIGMA_Y_PER_RADIUS
+import vade.ui.skin.glass.MOTION_BLUR_START_VELOCITY_DP_PER_SEC
+import vade.ui.skin.glass.blurForVelocity
+import vade.ui.skin.glass.motionBlur
+import vade.ui.skin.glass.velocityToBlurRadiusDp
 
 /**
  * The parts of §11 that are checkable without pixels:

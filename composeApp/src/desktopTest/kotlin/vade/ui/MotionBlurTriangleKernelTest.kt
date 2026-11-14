@@ -7,11 +7,11 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
-import vade.ui.motion.MotionBlurKernel
-import vade.ui.motion.DEFAULT_MOTION_BLUR_KERNEL
-import vade.ui.motion.boxKernelTaps
-import vade.ui.motion.boxKernelWeights
-import vade.ui.motion.triangleKernelWeights
+import vade.ui.skin.glass.MotionBlurKernel
+import vade.ui.skin.glass.DEFAULT_MOTION_BLUR_KERNEL
+import vade.ui.skin.glass.boxKernelTaps
+import vade.ui.skin.glass.boxKernelWeights
+import vade.ui.skin.glass.triangleKernelWeights
 
 /**
  * The triangle (Bartlett) kernel, and the beat-frequency argument it exists for.

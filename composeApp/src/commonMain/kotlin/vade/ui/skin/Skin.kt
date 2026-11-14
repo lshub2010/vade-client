@@ -1,5 +1,7 @@
 package vade.ui.skin
 
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.Easing
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Modifier
@@ -45,7 +47,20 @@ interface Skin {
     val colors: SkinColors
     val shapes: SkinShapes
     val typography: SkinTypography
-    val motion: SkinMotion
+
+    /**
+     * Motion tokens (v2 §六/§11). Default-implemented so a skin is not forced to carry
+     * them; overriding skins (material/miuix) keep working unchanged.
+     */
+    val motion: SkinMotion get() = SkinMotion()
+
+    /**
+     * Glass tokens (v2 §5/§9: backdrop blur radii, layer tint, hairline on glass).
+     * Default-implemented for the same reason as [motion] — the values below are the
+     * probe-measured defaults from docs/visual-language.md §5, so a skin without a
+     * glass look still exposes a usable token set to `skin/glass/GlassSurface`.
+     */
+    val glass: SkinGlass get() = SkinGlass()
 
     // --- 1-7: the original frozen set -----------------------------------------
 
@@ -227,23 +242,63 @@ data class SkinColors(
 
     /** Tool-card status bar: 审批 / warn `#B26A00`. */
     val warning: Color = error,
+
+    // --- v2 glass / shadow tokens (visual language §5/§8, Wave 0 2026-11-14) ------
+    // Every one falls back to a token that already existed, so a skin that does not
+    // implement the v2 glass look keeps rendering exactly as before.
+
+    /** Tinted base colour a glass layer reads as (visual language §5: 极薄染色, ≤45%). */
+    val surfaceGlass: Color = surface,
+
+    /** Soft shadow for in-page static cards (§8 row 1: `0 1 2 rgba(0,0,0,.06)`). */
+    val shadowSoft: Color = outline,
+
+    /** Float-layer shadow — composer / sheet / drawer / GlassSurface (§8 row 2). */
+    val shadowFloat: Color = outline,
+
+    /** Accent glow for the primary action ball, NOT a shadow (§8 row 3). */
+    val glowAccent: Color = primary,
+
+    /** Foreground text drawn directly on a glass layer. */
+    val textOnGlass: Color = onSurface,
 )
 
 @Immutable
 data class SkinShapes(
-    val small: Dp = 8.dp,
-    val medium: Dp = 14.dp,
-    val large: Dp = 22.dp,
+    // --- v1 names kept as aliases (they must not disappear: MaterialParts.kt /
+    //     MiuixParts.kt and the business pages read them) — v2 points them at the
+    //     new scale by name: small→sm, medium→md, large→lg (§10 raised every step).
+    /** Alias of [sm] · 16dp — v2 list rows / secondary buttons. */
+    val small: Dp = 16.dp,
+
+    /** Alias of [md] · 20dp — v2 cards, inputs, tool cards. */
+    val medium: Dp = 20.dp,
+
+    /** Alias of [lg] · 24dp — v2 user bubbles, image thumbs, module cards. */
+    val large: Dp = 24.dp,
+
     val pill: Dp = 999.dp,
-    // --- optional steps added after the C-09 freeze (2026-11-14) --------------
-    // The visual language scales 8 / 12 / 16 / 20 / 28; `small`/`medium`/`large`
-    // keep their old meaning so no existing call site moves.
 
-    /** xs · 8dp — thumbnails, inline code, small tags. */
-    val xs: Dp = small,
+    // --- v2 six-step scale (visual language §10, replaces the v1 8/12/16/20/28 ladder) ---
+    // Adjacent steps differ by ≥4dp; nested cards keep outer ≥ inner + 4dp.
 
-    /** xl · 28dp — bottom sheets, command palette, full-screen overlays. */
-    val xl: Dp = large,
+    /** xs · 12dp — chips, badges, small buttons, inline code fragments. */
+    val xs: Dp = 12.dp,
+
+    /** sm · 16dp — list rows, secondary buttons, input inner layer. */
+    val sm: Dp = 16.dp,
+
+    /** md · 20dp — tool cards, attachment cards, search result rows. */
+    val md: Dp = 20.dp,
+
+    /** lg · 24dp — user message bubbles, image thumbs, module cards. */
+    val lg: Dp = 24.dp,
+
+    /** xl · 28dp — floating composer, primary cards, global sheet (§9). */
+    val xl: Dp = 28.dp,
+
+    /** sheet · 32dp — global floating sheet card, all four corners equal (§9/§10). */
+    val sheet: Dp = 32.dp,
 )
 
 @Immutable
@@ -264,6 +319,60 @@ data class SkinMotion(
     val fastMs: Int = 90,
     val normalMs: Int = 180,
     val emphasizedMs: Int = 260,
+    // --- v2 motion tokens (visual language §六: 150–220ms, §11: motion blur) ------
+    // The blur constants below MUST stay in sync with skin/glass/MotionBlur.kt
+    // (MOTION_BLUR_* constants, probe-measured and pinned by MotionBlurMathTest);
+    // both sides record the same §11 numbers and neither re-measures alone.
+
+    /** v2 quick step · 150ms — hovers, small in-place transitions. */
+    val quickMs: Int = 150,
+
+    /** v2 standard step · 180ms — the default v2 duration (send-ball press, etc.). */
+    val standardMs: Int = 180,
+
+    /** v2 slow step · 220ms — panels, sheets, page transitions. */
+    val slowMs: Int = 220,
+
+    /** The one v2 curve: `cubic-bezier(0.2, 0, 0, 1)` (§六). */
+    val easing: Easing = CubicBezierEasing(0.2f, 0f, 0f, 1f),
+
+    /** Motion-blur radius cap · 6dp (§11: 10dp smeared glyphs into colour blocks). */
+    val motionBlurMaxRadiusDp: Float = 6f,
+
+    /** Below this scroll velocity (dp/s) nothing smears (§11). */
+    val motionBlurStartVelocity: Float = 1200f,
+
+    /** Velocity (dp/s) at which the radius reaches [motionBlurMaxRadiusDp] (§11). */
+    val motionBlurFullVelocity: Float = 6000f,
+)
+
+/**
+ * v2 glass tokens (visual language §5/§9) — the numbers a glass layer needs: how hard to
+ * blur the backdrop, how thick the tint is per theme, and the hairline that keeps the
+ * layer from reading as "pasted on". The tint MUST be applied through
+ * `colorEffects(listOf(HazeColorEffect.tint(...)))` — `backgroundColor` paints behind the
+ * opaque blurred backdrop and is a no-op (haze probe, RESULT.md §坑1). Defaults are the
+ * §5 probe values; skins override per theme.
+ */
+@Immutable
+data class SkinGlass(
+    /** Backdrop blur radius for bars/composer/overlay glass (§5: 24dp). */
+    val blurRadiusDp: Float = 24f,
+
+    /** Larger radius for full sheets, which move more content (§5: 32dp). */
+    val sheetBlurRadiusDp: Float = 32f,
+
+    /** Light-theme tint: white @ 26% — thin enough to keep the backdrop readable. */
+    val tintLight: Color = Color.White.copy(alpha = 0.26f),
+
+    /** Dark-theme tint: black @ 34% (§5: 26%/34%, ceiling 45%). */
+    val tintDark: Color = Color.Black.copy(alpha = 0.34f),
+
+    /**
+     * 1px hairline drawn on the glass edge. Skins deepen this on busy backdrops (§5:
+     * 加深一档 or 1.5px); the default is a translucent white that reads on dark canvas.
+     */
+    val hairlineOnGlass: Color = Color.White.copy(alpha = 0.25f),
 )
 
 // --- semantic state ----------------------------------------------------------

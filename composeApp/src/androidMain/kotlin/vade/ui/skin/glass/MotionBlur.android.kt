@@ -1,4 +1,4 @@
-package vade.ui.motion
+package vade.ui.skin.glass
 
 import android.os.Build
 import androidx.compose.ui.Modifier

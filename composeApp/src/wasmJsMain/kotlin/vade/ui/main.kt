@@ -7,7 +7,7 @@ import kotlinx.browser.window
 import vade.ui.demo.MotionProbe
 import vade.ui.demo.MotionProbeConfig
 import vade.ui.demo.ProbeContent
-import vade.ui.motion.MotionBlurKernel
+import vade.ui.skin.glass.MotionBlurKernel
 
 /**
  * Wasm entry point. ComposeViewport creates its own canvas inside the given DOM node, so

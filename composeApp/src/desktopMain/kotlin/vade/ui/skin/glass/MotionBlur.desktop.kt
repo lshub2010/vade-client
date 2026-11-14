@@ -1,4 +1,4 @@
-package vade.ui.motion
+package vade.ui.skin.glass
 
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent

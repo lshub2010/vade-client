@@ -54,19 +54,44 @@ kotlin {
             // already pinned in the root build), and its four Android AARs declare
             // minCompileSdk=37 (this module is already on 37). No AGP/Gradle/compileSdk change.
             implementation("top.yukonga.miuix.kmp:miuix-ui:0.9.4")
+            // v2 Wave 0 · real backdrop blur (docs/visual-language.md §5). 2.1.0 is the
+            // probe-verified version (shots of tmp/haze-probe: three targets compile, desktop
+            // really blurs); its `androidApiElements` / `jvmApiElements` / `wasmJsApiElements`
+            // variants cover all three targets of this module. The tint MUST go through
+            // `colorEffects(...)` — `backgroundColor` paints behind the opaque blurred layer
+            // and is a no-op (probe RESULT.md §坑1).
+            implementation("dev.chrisbanes.haze:haze:2.1.0")
+            implementation("dev.chrisbanes.haze:haze-blur:2.1.0")
+            // v2 Wave 0 · SessionSource transport seam. Ktor 3.6.1 = newest stable line on
+            // Maven Central (metadata lastUpdated 2026-10-29); its Gradle module metadata
+            // declares kotlin-stdlib 2.3.21, which the 2.4.20 compiler of this repo reads
+            // (metadata is read one minor ahead), and the wasmJsApiElements variant exists
+            // for every artifact below — verified against repo1.maven.org, not from memory.
+            // Engines are per-target below; only the core/websockets/content-negotiation/
+            // serialization contracts live in commonMain so `data/` stays engine-free.
+            implementation("io.ktor:ktor-client-core:3.6.1")
+            implementation("io.ktor:ktor-client-websockets:3.6.1")
+            implementation("io.ktor:ktor-client-content-negotiation:3.6.1")
+            implementation("io.ktor:ktor-serialization-kotlinx-json:3.6.1")
         }
 
         desktopMain.dependencies {
             implementation(compose.desktop.currentOs)
+            // CIO engine: pure JVM, no extra native deps — the desktop default for Ktor 3.x.
+            implementation("io.ktor:ktor-client-cio:3.6.1")
         }
 
         androidMain.dependencies {
             // Same version the spike used; no bump.
             implementation("androidx.activity:activity-compose:1.9.3")
+            // OkHttp engine: the Android-recommended engine, backed by the platform's
+            // connection pool and already on the classpath via activity-compose transitives.
+            implementation("io.ktor:ktor-client-okhttp:3.6.1")
         }
 
         wasmJsMain.dependencies {
-            // Nothing extra: ComposeViewport is the whole surface.
+            // Browser engine: WebSocket + fetch against the JS runtime itself.
+            implementation("io.ktor:ktor-client-js:3.6.1")
         }
 
         // Guards the C-09 rule "business pages only talk to Skin": fails the build
