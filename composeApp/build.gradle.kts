@@ -73,6 +73,18 @@ kotlin {
             implementation("io.ktor:ktor-client-websockets:3.6.1")
             implementation("io.ktor:ktor-client-content-negotiation:3.6.1")
             implementation("io.ktor:ktor-serialization-kotlinx-json:3.6.1")
+            // w2-icons · Tabler Icons as vector ImageVectors (docs/visual-language.md §3:
+            // icons are vectors, never glyphs/CJK chars). Three coordinates, verified against
+            // the 2.2.1 artifacts on Maven Central (jar listings, not from memory):
+            //  - icons-tabler-cmp         = the `Tabler` namespace object only (2.4 KB stub);
+            //                               also the license umbrella (MIT).
+            //  - icons-tabler-outline-cmp = `Tabler.Outline.*` extension properties (4 985 icons).
+            //  - icons-tabler-filled-cmp  = `Tabler.Filled.*` (the one fill icon: PlayerStop).
+            // All three publish jvm / wasm-js / android variants. Business code must not
+            // import `com.composables.icons.tabler.*` — it goes through `vade.ui.icon.VadeIcons`.
+            implementation("com.composables:icons-tabler-cmp:2.2.1")
+            implementation("com.composables:icons-tabler-outline-cmp:2.2.1")
+            implementation("com.composables:icons-tabler-filled-cmp:2.2.1")
         }
 
         desktopMain.dependencies {

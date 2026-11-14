@@ -98,9 +98,18 @@ done
 | Android / Wasm 运行时与截图 | **未验证**（只验了构建） |
 | 无障碍（字体缩放 / TalkBack） | **未验证**（U1-g） |
 
-## 两条防回退测试
+## 防回退测试
 
 `desktopTest` 里有真跑的断言：
 
 1. 业务页面**不得** import `material3` / `miuix` / `glass`（只能经 `Skin`）；扫描目录含 `destinations`、`shell`、`search`、`chat`。
 2. `Skin.kt` **恰好 11 个** `@Composable fun` —— 少一个说明组件被删，多一个说明有人绕过 C-09 流程加了第 12 个。
+3. `IconGuardTest`（w2-icons）：全 `commonMain` 禁止字符/汉字当图标的 `Text("↑")` / `UiText("⌕")` 字面量、业务代码禁止直接 import `com.composables.icons.tabler`（只能经 `vade.ui.icon.VadeIcons`）、`Destination` 四入口必须是 Tabler 矢量、`VadeIcons` ≥20 个公开 `ImageVector`。w2-icons 分支的扫描暂排除 `shell/`、`skin/`（并行棒在改，合并后由父棒放开）。
+
+## 第三方资产许可
+
+### Tabler Icons
+
+本仓库的矢量图标来自 [Tabler Icons](https://tabler.io/icons)，经 `com.composables:icons-tabler-cmp` / `icons-tabler-outline-cmp` / `icons-tabler-filled-cmp` 2.2.1（打包：[Composable Horizons composeicons](https://github.com/composablehorizons/composeicons)，MIT License）接入，统一重导出于 `vade.ui.icon.VadeIcons`。
+
+Tabler Icons 以 **MIT License** 发布，版权行：**Copyright (c) 2018-2026 Tabler contributors**（许可原文：https://github.com/tabler/tabler-icons/blob/main/LICENSE ）。`shell/`、`skin/` 之外的代码不得直接 import `com.composables.icons.tabler.*`。
