@@ -110,6 +110,15 @@ import kotlin.math.sign
 val LocalFloatingBottomBarTabScale = staticCompositionLocalOf { { 1f } }
 
 /**
+ * g-float halo strength budget. The halo's darkest point may differ from the canvas
+ * by ≤3 % (≤8/255): 0.03f → 7.65/255 on a white canvas; the dark variant carries more
+ * ink but on a ≈14/255 canvas still moves ≤0.7/255. (The old 0.1f/0.2f stepped
+ * ~25/255 at the halo's outer edge — the reported grey slab.)
+ */
+internal val FloatingHaloAlphaLight: Float = 0.03f
+internal val FloatingHaloAlphaDark: Float = 0.05f
+
+/**
  * KernelSU's floating liquid-glass pill, parameter-for-parameter:
  *
  *  - pill rows are 64 dp tall (56 dp content + 4 dp padding per side); the
@@ -272,12 +281,16 @@ internal fun FloatingBottomBar(
                 // §8.3: directional. The light sits above and in front, so the halo is
                 // pushed DOWN by blur/2 and never sideways (offsetX = 0). Without this the
                 // pill's shadow is a symmetric ring — the "糊一层" the spec bans.
+                // g-float budget: the halo's darkest point may differ from the canvas by
+                // ≤3 % (≤8/255). strength 0.03 → 7.65/255 on white; on a dark canvas
+                // (≈14/255) 0.05 → ≈0.7/255. The old 0.1/0.2 put a ~25/255 step at the
+                // halo's outer edge — the reported grey slab.
                 .dropHalo(
                     shape = pillShape,
                     radius = 10.dp,
                     color = Color.Black,
                     offset = androidx.compose.ui.unit.DpOffset(0.dp, 5.dp),
-                    alpha = if (dark) 0.2f else 0.1f,
+                    alpha = if (dark) FloatingHaloAlphaDark else FloatingHaloAlphaLight,
                 )
                 .then(
                     if (isBlurEnabled) {
