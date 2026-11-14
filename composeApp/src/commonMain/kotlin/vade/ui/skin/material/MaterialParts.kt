@@ -56,6 +56,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import vade.ui.component.liquid.VadeShadows
+import vade.ui.component.liquid.layeredShadow
 import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
 import vade.ui.skin.ApprovalRequest
@@ -631,12 +633,16 @@ internal fun MaterialInputBar(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(
-                elevation = 16.dp,
-                shape = panelShape,
-                ambientColor = colors.shadowFloat,
-                spotColor = colors.shadowFloat,
-            )
+            // §8.2 shadow2 —— 浮层阴影必须**跟着面板形状**画。
+            //
+            // g-composer-corner：这里原来写的是 `Modifier.shadow(elevation = 16.dp,
+            // shape = panelShape, …)`。shape 是传了的，但 Compose/Skia 的仰角阴影把
+            // 「形状正下方不画阴影」那块挖空做成了**外接矩形内缩** —— 84 % 的
+            // surfaceGlass 把那块矩形透出来，圆角处就露四个方角（桌面密度 1 实测：
+            // 胶囊 x40..560/y40..107 内出现 x49..551/y61..87 的矩形，每条边 4/255 台阶）。
+            // `component/liquid` 的 layeredShadow 用 shape 的 RoundedCornerRect 做轮廓、
+            // 真高斯模糊、只向下扩散（§8.3），四条边与圆角都跟面板走，且不挖矩形空。
+            .layeredShadow(VadeShadows.float, panelShape, dark = colors.isDark, outsideOnly = true)
             .clip(panelShape)
             .background(colors.surfaceGlass)
             .border(
