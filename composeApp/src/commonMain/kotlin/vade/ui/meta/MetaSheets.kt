@@ -157,7 +157,7 @@ internal fun DeleteConfirmSheet(
     val skin = LocalSkin.current
     MetaSheetScaffold(title = MetaCopy.DELETE_TITLE, icon = VadeIcons.Trash, onClose = onCancel) {
         UiText(
-            text = MetaCopy.DELETE_BODY.format(editor.session.title),
+            text = MetaCopy.DELETE_BODY.replace("%s", editor.session.title),
             size = 14,
             color = skin.colors.onSurfaceVariant,
         )

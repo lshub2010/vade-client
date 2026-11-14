@@ -20,6 +20,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
+import kotlin.concurrent.Volatile
 import vade.ui.chat.ChatMessage
 import vade.ui.protocol.AttachParams
 import vade.ui.protocol.AttachResult

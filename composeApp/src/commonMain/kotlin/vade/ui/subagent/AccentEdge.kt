@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.Modifier
+import kotlin.math.PI
+import kotlin.math.acos
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
@@ -74,7 +76,7 @@ private fun DrawScope.drawAccentEdge(color: Color, corner: Dp, shape: Shape) {
 private fun ribbonPath(size: Size, cornerPx: Float, maxW: Float, topRamp: Float, bottomRamp: Float): Path? {
     if (size.height <= 0f || size.width <= 0f) return null
     val r = cornerPx.coerceIn(0f, min(size.width, size.height))
-    val arcLen = (Math.PI / 2.0).toFloat() * r
+    val arcLen = (PI / 2.0).toFloat() * r
     val straightLen = max(0f, size.height - r)
     val totalLen = arcLen + straightLen
     if (totalLen <= 0f) return null
@@ -82,7 +84,7 @@ private fun ribbonPath(size: Size, cornerPx: Float, maxW: Float, topRamp: Float,
     // y into path length: on the arc y = r·(1 − cos(d/r)); on the straight edge y = r + (d − arcLen).
     val vanishY = (size.height * EDGE_VANISH_FRACTION).coerceAtLeast(1f)
     val vanishD = if (vanishY <= r && r > 0f) {
-        r * Math.acos((1.0 - vanishY / r).coerceIn(-1.0, 1.0)).toFloat()
+        r * acos((1.0 - vanishY / r).coerceIn(-1.0, 1.0)).toFloat()
     } else {
         arcLen + (vanishY - r)
     }.coerceIn(1f, totalLen)
@@ -125,7 +127,7 @@ private fun ribbonPath(size: Size, cornerPx: Float, maxW: Float, topRamp: Float,
 /** Point on the card silhouette at path length d (arc → straight left edge). */
 private fun outerPoint(d: Float, r: Float, arcLen: Float): Pair<Float, Float> =
     if (d <= arcLen && r > 0f) {
-        val theta = (Math.PI / 2.0) - (d / r) // radians, from the top of the arc down to the left end
+        val theta = (PI / 2.0) - (d / r) // radians, from the top of the arc down to the left end
         Pair(r + (r * cos(theta)).toFloat(), r - (r * sin(theta)).toFloat())
     } else {
         val y = if (r > 0f) r + (d - arcLen) else d
@@ -135,7 +137,7 @@ private fun outerPoint(d: Float, r: Float, arcLen: Float): Pair<Float, Float> =
 /** The silhouette point inset by width w towards the card interior. */
 private fun innerPoint(d: Float, r: Float, arcLen: Float, w: Float): Pair<Float, Float> =
     if (d <= arcLen && r > 0f) {
-        val theta = (Math.PI / 2.0) - (d / r)
+        val theta = (PI / 2.0) - (d / r)
         val innerR = max(0f, r - w)
         Pair(r + (innerR * cos(theta)).toFloat(), r - (innerR * sin(theta)).toFloat())
     } else {

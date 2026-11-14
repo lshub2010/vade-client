@@ -42,7 +42,9 @@ object MetaColors {
         val r = (value ushr 16) and 0xFF
         val g = (value ushr 8) and 0xFF
         val b = value and 0xFF
-        return "#%02X%02X%02X".format(r, g, b)
+        // `.format` 是 JVM 专有 API，commonMain 里会把 Wasm 目标编红；手写补零。
+        fun hex2(v: Int): String = v.toString(16).uppercase().padStart(2, '0')
+        return "#" + hex2(r) + hex2(g) + hex2(b)
     }
 
     /** 与服务端 `COLOR_PATTERN.match` 同义的布尔面。 */
