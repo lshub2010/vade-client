@@ -9,3 +9,6 @@ kotlin-js-store/
 cp.txt
 cp.raw
 cp.err
+# Metrics venv/pycache for tools/motion-metrics*.py
+__pycache__/
+cp_new.txt
