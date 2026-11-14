@@ -1,0 +1,30 @@
+=== SCAN SUMMARY ===
+root: D:\HermesWorkspace\Vade-client-wt\g-clean\composeApp\build\compose\binaries\main\app\vade-ui
+files scanned: 241
+jars scanned: 95  zip entries scanned: 23721
+raw bytes searched (files + decompressed entries): 301,324,126
+
+=== HIT COUNTS BY PATTERN ===
+D:/Hermes                 : 2
+D:\Hermes                 : 0
+GRADLE_USER_HOME          : 0
+C:/Users                  : 0
+C:\Users                  : 0
+D:/Android                : 0
+D:\Android                : 0
+ANDROID_HOME              : 0
+ANDROID_SDK_ROOT          : 0
+MSYS form /d/Hermes       : 0
+double-prefix D:\d\       : 0
+HermesWorkspace           : 2
+'hermes' broad ci         : 4
+
+=== ALL HITS (file | pattern | offset | context, <=5 offsets per file+pattern) ===
+app\composeApp-desktop-125a91d413a158858e76dbb011937ede.jar!vade/ui/chat/ChatFixtures.class | D:/Hermes | off=2887 | ...V.......y.....tc-2......shell.exec.....>{"cmd":"gradle --stop","cwd":"D:/HermesWorkspace/Vade-client"}......cmd......medium......Failed............-exit 1 .. No daemon running in this directory...........,...EX...
+app\composeApp-desktop-125a91d413a158858e76dbb011937ede.jar!vade/ui/chat/ChatFixtures.class | HermesWorkspace | off=2890 | ........y.....tc-2......shell.exec.....>{"cmd":"gradle --stop","cwd":"D:/HermesWorkspace/Vade-client"}......cmd......medium......Failed............-exit 1 .. No daemon running in this directory...........,...EXIT_...
+app\composeApp-desktop-125a91d413a158858e76dbb011937ede.jar!vade/ui/chat/ChatFixtures.class | 'hermes' broad ci | off=2890 | ........y.....tc-2......shell.exec.....>{"cmd":"gradle --stop","cwd":"D:/HermesWorkspace/Vade-client"}......cmd......medium......Failed............-exit 1 .. No daemon running in this directory...........,...EXIT_...
+app\composeApp-desktop-125a91d413a158858e76dbb011937ede.jar!vade/ui/skin/miuix/MiuixShowcaseKt.class | D:/Hermes | off=16564 | ........a1.....z{.  "cmd": "gradle :composeApp:assembleDebug",.  "cwd": "D:/HermesWorkspace/Vade-client-wt/u2-miuix",.  "timeout_s": 900.}.. .......;.j...MiuixShowcasePage$lambda$10$1$0..:(Lvade/ui/skin/Decision;L...
+app\composeApp-desktop-125a91d413a158858e76dbb011937ede.jar!vade/ui/skin/miuix/MiuixShowcaseKt.class | HermesWorkspace | off=16567 | .....a1.....z{.  "cmd": "gradle :composeApp:assembleDebug",.  "cwd": "D:/HermesWorkspace/Vade-client-wt/u2-miuix",.  "timeout_s": 900.}.. .......;.j...MiuixShowcasePage$lambda$10$1$0..:(Lvade/ui/skin/Decision;Lvad...
+app\composeApp-desktop-125a91d413a158858e76dbb011937ede.jar!vade/ui/skin/miuix/MiuixShowcaseKt.class | 'hermes' broad ci | off=16567 | .....a1.....z{.  "cmd": "gradle :composeApp:assembleDebug",.  "cwd": "D:/HermesWorkspace/Vade-client-wt/u2-miuix",.  "timeout_s": 900.}.. .......;.j...MiuixShowcasePage$lambda$10$1$0..:(Lvade/ui/skin/Decision;Lvad...
+runtime\lib\security\public_suffix_list.dat | 'hermes' broad ci | off=49547 | .....hereUT.......c.H-J....PK...\H.........PK..........!.................hermesUT.......c.H-.M-....PK..............PK..........!.................hiphopUT.......c..,../....PK.....;........PK..........!................
+runtime\lib\security\public_suffix_list.dat | 'hermes' broad ci | off=173307 | ..........)...hereUT.......PK............!...........................m...hermesUT.......PK............!....;..........................hiphopUT.......PK............!...\...........................hisamitsuUT..........
