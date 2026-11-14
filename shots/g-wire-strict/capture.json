@@ -1,0 +1,742 @@
+{
+ "data_dir": "C:\\Users\\LENSHLD\\AppData\\Local\\Temp\\vade-cap-b6zvmozy",
+ "core_version": "0.1.0",
+ "pair_session_response": {
+  "device_id": "ui-be3ea5c58b60f733"
+ },
+ "rpc": {
+  "ui/attach": {
+   "jsonrpc": "2.0",
+   "id": 1,
+   "result": {
+    "session_id": "85a5334e86e44eeb84495b97d21515f2",
+    "from_seq": 0,
+    "snapshot": {
+     "from_seq": 0,
+     "session": {
+      "id": "85a5334e86e44eeb84495b97d21515f2",
+      "created_at": 1794671726987,
+      "title": null,
+      "state": "open",
+      "seq_counter": 0,
+      "model": {
+       "model_id": null,
+       "source": "none"
+      }
+     },
+     "messages": [],
+     "turns": [],
+     "queue": {
+      "running": null,
+      "pending": []
+     },
+     "pending_approvals": [],
+     "pending_inputs": [],
+     "tasks": [],
+     "tasks_truncated": false
+    }
+   }
+  },
+  "ui/submit": {
+   "jsonrpc": "2.0",
+   "id": 2,
+   "result": {
+    "turn_id": "cac1a2991dd9448db4e028d9f80d1234",
+    "queue_pos": 1
+   }
+  },
+  "session/usage.get#2": {
+   "jsonrpc": "2.0",
+   "id": 3,
+   "result": {
+    "session_id": "85a5334e86e44eeb84495b97d21515f2",
+    "chat": {
+     "prompt_tokens": 9,
+     "completion_tokens": 12,
+     "total_tokens": 21,
+     "turns": 1,
+     "partial_turns": 0
+    },
+    "aux": {
+     "total_tokens": 0,
+     "calls": 0
+    },
+    "total_tokens": 21,
+    "by_model": [
+     {
+      "model_id": null,
+      "total_tokens": 21,
+      "turns": 1
+     }
+    ],
+    "day": {
+     "day": "2026-11-14",
+     "core_total_tokens": 21,
+     "core_limit": 0,
+     "session_tokens": 21,
+     "state": "off"
+    },
+    "budget": {
+     "scope": "session",
+     "limit": 0,
+     "used": 21,
+     "ratio": null,
+     "state": "off",
+     "enforced": false
+    }
+   }
+  },
+  "session/list#2": {
+   "jsonrpc": "2.0",
+   "id": 4,
+   "result": {
+    "sessions": [
+     {
+      "session_id": "85a5334e86e44eeb84495b97d21515f2",
+      "created_at": 1794671726987,
+      "updated_at": 1794671727628,
+      "title": null,
+      "icon": null,
+      "color": null,
+      "group_id": null,
+      "pinned_at": null,
+      "archived_at": null,
+      "unread": 0,
+      "state": "open"
+     }
+    ],
+    "next_cursor": null
+   }
+  },
+  "session/search#2": {
+   "jsonrpc": "2.0",
+   "id": 5,
+   "result": {
+    "results": [
+     {
+      "session_id": "85a5334e86e44eeb84495b97d21515f2",
+      "title": null,
+      "updated_at": 1794671727628,
+      "matched_in": "body",
+      "message_id": "df3e64aaa17f4cb5940dd2d2eab4956f",
+      "snippet": "capture hello",
+      "snippet_offset": 0,
+      "archived": false
+     }
+    ],
+    "total": 1
+   }
+  },
+  "session/group.create": {
+   "jsonrpc": "2.0",
+   "id": 6,
+   "result": {
+    "group": {
+     "group_id": "fc72b872c8c9411cbc9e6b17e43b077d",
+     "name": "cap-group",
+     "icon": null,
+     "color": "#336699",
+     "sort_order": 0,
+     "created_at": 1794671742936
+    }
+   }
+  },
+  "session/rename": {
+   "jsonrpc": "2.0",
+   "id": 7,
+   "result": {
+    "ok": true,
+    "session": {
+     "session_id": "85a5334e86e44eeb84495b97d21515f2",
+     "created_at": 1794671726987,
+     "updated_at": 1794671727628,
+     "title": "cap title",
+     "icon": null,
+     "color": null,
+     "group_id": null,
+     "pinned_at": null,
+     "archived_at": null,
+     "unread": 0,
+     "state": "open"
+    }
+   }
+  },
+  "session/pin": {
+   "jsonrpc": "2.0",
+   "id": 8,
+   "result": {
+    "ok": true,
+    "pinned_at": 1794671743800
+   }
+  },
+  "session/pin#off": {
+   "jsonrpc": "2.0",
+   "id": 9,
+   "result": {
+    "ok": true,
+    "pinned_at": null
+   }
+  },
+  "session/archive": {
+   "jsonrpc": "2.0",
+   "id": 10,
+   "result": {
+    "ok": true,
+    "archived_at": 1794671744672
+   }
+  },
+  "session/archive#off": {
+   "jsonrpc": "2.0",
+   "id": 11,
+   "result": {
+    "ok": true,
+    "archived_at": null
+   }
+  },
+  "turn/regenerate": {
+   "jsonrpc": "2.0",
+   "id": 12,
+   "error": {
+    "code": "INVALID_ARGUMENT",
+    "message": "client_msg_id is required"
+   }
+  },
+  "message/edit_resubmit": {
+   "jsonrpc": "2.0",
+   "id": 13,
+   "error": {
+    "code": "INVALID_ARGUMENT",
+    "message": "client_msg_id is required"
+   }
+  },
+  "model/list": {
+   "jsonrpc": "2.0",
+   "id": 14,
+   "result": {
+    "revision": 1,
+    "not_modified": false,
+    "models": [],
+    "default": {
+     "model_id": null,
+     "source": "none",
+     "resolved": false
+    }
+   }
+  },
+  "session/model.get": {
+   "jsonrpc": "2.0",
+   "id": 15,
+   "result": {
+    "model_id": null,
+    "source": "none",
+    "resolved": false,
+    "effective": null,
+    "global_default": null,
+    "reason": "no_model_configured"
+   }
+  },
+  "session/usage.get": {
+   "jsonrpc": "2.0",
+   "id": 16,
+   "result": {
+    "session_id": "85a5334e86e44eeb84495b97d21515f2",
+    "chat": {
+     "prompt_tokens": 9,
+     "completion_tokens": 12,
+     "total_tokens": 21,
+     "turns": 1,
+     "partial_turns": 0
+    },
+    "aux": {
+     "total_tokens": 0,
+     "calls": 0
+    },
+    "total_tokens": 21,
+    "by_model": [
+     {
+      "model_id": null,
+      "total_tokens": 21,
+      "turns": 1
+     }
+    ],
+    "day": {
+     "day": "2026-11-14",
+     "core_total_tokens": 21,
+     "core_limit": 0,
+     "session_tokens": 21,
+     "state": "off"
+    },
+    "budget": {
+     "scope": "session",
+     "limit": 0,
+     "used": 21,
+     "ratio": null,
+     "state": "off",
+     "enforced": false
+    }
+   }
+  },
+  "session/list": {
+   "jsonrpc": "2.0",
+   "id": 17,
+   "result": {
+    "sessions": [
+     {
+      "session_id": "85a5334e86e44eeb84495b97d21515f2",
+      "created_at": 1794671726987,
+      "updated_at": 1794671727628,
+      "title": "cap title",
+      "icon": null,
+      "color": null,
+      "group_id": null,
+      "pinned_at": null,
+      "archived_at": null,
+      "unread": 0,
+      "state": "open"
+     }
+    ],
+    "next_cursor": null
+   }
+  },
+  "session/group.list": {
+   "jsonrpc": "2.0",
+   "id": 18,
+   "result": {
+    "groups": [
+     {
+      "group_id": "fc72b872c8c9411cbc9e6b17e43b077d",
+      "name": "cap-group",
+      "icon": null,
+      "color": "#336699",
+      "sort_order": 0,
+      "created_at": 1794671742936,
+      "session_count": 0
+     }
+    ]
+   }
+  },
+  "session/search": {
+   "jsonrpc": "2.0",
+   "id": 19,
+   "result": {
+    "results": [
+     {
+      "session_id": "85a5334e86e44eeb84495b97d21515f2",
+      "title": "cap title",
+      "updated_at": 1794671727628,
+      "matched_in": "body",
+      "message_id": "df3e64aaa17f4cb5940dd2d2eab4956f",
+      "snippet": "capture hello",
+      "snippet_offset": 8,
+      "archived": false
+     }
+    ],
+    "total": 1
+   }
+  },
+  "task/list": {
+   "jsonrpc": "2.0",
+   "id": 20,
+   "result": {
+    "tasks": [],
+    "next_cursor": null,
+    "running_count": 0,
+    "limits": {
+     "max_concurrent": 8,
+     "max_depth": 4
+    }
+   }
+  },
+  "subagent/list": {
+   "jsonrpc": "2.0",
+   "id": 21,
+   "result": {
+    "runs": [],
+    "next_cursor": null
+   }
+  },
+  "ui/state.get": {
+   "jsonrpc": "2.0",
+   "id": 22,
+   "error": {
+    "code": "NOT_FOUND",
+    "message": "unknown method 'ui/state.get'"
+   }
+  },
+  "ui/page.get": {
+   "jsonrpc": "2.0",
+   "id": 23,
+   "error": {
+    "code": "NOT_FOUND",
+    "message": "unknown method 'ui/page.get'"
+   }
+  },
+  "task/log_tail": {
+   "exception": "ConnectionClosedOK(Close(code=1000, reason=''), Close(code=1000, reason=''), True)"
+  },
+  "task/cancel": {
+   "exception": "ConnectionClosedOK(Close(code=1000, reason=''), Close(code=1000, reason=''), True)"
+  },
+  "subagent/get": {
+   "exception": "ConnectionClosedOK(Close(code=1000, reason=''), Close(code=1000, reason=''), True)"
+  },
+  "approval/decide": {
+   "jsonrpc": "2.0",
+   "id": 27,
+   "error": {
+    "code": "APPROVER_INVALID",
+    "message": "browser_session cannot approve high-risk calls"
+   }
+  },
+  "turn/input": {
+   "jsonrpc": "2.0",
+   "id": 28,
+   "error": {
+    "code": "NOT_FOUND",
+    "message": "unknown input request"
+   }
+  },
+  "turn/input.cancel": {
+   "jsonrpc": "2.0",
+   "id": 29,
+   "error": {
+    "code": "NOT_FOUND",
+    "message": "unknown input request"
+   }
+  },
+  "ui/tool.call": {
+   "jsonrpc": "2.0",
+   "id": 30,
+   "error": {
+    "code": "NOT_FOUND",
+    "message": "unknown method 'ui/tool.call'"
+   }
+  },
+  "interrupt": {
+   "jsonrpc": "2.0",
+   "id": 31,
+   "error": {
+    "code": "NOT_FOUND",
+    "message": "no running turn with that id"
+   }
+  },
+  "session/group.update": {
+   "jsonrpc": "2.0",
+   "id": 32,
+   "result": {
+    "group": {
+     "group_id": "fc72b872c8c9411cbc9e6b17e43b077d",
+     "name": "cap-group-2",
+     "icon": "star",
+     "color": null,
+     "sort_order": 0,
+     "created_at": 1794671742936
+    }
+   }
+  },
+  "session/group.assign": {
+   "jsonrpc": "2.0",
+   "id": 33,
+   "result": {
+    "ok": true,
+    "group_id": "fc72b872c8c9411cbc9e6b17e43b077d"
+   }
+  },
+  "session/group.delete": {
+   "jsonrpc": "2.0",
+   "id": 34,
+   "result": {
+    "ok": true,
+    "unassigned": 1
+   }
+  },
+  "session/model.set": {
+   "jsonrpc": "2.0",
+   "id": 35,
+   "result": {
+    "model_id": null,
+    "source": "none",
+    "effective_at": "next_turn"
+   }
+  },
+  "task/list#2": {
+   "jsonrpc": "2.0",
+   "id": 36,
+   "result": {
+    "tasks": [],
+    "next_cursor": null,
+    "running_count": 0,
+    "limits": {
+     "max_concurrent": 8,
+     "max_depth": 4
+    }
+   }
+  },
+  "ui/detach": {
+   "jsonrpc": "2.0",
+   "id": 37,
+   "error": {
+    "code": "NOT_FOUND",
+    "message": "this connection is not attached to that session"
+   }
+  }
+ },
+ "events": [
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "type": "session.attached",
+    "seq": 1,
+    "payload": {
+     "session_id": "85a5334e86e44eeb84495b97d21515f2",
+     "from_seq": 0,
+     "state": "open",
+     "snapshot": true
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "type": "turn.queued",
+    "seq": 2,
+    "payload": {
+     "turn_id": "cac1a2991dd9448db4e028d9f80d1234",
+     "state": "queued",
+     "client_msg_id": "cap-db0c816310aa4f1997e2a1e645d989ba",
+     "root_turn_id": "cac1a2991dd9448db4e028d9f80d1234",
+     "version": 1,
+     "parent_turn_id": null,
+     "user_message_id": "df3e64aaa17f4cb5940dd2d2eab4956f",
+     "reason": "submit"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "type": "queue.updated",
+    "seq": 3,
+    "payload": {
+     "running": null,
+     "running_state": null,
+     "pending": [
+      {
+       "turn_id": "cac1a2991dd9448db4e028d9f80d1234",
+       "state": "queued",
+       "client_msg_id": "cap-db0c816310aa4f1997e2a1e645d989ba",
+       "enqueued_at": 1794671727626
+      }
+     ],
+     "session_id": "85a5334e86e44eeb84495b97d21515f2"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "type": "turn.started",
+    "seq": 4,
+    "payload": {
+     "turn_id": "cac1a2991dd9448db4e028d9f80d1234",
+     "state": "running"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "type": "queue.updated",
+    "seq": 5,
+    "payload": {
+     "running": "cac1a2991dd9448db4e028d9f80d1234",
+     "running_state": "running",
+     "pending": [],
+     "session_id": "85a5334e86e44eeb84495b97d21515f2"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "type": "turn.delta",
+    "seq": 6,
+    "payload": {
+     "turn_id": "cac1a2991dd9448db4e028d9f80d1234",
+     "text": "capture echo: scripted reply.",
+     "part_index": 0,
+     "kind": "text"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "type": "turn.delta",
+    "seq": 7,
+    "payload": {
+     "turn_id": "cac1a2991dd9448db4e028d9f80d1234",
+     "text": " -- done.",
+     "part_index": 0,
+     "kind": "text"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "type": "turn.completed",
+    "seq": 8,
+    "payload": {
+     "turn_id": "cac1a2991dd9448db4e028d9f80d1234",
+     "usage": {
+      "prompt_tokens": 9,
+      "completion_tokens": 12,
+      "total_tokens": 21,
+      "model_id": null,
+      "provider": null,
+      "source": "provider",
+      "steps": 1,
+      "cached_tokens": 0,
+      "reasoning_tokens": 0
+     },
+     "state": "completed",
+     "stopped_reason": "stop",
+     "skills": []
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "type": "queue.updated",
+    "seq": 9,
+    "payload": {
+     "running": null,
+     "running_state": null,
+     "pending": [],
+     "session_id": "85a5334e86e44eeb84495b97d21515f2"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "type": "session.updated",
+    "seq": 10,
+    "payload": {
+     "session_id": "85a5334e86e44eeb84495b97d21515f2",
+     "created_at": 1794671726987,
+     "updated_at": 1794671727628,
+     "title": "cap title",
+     "icon": null,
+     "color": null,
+     "group_id": null,
+     "pinned_at": null,
+     "archived_at": null,
+     "unread": 0,
+     "state": "open",
+     "by": "ui-be3ea5c58b60f733"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "type": "session.updated",
+    "seq": 11,
+    "payload": {
+     "session_id": "85a5334e86e44eeb84495b97d21515f2",
+     "created_at": 1794671726987,
+     "updated_at": 1794671727628,
+     "title": "cap title",
+     "icon": null,
+     "color": null,
+     "group_id": null,
+     "pinned_at": 1794671743800,
+     "archived_at": null,
+     "unread": 0,
+     "state": "open",
+     "by": "ui-be3ea5c58b60f733"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "type": "session.updated",
+    "seq": 12,
+    "payload": {
+     "session_id": "85a5334e86e44eeb84495b97d21515f2",
+     "created_at": 1794671726987,
+     "updated_at": 1794671727628,
+     "title": "cap title",
+     "icon": null,
+     "color": null,
+     "group_id": null,
+     "pinned_at": null,
+     "archived_at": null,
+     "unread": 0,
+     "state": "open",
+     "by": "ui-be3ea5c58b60f733"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "type": "session.updated",
+    "seq": 13,
+    "payload": {
+     "session_id": "85a5334e86e44eeb84495b97d21515f2",
+     "created_at": 1794671726987,
+     "updated_at": 1794671727628,
+     "title": "cap title",
+     "icon": null,
+     "color": null,
+     "group_id": null,
+     "pinned_at": null,
+     "archived_at": 1794671744672,
+     "unread": 0,
+     "state": "open",
+     "by": "ui-be3ea5c58b60f733"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "event",
+   "params": {
+    "type": "session.updated",
+    "seq": 14,
+    "payload": {
+     "session_id": "85a5334e86e44eeb84495b97d21515f2",
+     "created_at": 1794671726987,
+     "updated_at": 1794671727628,
+     "title": "cap title",
+     "icon": null,
+     "color": null,
+     "group_id": null,
+     "pinned_at": null,
+     "archived_at": null,
+     "unread": 0,
+     "state": "open",
+     "by": "ui-be3ea5c58b60f733"
+    }
+   }
+  }
+ ]
+}

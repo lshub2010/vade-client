@@ -58,8 +58,26 @@ internal fun JsonObject.reqStrOrNull(key: String): String? {
         ?: throw PayloadDecodeException("event payload field '$key' is not string|null")
 }
 
-internal fun stringList(key: String, o: JsonObject): List<String>? =
-    o.arr(key)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+/**
+ * `string[]` with SHAPE checking: absent key → null, JSON null → null, an array of
+ * strings → it, anything else → [PayloadDecodeException].
+ *
+ * The loose version answered `(it as? JsonPrimitive)?.contentOrNull`, which turned a
+ * NUMBER element into its text (`[1]` → `["1"]`) and silently DROPPED a non-primitive —
+ * the same "wrong shape decodes as something plausible" drift as `str()` on a number.
+ * Both keys that use this are contract-fixed `string[]` (events.json
+ * `turn.tool_call.args_preview_redacted`, `turn.skill_catalog.entries`).
+ */
+internal fun stringList(key: String, o: JsonObject): List<String>? {
+    val v = o[key] ?: return null
+    if (v is JsonNull) return null
+    val arr = v as? JsonArray
+        ?: throw PayloadDecodeException("event payload field '$key' is not string[]")
+    return arr.map { el ->
+        (el as? JsonPrimitive)?.takeIf { it.isString }?.content
+            ?: throw PayloadDecodeException("event payload field '$key' is not string[]")
+    }
+}
 
 // ---------------------------------------------------------------- payload shapes
 
@@ -77,9 +95,9 @@ data class SessionAttachedPayload(
         fun fromJson(o: JsonObject): SessionAttachedPayload = SessionAttachedPayload(
             sessionId = o.reqStr("session_id"),
             fromSeq = o.reqLng("from_seq"),
-            state = o.str("state") ?: "open",
-            snapshot = o.bool("snapshot") ?: false,
-            replayCount = o.int("replay_count"),
+            state = o.strStrict("state") ?: "open",
+            snapshot = o.boolStrict("snapshot") ?: false,
+            replayCount = o.intStrict("replay_count"),
         )
     }
 }
@@ -101,12 +119,12 @@ data class TurnQueuedPayload(
         fun fromJson(o: JsonObject): TurnQueuedPayload = TurnQueuedPayload(
             turnId = o.reqStr("turn_id"),
             state = o.reqStr("state"),
-            clientMsgId = o.str("client_msg_id"),
-            rootTurnId = o.str("root_turn_id"),
-            version = o.int("version"),
-            parentTurnId = o.str("parent_turn_id"),
-            userMessageId = o.str("user_message_id"),
-            reason = o.str("reason"),
+            clientMsgId = o.strStrict("client_msg_id"),
+            rootTurnId = o.strStrict("root_turn_id"),
+            version = o.intStrict("version"),
+            parentTurnId = o.strStrict("parent_turn_id"),
+            userMessageId = o.strStrict("user_message_id"),
+            reason = o.strStrict("reason"),
         )
     }
 }
@@ -124,8 +142,8 @@ data class TurnStartedPayload(
         fun fromJson(o: JsonObject): TurnStartedPayload = TurnStartedPayload(
             turnId = o.reqStr("turn_id"),
             state = o.reqStr("state"),
-            modelId = o.str("model_id"),
-            modelSource = o.str("model_source"),
+            modelId = o.strStrict("model_id"),
+            modelSource = o.strStrict("model_source"),
         )
     }
 }
@@ -145,8 +163,8 @@ data class TurnDeltaPayload(
         fun fromJson(o: JsonObject): TurnDeltaPayload = TurnDeltaPayload(
             turnId = o.reqStr("turn_id"),
             text = o.reqStr("text"),
-            partIndex = o.int("part_index") ?: 0,
-            kind = o.str("kind") ?: "text",
+            partIndex = o.intStrict("part_index") ?: 0,
+            kind = o.strStrict("kind") ?: "text",
         )
     }
 }
@@ -171,12 +189,12 @@ data class TurnToolCallPayload(
             callId = o.reqStr("call_id"),
             tool = o.reqStr("tool"),
             argsDigest = o.reqStr("args_digest"),
-            argsPreview = o.str("args_preview"),
-            argsPreviewMode = o.str("args_preview_mode"),
+            argsPreview = o.strStrict("args_preview"),
+            argsPreviewMode = o.strStrict("args_preview_mode"),
             argsPreviewRedacted = stringList("args_preview_redacted", o),
-            argsPreviewTruncated = o.bool("args_preview_truncated"),
-            startedAt = o.lng("started_at"),
-            batchId = o.str("batch_id"),
+            argsPreviewTruncated = o.boolStrict("args_preview_truncated"),
+            startedAt = o.lngStrict("started_at"),
+            batchId = o.strStrict("batch_id"),
         )
     }
 }
@@ -201,11 +219,11 @@ data class TurnToolResultPayload(
             turnId = o.reqStr("turn_id"),
             callId = o.reqStr("call_id"),
             ok = o.reqBool("ok"),
-            summary = o.str("summary") ?: "",
-            code = o.str("code"),
-            durationMs = o.lng("duration_ms"),
-            truncated = o.bool("truncated"),
-            resultRef = o.str("result_ref"),
+            summary = o.strStrict("summary") ?: "",
+            code = o.strStrict("code"),
+            durationMs = o.lngStrict("duration_ms"),
+            truncated = o.boolStrict("truncated"),
+            resultRef = o.strStrict("result_ref"),
         )
     }
 }
@@ -233,12 +251,12 @@ data class TurnApprovalRequiredPayload(
             requestId = o.reqStr("request_id"),
             tool = o.reqStr("tool"),
             args = o.el("args") ?: JsonNull,
-            risk = o.str("risk") ?: "low",
-            expiresAt = o.lng("expires_at") ?: 0,
-            sessionId = o.str("session_id"),
-            taskId = o.str("task_id"),
-            taskName = o.str("task_name"),
-            depth = o.int("depth"),
+            risk = o.strStrict("risk") ?: "low",
+            expiresAt = o.lngStrict("expires_at") ?: 0,
+            sessionId = o.strStrict("session_id"),
+            taskId = o.strStrict("task_id"),
+            taskName = o.strStrict("task_name"),
+            depth = o.intStrict("depth"),
         )
     }
 }
@@ -274,10 +292,10 @@ data class TurnApprovalResolvedPayload(
             by = o.reqStr("by"),
             scope = o.reqStr("scope"),
             state = o.reqStr("state"),
-            sessionId = o.str("session_id"),
-            taskId = o.str("task_id"),
-            taskName = o.str("task_name"),
-            depth = o.int("depth"),
+            sessionId = o.strStrict("session_id"),
+            taskId = o.strStrict("task_id"),
+            taskName = o.strStrict("task_name"),
+            depth = o.intStrict("depth"),
         )
     }
 }
@@ -294,7 +312,7 @@ data class InputOption(
         fun fromJson(o: JsonObject): InputOption = InputOption(
             id = o.reqStr("id"),
             label = o.reqStr("label"),
-            description = o.str("description"),
+            description = o.strStrict("description"),
         )
     }
 }
@@ -307,9 +325,9 @@ data class InputSource(
 ) {
     companion object {
         fun fromJson(o: JsonObject): InputSource = InputSource(
-            tool = o.str("tool"),
-            moduleId = o.str("module_id"),
-            depth = o.int("depth"),
+            tool = o.strStrict("tool"),
+            moduleId = o.strStrict("module_id"),
+            depth = o.intStrict("depth"),
         )
     }
 }
@@ -350,18 +368,18 @@ data class TurnInputRequiredPayload(
         fun fromJson(o: JsonObject): TurnInputRequiredPayload = TurnInputRequiredPayload(
             inputId = o.reqStr("input_id"),
             turnId = o.reqStr("turn_id"),
-            sessionId = o.str("session_id"),
-            state = o.str("state") ?: "waiting_input",
+            sessionId = o.strStrict("session_id"),
+            state = o.strStrict("state") ?: "waiting_input",
             kind = o.reqStr("kind"),
             prompt = o.reqStr("prompt"),
-            detail = o.str("detail"),
+            detail = o.strStrict("detail"),
             schema = o.el("schema") ?: JsonNull,
             options = o.arr("options").orEmpty().mapNotNull { (it as? JsonObject)?.let(InputOption::fromJson) },
-            timeoutS = o.int("timeout_s"),
-            expiresAt = o.lng("expires_at"),
+            timeoutS = o.intStrict("timeout_s"),
+            expiresAt = o.lngStrict("expires_at"),
             default = o.el("default"),
             source = o.obj("source")?.let(InputSource::fromJson),
-            createdAt = o.lng("created_at"),
+            createdAt = o.lngStrict("created_at"),
         )
     }
 }
@@ -397,8 +415,8 @@ data class TurnInputResolvedPayload(
             status = o.reqStr("status"),
             value = o.el("value"),
             by = o.reqStr("by"),
-            reason = o.str("reason"),
-            durationMs = o.dbl("duration_ms"),
+            reason = o.strStrict("reason"),
+            durationMs = o.numStrict("duration_ms"),
         )
     }
 }
@@ -418,7 +436,7 @@ data class TurnCompletedPayload(
             turnId = o.reqStr("turn_id"),
             state = o.reqStr("state"),
             usage = VadeUsage.fromJson(o.reqObj("usage")), // required object (events.json turn.completed): a missing or wrong-shape usage drops the event
-            stoppedReason = o.str("stopped_reason"),
+            stoppedReason = o.strStrict("stopped_reason"),
         )
     }
 }
@@ -442,7 +460,7 @@ data class TurnFailedPayload(
             turnId = o.reqStr("turn_id"),
             state = o.reqStr("state"),
             code = o.reqStr("code"),
-            message = o.str("message") ?: "",
+            message = o.strStrict("message") ?: "",
             usage = o.obj("usage")?.let(VadeUsage::fromJson),
             data = o.el("data"),
         )
@@ -468,8 +486,8 @@ data class TurnInterruptedPayload(
             state = o.reqStr("state"),
             by = o.reqStr("by"),
             usage = o.obj("usage")?.let(VadeUsage::fromJson),
-            partialMessageId = o.str("partial_message_id"),
-            partialChars = o.int("partial_chars"),
+            partialMessageId = o.strStrict("partial_message_id"),
+            partialChars = o.intStrict("partial_chars"),
         )
     }
 }
@@ -503,8 +521,8 @@ data class QueuePending(
         fun fromJson(o: JsonObject): QueuePending = QueuePending(
             turnId = o.reqStr("turn_id"),
             state = o.reqStr("state"),
-            clientMsgId = o.str("client_msg_id"),
-            enqueuedAt = o.lng("enqueued_at"),
+            clientMsgId = o.strStrict("client_msg_id"),
+            enqueuedAt = o.lngStrict("enqueued_at"),
         )
     }
 }
@@ -519,8 +537,8 @@ data class QueueUpdatedPayload(
     companion object {
         fun fromJson(o: JsonObject): QueueUpdatedPayload = QueueUpdatedPayload(
             sessionId = o.reqStr("session_id"),
-            running = o.str("running"),
-            runningState = o.str("running_state"),
+            running = o.strStrict("running"),
+            runningState = o.strStrict("running_state"),
             pending = o.arr("pending").orEmpty().mapNotNull { (it as? JsonObject)?.let(QueuePending::fromJson) },
         )
     }
@@ -573,14 +591,14 @@ data class TaskStartedPayload(
             kind = o.reqStr("kind"),
             state = o.reqStr("state"),
             sessionId = o.reqStr("session_id"),
-            turnId = o.str("turn_id"),
-            parentId = o.str("parent_id"),
-            depth = o.int("depth") ?: 0,
-            name = o.str("name") ?: "",
-            startedAt = o.lng("started_at") ?: 0,
-            retryable = o.bool("retryable") ?: false,
-            childSessionId = o.str("child_session_id"),
-            childTurnId = o.str("child_turn_id"),
+            turnId = o.strStrict("turn_id"),
+            parentId = o.strStrict("parent_id"),
+            depth = o.intStrict("depth") ?: 0,
+            name = o.strStrict("name") ?: "",
+            startedAt = o.lngStrict("started_at") ?: 0,
+            retryable = o.boolStrict("retryable") ?: false,
+            childSessionId = o.strStrict("child_session_id"),
+            childTurnId = o.strStrict("child_turn_id"),
         )
     }
 }
@@ -605,12 +623,12 @@ data class TaskStatusPayload(
         fun fromJson(o: JsonObject): TaskStatusPayload = TaskStatusPayload(
             taskId = o.reqStr("task_id"),
             kind = o.reqStr("kind"),
-            parentId = o.str("parent_id"),
-            depth = o.int("depth") ?: 0,
+            parentId = o.strStrict("parent_id"),
+            depth = o.intStrict("depth") ?: 0,
             state = o.reqStr("state"),
             elapsedMs = o.reqLng("elapsed_ms"),
-            action = o.str("action"),
-            pct = o.int("pct"),
+            action = o.strStrict("action"),
+            pct = o.intStrict("pct"),
         )
     }
 }
@@ -631,9 +649,9 @@ data class TaskProgressPayload(
     companion object {
         fun fromJson(o: JsonObject): TaskProgressPayload = TaskProgressPayload(
             taskId = o.reqStr("task_id"),
-            pct = o.int("pct") ?: 0,
+            pct = o.intStrict("pct") ?: 0,
             elapsedMs = o.reqLng("elapsed_ms"),
-            detail = o.str("detail"),
+            detail = o.strStrict("detail"),
         )
     }
 }
@@ -663,15 +681,15 @@ data class TaskFinishedPayload(
         fun fromJson(o: JsonObject): TaskFinishedPayload = TaskFinishedPayload(
             taskId = o.reqStr("task_id"),
             kind = o.reqStr("kind"),
-            parentId = o.str("parent_id"),
-            depth = o.int("depth") ?: 0,
+            parentId = o.strStrict("parent_id"),
+            depth = o.intStrict("depth") ?: 0,
             state = o.reqStr("state"),
-            durationMs = o.lng("duration_ms") ?: 0,
-            summary = o.str("summary") ?: "",
-            code = o.str("code"),
-            message = o.str("message"),
-            forced = o.bool("forced"),
-            by = o.str("by"),
+            durationMs = o.lngStrict("duration_ms") ?: 0,
+            summary = o.strStrict("summary") ?: "",
+            code = o.strStrict("code"),
+            message = o.strStrict("message"),
+            forced = o.boolStrict("forced"),
+            by = o.strStrict("by"),
             usage = o.obj("usage")?.let(VadeUsage::fromJson),
         )
     }
@@ -687,8 +705,8 @@ data class ToolCallBrief(
     companion object {
         fun fromJson(o: JsonObject): ToolCallBrief = ToolCallBrief(
             tool = o.reqStr("tool"),
-            argsDigest = o.str("args_digest") ?: "",
-            ok = o.bool("ok"),
+            argsDigest = o.strStrict("args_digest") ?: "",
+            ok = o.boolStrict("ok"),
         )
     }
 }
@@ -711,8 +729,8 @@ data class SessionTurnPayload(
             sessionId = o.reqStr("session_id"),
             turnId = o.reqStr("turn_id"),
             state = o.reqStr("state"),
-            userText = o.str("user_text") ?: "",
-            assistantText = o.str("assistant_text") ?: "",
+            userText = o.strStrict("user_text") ?: "",
+            assistantText = o.strStrict("assistant_text") ?: "",
             toolCalls = o.arr("tool_calls").orEmpty().mapNotNull { (it as? JsonObject)?.let(ToolCallBrief::fromJson) },
         )
     }
@@ -732,8 +750,8 @@ data class ClosedTurn(
             turnId = o.reqStr("turn_id"),
             state = o.reqStr("state"),
             toolCalls = o.arr("tool_calls").orEmpty().mapNotNull { (it as? JsonObject)?.let(ToolCallBrief::fromJson) },
-            negative = o.bool("negative"),
-            selfCorrected = o.bool("self_corrected"),
+            negative = o.boolStrict("negative"),
+            selfCorrected = o.boolStrict("self_corrected"),
         )
     }
 }
@@ -746,8 +764,8 @@ data class TailTurn(
     companion object {
         fun fromJson(o: JsonObject): TailTurn = TailTurn(
             turnId = o.reqStr("turn_id"),
-            userText = o.str("user_text") ?: "",
-            assistantText = o.str("assistant_text") ?: "",
+            userText = o.strStrict("user_text") ?: "",
+            assistantText = o.strStrict("assistant_text") ?: "",
         )
     }
 }
@@ -767,10 +785,10 @@ data class SessionClosedPayload(
     companion object {
         fun fromJson(o: JsonObject): SessionClosedPayload = SessionClosedPayload(
             sessionId = o.reqStr("session_id"),
-            turnsTotal = o.int("turns_total") ?: 0,
+            turnsTotal = o.intStrict("turns_total") ?: 0,
             turns = o.arr("turns").orEmpty().mapNotNull { (it as? JsonObject)?.let(ClosedTurn::fromJson) },
             tail = o.arr("tail").orEmpty().mapNotNull { (it as? JsonObject)?.let(TailTurn::fromJson) },
-            closedAt = o.lng("closed_at") ?: 0,
+            closedAt = o.lngStrict("closed_at") ?: 0,
         )
     }
 }
@@ -789,10 +807,10 @@ data class SkillProposedPayload(
     companion object {
         fun fromJson(o: JsonObject): SkillProposedPayload = SkillProposedPayload(
             name = o.reqStr("name"),
-            origin = o.str("origin") ?: "proposal",
-            revision = o.int("revision") ?: 0,
-            baseRevision = o.int("base_revision") ?: 0,
-            status = o.str("status") ?: "pending",
+            origin = o.strStrict("origin") ?: "proposal",
+            revision = o.intStrict("revision") ?: 0,
+            baseRevision = o.intStrict("base_revision") ?: 0,
+            status = o.strStrict("status") ?: "pending",
         )
     }
 }
@@ -821,11 +839,11 @@ data class UsageBudgetPayload(
         fun fromJson(o: JsonObject): UsageBudgetPayload = UsageBudgetPayload(
             scope = o.reqStr("scope"),
             state = o.reqStr("state"),
-            used = o.lng("used") ?: 0,
-            limit = o.lng("limit") ?: 0,
-            ratio = o.dbl("ratio") ?: 0.0,
-            degraded = o.bool("degraded") ?: false,
-            sessionId = o.strOrNull("session_id"),
+            used = o.lngStrict("used") ?: 0,
+            limit = o.lngStrict("limit") ?: 0,
+            ratio = o.numStrict("ratio") ?: 0.0,
+            degraded = o.boolStrict("degraded") ?: false,
+            sessionId = o.strStrict("session_id"),
         )
     }
 }
@@ -848,8 +866,8 @@ data class TurnSupersededPayload(
             turnId = o.reqStr("turn_id"),
             supersededBy = o.reqStr("superseded_by"),
             reason = o.reqStr("reason"),
-            rootTurnId = o.str("root_turn_id"),
-            version = o.int("version"),
+            rootTurnId = o.strStrict("root_turn_id"),
+            version = o.intStrict("version"),
         )
     }
 }
@@ -875,7 +893,7 @@ data class MessageEditedPayload(
             supersededByMessageId = o.reqStr("superseded_by_message_id"),
             newTurnId = o.reqStr("new_turn_id"),
             text = o.reqStr("text"),
-            editedAt = o.lng("edited_at") ?: 0,
+            editedAt = o.lngStrict("edited_at") ?: 0,
         )
     }
 }
@@ -908,14 +926,14 @@ data class SessionUpdatedPayload(
         fun fromJson(o: JsonObject): SessionUpdatedPayload = SessionUpdatedPayload(
             sessionId = o.reqStr("session_id"),
             by = o.reqStr("by"),
-            title = o.strOrNull("title"),
-            icon = o.strOrNull("icon"),
-            color = o.strOrNull("color"),
-            groupId = o.strOrNull("group_id"),
-            pinnedAt = o.lng("pinned_at"),
-            archivedAt = o.lng("archived_at"),
-            unread = o.int("unread"),
-            updatedAt = o.lng("updated_at"),
+            title = o.strStrict("title"),
+            icon = o.strStrict("icon"),
+            color = o.strStrict("color"),
+            groupId = o.strStrict("group_id"),
+            pinnedAt = o.lngStrict("pinned_at"),
+            archivedAt = o.lngStrict("archived_at"),
+            unread = o.intStrict("unread"),
+            updatedAt = o.lngStrict("updated_at"),
         )
     }
 }
@@ -1006,8 +1024,8 @@ data class SubagentStatusPayload(
             sessionId = o.reqStr("session_id"),
             state = o.reqStr("state"),
             at = o.reqLng("at"),
-            step = o.strOrNull("step"),
-            toolName = o.strOrNull("tool_name"),
+            step = o.strStrict("step"),
+            toolName = o.strStrict("tool_name"),
         )
     }
 }
@@ -1044,7 +1062,7 @@ data class SubagentResultPayload(
             resultDigest = o.reqStr("result_digest"),
             resultChars = o.reqInt("result_chars"),
             finishedAt = o.reqLng("finished_at"),
-            errorCode = o.strOrNull("error_code"),
+            errorCode = o.strStrict("error_code"),
         )
     }
 }
@@ -1071,7 +1089,7 @@ data class TurnSkillCatalogPayload(
             turnId = o.reqStr("turn_id"),
             digest = o.reqStr("digest"),
             entries = stringList("entries", o).orEmpty(),
-            empty = o.bool("empty"),
+            empty = o.boolStrict("empty"),
         )
     }
 }
@@ -1096,8 +1114,8 @@ data class TurnToolDiscoveredPayload(
             turnId = o.reqStr("turn_id"),
             tool = o.reqStr("tool"),
             toolId = o.reqStr("tool_id"),
-            queryDigest = o.strOrNull("query_digest"),
-            totalMatches = o.int("total_matches"),
+            queryDigest = o.strStrict("query_digest"),
+            totalMatches = o.intStrict("total_matches"),
         )
     }
 }

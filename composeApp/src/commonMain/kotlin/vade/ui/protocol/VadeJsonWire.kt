@@ -73,6 +73,59 @@ fun JsonObject.strStrict(key: String): String? {
         ?: throw PayloadDecodeException("wire object field '$key' is not string|null")
 }
 
+// ------------------------------------------------------------------ shape-strict scalars
+//
+// THE BOUNDARY (holds for every `*Strict` helper below, and is pinned by tests):
+//
+//   absent key            → null   (an optional field that is missing is still legal)
+//   key present, null     → null   (an explicit null is legal wherever X|null is spelled)
+//   key present, right    → the value
+//   key present, WRONG    → [PayloadDecodeException] → the caller's `onMalformed` path
+//   unknown keys          → ignored (no helper ever enumerates the object)
+//
+// So "strict" never turns an optional field into a required one; it only refuses to
+// reinterpret a present-but-wrongly-typed value as "absent". Pair a `*Strict` with
+// [mustKey]/[mustStr] when the key is genuinely required.
+//
+// `int`/`number` note: JSON has one number type, but a contract field spelled `int` is
+// produced by core as a bare integer literal. A literal like `3.0` (or `3.5`) is refused
+// because it means the producer moved to a float — exactly the drift we want to hear
+// about. Where the contract spells `number`, use [numStrict] and `3.0` is legal.
+
+/** Optional long that checks SHAPE: absent/null → null, a JSON number → it, else throws. */
+fun JsonObject.lngStrict(key: String): Long? {
+    val v = this[key] ?: return null
+    if (v is JsonNull) return null
+    val p = v as? JsonPrimitive ?: throw PayloadDecodeException("wire object field '$key' is not int|null")
+    if (p.isString) throw PayloadDecodeException("wire object field '$key' is not int|null")
+    return p.longOrNull ?: throw PayloadDecodeException("wire object field '$key' is not int|null")
+}
+
+/** Optional int that checks SHAPE and RANGE: an out-of-`Int` value is malformed, not null. */
+fun JsonObject.intStrict(key: String): Int? {
+    val v = lngStrict(key) ?: return null
+    return if (v in Int.MIN_VALUE..Int.MAX_VALUE) v.toInt()
+    else throw PayloadDecodeException("wire object field '$key' does not fit an int")
+}
+
+/** Optional bool that checks SHAPE: `true`/`false` only — a `"true"` string throws. */
+fun JsonObject.boolStrict(key: String): Boolean? {
+    val v = this[key] ?: return null
+    if (v is JsonNull) return null
+    val p = v as? JsonPrimitive ?: throw PayloadDecodeException("wire object field '$key' is not bool|null")
+    if (p.isString) throw PayloadDecodeException("wire object field '$key' is not bool|null")
+    return p.booleanOrNull ?: throw PayloadDecodeException("wire object field '$key' is not bool|null")
+}
+
+/** Optional number that checks SHAPE: absent/null → null, any JSON number (3 or 3.0) → Double. */
+fun JsonObject.numStrict(key: String): Double? {
+    val v = this[key] ?: return null
+    if (v is JsonNull) return null
+    val p = v as? JsonPrimitive ?: throw PayloadDecodeException("wire object field '$key' is not number|null")
+    if (p.isString) throw PayloadDecodeException("wire object field '$key' is not number|null")
+    return p.doubleOrNull ?: throw PayloadDecodeException("wire object field '$key' is not number|null")
+}
+
 // ------------------------------------------------------------------ required-key accessors
 //
 // A missing REQUIRED key in a result/payload is a decode failure — [PayloadDecodeException]
