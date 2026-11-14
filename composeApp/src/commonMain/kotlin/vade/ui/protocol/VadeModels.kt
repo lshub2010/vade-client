@@ -7,12 +7,22 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 
 /**
- * Wire models for the 21 `ui_to_core` methods (rpc.json §directions.ui_to_core, frozen).
+ * Wire models for the 33 `ui_to_core` methods (rpc.json §directions.ui_to_core, contract
+ * 1.4.0 — RFC-0010/0012/0003 appended the session-management and subagent methods).
  *
  * Field names are the contract's verbatim (snake_case on the wire). Params classes carry
  * a hand-written [toJson]; result classes a hand-written `fromJson` — every key spelled
  * once, next to the contract it encodes (see [VadeJson] for why there is no `@Serializable`
  * here). Optional contract fields are nullable: absent on the wire when null.
+ *
+ * Two disciplines added with contract 1.4.0 (the all-zero-row bug class):
+ * - Required params fail client-side with INVALID_ARGUMENT — never a silent empty frame.
+ * - Required result fields decode through the `must*` accessors — a missing required
+ *   object/array/scalar raises [PayloadDecodeException], never a zero-value fallback.
+ *
+ * Section numbers below follow the ORIGINAL 1.0.0 ordering (1..21); the RFC-0010/0012
+ * appends keep their contract positions in the header comment (subagent/list+get are
+ * contract §19/§20, session/list..group.assign are contract §24..§33).
  */
 
 // ---------------------------------------------------------------- shared codecs
@@ -20,6 +30,17 @@ import kotlinx.serialization.json.contentOrNull
 internal fun JsonObjectBuilderCompat.contentParts(parts: List<ContentPart>) {
     put("content", ContentPart.listToJson(parts))
 }
+
+/**
+ * Client-side required-param guard: a missing required value fails HERE with
+ * INVALID_ARGUMENT — never a silent empty field on the wire (contract 1.4.0 discipline).
+ */
+internal fun reqParam(value: String?, name: String): String =
+    if (value.isNullOrBlank()) {
+        throw VadeException(VadeErrorCodes.INVALID_ARGUMENT, "params.$name is required and must be non-blank")
+    } else {
+        value
+    }
 
 // ---------------------------------------------------------------- 1. ui/attach
 
@@ -599,10 +620,10 @@ data class EditResubmitParams(
     val clientMsgId: String,
 ) {
     fun toJson(): JsonObject = buildJsonObject {
-        putStr("session_id", sessionId)
-        putStr("message_id", messageId)
+        putStr("session_id", reqParam(sessionId, "session_id"))
+        putStr("message_id", reqParam(messageId, "message_id"))
         contentParts(content)
-        putStr("client_msg_id", clientMsgId)
+        putStr("client_msg_id", reqParam(clientMsgId, "client_msg_id"))
     }
 }
 
@@ -741,7 +762,16 @@ data class TaskLogTailParams(
     val waitMs: Int? = null,
 ) {
     fun toJson(): JsonObject = buildJsonObject {
-        putStr("task_id", taskId)
+        putStr("task_id", reqParam(taskId, "task_id"))
+        if (lines != null && lines !in 1..200) {
+            throw VadeException(VadeErrorCodes.INVALID_ARGUMENT, "params.lines must be 1..200, got $lines")
+        }
+        if (maxBytes != null && maxBytes !in 1..65536) {
+            throw VadeException(VadeErrorCodes.INVALID_ARGUMENT, "params.max_bytes must be 1..65536, got $maxBytes")
+        }
+        if (waitMs != null && waitMs !in 0..30000) {
+            throw VadeException(VadeErrorCodes.INVALID_ARGUMENT, "params.wait_ms must be 0..30000, got $waitMs")
+        }
         putInt("lines", lines)
         putInt("max_bytes", maxBytes)
         putStr("cursor", cursor)
@@ -1018,6 +1048,505 @@ data class VadeUsage(
             steps = o.int("steps"),
             cachedTokens = o.lng("cached_tokens"),
             reasoningTokens = o.lng("reasoning_tokens"),
+        )
+    }
+}
+
+// --------------------------------------- 19/20. subagent/list, subagent/get (RFC-0012 §6)
+
+/**
+ * `subagent/list` (RFC-0012 §6.1). Fixed order: created_at ascending, run_id tiebreak,
+ * keyset cursor ([cursor] is opaque — clients MUST NOT parse it); `states` filters within
+ * the ordered set. `sessionId = null` lists ACROSS sessions (not shared execution). The
+ * `subagent_runs` table is the LIFETIME truth — events are increments, this is the pull.
+ */
+data class SubagentListParams(
+    val sessionId: String? = null,
+    val states: List<SubagentState>? = null,
+    /** 1..200, server default 50 — an out-of-range value fails here, not on the wire. */
+    val limit: Int? = null,
+    val cursor: String? = null,
+) {
+    fun toJson(): JsonObject = buildJsonObject {
+        if (limit != null && limit !in 1..200) {
+            throw VadeException(VadeErrorCodes.INVALID_ARGUMENT, "params.limit must be 1..200, got $limit")
+        }
+        putStr("session_id", sessionId)
+        putArr("states", states?.map { JsonPrimitive(it.raw) })
+        putInt("limit", limit)
+        putStr("cursor", cursor)
+    }
+}
+
+data class SubagentListResult(
+    val runs: List<SubagentRunView>,
+    val nextCursor: String?,
+) {
+    companion object {
+        fun fromJson(o: JsonObject): SubagentListResult = SubagentListResult(
+            runs = o.arr("runs")?.mapNotNull { (it as? JsonObject)?.let(SubagentRunView::fromJson) }
+                ?: throw PayloadDecodeException("result of subagent/list misses required array 'runs'"),
+            nextCursor = o.strOrNull("next_cursor"),
+        )
+    }
+}
+
+/**
+ * One run row — `SubagentRunView` = RFC-0012 §4.2 SubagentRun fields + `duration_ms`
+ * (running: elapsed so far; terminal: total) + `result_preview` (read-time projection of
+ * the child session's last assistant message, <=500 chars, never persisted or broadcast).
+ * The full result TEXT never travels the wire — only [resultDigest]/[resultChars]
+ * (RFC-0012 §5.3 desensitization rule). The identical shape answers `subagent/get`.
+ */
+data class SubagentRunView(
+    /** `run_<32hex>`, core-allocated. */
+    val runId: String,
+    val parentSessionId: String,
+    /** The parent turn that spawned the run; module-side spawn can be null. */
+    val parentTurnId: String?,
+    /** The run's own LLM-loop session (FR-8.58 jump target); null until established. */
+    val childSessionId: String?,
+    /** 1..64. */
+    val label: String,
+    val state: String,
+    val createdAt: Long,
+    /** Only terminal. */
+    val finishedAt: Long?,
+    /** sha-256 hex of the full result text — the fingerprint, never the text. */
+    val resultDigest: String?,
+    val resultChars: Int?,
+    /** C-04 name; set when state=failed. */
+    val errorCode: String?,
+    val durationMs: Long,
+    val resultPreview: String?,
+) {
+    val stateEnum: SubagentState get() = SubagentState.fromRaw(state)
+
+    companion object {
+        fun fromJson(o: JsonObject): SubagentRunView = SubagentRunView(
+            runId = o.mustStr("run_id"),
+            parentSessionId = o.mustStr("parent_session_id"),
+            parentTurnId = o.strOrNull("parent_turn_id"),
+            childSessionId = o.strOrNull("child_session_id"),
+            label = o.mustStr("label"),
+            state = o.mustStr("state"),
+            createdAt = o.mustLng("created_at"),
+            finishedAt = o.lng("finished_at"),
+            resultDigest = o.strOrNull("result_digest"),
+            resultChars = o.int("result_chars"),
+            errorCode = o.strOrNull("error_code"),
+            durationMs = o.mustLng("duration_ms"),
+            resultPreview = o.strOrNull("result_preview"),
+        )
+    }
+}
+
+/**
+ * `subagent/get` (RFC-0012 §6.2). A malformed run_id (not `run_<32hex>`) answers
+ * INVALID_ARGUMENT (data.field=run_id); a well-formed unknown one answers NOT_FOUND —
+ * the two failures are deliberately distinct ("手滑" vs "真没有").
+ */
+data class SubagentGetParams(val runId: String) {
+    fun toJson(): JsonObject = buildJsonObject {
+        putStr("run_id", reqParam(runId, "run_id"))
+    }
+}
+
+// ------------------------- 24-33. session/list + metadata & groups (RFC-0010, FR-8.26)
+
+/**
+ * `session/list` (RFC-0010 §5). The LIGHT list: metadata only, no messages/turns —
+ * content is ui/attach's job. Order is fixed (§7.4): pinned first, then updated_at DESC,
+ * created_at DESC, id ASC. [groupId] is a FILTER with THREE wire states ([Optional]):
+ * omitted = all groups, null = ungrouped only, a value = that one group (an unknown one
+ * answers NOT_FOUND, data.reason=unknown_group). [cursor] is an int offset echoed back
+ * as [SessionListResult.nextCursor] on a FULL page only; a short page is the end.
+ */
+data class SessionListParams(
+    /** 1..200, server default 50. */
+    val limit: Int? = null,
+    /** >= 0. */
+    val cursor: Int? = null,
+    val groupId: Optional<String> = Optional.Absent,
+    /** Server default false — archived sessions live under the archived filter. */
+    val archived: Boolean? = null,
+) {
+    fun toJson(): JsonObject = buildJsonObject {
+        if (limit != null && limit !in 1..200) {
+            throw VadeException(VadeErrorCodes.INVALID_ARGUMENT, "params.limit must be 1..200, got $limit")
+        }
+        if (cursor != null && cursor < 0) {
+            throw VadeException(VadeErrorCodes.INVALID_ARGUMENT, "params.cursor must be >= 0, got $cursor")
+        }
+        putInt("limit", limit)
+        putInt("cursor", cursor)
+        putOptStr("group_id", groupId)
+        putBool("archived", archived)
+    }
+}
+
+data class SessionListResult(
+    val sessions: List<SessionRow>,
+    /** null = end of list. */
+    val nextCursor: Int?,
+) {
+    companion object {
+        fun fromJson(o: JsonObject): SessionListResult = SessionListResult(
+            sessions = o.arr("sessions")?.mapNotNull { (it as? JsonObject)?.let(SessionRow::fromJson) }
+                ?: throw PayloadDecodeException("result of session/list misses required array 'sessions'"),
+            nextCursor = o.int("next_cursor"),
+        )
+    }
+}
+
+/**
+ * The one session-listing row (RFC-0010 §5) — the same shape `session/rename` returns.
+ * `state` is open|closed (RFC-0005) and orthogonal to [archivedAt]: archiving does not
+ * close a session (RFC-0010 §10 Q5). `pinnedAt` is the list-order primary key (§7.4).
+ */
+data class SessionRow(
+    val sessionId: String,
+    val createdAt: Long,
+    /** Last activity — the FR-8.26 order key. */
+    val updatedAt: Long,
+    val title: String?,
+    /** Tabler whitelist name. */
+    val icon: String?,
+    /** #RRGGBB. */
+    val color: String?,
+    val groupId: String?,
+    val pinnedAt: Long?,
+    val archivedAt: Long?,
+    /** 0|1. */
+    val unread: Int,
+    val state: String,
+) {
+    companion object {
+        fun fromJson(o: JsonObject): SessionRow = SessionRow(
+            sessionId = o.mustStr("session_id"),
+            createdAt = o.mustLng("created_at"),
+            updatedAt = o.mustLng("updated_at"),
+            title = o.strOrNull("title"),
+            icon = o.strOrNull("icon"),
+            color = o.strOrNull("color"),
+            groupId = o.strOrNull("group_id"),
+            pinnedAt = o.lng("pinned_at"),
+            archivedAt = o.lng("archived_at"),
+            unread = o.mustInt("unread"),
+            state = o.mustStr("state"),
+        )
+    }
+}
+
+/**
+ * `session/rename` (RFC-0010 FR-8.26 verb). Metadata only — messages/turns are untouched.
+ * Emits session.updated on the session's own stream. An empty/blank title is
+ * INVALID_ARGUMENT (v1 has no clear-title semantics) — refused HERE, not on the wire.
+ */
+data class SessionRenameParams(
+    val sessionId: String,
+    /** 1..200 after trimming. */
+    val title: String,
+) {
+    fun toJson(): JsonObject = buildJsonObject {
+        putStr("session_id", reqParam(sessionId, "session_id"))
+        val trimmed = title.trim()
+        if (trimmed.isEmpty()) {
+            throw VadeException(VadeErrorCodes.INVALID_ARGUMENT, "params.title is required and must be non-blank after trimming")
+        }
+        if (trimmed.length > 200) {
+            throw VadeException(VadeErrorCodes.INVALID_ARGUMENT, "params.title must be <=200 chars after trimming, got ${trimmed.length}")
+        }
+        putStr("title", title)
+    }
+}
+
+/** The `session` row is REQUIRED — a missing one is a decode failure, never a zero row. */
+data class SessionRenameResult(
+    val ok: Boolean,
+    val session: SessionRow,
+) {
+    companion object {
+        fun fromJson(o: JsonObject): SessionRenameResult = SessionRenameResult(
+            ok = o.mustBool("ok"),
+            session = o.obj("session")?.let(SessionRow::fromJson)
+                ?: throw PayloadDecodeException("result of session/rename misses required object 'session'"),
+        )
+    }
+}
+
+/** `session/pin` (RFC-0010 FR-8.26 verb); pinned sessions come first in the list (§7.4). */
+data class SessionPinParams(
+    val sessionId: String,
+    /** Required: true = pin, false = unpin. */
+    val pinned: Boolean,
+) {
+    fun toJson(): JsonObject = buildJsonObject {
+        putStr("session_id", reqParam(sessionId, "session_id"))
+        putBool("pinned", pinned)
+    }
+}
+
+data class SessionPinResult(
+    val ok: Boolean,
+    /** unix ms; null after unpin. */
+    val pinnedAt: Long?,
+) {
+    companion object {
+        fun fromJson(o: JsonObject): SessionPinResult = SessionPinResult(
+            ok = o.mustBool("ok"),
+            pinnedAt = o.lng("pinned_at"),
+        )
+    }
+}
+
+/**
+ * `session/archive` (RFC-0010 FR-8.26 verb). Archived sessions leave the default list
+ * (session/list defaults archived=false) and appear under the archived filter;
+ * orthogonal to the open/closed state (§10 Q5).
+ */
+data class SessionArchiveParams(
+    val sessionId: String,
+    /** Required: true = archive, false = unarchive. */
+    val archived: Boolean,
+) {
+    fun toJson(): JsonObject = buildJsonObject {
+        putStr("session_id", reqParam(sessionId, "session_id"))
+        putBool("archived", archived)
+    }
+}
+
+data class SessionArchiveResult(
+    val ok: Boolean,
+    /** unix ms; null after unarchive. */
+    val archivedAt: Long?,
+) {
+    companion object {
+        fun fromJson(o: JsonObject): SessionArchiveResult = SessionArchiveResult(
+            ok = o.mustBool("ok"),
+            archivedAt = o.lng("archived_at"),
+        )
+    }
+}
+
+/**
+ * `session/delete` (RFC-0010 §8.2, FR-8.26 verb). HARD delete — no trash can; the
+ * double-confirm dialog is CLIENT responsibility. Queued/running turns refuse with
+ * INVALID_ARGUMENT (data.reason=turn_active) — interrupt first. Broadcasts
+ * session.list_changed{change='removed'} to every OTHER attached session.
+ */
+data class SessionDeleteParams(val sessionId: String) {
+    fun toJson(): JsonObject = buildJsonObject {
+        putStr("session_id", reqParam(sessionId, "session_id"))
+    }
+}
+
+data class SessionDeleteResult(val ok: Boolean) {
+    companion object {
+        fun fromJson(o: JsonObject): SessionDeleteResult = SessionDeleteResult(
+            ok = o.mustBool("ok"),
+        )
+    }
+}
+
+/**
+ * `session/group.list` (RFC-0010 §5) — no params; ordered by sort_order, created_at,
+ * group_id. v1 emits no event for group.* changes: clients re-pull after their own
+ * mutations (RFC-0010 §10 Q4).
+ */
+class SessionGroupListParams {
+    fun toJson(): JsonObject = JsonObject(emptyMap())
+}
+
+/** The group row shared by group.list / group.create / group.update (RFC-0010 §7.3). */
+data class GroupRow(
+    /** Core-allocated (uuid4 hex). */
+    val groupId: String,
+    /** 1..64. */
+    val name: String,
+    /** Tabler whitelist name. */
+    val icon: String?,
+    /** #RRGGBB. */
+    val color: String?,
+    /** >= 0. */
+    val sortOrder: Int,
+    val createdAt: Long,
+) {
+    companion object {
+        fun fromJson(o: JsonObject): GroupRow = GroupRow(
+            groupId = o.mustStr("group_id"),
+            name = o.mustStr("name"),
+            icon = o.strOrNull("icon"),
+            color = o.strOrNull("color"),
+            sortOrder = o.mustInt("sort_order"),
+            createdAt = o.mustLng("created_at"),
+        )
+    }
+}
+
+/** The group.list row carries the folded session_count; create/update results do not. */
+data class GroupListEntry(
+    val group: GroupRow,
+    val sessionCount: Int,
+) {
+    companion object {
+        fun fromJson(o: JsonObject): GroupListEntry = GroupListEntry(
+            group = GroupRow.fromJson(o),
+            sessionCount = o.mustInt("session_count"),
+        )
+    }
+}
+
+data class SessionGroupListResult(val groups: List<GroupListEntry>) {
+    companion object {
+        fun fromJson(o: JsonObject): SessionGroupListResult = SessionGroupListResult(
+            groups = o.arr("groups")?.mapNotNull { (it as? JsonObject)?.let(GroupListEntry::fromJson) }
+                ?: throw PayloadDecodeException("result of session/group.list misses required array 'groups'"),
+        )
+    }
+}
+
+/**
+ * `session/group.create` (RFC-0010 §4.1/§7.3). group_id is core-allocated (uuid4 hex).
+ * Groups are folders, ONE level — a parent_id param is INVALID_ARGUMENT
+ * (data.reason=nesting_forbidden), so this DTO deliberately has no parent field.
+ */
+data class SessionGroupCreateParams(
+    /** 1..64 after trimming (required). */
+    val name: String,
+    /** Optional, Tabler whitelist. */
+    val icon: String? = null,
+    /** Optional, #RRGGBB. */
+    val color: String? = null,
+    /** >= 0, server default 0. */
+    val sortOrder: Int? = null,
+) {
+    fun toJson(): JsonObject = buildJsonObject {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) {
+            throw VadeException(VadeErrorCodes.INVALID_ARGUMENT, "params.name is required and must be non-blank after trimming")
+        }
+        if (trimmed.length > 64) {
+            throw VadeException(VadeErrorCodes.INVALID_ARGUMENT, "params.name must be <=64 chars after trimming, got ${trimmed.length}")
+        }
+        if (sortOrder != null && sortOrder < 0) {
+            throw VadeException(VadeErrorCodes.INVALID_ARGUMENT, "params.sort_order must be >= 0, got $sortOrder")
+        }
+        putStr("name", name)
+        putStr("icon", icon)
+        putStr("color", color)
+        putInt("sort_order", sortOrder)
+    }
+}
+
+/** The required `group` row of the create/update results — missing → decode failure. */
+data class SessionGroupWriteResult(val group: GroupRow) {
+    companion object {
+        fun fromJson(o: JsonObject): SessionGroupWriteResult = SessionGroupWriteResult(
+            group = o.obj("group")?.let(GroupRow::fromJson)
+                ?: throw PayloadDecodeException("result misses required object 'group'"),
+        )
+    }
+}
+
+/**
+ * `session/group.update` (RFC-0010 §5). Partial update — only PRESENT keys change, and
+ * at least one must be (refused HERE otherwise). [icon]/[color] are three-state
+ * ([Optional]): Absent = keep, Null = clear, Value = set. [name] cannot be cleared
+ * (explicit null is INVALID_ARGUMENT server-side), so it is either a new name or absent.
+ */
+data class SessionGroupUpdateParams(
+    val groupId: String,
+    val name: String? = null,
+    val icon: Optional<String> = Optional.Absent,
+    val color: Optional<String> = Optional.Absent,
+    val sortOrder: Int? = null,
+) {
+    fun toJson(): JsonObject = buildJsonObject {
+        putStr("group_id", reqParam(groupId, "group_id"))
+        val anyPresent = name != null ||
+            icon != Optional.Absent ||
+            color != Optional.Absent ||
+            sortOrder != null
+        if (!anyPresent) {
+            throw VadeException(VadeErrorCodes.INVALID_ARGUMENT, "session/group.update requires at least one of name/icon/color/sort_order")
+        }
+        if (name != null) {
+            val trimmed = name.trim()
+            if (trimmed.isEmpty()) {
+                throw VadeException(VadeErrorCodes.INVALID_ARGUMENT, "params.name cannot be blank (a name cannot be cleared)")
+            }
+            if (trimmed.length > 64) {
+                throw VadeException(VadeErrorCodes.INVALID_ARGUMENT, "params.name must be <=64 chars after trimming, got ${trimmed.length}")
+            }
+            putStr("name", name)
+        }
+        putOptStr("icon", icon)
+        putOptStr("color", color)
+        if (sortOrder != null) {
+            if (sortOrder < 0) {
+                throw VadeException(VadeErrorCodes.INVALID_ARGUMENT, "params.sort_order must be >= 0, got $sortOrder")
+            }
+            putInt("sort_order", sortOrder)
+        }
+    }
+}
+
+/**
+ * `session/group.delete` (RFC-0010 §8.1). Deleting a group NEVER deletes sessions:
+ * every member moves back to ungrouped in the same transaction, counted in [SessionGroupDeleteResult.unassigned].
+ */
+data class SessionGroupDeleteParams(val groupId: String) {
+    fun toJson(): JsonObject = buildJsonObject {
+        putStr("group_id", reqParam(groupId, "group_id"))
+    }
+}
+
+data class SessionGroupDeleteResult(
+    val ok: Boolean,
+    /** Sessions moved back to ungrouped. */
+    val unassigned: Int,
+) {
+    companion object {
+        fun fromJson(o: JsonObject): SessionGroupDeleteResult = SessionGroupDeleteResult(
+            ok = o.mustBool("ok"),
+            unassigned = o.mustInt("unassigned"),
+        )
+    }
+}
+
+/**
+ * `session/group.assign` (RFC-0010 §5) — the single membership column: folders, not
+ * tags. [groupId] is REQUIRED-with-null: a value assigns, JSON null moves the session
+ * out of any group; omitting the key is a bug and fails HERE (INVALID_ARGUMENT), while
+ * an unknown group_id answers NOT_FOUND from core (data.reason=unknown_group).
+ */
+data class SessionGroupAssignParams(
+    val sessionId: String,
+    val groupId: Optional<String>,
+) {
+    fun toJson(): JsonObject = buildJsonObject {
+        putStr("session_id", reqParam(sessionId, "session_id"))
+        when (groupId) {
+            is Optional.Absent -> throw VadeException(
+                VadeErrorCodes.INVALID_ARGUMENT,
+                "params.group_id is required — pass Optional.Null to move the session out of any group",
+            )
+            is Optional.Null -> put("group_id", JsonNull)
+            is Optional.Value -> put("group_id", JsonPrimitive(groupId.value))
+        }
+    }
+}
+
+data class SessionGroupAssignResult(
+    val ok: Boolean,
+    /** The echoed membership AFTER the write — null = ungrouped. */
+    val groupId: String?,
+) {
+    companion object {
+        fun fromJson(o: JsonObject): SessionGroupAssignResult = SessionGroupAssignResult(
+            ok = o.mustBool("ok"),
+            groupId = o.strOrNull("group_id"),
         )
     }
 }

@@ -11,9 +11,9 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.longOrNull
 
 /**
- * The core→UI event stream (events.json, frozen C-06 + RFC-0005/0007/0008/C-14/0006
- * appends — **26 declared topics**; `turn.state` in that file is the enum the state-
- * change events carry, not an event).
+ * The core→UI event stream (events.json, frozen C-06 + RFC-0005/0007/0008/C-14/0006 +
+ * RFC-0010/0012/0003 appends — **33 declared topics**; the `turn.state` row in that file
+ * is the enum the state-change turn.* payloads carry, not an event — 34 keys total).
  *
  * Every event subclass carries the frame envelope (`seq` allocated by core, per session,
  * strictly +1; `coalesced` = the frame carried `x-vade.coalesce` and is droppable /
@@ -24,7 +24,8 @@ import kotlinx.serialization.json.longOrNull
  * Payload codecs are hand-written (`fromJson` companions): one missing key decodes to
  * its documented default, unknown keys are ignored, and a value of the wrong SHAPE
  * raises [VadeException] with PROTOCOL_MISMATCH — the parser drops that event but the
- * stream keeps running.
+ * stream keeps running. RFC-0012 adds the required-with-null discipline: a key listed in
+ * `required` must be PRESENT even when its value may be JSON null (see [reqStrOrNull]).
  */
 
 /** Decode failure inside one event payload — caught by [VadeEventParser], never fatal. */
@@ -36,11 +37,26 @@ internal fun JsonObject.reqStr(key: String): String =
 internal fun JsonObject.reqLng(key: String): Long =
     lng(key) ?: throw PayloadDecodeException("event payload misses required number '$key'")
 
+internal fun JsonObject.reqInt(key: String): Int =
+    int(key) ?: throw PayloadDecodeException("event payload misses required number '$key'")
+
 internal fun JsonObject.reqBool(key: String): Boolean =
     bool(key) ?: throw PayloadDecodeException("event payload misses required bool '$key'")
 
 internal fun JsonObject.reqObj(key: String): JsonObject =
     obj(key) ?: throw PayloadDecodeException("event payload misses required object '$key'")
+
+/**
+ * required-with-null (RFC-0012 §5.2): the key must be PRESENT — its value may be JSON
+ * null. An ABSENT required key is a malformed payload (dropped), an explicit null
+ * decodes to null, a wrong shape is rejected.
+ */
+internal fun JsonObject.reqStrOrNull(key: String): String? {
+    val v = this[key] ?: throw PayloadDecodeException("event payload misses required key '$key' (may be null)")
+    if (v is JsonNull) return null
+    return (v as? JsonPrimitive)?.takeIf { it.isString }?.content
+        ?: throw PayloadDecodeException("event payload field '$key' is not string|null")
+}
 
 internal fun stringList(key: String, o: JsonObject): List<String>? =
     o.arr(key)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
@@ -860,6 +876,228 @@ data class MessageEditedPayload(
     }
 }
 
+/**
+ * Metadata edge (RFC-0010 §6.1) on the CHANGED session's own stream, after a successful
+ * write (session/rename, session/pin, session/archive, session/group.assign): a client
+ * attached to that session updates the row in place; a device that is not attached
+ * re-pulls session/list. NOT a state change: carries no `state`, never reopens a turn.
+ * Nullable keys are written with null so the event describes itself.
+ */
+data class SessionUpdatedPayload(
+    val sessionId: String,
+    /** device_id | admin | system. */
+    val by: String,
+    val title: String?,
+    /** Tabler whitelist name. */
+    val icon: String?,
+    /** #RRGGBB. */
+    val color: String?,
+    val groupId: String?,
+    val pinnedAt: Long?,
+    val archivedAt: Long?,
+    /** 0|1. */
+    val unread: Int?,
+    /** unix ms — last activity. */
+    val updatedAt: Long?,
+) {
+    companion object {
+        fun fromJson(o: JsonObject): SessionUpdatedPayload = SessionUpdatedPayload(
+            sessionId = o.reqStr("session_id"),
+            by = o.reqStr("by"),
+            title = o.strOrNull("title"),
+            icon = o.strOrNull("icon"),
+            color = o.strOrNull("color"),
+            groupId = o.strOrNull("group_id"),
+            pinnedAt = o.lng("pinned_at"),
+            archivedAt = o.lng("archived_at"),
+            unread = o.int("unread"),
+            updatedAt = o.lng("updated_at"),
+        )
+    }
+}
+
+/**
+ * Fanned out to EVERY attached session EXCEPT the changed one (RFC-0010 §6.2,
+ * module.status precedent) after a session is created (ui/attach auto-create) or
+ * hard-deleted (session/delete). Deliberately carries NO row payload — every client
+ * re-pulls session/list; a copy here would be a second truth that drifts. change=removed
+ * is the only notice a hard delete gives (§8.2).
+ */
+data class SessionListChangedPayload(
+    /** The session that was created or deleted. */
+    val sessionId: String,
+    /** added | removed. */
+    val change: String,
+    /** device_id | admin | system. */
+    val by: String,
+) {
+    companion object {
+        fun fromJson(o: JsonObject): SessionListChangedPayload = SessionListChangedPayload(
+            sessionId = o.reqStr("session_id"),
+            change = o.reqStr("change"),
+            by = o.reqStr("by"),
+        )
+    }
+}
+
+/**
+ * Exactly once per run, on the PARENT session's stream, BEFORE any later event of the
+ * run (RFC-0012 §5.2). Payload-only (no `state`): creation is the event name — a run is
+ * spawned, then subagent.status carries state changes. [parentTurnId]/[childSessionId]
+ * are required-with-null: the keys must exist, the values may be null.
+ */
+data class SubagentSpawnedPayload(
+    /** `run_<32hex>` (RFC-0012 §7.1), core-allocated. */
+    val runId: String,
+    /** C-06 stream key — on subagent.* it always equals [parentSessionId]. */
+    val sessionId: String,
+    /** The seq space this family broadcasts on. */
+    val parentSessionId: String,
+    /** The parent turn that spawned the run; module-side spawn can be null. */
+    val parentTurnId: String?,
+    /** The run's own LLM-loop session (FR-8.58 jump target); null until established. */
+    val childSessionId: String?,
+    /** 1..64. */
+    val label: String,
+    /** unix ms. */
+    val at: Long,
+) {
+    companion object {
+        fun fromJson(o: JsonObject): SubagentSpawnedPayload = SubagentSpawnedPayload(
+            runId = o.reqStr("run_id"),
+            sessionId = o.reqStr("session_id"),
+            parentSessionId = o.reqStr("parent_session_id"),
+            parentTurnId = o.reqStrOrNull("parent_turn_id"),
+            childSessionId = o.reqStrOrNull("child_session_id"),
+            label = o.reqStr("label"),
+            at = o.reqLng("at"),
+        )
+    }
+}
+
+/**
+ * State-change event (C-06 rule 4) for the run's legal transitions (spawned→running);
+ * during `running` the same event carries step/tool_name refreshes with state=running.
+ * Nothing may follow the terminal subagent.result for that run (a late status is
+ * dropped, not resurrected).
+ */
+data class SubagentStatusPayload(
+    val runId: String,
+    /** = parent_session_id. */
+    val sessionId: String,
+    /** spawned | running. */
+    val state: String,
+    /** unix ms. */
+    val at: Long,
+    /** <=120 chars — what the loop is doing now. */
+    val step: String?,
+    /** The tool call in flight. */
+    val toolName: String?,
+) {
+    val stateEnum: SubagentState get() = SubagentState.fromRaw(state)
+
+    companion object {
+        fun fromJson(o: JsonObject): SubagentStatusPayload = SubagentStatusPayload(
+            runId = o.reqStr("run_id"),
+            sessionId = o.reqStr("session_id"),
+            state = o.reqStr("state"),
+            at = o.reqLng("at"),
+            step = o.strOrNull("step"),
+            toolName = o.strOrNull("tool_name"),
+        )
+    }
+}
+
+/**
+ * Exactly once per run; the record is written before this is broadcast (RFC-0012
+ * §5.2/§5.3). [resultDigest] is the sha-256 hex FINGERPRINT of the full result text —
+ * NEVER the text: no result_text/summary/output key may appear here (the text lives
+ * only in the child session's message stream); consumers verify and reconcile by
+ * fingerprint + [resultChars].
+ */
+data class SubagentResultPayload(
+    val runId: String,
+    /** = parent_session_id. */
+    val sessionId: String,
+    /** Terminal only: completed | failed | cancelled. */
+    val state: String,
+    /** sha-256 hex of the FULL result text; sha256("") for cancelled / failed-no-partial. */
+    val resultDigest: String,
+    /** Length of the full result text. */
+    val resultChars: Int,
+    /** unix ms. */
+    val finishedAt: Long,
+    /** C-04 name; core MUST set it when state=failed. */
+    val errorCode: String?,
+) {
+    val stateEnum: SubagentState get() = SubagentState.fromRaw(state)
+
+    companion object {
+        fun fromJson(o: JsonObject): SubagentResultPayload = SubagentResultPayload(
+            runId = o.reqStr("run_id"),
+            sessionId = o.reqStr("session_id"),
+            state = o.reqStr("state"),
+            resultDigest = o.reqStr("result_digest"),
+            resultChars = o.reqInt("result_chars"),
+            finishedAt = o.reqLng("finished_at"),
+            errorCode = o.strOrNull("error_code"),
+        )
+    }
+}
+
+/**
+ * The skill catalog for a layered turn (RFC-0003 §4.2/§5.1 row 6), riding next to the
+ * persisted user-role catalog message (the `<system-reminder>` envelope; role=user, own
+ * seq). Sent on a session's first layered turn, when the digest changes (FULL
+ * replacement, no diff), and for the empty retirement entry — never twice for the same
+ * digest. A client may render the paired message as a system notice instead of a user
+ * bubble (RFC-0003 Q1 option (a)).
+ */
+data class TurnSkillCatalogPayload(
+    val turnId: String,
+    /** sha256 hex over the catalog entries (name + clipped description + marker, name order). */
+    val digest: String,
+    /** Skill names, name order. */
+    val entries: List<String>,
+    /** true = the retirement entry: no skills are available this session. */
+    val empty: Boolean?,
+) {
+    companion object {
+        fun fromJson(o: JsonObject): TurnSkillCatalogPayload = TurnSkillCatalogPayload(
+            turnId = o.reqStr("turn_id"),
+            digest = o.reqStr("digest"),
+            entries = stringList("entries", o).orEmpty(),
+            empty = o.bool("empty"),
+        )
+    }
+}
+
+/**
+ * Sent once when a tool FIRST enters the schemas() of a later step in this turn
+ * (RFC-0003 §4.3.3/§5.5 — a tools/search hit or a loaded skill's requires_tools). The
+ * same turn never repeats it for the same tool; tools resident from the turn's start
+ * never fire it.
+ */
+data class TurnToolDiscoveredPayload(
+    val turnId: String,
+    /** Model-visible name. */
+    val tool: String,
+    val toolId: String,
+    /** sha256 prefix (12 chars) of the search query that surfaced it; empty when a skill's requires_tools enabled it. */
+    val queryDigest: String?,
+    val totalMatches: Int?,
+) {
+    companion object {
+        fun fromJson(o: JsonObject): TurnToolDiscoveredPayload = TurnToolDiscoveredPayload(
+            turnId = o.reqStr("turn_id"),
+            tool = o.reqStr("tool"),
+            toolId = o.reqStr("tool_id"),
+            queryDigest = o.strOrNull("query_digest"),
+            totalMatches = o.int("total_matches"),
+        )
+    }
+}
+
 // ---------------------------------------------------------------- the sealed events
 
 /** The sealed root of the live event flow. */
@@ -923,6 +1161,20 @@ data class TurnSuperseded(override val seq: Long, override val coalesced: Boolea
 
 data class MessageEdited(override val seq: Long, override val coalesced: Boolean, val payload: MessageEditedPayload) : VadeEvent()
 
+data class SessionUpdated(override val seq: Long, override val coalesced: Boolean, val payload: SessionUpdatedPayload) : VadeEvent()
+
+data class SessionListChanged(override val seq: Long, override val coalesced: Boolean, val payload: SessionListChangedPayload) : VadeEvent()
+
+data class SubagentSpawned(override val seq: Long, override val coalesced: Boolean, val payload: SubagentSpawnedPayload) : VadeEvent()
+
+data class SubagentStatus(override val seq: Long, override val coalesced: Boolean, val payload: SubagentStatusPayload) : VadeEvent()
+
+data class SubagentResult(override val seq: Long, override val coalesced: Boolean, val payload: SubagentResultPayload) : VadeEvent()
+
+data class TurnSkillCatalog(override val seq: Long, override val coalesced: Boolean, val payload: TurnSkillCatalogPayload) : VadeEvent()
+
+data class TurnToolDiscovered(override val seq: Long, override val coalesced: Boolean, val payload: TurnToolDiscoveredPayload) : VadeEvent()
+
 /** Every declared topic name, in events.json order — tests walk this to pin coverage. */
 val VADE_EVENT_TYPES: List<String> = listOf(
     "session.attached", "turn.queued", "turn.started", "turn.delta", "turn.tool_call",
@@ -931,6 +1183,10 @@ val VADE_EVENT_TYPES: List<String> = listOf(
     "turn.interrupted", "turn.cancelled", "queue.updated", "module.status",
     "task.started", "task.status", "task.progress", "task.finished", "session.turn",
     "session.closed", "skill.proposed", "usage.budget", "turn.superseded", "message.edited",
+    // RFC-0010/0012/0003 appends (contract 1.4.0). The `turn.state` row of events.json is
+    // NOT here — it is the enum row, not a topic (33 topics + turn.state = 34 keys).
+    "session.updated", "session.list_changed", "subagent.spawned", "subagent.status",
+    "subagent.result", "turn.skill_catalog", "turn.tool_discovered",
 )
 
 /**
@@ -987,6 +1243,13 @@ object VadeEventParser {
             "usage.budget" -> decode { UsageBudget(seq, coalesced, UsageBudgetPayload.fromJson(o!!)) }
             "turn.superseded" -> decode { TurnSuperseded(seq, coalesced, TurnSupersededPayload.fromJson(o!!)) }
             "message.edited" -> decode { MessageEdited(seq, coalesced, MessageEditedPayload.fromJson(o!!)) }
+            "session.updated" -> decode { SessionUpdated(seq, coalesced, SessionUpdatedPayload.fromJson(o!!)) }
+            "session.list_changed" -> decode { SessionListChanged(seq, coalesced, SessionListChangedPayload.fromJson(o!!)) }
+            "subagent.spawned" -> decode { SubagentSpawned(seq, coalesced, SubagentSpawnedPayload.fromJson(o!!)) }
+            "subagent.status" -> decode { SubagentStatus(seq, coalesced, SubagentStatusPayload.fromJson(o!!)) }
+            "subagent.result" -> decode { SubagentResult(seq, coalesced, SubagentResultPayload.fromJson(o!!)) }
+            "turn.skill_catalog" -> decode { TurnSkillCatalog(seq, coalesced, TurnSkillCatalogPayload.fromJson(o!!)) }
+            "turn.tool_discovered" -> decode { TurnToolDiscovered(seq, coalesced, TurnToolDiscoveredPayload.fromJson(o!!)) }
             // Unknown topic: ignore it (events.json rule 6) — the caller still advances last_seq.
             else -> null
         }

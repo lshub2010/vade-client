@@ -486,7 +486,7 @@ class VadeClient(
         return result
     }
 
-    // ------------------------------------------------------------------ the 21 ui_to_core methods
+    // ------------------------------------------------------------------ the 33 ui_to_core methods
 
     /** `ui/attach` — see [attach] for the last_seq semantics. */
     suspend fun uiAttach(params: AttachParams): AttachResult = attach(params)
@@ -569,6 +569,61 @@ class VadeClient(
     /** `ui/tool.call` — two-stage (validate → approval → redeem) per RFC-0009 §6.2. */
     suspend fun uiToolCall(params: ToolCallParams): ToolCallResult =
         call("ui/tool.call", params.toJson()) { ToolCallResult.fromJson(it) }
+
+    // ------------------------------------------------------------------ RFC-0012 subagents
+
+    /** `subagent/list` — the runs table is the pull-truth; events are increments (RFC-0012 §6.1). */
+    suspend fun subagentList(params: SubagentListParams): SubagentListResult =
+        call("subagent/list", params.toJson()) { SubagentListResult.fromJson(it) }
+
+    /** `subagent/get` — malformed run_id → INVALID_ARGUMENT; unknown → NOT_FOUND (RFC-0012 §6.2). */
+    suspend fun subagentGet(params: SubagentGetParams): SubagentRunView =
+        call("subagent/get", params.toJson()) { SubagentRunView.fromJson(it) }
+
+    // ------------------------------------------------------------------ RFC-0010 sessions
+
+    /**
+     * `session/list` — the LIGHT metadata list (RFC-0010 §5); content is ui/attach's job.
+     * [SessionListParams.groupId] carries the three-state group filter.
+     */
+    suspend fun sessionList(params: SessionListParams): SessionListResult =
+        call("session/list", params.toJson()) { SessionListResult.fromJson(it) }
+
+    /** `session/rename` — metadata only; emits session.updated (RFC-0010). */
+    suspend fun sessionRename(params: SessionRenameParams): SessionRenameResult =
+        call("session/rename", params.toJson()) { SessionRenameResult.fromJson(it) }
+
+    /** `session/pin` — pinned sessions come first in the list order (RFC-0010 §7.4). */
+    suspend fun sessionPin(params: SessionPinParams): SessionPinResult =
+        call("session/pin", params.toJson()) { SessionPinResult.fromJson(it) }
+
+    /** `session/archive` — orthogonal to the open/closed state (RFC-0010 §10 Q5). */
+    suspend fun sessionArchive(params: SessionArchiveParams): SessionArchiveResult =
+        call("session/archive", params.toJson()) { SessionArchiveResult.fromJson(it) }
+
+    /** `session/delete` — HARD delete; the double-confirm dialog is the caller's duty (RFC-0010 §8.2). */
+    suspend fun sessionDelete(params: SessionDeleteParams): SessionDeleteResult =
+        call("session/delete", params.toJson()) { SessionDeleteResult.fromJson(it) }
+
+    /** `session/group.list` — re-pull after your own group mutations; v1 emits no group event. */
+    suspend fun sessionGroupList(params: SessionGroupListParams): SessionGroupListResult =
+        call("session/group.list", params.toJson()) { SessionGroupListResult.fromJson(it) }
+
+    /** `session/group.create` — groups are folders, one level, no tree (RFC-0010 §1 #2). */
+    suspend fun sessionGroupCreate(params: SessionGroupCreateParams): SessionGroupWriteResult =
+        call("session/group.create", params.toJson()) { SessionGroupWriteResult.fromJson(it) }
+
+    /** `session/group.update` — partial; icon/color null = clear, omitted = keep. */
+    suspend fun sessionGroupUpdate(params: SessionGroupUpdateParams): SessionGroupWriteResult =
+        call("session/group.update", params.toJson()) { SessionGroupWriteResult.fromJson(it) }
+
+    /** `session/group.delete` — deleting a folder never deletes sessions (RFC-0010 §8.1). */
+    suspend fun sessionGroupDelete(params: SessionGroupDeleteParams): SessionGroupDeleteResult =
+        call("session/group.delete", params.toJson()) { SessionGroupDeleteResult.fromJson(it) }
+
+    /** `session/group.assign` — the single membership column; null unassigns (RFC-0010 §5). */
+    suspend fun sessionGroupAssign(params: SessionGroupAssignParams): SessionGroupAssignResult =
+        call("session/group.assign", params.toJson()) { SessionGroupAssignResult.fromJson(it) }
 
     companion object {
         /** The notification method core sends every UI event with. */
