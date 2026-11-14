@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="RealSessionEventsTest[desktop]" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:26.535Z" hostname="WIN-SOHFNBA79AT" time="1.127">
+  <properties/>
+  <testcase name="turnStartedMapsIntoTurnStartedEvent[desktop]" classname="vade.ui.data.RealSessionEventsTest" time="0.03"/>
+  <testcase name="unknownAndUndecodableEventsDoNotCrashAndLastSeqAdvancesForEachFrame[desktop]" classname="vade.ui.data.RealSessionEventsTest" time="0.429"/>
+  <testcase name="deltasArriveInSeqOrderForConcatenation[desktop]" classname="vade.ui.data.RealSessionEventsTest" time="0.057"/>
+  <testcase name="turnCompletedMapsIntoTurnCompletedEvent[desktop]" classname="vade.ui.data.RealSessionEventsTest" time="0.031"/>
+  <testcase name="turnQueuedMapsIntoTurnQueuedEvent[desktop]" classname="vade.ui.data.RealSessionEventsTest" time="0.03"/>
+  <testcase name="turnDeltaMapsIntoTurnDeltaEvent[desktop]" classname="vade.ui.data.RealSessionEventsTest" time="0.031"/>
+  <testcase name="turnFailedMapsIntoTurnFailedEvent[desktop]" classname="vade.ui.data.RealSessionEventsTest" time="0.031"/>
+  <testcase name="unhandledKnownEventTypeIsIgnoredWithoutCrashingAndLastSeqAdvances[desktop]" classname="vade.ui.data.RealSessionEventsTest" time="0.43"/>
+  <testcase name="sessionAttachedMapsIntoSessionAttachedEvent[desktop]" classname="vade.ui.data.RealSessionEventsTest" time="0.058"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

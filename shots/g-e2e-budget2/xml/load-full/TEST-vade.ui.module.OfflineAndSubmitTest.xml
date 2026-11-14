@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="OfflineAndSubmitTest[desktop]" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:37.469Z" hostname="WIN-SOHFNBA79AT" time="0.001">
+  <properties/>
+  <testcase name="offlineSourceStillResolvesStructureWithEmptyBindings[desktop]" classname="vade.ui.module.OfflineAndSubmitTest" time="0.001"/>
+  <testcase name="offlineDisablesEveryActionKind[desktop]" classname="vade.ui.module.OfflineAndSubmitTest" time="0.0"/>
+  <testcase name="uiSubmitRequiresActiveSession[desktop]" classname="vade.ui.module.OfflineAndSubmitTest" time="0.0"/>
+  <testcase name="onlineModuleEnablesNavigateAndToolCall[desktop]" classname="vade.ui.module.OfflineAndSubmitTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

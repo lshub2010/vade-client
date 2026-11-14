@@ -10,15 +10,17 @@ import kotlin.test.assertTrue
 
 /**
  * 证明「180 s 不是慢慢等的借口，诊断不是装饰」——用**必定启动失败**的命令跑真
- * [CoreHandle] 的同一条失败路径。
+ * [CoreHandle] 的同一条失败路径，外加一条纯函数的判词分档。
  *
- * 三条注入：
+ * 四条注入 + 一条口径：
  *  1. 解释器路径不存在（`ProcessBuilder.start()` 自己就抛）→ 必须**立刻**报 CoreBootException，
  *     而不是 180 s 后超时，也不是裸 IOException；
  *  2. launcher 立刻 `sys.exit(7)` 并往 stderr 写一行 → 必须远小于 180 s 就失败，
  *     且消息里带 exit 码、stderr 尾部、stdout 尾部、命令行、已等时长；
  *  3. launcher 永不打印 READY，但调用方只给 5 s → 必须在自己的预算上失败，
  *     且提示语必须说明「这是调用方预算，不是生产上限」，不能把 5 s 说成机器负载。
+ *  4. `verdict` 分档（合成耗时，秒级）：<12 s 判 `CORE-FAIL-EARLY`、>25 s 判 `LIKELY-LOAD` ——
+ *     这条锁住「下次红一眼分清机器忙还是 core 崩」，也锁住 spawn 耗时不许并进等待。
  *
  * 每条都断言 elapsed 远小于 180 s：如果哪天有人把 180 s 当 sleep 用，这里先红。
  */
@@ -66,7 +68,11 @@ class CoreBootDiagnosticsTest {
         }
         assertTrue("stdout tail" in msg, "message must carry a stdout tail section:\n$msg")
         assertTrue("stderr tail" in msg, "message must carry a stderr tail section:\n$msg")
-        assertTrue("hint      :" in msg, "message must carry a one-line conclusion hint:\n$msg")
+        assertTrue("verdict   :" in msg, "message must carry a one-line conclusion verdict:\n$msg")
+        // 「一眼能分清」的字面要求：定性必须在取证包**之前**，否则 80 行尾部输出会把结论埋掉。
+        val verdictAt = msg.indexOf("verdict   :")
+        val sectionAt = msg.indexOf("--- core boot diagnostics")
+        assertTrue(verdictAt in 0 until sectionAt, "verdict must come before the dump, not after it:\n$msg")
     }
 
     // ---------------------------------------------------------------- 1. 解释器不存在
@@ -147,7 +153,7 @@ class CoreBootDiagnosticsTest {
         // 证据：真实注入故障（python 立刻 exit 7）的完整消息。
         println("DIAG-SAMPLE exit-7 >>>\n$msg\n<<< DIAG-SAMPLE exit-7")
         // 结论提示必须数据驱动：秒级失败 → 明确排除机器负载
-        assertTrue("NOT machine load" in msg, "hint must rule out load for a fast failure:\n$msg")
+        assertTrue("NOT machine load" in msg, "verdict must rule out load for a fast failure:\n$msg")
         assertTrue(err.elapsedMs < 10_000, "exception field elapsedMs reports the short wait: ${err.elapsedMs}ms")
         assertTrue(err.stderrTail.contains("BOOM"), "exception exposes stderrTail")
         assertTrue(!created.isAlive, "injected crash must leave no process behind")
@@ -184,13 +190,98 @@ class CoreBootDiagnosticsTest {
         assertHasForensics(msg, "diag_launcher.py")
         assertTrue(
             "CALLER-SUPPLIED budget of 5000ms" in msg,
-            "hint must say a 5s run was cut short by the test, NOT blame machine load:\n$msg",
+            "verdict must say a 5s run was cut short by the test, NOT blame machine load:\n$msg",
         )
         assertTrue("alive=true" in msg, "child section must show the hung child is still alive:\n$msg")
         assertTrue(err.timeoutMs == 5_000L, "exception exposes the budget used")
     }
 
-    // ---------------------------------------------------------------- 4. 预算口径本身
+    // ---------------------------------------------------------------- 4. 判词分档（纯函数，秒级）
+
+    /**
+     * 「下次红一眼能分清机器忙还是 core 崩」的**可执行版本**。
+     *
+     * 直接对 [CoreDiagnostics.formatBootFailure] 喂合成耗时（真起 180 s 的进程不现实），
+     * 断言 `verdict   :` 的标签在每档都对 —— 尤其 `LIKELY-LOAD`（机器忙）与
+     * `CORE-FAIL-EARLY`（真崩）不能互换，否则这条诊断等于装饰。
+     */
+    @Test
+    fun verdictSeparatesLoadFromCrashWithoutReadingTheTails() {
+        val dir = Files.createTempDirectory("vade-e2e-verdict-").toFile()
+        try {
+            val launcher = dir.resolve("diag_launcher.py").apply { writeText("pass\n") }
+            val dataDir = dir.resolve("data")
+            fun msg(
+                elapsedMs: Long,
+                timeoutMs: Long,
+                hitCeiling: Boolean,
+                spawnMs: Long = 0L,
+                spawnFailed: Boolean = false,
+            ): String = CoreDiagnostics.formatBootFailure(
+                headline = "synthetic failure for classification only",
+                elapsedMs = elapsedMs,
+                timeoutMs = timeoutMs,
+                command = CoreDiagnostics.commandLineOf(RealCoreE2ETest.PYTHON, launcher, dataDir),
+                dataDir = dataDir,
+                childState = "alive=true exit=n/a pid=1",
+                stdoutTail = "",
+                stdoutLines = 0,
+                stderrTail = "Traceback (most recent call last):",
+                stderrLines = 1,
+                processSnapshot = "cpus=16 loadAvg=n/a(Windows) javaProcs=3 pythonProcs=4 unreadable=0 of 100",
+                hitCeiling = hitCeiling,
+                spawnMs = spawnMs,
+                spawnFailed = spawnFailed,
+            )
+
+            // ① < 12 s：真崩（读 stderr），并且必须明确排除负载
+            val early = msg(3_000, 180_000, hitCeiling = false)
+            assertTrue("verdict   : CORE-FAIL-EARLY — " in early, "fast failure must be classified as a crash:\n$early")
+            assertTrue("NOT machine load" in early, "fast failure must rule out load:\n$early")
+
+            // ② > 25 s：机器忙 —— 这就是「一眼分清」的那一半
+            val slow = msg(26_000, 180_000, hitCeiling = false)
+            assertTrue("verdict   : LIKELY-LOAD — " in slow, "a >25s failure must be classified as load:\n$slow")
+            assertTrue("MACHINE LOAD" in slow, "load verdict must say so in words:\n$slow")
+            assertHasForensics(slow, "diag_launcher.py") // 合成消息也要带全套取证字段
+
+            // ③ 12–25 s 之间不许冒充结论
+            val mid = msg(18_000, 180_000, hitCeiling = false)
+            assertTrue("verdict   : INCONCLUSIVE — " in mid, "the 12-25s band must stay inconclusive:\n$mid")
+
+            // ④ 等满 180 s 上限：死锁保险被打穿
+            val ceiling = msg(180_000, 180_000, hitCeiling = true)
+            assertTrue("verdict   : CEILING-HIT — " in ceiling, "a spent ceiling must say so:\n$ceiling")
+
+            // ⑤ 调用方自设 5 s 预算：必须说成「测试自己砍短的」，不许赖负载
+            val caller = msg(5_000, 5_000, hitCeiling = true)
+            assertTrue("verdict   : CALLER-BUDGET — " in caller, "a caller budget must not read as load:\n$caller")
+            assertTrue("CALLER-SUPPLIED budget of 5000ms" in caller, "caller budget must be named:\n$caller")
+
+            // ⑥ ProcessBuilder.start() 自己抛：既不是 core 崩也不是负载
+            val spawn = msg(12, 180_000, hitCeiling = false, spawnFailed = true)
+            assertTrue("verdict   : SPAWN-FAIL — " in spawn, "a spawn failure has its own verdict:\n$spawn")
+            assertTrue("NOT machine load" in spawn, "spawn failure must rule out load:\n$spawn")
+            assertTrue("NOT the core" in spawn, "spawn failure must rule out the core:\n$spawn")
+
+            // ⑦ spawn 耗时是**独立**证据：>10 s 单独成句，且不并进「等了多久」
+            val slowSpawn = msg(26_000, 180_000, hitCeiling = false, spawnMs = 12_000)
+            assertTrue("[spawn alone took 12000ms" in slowSpawn, "a slow spawn must be called out separately:\n$slowSpawn")
+            assertTrue(
+                "waited 26000ms of 180000ms budget" in slowSpawn,
+                "the wait figure must NOT absorb the spawn cost:\n$slowSpawn",
+            )
+            // 正常 spawn 不刷这句噪音
+            assertTrue(
+                "spawn alone took" !in msg(3_000, 180_000, hitCeiling = false, spawnMs = 8),
+                "a normal spawn cost must not add a load clause",
+            )
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    // ---------------------------------------------------------------- 5. 预算口径本身
 
     @Test
     fun budgetIsDeadlockInsuranceNotAPerformanceTarget() {

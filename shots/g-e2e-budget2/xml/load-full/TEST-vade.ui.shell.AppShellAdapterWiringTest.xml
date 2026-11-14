@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="AppShellAdapterWiringTest[desktop]" tests="11" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:38.718Z" hostname="WIN-SOHFNBA79AT" time="1.369">
+  <properties/>
+  <testcase name="theTwoPaneDetailPaneReceivesTheBundle[desktop]" classname="vade.ui.shell.AppShellAdapterWiringTest" time="0.216"/>
+  <testcase name="thePushedDetailReceivesTheBundle[desktop]" classname="vade.ui.shell.AppShellAdapterWiringTest" time="0.203"/>
+  <testcase name="aHostingSourceWithAClearedBundleAlsoHandsNull[desktop]" classname="vade.ui.shell.AppShellAdapterWiringTest" time="0.001"/>
+  <testcase name="theFixtureShellStillRendersFixtureContentOnEveryDestination[desktop]" classname="vade.ui.shell.AppShellAdapterWiringTest" time="0.158"/>
+  <testcase name="aHostingSourceHandsItsExactProviderDown[desktop]" classname="vade.ui.shell.AppShellAdapterWiringTest" time="0.0"/>
+  <testcase name="allFiveAdapterCallSitesInTheShellPassTheBundle[desktop]" classname="vade.ui.shell.AppShellAdapterWiringTest" time="0.001"/>
+  <testcase name="theProfileScreenAsksForTheGlobalDefaultAndNeverForASession[desktop]" classname="vade.ui.shell.AppShellAdapterWiringTest" time="0.036"/>
+  <testcase name="theFixtureSourceDoesNotHostAdapters[desktop]" classname="vade.ui.shell.AppShellAdapterWiringTest" time="0.0"/>
+  <testcase name="theDetailScreenTakesTurnsAndUploaderFromTheSameBundle[desktop]" classname="vade.ui.shell.AppShellAdapterWiringTest" time="0.042"/>
+  <testcase name="theCapabilitiesDestinationReceivesTheBundleAndDropsTheDemo[desktop]" classname="vade.ui.shell.AppShellAdapterWiringTest" time="0.344"/>
+  <testcase name="theProfileDestinationReceivesTheBundleAndAsksForTheGlobalDefault[desktop]" classname="vade.ui.shell.AppShellAdapterWiringTest" time="0.368"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

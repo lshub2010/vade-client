@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="SessionSummaryMetaFieldsTest[desktop]" tests="17" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:29.097Z" hostname="WIN-SOHFNBA79AT" time="0.015">
+  <properties/>
+  <testcase name="absentGroupIdMapsToUngrouped[desktop]" classname="vade.ui.data.SessionSummaryMetaFieldsTest" time="0.0"/>
+  <testcase name="explicitNullGroupIdMapsToUngrouped[desktop]" classname="vade.ui.data.SessionSummaryMetaFieldsTest" time="0.0"/>
+  <testcase name="reverseGuardContractHasNoGroupsArraySoTheProjectionIgnoresIt[desktop]" classname="vade.ui.data.SessionSummaryMetaFieldsTest" time="0.0"/>
+  <testcase name="groupedRowCopiesGroupIdVerbatim[desktop]" classname="vade.ui.data.SessionSummaryMetaFieldsTest" time="0.001"/>
+  <testcase name="defaultListStillDropsArchivedRows[desktop]" classname="vade.ui.data.SessionSummaryMetaFieldsTest" time="0.0"/>
+  <testcase name="fixturesCarryGroupedUngroupedAndBothAtOnce[desktop]" classname="vade.ui.data.SessionSummaryMetaFieldsTest" time="0.0"/>
+  <testcase name="wrongShapedGroupIdIsNotInventedIntoAGroup[desktop]" classname="vade.ui.data.SessionSummaryMetaFieldsTest" time="0.0"/>
+  <testcase name="reverseGuardContractHasNoArchivedBooleanSoTheProjectionDoesNotReadOne[desktop]" classname="vade.ui.data.SessionSummaryMetaFieldsTest" time="0.0"/>
+  <testcase name="reverseGuardSessionSummaryDeclaresExactlyTheDocumentedFields[desktop]" classname="vade.ui.data.SessionSummaryMetaFieldsTest" time="0.0"/>
+  <testcase name="copyKeepsNewFieldsAndDefaultsThemWhenTheCopyOmitsThem[desktop]" classname="vade.ui.data.SessionSummaryMetaFieldsTest" time="0.001"/>
+  <testcase name="sessionsEndToEndDefaultViewSkipsArchivedRowsButKeepsTheirGroupField[desktop]" classname="vade.ui.data.SessionSummaryMetaFieldsTest" time="0.008"/>
+  <testcase name="fixturesCarryArchivedAndLiveRows[desktop]" classname="vade.ui.data.SessionSummaryMetaFieldsTest" time="0.0"/>
+  <testcase name="rowWithoutArchivedAtMapsToFalseNotNull[desktop]" classname="vade.ui.data.SessionSummaryMetaFieldsTest" time="0.001"/>
+  <testcase name="newFieldsDefaultToFalseAndNullSoExistingConstructionIsUnchanged[desktop]" classname="vade.ui.data.SessionSummaryMetaFieldsTest" time="0.0"/>
+  <testcase name="archivedRowMapsTrueWhenTheArchivedViewAsksForIt[desktop]" classname="vade.ui.data.SessionSummaryMetaFieldsTest" time="0.0"/>
+  <testcase name="contractRowShapeDeclaresArchivedAtAndGroupIdVerbatim[desktop]" classname="vade.ui.data.SessionSummaryMetaFieldsTest" time="0.003"/>
+  <testcase name="fixtureGroupingAndBucketOrderAreUnchangedByTheNewFields[desktop]" classname="vade.ui.data.SessionSummaryMetaFieldsTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

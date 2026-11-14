@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="MotionBlurTriangleKernelTest[desktop]" tests="13" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:15.434Z" hostname="WIN-SOHFNBA79AT" time="0.034">
+  <properties/>
+  <testcase name="triangleSharesTheBoxTapCount[desktop]" classname="vade.ui.MotionBlurTriangleKernelTest" time="0.0"/>
+  <testcase name="triangleWeightsDifferFromBoxAtTheSameTaps[desktop]" classname="vade.ui.MotionBlurTriangleKernelTest" time="0.0"/>
+  <testcase name="weightsTaperToNearZeroNotToHalfThePeak[desktop]" classname="vade.ui.MotionBlurTriangleKernelTest" time="0.0"/>
+  <testcase name="shippedDefaultIsTheBoxKernel[desktop]" classname="vade.ui.MotionBlurTriangleKernelTest" time="0.0"/>
+  <testcase name="triangleSidelobeFloorIsWellBelowTheBoxOne[desktop]" classname="vade.ui.MotionBlurTriangleKernelTest" time="0.002"/>
+  <testcase name="triangleSuppressesTheGlyphBeatPitchesMoreThanTheBox[desktop]" classname="vade.ui.MotionBlurTriangleKernelTest" time="0.021"/>
+  <testcase name="triangleIsBoxConvolvedWithBoxOnTheSameGrid[desktop]" classname="vade.ui.MotionBlurTriangleKernelTest" time="0.001"/>
+  <testcase name="weightsAreSymmetricWithThePeakAtTheCentre[desktop]" classname="vade.ui.MotionBlurTriangleKernelTest" time="0.0"/>
+  <testcase name="triangleRippleOnAPeriodicFixtureIsMeasurablySmallerThanTheBox[desktop]" classname="vade.ui.MotionBlurTriangleKernelTest" time="0.005"/>
+  <testcase name="triangleResponseIsTheBoxResponseSquared[desktop]" classname="vade.ui.MotionBlurTriangleKernelTest" time="0.001"/>
+  <testcase name="degenerateTapCountsThrowLikeTheBoxKernel[desktop]" classname="vade.ui.MotionBlurTriangleKernelTest" time="0.001"/>
+  <testcase name="weightsSumToOneSoBrightnessIsPreserved[desktop]" classname="vade.ui.MotionBlurTriangleKernelTest" time="0.0"/>
+  <testcase name="weightsRampLinearlyNotUniform[desktop]" classname="vade.ui.MotionBlurTriangleKernelTest" time="0.001"/>
+  <system-out><![CDATA[echo period=4px: box p2p=0.0769 triangle p2p=0.0204
+echo period=5px: box p2p=0.1538 triangle p2p=0.0612
+echo period=7px: box p2p=0.0769 triangle p2p=0.0000
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

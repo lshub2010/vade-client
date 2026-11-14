@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="SourceConfigParseTest[desktop]" tests="15" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:29.114Z" hostname="WIN-SOHFNBA79AT" time="0.899">
+  <properties/>
+  <testcase name="realModeBuildsTheProtocolBackedSourceNotTheFixtures[desktop]" classname="vade.ui.data.SourceConfigParseTest" time="0.005"/>
+  <testcase name="realWithoutHostOrPortUsesTheCoreSchemaDefaults[desktop]" classname="vade.ui.data.SourceConfigParseTest" time="0.0"/>
+  <testcase name="androidPrecedenceExtrasBeatEnvPerKey[desktop]" classname="vade.ui.data.SourceConfigParseTest" time="0.0"/>
+  <testcase name="defaultRawStringsKeepTheFixturePath[desktop]" classname="vade.ui.data.SourceConfigParseTest" time="0.0"/>
+  <testcase name="anythingButTheExactRealWordKeepsTheFixturePath[desktop]" classname="vade.ui.data.SourceConfigParseTest" time="0.0"/>
+  <testcase name="outOfRangePortsAreRejectedLoudly[desktop]" classname="vade.ui.data.SourceConfigParseTest" time="0.001"/>
+  <testcase name="threeRawChannelsAgreeOnTheSameSpec[desktop]" classname="vade.ui.data.SourceConfigParseTest" time="0.001"/>
+  <testcase name="explicitHostAndPortOverrideTheDefaults[desktop]" classname="vade.ui.data.SourceConfigParseTest" time="0.0"/>
+  <testcase name="illegalPortIsRejectedLoudlyNeverSilently[desktop]" classname="vade.ui.data.SourceConfigParseTest" time="0.0"/>
+  <testcase name="blankHostTrimsToTheDefaultButBlankPortIsAlsoTheDefault[desktop]" classname="vade.ui.data.SourceConfigParseTest" time="0.0"/>
+  <testcase name="realSourceAgainstADeadCoreSurfacesAClassifiedFailureNotFixtures[desktop]" classname="vade.ui.data.SourceConfigParseTest" time="0.892"/>
+  <testcase name="pairCodeOnlyTravelsInRealMode[desktop]" classname="vade.ui.data.SourceConfigParseTest" time="0.0"/>
+  <testcase name="autoConnectingWrapperDelegatesTheEventStream[desktop]" classname="vade.ui.data.SourceConfigParseTest" time="0.0"/>
+  <testcase name="queryKeysOtherThanTheSourceKeysNeverSwitchTheMode[desktop]" classname="vade.ui.data.SourceConfigParseTest" time="0.0"/>
+  <testcase name="queryGrammarParsesBareKeysEmptyQueryAndNoQuery[desktop]" classname="vade.ui.data.SourceConfigParseTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[SLF4J(W): No SLF4J providers were found.
+SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+]]></system-err>
+</testsuite>

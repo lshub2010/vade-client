@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="FloatingBarFootprintTest[desktop]" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:24.429Z" hostname="WIN-SOHFNBA79AT" time="0.0">
+  <properties/>
+  <testcase name="floatingMarginFallsBackToKernelSusTwentyEightWithoutAnInset[desktop]" classname="vade.ui.component.liquid.FloatingBarFootprintTest" time="0.0"/>
+  <testcase name="floatingMarginIsInsetPlusEightWhenTheDeviceHasANavBar[desktop]" classname="vade.ui.component.liquid.FloatingBarFootprintTest" time="0.0"/>
+  <testcase name="floatingFootprintWithA48dpInsetIs132dp[desktop]" classname="vade.ui.component.liquid.FloatingBarFootprintTest" time="0.0"/>
+  <testcase name="floatingFootprintWithoutNavInsetIs104dp[desktop]" classname="vade.ui.component.liquid.FloatingBarFootprintTest" time="0.0"/>
+  <testcase name="pillHeightStaysAtTheKernelSu64dpGeometry[desktop]" classname="vade.ui.component.liquid.FloatingBarFootprintTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

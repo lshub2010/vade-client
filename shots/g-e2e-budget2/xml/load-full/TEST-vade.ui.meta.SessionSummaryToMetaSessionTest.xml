@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="SessionSummaryToMetaSessionTest[desktop]" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:34.884Z" hostname="WIN-SOHFNBA79AT" time="0.001">
+  <properties/>
+  <testcase name="projectedRowsAreConsumableByTheMetaStateMachine[desktop]" classname="vade.ui.meta.SessionSummaryToMetaSessionTest" time="0.001"/>
+  <testcase name="everyMetaSessionFieldHasASessionSummarySource[desktop]" classname="vade.ui.meta.SessionSummaryToMetaSessionTest" time="0.0"/>
+  <testcase name="fixturesProjectWithTheirArchivedAndGroupIntact[desktop]" classname="vade.ui.meta.SessionSummaryToMetaSessionTest" time="0.0"/>
+  <testcase name="archivedAndGroupAreCarriedOverNotDefaulted[desktop]" classname="vade.ui.meta.SessionSummaryToMetaSessionTest" time="0.0"/>
+  <testcase name="metaSessionDeclaresExactlyTheSevenMappedFields[desktop]" classname="vade.ui.meta.SessionSummaryToMetaSessionTest" time="0.0"/>
+  <testcase name="emptySummaryValuesStayEmptyTheyAreNotFilledWithPlaceholders[desktop]" classname="vade.ui.meta.SessionSummaryToMetaSessionTest" time="0.0"/>
+  <testcase name="everyMetaSessionFieldIsMappedFromTheSummary[desktop]" classname="vade.ui.meta.SessionSummaryToMetaSessionTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

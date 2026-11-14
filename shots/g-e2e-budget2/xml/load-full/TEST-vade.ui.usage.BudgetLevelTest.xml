@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="BudgetLevelTest[desktop]" tests="13" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:42.529Z" hostname="WIN-SOHFNBA79AT" time="0.004">
+  <properties/>
+  <testcase name="offOrZeroLimitMeansNoBarAtAll[desktop]" classname="vade.ui.usage.BudgetLevelTest" time="0.0"/>
+  <testcase name="budgetNoticeExceededSaysBlockRefusal[desktop]" classname="vade.ui.usage.BudgetLevelTest" time="0.003"/>
+  <testcase name="contractStateWinsOverLocalThresholds[desktop]" classname="vade.ui.usage.BudgetLevelTest" time="0.0"/>
+  <testcase name="fourTiersAt79_80_100_andOverLimit[desktop]" classname="vade.ui.usage.BudgetLevelTest" time="0.0"/>
+  <testcase name="percentFallsBackToUsedOverLimitWhenRatioMissing[desktop]" classname="vade.ui.usage.BudgetLevelTest" time="0.001"/>
+  <testcase name="budgetNoticeDegradedExplainsTheDowngradedRefusal[desktop]" classname="vade.ui.usage.BudgetLevelTest" time="0.0"/>
+  <testcase name="enforcedBlockSemanticsSurfaceVerbatim[desktop]" classname="vade.ui.usage.BudgetLevelTest" time="0.0"/>
+  <testcase name="budgetNoticeWarnIsWarnColoured[desktop]" classname="vade.ui.usage.BudgetLevelTest" time="0.0"/>
+  <testcase name="projectUsageSurfacesTheNoticeAndTheAuthoritativeBudget[desktop]" classname="vade.ui.usage.BudgetLevelTest" time="0.0"/>
+  <testcase name="usedLimitPercentStateCarryRealNumbers[desktop]" classname="vade.ui.usage.BudgetLevelTest" time="0.0"/>
+  <testcase name="budgetNoticeOkOffNeverNotifyAndUnknownShowsVerbatim[desktop]" classname="vade.ui.usage.BudgetLevelTest" time="0.0"/>
+  <testcase name="fractionClampsIntoTheTrack[desktop]" classname="vade.ui.usage.BudgetLevelTest" time="0.0"/>
+  <testcase name="tierColorsResolveFromTheRightSkinTokens[desktop]" classname="vade.ui.usage.BudgetLevelTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

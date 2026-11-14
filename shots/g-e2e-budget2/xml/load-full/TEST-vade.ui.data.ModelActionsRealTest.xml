@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ModelActionsRealTest[desktop]" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:25.038Z" hostname="WIN-SOHFNBA79AT" time="0.14">
+  <properties/>
+  <testcase name="refreshSessionOverrideMapsModelGet[desktop]" classname="vade.ui.data.ModelActionsRealTest" time="0.03"/>
+  <testcase name="refreshModelsDegradesOnJsonRpc32601[desktop]" classname="vade.ui.data.ModelActionsRealTest" time="0.027"/>
+  <testcase name="refreshModelsRethrowsGenuineErrorsWithoutDegradation[desktop]" classname="vade.ui.data.ModelActionsRealTest" time="0.003"/>
+  <testcase name="refreshModelsDegradesOnCoreNotFoundUnknownMethod[desktop]" classname="vade.ui.data.ModelActionsRealTest" time="0.003"/>
+  <testcase name="refreshModelsSendsEmptyParamsAndStoresServerOrder[desktop]" classname="vade.ui.data.ModelActionsRealTest" time="0.006"/>
+  <testcase name="setDefaultModelIsRefusedAsUnsupportedWithoutSending[desktop]" classname="vade.ui.data.ModelActionsRealTest" time="0.002"/>
+  <testcase name="setSessionModelSendsModelIdNotDisplayName[desktop]" classname="vade.ui.data.ModelActionsRealTest" time="0.019"/>
+  <testcase name="clearOverrideAndFailedWriteRevert[desktop]" classname="vade.ui.data.ModelActionsRealTest" time="0.05"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

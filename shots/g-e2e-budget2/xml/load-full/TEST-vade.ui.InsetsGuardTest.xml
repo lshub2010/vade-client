@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="InsetsGuardTest[desktop]" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:06.517Z" hostname="WIN-SOHFNBA79AT" time="8.717">
+  <properties/>
+  <testcase name="noNavInsetFallsBackToKsuMargin[desktop]" classname="vade.ui.InsetsGuardTest" time="0.003"/>
+  <testcase name="desktopSystemBarInsetsReadZeroInARealWindow[desktop]" classname="vade.ui.InsetsGuardTest" time="8.714"/>
+  <testcase name="navInsetRidesOnTheEightDpMargin[desktop]" classname="vade.ui.InsetsGuardTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

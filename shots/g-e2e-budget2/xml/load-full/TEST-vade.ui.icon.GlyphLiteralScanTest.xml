@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="GlyphLiteralScanTest[desktop]" tests="11" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:33.998Z" hostname="WIN-SOHFNBA79AT" time="0.001">
+  <properties/>
+  <testcase name="commentedOutLiteralIsNotAHit[desktop]" classname="vade.ui.icon.GlyphLiteralScanTest" time="0.0"/>
+  <testcase name="patternIsBuiltFromVocabularyAtRuntime[desktop]" classname="vade.ui.icon.GlyphLiteralScanTest" time="0.0"/>
+  <testcase name="singleLineLiteralIsAHit[desktop]" classname="vade.ui.icon.GlyphLiteralScanTest" time="0.0"/>
+  <testcase name="escapedUnicodeLiteralIsAHit[desktop]" classname="vade.ui.icon.GlyphLiteralScanTest" time="0.0"/>
+  <testcase name="proseWithGlyphIsNotAHit[desktop]" classname="vade.ui.icon.GlyphLiteralScanTest" time="0.001"/>
+  <testcase name="allowEntrySilencesOnlyItsOwnOffender[desktop]" classname="vade.ui.icon.GlyphLiteralScanTest" time="0.0"/>
+  <testcase name="namedArgumentExpressionAndCustomCallShapesAreHits[desktop]" classname="vade.ui.icon.GlyphLiteralScanTest" time="0.0"/>
+  <testcase name="allowEntryRequiresAReason[desktop]" classname="vade.ui.icon.GlyphLiteralScanTest" time="0.0"/>
+  <testcase name="rawStringLiteralIsAHit[desktop]" classname="vade.ui.icon.GlyphLiteralScanTest" time="0.0"/>
+  <testcase name="staleAllowEntryIsReported[desktop]" classname="vade.ui.icon.GlyphLiteralScanTest" time="0.0"/>
+  <testcase name="multiLineCallIsAHit[desktop]" classname="vade.ui.icon.GlyphLiteralScanTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ModuleCatalogDecodeTest[desktop]" tests="14" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:25.180Z" hostname="WIN-SOHFNBA79AT" time="0.014">
+  <properties/>
+  <testcase name="malformedPageRejectsTheWholeReply[desktop]" classname="vade.ui.data.ModuleCatalogDecodeTest" time="0.003"/>
+  <testcase name="blankModuleIdIsRejected[desktop]" classname="vade.ui.data.ModuleCatalogDecodeTest" time="0.0"/>
+  <testcase name="registryDeclarationsFeedTheEntryRulesShape[desktop]" classname="vade.ui.data.ModuleCatalogDecodeTest" time="0.009"/>
+  <testcase name="nullAndAbsentVersionBothDecodeToNull[desktop]" classname="vade.ui.data.ModuleCatalogDecodeTest" time="0.0"/>
+  <testcase name="missingModulesArrayIsRejected[desktop]" classname="vade.ui.data.ModuleCatalogDecodeTest" time="0.0"/>
+  <testcase name="emptyModulesIsASuccessfulEmptyList[desktop]" classname="vade.ui.data.ModuleCatalogDecodeTest" time="0.001"/>
+  <testcase name="missingRequiredModuleFieldRejectsTheWholeReply[desktop]" classname="vade.ui.data.ModuleCatalogDecodeTest" time="0.0"/>
+  <testcase name="missingOnlineRejectsTheWholeReply[desktop]" classname="vade.ui.data.ModuleCatalogDecodeTest" time="0.0"/>
+  <testcase name="stringRevisionIsRejectedAsWrongShape[desktop]" classname="vade.ui.data.ModuleCatalogDecodeTest" time="0.0"/>
+  <testcase name="unknownIconDegradesToNone[desktop]" classname="vade.ui.data.ModuleCatalogDecodeTest" time="0.0"/>
+  <testcase name="unknownKeysAndUnusedPageFieldsAreIgnored[desktop]" classname="vade.ui.data.ModuleCatalogDecodeTest" time="0.001"/>
+  <testcase name="missingRevisionIsRejected[desktop]" classname="vade.ui.data.ModuleCatalogDecodeTest" time="0.0"/>
+  <testcase name="stringOnlineIsRejectedAsWrongShape[desktop]" classname="vade.ui.data.ModuleCatalogDecodeTest" time="0.0"/>
+  <testcase name="decodesEveryFieldVerbatim[desktop]" classname="vade.ui.data.ModuleCatalogDecodeTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

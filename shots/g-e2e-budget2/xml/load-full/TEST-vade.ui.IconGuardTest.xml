@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="IconGuardTest[desktop]" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:06.160Z" hostname="WIN-SOHFNBA79AT" time="0.355">
+  <properties/>
+  <testcase name="vadeIconsExposesAtLeast20Vectors[desktop]" classname="vade.ui.IconGuardTest" time="0.022"/>
+  <testcase name="noCharacterIconTextLiterals[desktop]" classname="vade.ui.IconGuardTest" time="0.264"/>
+  <testcase name="destinationsCarryTablerIcons[desktop]" classname="vade.ui.IconGuardTest" time="0.002"/>
+  <testcase name="businessCodeDoesNotImportTablerDirectly[desktop]" classname="vade.ui.IconGuardTest" time="0.067"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="UiStateSourceWiringTest[desktop]" tests="20" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:42.457Z" hostname="WIN-SOHFNBA79AT" time="0.059">
+  <properties/>
+  <testcase name="messagesFailureHitsOnlyThatSessionAndRetryMessagesWorks[desktop]" classname="vade.ui.shell.UiStateSourceWiringTest" time="0.006"/>
+  <testcase name="failedEventRefreshKeepsStaleRowsAndRetryRecovers[desktop]" classname="vade.ui.shell.UiStateSourceWiringTest" time="0.004"/>
+  <testcase name="staleMessageRequestNeverOverwritesNewSession[desktop]" classname="vade.ui.shell.UiStateSourceWiringTest" time="0.004"/>
+  <testcase name="loadErrorClassificationTable[desktop]" classname="vade.ui.shell.UiStateSourceWiringTest" time="0.001"/>
+  <testcase name="fakeSourceDraftsBehaveExactlyAsBefore[desktop]" classname="vade.ui.shell.UiStateSourceWiringTest" time="0.0"/>
+  <testcase name="disposedLoaderNeverWritesState[desktop]" classname="vade.ui.shell.UiStateSourceWiringTest" time="0.003"/>
+  <testcase name="selectSessionTriggersMessagesLoad[desktop]" classname="vade.ui.shell.UiStateSourceWiringTest" time="0.006"/>
+  <testcase name="emptySessionListIsReadyNotFailed[desktop]" classname="vade.ui.shell.UiStateSourceWiringTest" time="0.003"/>
+  <testcase name="fakePathMakesNoSourceCallsAndLoadsNoMessages[desktop]" classname="vade.ui.shell.UiStateSourceWiringTest" time="0.002"/>
+  <testcase name="duplicateSelectOfSameSessionDoesNotRefetch[desktop]" classname="vade.ui.shell.UiStateSourceWiringTest" time="0.003"/>
+  <testcase name="sessionsFailureIsFailedWithClassifiedErrorNotSilentlyEmpty[desktop]" classname="vade.ui.shell.UiStateSourceWiringTest" time="0.009"/>
+  <testcase name="eventStormWhileLoadingNeverFetchesPerEvent[desktop]" classname="vade.ui.shell.UiStateSourceWiringTest" time="0.004"/>
+  <testcase name="sessionsGoLoadingThenReady[desktop]" classname="vade.ui.shell.UiStateSourceWiringTest" time="0.003"/>
+  <testcase name="sessionsRetryGoesFromFailedBackToReady[desktop]" classname="vade.ui.shell.UiStateSourceWiringTest" time="0.002"/>
+  <testcase name="fakeSourceRowsEqualFixtureRowsImmediately[desktop]" classname="vade.ui.shell.UiStateSourceWiringTest" time="0.0"/>
+  <testcase name="handledEventTriggersListRefresh[desktop]" classname="vade.ui.shell.UiStateSourceWiringTest" time="0.002"/>
+  <testcase name="eventDuringLoadingFetchesNothingImmediatelyAndRefreshesExactlyOnce[desktop]" classname="vade.ui.shell.UiStateSourceWiringTest" time="0.001"/>
+  <testcase name="unhandledEventIsIgnoredWithoutCrashOrRefresh[desktop]" classname="vade.ui.shell.UiStateSourceWiringTest" time="0.002"/>
+  <testcase name="deepLinkInitialSessionLoadsItsMessages[desktop]" classname="vade.ui.shell.UiStateSourceWiringTest" time="0.002"/>
+  <testcase name="scriptedFixtureRowsGroupLikeFakeSessions[desktop]" classname="vade.ui.shell.UiStateSourceWiringTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

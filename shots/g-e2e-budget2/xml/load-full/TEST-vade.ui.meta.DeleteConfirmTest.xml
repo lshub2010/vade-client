@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="DeleteConfirmTest[desktop]" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:34.569Z" hostname="WIN-SOHFNBA79AT" time="0.016">
+  <properties/>
+  <testcase name="deleteCopyStatesIrrecoverability[desktop]" classname="vade.ui.meta.DeleteConfirmTest" time="0.0"/>
+  <testcase name="cancelDeleteClosesAndStillNeverCalls[desktop]" classname="vade.ui.meta.DeleteConfirmTest" time="0.009"/>
+  <testcase name="confirmWithoutRequestIsANoOp[desktop]" classname="vade.ui.meta.DeleteConfirmTest" time="0.002"/>
+  <testcase name="requestDeleteOpensConfirmWithoutAnyDeleteCallback[desktop]" classname="vade.ui.meta.DeleteConfirmTest" time="0.0"/>
+  <testcase name="confirmDeletesExactlyOnceLocallyAndOnServerFace[desktop]" classname="vade.ui.meta.DeleteConfirmTest" time="0.005"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

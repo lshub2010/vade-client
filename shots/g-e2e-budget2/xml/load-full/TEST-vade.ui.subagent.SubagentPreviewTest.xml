@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="SubagentPreviewTest[desktop]" tests="10" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:42.526Z" hostname="WIN-SOHFNBA79AT" time="0.002">
+  <properties/>
+  <testcase name="digestMissingOrShortHandledVerbatim[desktop]" classname="vade.ui.subagent.SubagentPreviewTest" time="0.0"/>
+  <testcase name="previewOnlyNoteIsExactAndMandatory[desktop]" classname="vade.ui.subagent.SubagentPreviewTest" time="0.0"/>
+  <testcase name="realPreviewCarriesTheProjectionTextVerbatim[desktop]" classname="vade.ui.subagent.SubagentPreviewTest" time="0.0"/>
+  <testcase name="nullAndBlankPreviewsBothRenderTheHonestEmpty[desktop]" classname="vade.ui.subagent.SubagentPreviewTest" time="0.001"/>
+  <testcase name="digestShowsShortFingerprintNeverTheWholeWall[desktop]" classname="vade.ui.subagent.SubagentPreviewTest" time="0.0"/>
+  <testcase name="charsZeroIsRealDataForAnEmptyResult[desktop]" classname="vade.ui.subagent.SubagentPreviewTest" time="0.0"/>
+  <testcase name="errorCodeSurfacesOnlyForFailedRunsThatCarryOne[desktop]" classname="vade.ui.subagent.SubagentPreviewTest" time="0.0"/>
+  <testcase name="snapshotKeepsContractFieldsVerbatim[desktop]" classname="vade.ui.subagent.SubagentPreviewTest" time="0.0"/>
+  <testcase name="charsMissingIsNotShownAsZero[desktop]" classname="vade.ui.subagent.SubagentPreviewTest" time="0.0"/>
+  <testcase name="durationPrefixFollowsTheState[desktop]" classname="vade.ui.subagent.SubagentPreviewTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

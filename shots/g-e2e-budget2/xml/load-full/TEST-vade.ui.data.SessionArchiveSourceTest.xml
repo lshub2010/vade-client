@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="SessionArchiveSourceTest[desktop]" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:28.684Z" hostname="WIN-SOHFNBA79AT" time="0.216">
+  <properties/>
+  <testcase name="autoConnectingWrapperForwardsTheParameter[desktop]" classname="vade.ui.data.SessionArchiveSourceTest" time="0.029"/>
+  <testcase name="defaultCallSendsExactlyTheSameRequestAsExplicitFalse[desktop]" classname="vade.ui.data.SessionArchiveSourceTest" time="0.031"/>
+  <testcase name="fakeSourceKeepsItsPinnedFixtureListInBothModes[desktop]" classname="vade.ui.data.SessionArchiveSourceTest" time="0.022"/>
+  <testcase name="defaultCallAndExplicitFalseReturnTheSameRows[desktop]" classname="vade.ui.data.SessionArchiveSourceTest" time="0.057"/>
+  <testcase name="theDefaultFalseComesFromTheInterfaceNotFromEachImplementation[desktop]" classname="vade.ui.data.SessionArchiveSourceTest" time="0.001"/>
+  <testcase name="includeArchivedTrueKeepsArchivedRowsNextToLiveOnes[desktop]" classname="vade.ui.data.SessionArchiveSourceTest" time="0.028"/>
+  <testcase name="includeArchivedTrueDoesNotTurnIntoAServerSideFilter[desktop]" classname="vade.ui.data.SessionArchiveSourceTest" time="0.047"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

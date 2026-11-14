@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="MetaIconWhitelistTest[desktop]" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:34.660Z" hostname="WIN-SOHFNBA79AT" time="0.001">
+  <properties/>
+  <testcase name="noDuplicateNames[desktop]" classname="vade.ui.meta.MetaIconWhitelistTest" time="0.0"/>
+  <testcase name="whitelistSetEqualsServerWhitelistExactly[desktop]" classname="vade.ui.meta.MetaIconWhitelistTest" time="0.0"/>
+  <testcase name="everyNameResolvesToAVector[desktop]" classname="vade.ui.meta.MetaIconWhitelistTest" time="0.001"/>
+  <testcase name="vectorMapHasNoExtrasBeyondWhitelist[desktop]" classname="vade.ui.meta.MetaIconWhitelistTest" time="0.0"/>
+  <testcase name="unknownNameReturnsNull[desktop]" classname="vade.ui.meta.MetaIconWhitelistTest" time="0.0"/>
+  <testcase name="whitelistCountMatchesServer39[desktop]" classname="vade.ui.meta.MetaIconWhitelistTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

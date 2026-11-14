@@ -1,0 +1,11 @@
+round1 par=12: n=12 wall=36.284s to-READY min=9.043 median=12.962 max=25.719 ready=12/12
+round1 par=12: n=12 wall=17.831s to-READY min=7.042 median=10.742 max=12.123 ready=12/12
+round1 par=12: n=12 wall=15.972s to-READY min=7.688 median=8.939 max=11.173 ready=12/12
+round1 par=12: n=12 wall=13.755s to-READY min=7.871 median=9.283 max=12.258 ready=12/12
+round1 par=12: n=12 wall=15.865s to-READY min=8.881 median=11.973 max=14.17 ready=12/12
+round1 par=12: n=12 wall=13.363s to-READY min=8.107 median=10.997 max=11.853 ready=12/12
+round1 par=12: n=12 wall=17.671s to-READY min=8.297 median=11.657 max=16.091 ready=12/12
+round1 par=12: n=12 wall=17.612s to-READY min=8.609 median=12.903 max=16.298 ready=12/12
+round1 par=12: n=12 wall=16.225s to-READY min=7.952 median=10.085 max=14.161 ready=12/12
+round1 par=12: n=12 wall=12.491s to-READY min=5.283 median=9.09 max=10.796 ready=12/12
+round1 par=12: n=12 wall=16.77s to-READY min=7.1 median=8.686 max=14.802 ready=12/12

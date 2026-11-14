@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="RealChatSourceTest[desktop]" tests="21" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:24.068Z" hostname="WIN-SOHFNBA79AT" time="0.03">
+  <properties/>
+  <testcase name="aDuplicateSeqIsDroppedIdempotently[desktop]" classname="vade.ui.chat.RealChatSourceTest" time="0.004"/>
+  <testcase name="deltasAppendToTheTailOfTheSameLiveRow[desktop]" classname="vade.ui.chat.RealChatSourceTest" time="0.001"/>
+  <testcase name="collectsTheLiveStreamIntoTheThread[desktop]" classname="vade.ui.chat.RealChatSourceTest" time="0.003"/>
+  <testcase name="realGatewayRendersExactlyTheSnapshotRowsAndNothingElse[desktop]" classname="vade.ui.chat.RealChatSourceTest" time="0.001"/>
+  <testcase name="anOverflowingGapRecordsAnAnomalyAndNeverThrows[desktop]" classname="vade.ui.chat.RealChatSourceTest" time="0.003"/>
+  <testcase name="repeatedLoadsAreIdempotentRatherThanStackingRows[desktop]" classname="vade.ui.chat.RealChatSourceTest" time="0.001"/>
+  <testcase name="realGatewayHistoryFailureShowsTheFailedStateWithItsReason[desktop]" classname="vade.ui.chat.RealChatSourceTest" time="0.001"/>
+  <testcase name="aDroppedEventStreamReportsItselfInsteadOfCrashingThePage[desktop]" classname="vade.ui.chat.RealChatSourceTest" time="0.002"/>
+  <testcase name="realModeSubmitDoesNotFabricateAScriptedReply[desktop]" classname="vade.ui.chat.RealChatSourceTest" time="0.0"/>
+  <testcase name="loadingIsItsOwnStateAndHappensBeforeAnyContent[desktop]" classname="vade.ui.chat.RealChatSourceTest" time="0.0"/>
+  <testcase name="retryAfterFailureLoadsTheThread[desktop]" classname="vade.ui.chat.RealChatSourceTest" time="0.001"/>
+  <testcase name="aSyntheticProbeGatewayStillGetsFixtures[desktop]" classname="vade.ui.chat.RealChatSourceTest" time="0.002"/>
+  <testcase name="realGatewayNeverRidesAFixtureMarkerAlong[desktop]" classname="vade.ui.chat.RealChatSourceTest" time="0.001"/>
+  <testcase name="fakeSourceKeepsItsFixturesAndTheDemoNotice[desktop]" classname="vade.ui.chat.RealChatSourceTest" time="0.001"/>
+  <testcase name="fakeSourceNeverEntersTheLiveLoadingPath[desktop]" classname="vade.ui.chat.RealChatSourceTest" time="0.001"/>
+  <testcase name="realGatewayWithoutAReadChannelFailsInsteadOfFallingBackToFixtures[desktop]" classname="vade.ui.chat.RealChatSourceTest" time="0.001"/>
+  <testcase name="liveDeltasLandAfterTheSnapshotRowsWithoutReplacingThem[desktop]" classname="vade.ui.chat.RealChatSourceTest" time="0.001"/>
+  <testcase name="realModePresetIsNotApplied[desktop]" classname="vade.ui.chat.RealChatSourceTest" time="0.0"/>
+  <testcase name="aSeqGapIsBufferedThenDrainedInOrder[desktop]" classname="vade.ui.chat.RealChatSourceTest" time="0.001"/>
+  <testcase name="realGatewayWithAnEmptySnapshotShowsTheEmptyStateNotFixtures[desktop]" classname="vade.ui.chat.RealChatSourceTest" time="0.001"/>
+  <testcase name="aFailedTurnProjectsAnErrorRowThroughApplyLive[desktop]" classname="vade.ui.chat.RealChatSourceTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ActivityWiringTest[desktop]" tests="22" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:30.148Z" hostname="WIN-SOHFNBA79AT" time="1.223">
+  <properties/>
+  <testcase name="noSourceAtAllIsStillThePreWiringPage[desktop]" classname="vade.ui.destinations.ActivityWiringTest" time="0.136"/>
+  <testcase name="subagentListRunsGloballyWhenNoSessionIsPicked[desktop]" classname="vade.ui.destinations.ActivityWiringTest" time="0.083"/>
+  <testcase name="scopeLabelsAndNullsAreNotConflated[desktop]" classname="vade.ui.destinations.ActivityWiringTest" time="0.001"/>
+  <testcase name="theThreeStateWordsAreAllDifferent[desktop]" classname="vade.ui.destinations.ActivityWiringTest" time="0.006"/>
+  <testcase name="liveUsageRendersTheRealNumbersInsteadOfAnEmptyState[desktop]" classname="vade.ui.destinations.ActivityWiringTest" time="0.15"/>
+  <testcase name="globalScopeNeverFiresAUsageRequestAndSaysWhy[desktop]" classname="vade.ui.destinations.ActivityWiringTest" time="0.061"/>
+  <testcase name="subagentLoadingCardSaysLoadingAndBuildsNoCards[desktop]" classname="vade.ui.destinations.ActivityWiringTest" time="0.021"/>
+  <testcase name="emptyGlobalSubagentListUsesTheGlobalCopy[desktop]" classname="vade.ui.destinations.ActivityWiringTest" time="0.046"/>
+  <testcase name="failedSubagentListShowsItsCategoryAndRetriesTheSameScope[desktop]" classname="vade.ui.destinations.ActivityWiringTest" time="0.063"/>
+  <testcase name="usageFailedCardCarriesItsCategoryCodeAndRetryLabel[desktop]" classname="vade.ui.destinations.ActivityWiringTest" time="0.026"/>
+  <testcase name="subagentLoaderRetryBeforeAnyLoadIsANoOp[desktop]" classname="vade.ui.destinations.ActivityWiringTest" time="0.069"/>
+  <testcase name="theRecommendedShellCallSiteCompilesAndStaysNeutralOnTheFakeSource[desktop]" classname="vade.ui.destinations.ActivityWiringTest" time="0.031"/>
+  <testcase name="snapshotPathStillRendersRealContentWhenDtoSnapshotsArePassed[desktop]" classname="vade.ui.destinations.ActivityWiringTest" time="0.064"/>
+  <testcase name="wiredEmptyUsageIsNotTheUnwiredCopy[desktop]" classname="vade.ui.destinations.ActivityWiringTest" time="0.018"/>
+  <testcase name="subagentLoaderDropsTheStaleScopeReply[desktop]" classname="vade.ui.destinations.ActivityWiringTest" time="0.136"/>
+  <testcase name="switchingSessionsLoadsTheNewOneAndDropsTheOldOnesNumbers[desktop]" classname="vade.ui.destinations.ActivityWiringTest" time="0.116"/>
+  <testcase name="unwiredEmptyUsageKeepsTheOriginalCopy[desktop]" classname="vade.ui.destinations.ActivityWiringTest" time="0.015"/>
+  <testcase name="usageLoadingCardSaysLoadingAndShowsNoNumbers[desktop]" classname="vade.ui.destinations.ActivityWiringTest" time="0.017"/>
+  <testcase name="pickingASessionLoadsExactlyThatSessionsUsage[desktop]" classname="vade.ui.destinations.ActivityWiringTest" time="0.07"/>
+  <testcase name="aFailedUsageReadCanBeRetriedIntoTheRealNumbers[desktop]" classname="vade.ui.destinations.ActivityWiringTest" time="0.041"/>
+  <testcase name="fakeSourceGetsNoLiveSeamsAndRealSourceGetsBoth[desktop]" classname="vade.ui.destinations.ActivityWiringTest" time="0.002"/>
+  <testcase name="pickingASessionReScopesTheSubagentListAndItsEmptyCopy[desktop]" classname="vade.ui.destinations.ActivityWiringTest" time="0.047"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="TopGlassGuardTest[desktop]" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:42.408Z" hostname="WIN-SOHFNBA79AT" time="0.047">
+  <properties/>
+  <testcase name="desktopTopBarRendersFlushWithTheWindowTop[desktop]" classname="vade.ui.shell.TopGlassGuardTest" time="0.013"/>
+  <testcase name="topBarTitleDrawsInsideTheCapsule[desktop]" classname="vade.ui.shell.TopGlassGuardTest" time="0.01"/>
+  <testcase name="insetConsumerWhitelistIsUnchanged[desktop]" classname="vade.ui.shell.TopGlassGuardTest" time="0.003"/>
+  <testcase name="topBarZoneArithmeticIsInsetFree[desktop]" classname="vade.ui.shell.TopGlassGuardTest" time="0.0"/>
+  <testcase name="statusBarInsetIsConsumedExactlyOnceAtTheAndroidRoot[desktop]" classname="vade.ui.shell.TopGlassGuardTest" time="0.001"/>
+  <testcase name="shellNeverAddsASecondStatusBarInset[desktop]" classname="vade.ui.shell.TopGlassGuardTest" time="0.016"/>
+  <testcase name="detailThreadIsContentPaddedNotContainerPadded[desktop]" classname="vade.ui.shell.TopGlassGuardTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

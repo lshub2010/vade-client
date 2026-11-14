@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="UsageProjectionTest[desktop]" tests="11" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:42.878Z" hostname="WIN-SOHFNBA79AT" time="0.005">
+  <properties/>
+  <testcase name="noInputYieldsTheEmptyStateNeverZeros[desktop]" classname="vade.ui.usage.UsageProjectionTest" time="0.001"/>
+  <testcase name="partiallyWiredInputKeepsMissingBlocksEmpty[desktop]" classname="vade.ui.usage.UsageProjectionTest" time="0.0"/>
+  <testcase name="cachedTokensMissingRendersNotReportedNeverZero[desktop]" classname="vade.ui.usage.UsageProjectionTest" time="0.002"/>
+  <testcase name="sourceNoneFlagsTheDegradedBanner[desktop]" classname="vade.ui.usage.UsageProjectionTest" time="0.0"/>
+  <testcase name="notReportedCellAlwaysReadsZanWuShuJu[desktop]" classname="vade.ui.usage.UsageProjectionTest" time="0.0"/>
+  <testcase name="zeroLimitDayBudgetSaysUnsetInsteadOfDividingByZero[desktop]" classname="vade.ui.usage.UsageProjectionTest" time="0.0"/>
+  <testcase name="cachedTokensZeroIsAnExplicitZeroAndDiffersFromMissing[desktop]" classname="vade.ui.usage.UsageProjectionTest" time="0.0"/>
+  <testcase name="sessionRowsCarryChatAuxModelsAndDay[desktop]" classname="vade.ui.usage.UsageProjectionTest" time="0.001"/>
+  <testcase name="missingOrUnknownSourceIsNotSilentlyDegraded[desktop]" classname="vade.ui.usage.UsageProjectionTest" time="0.0"/>
+  <testcase name="tokenCountsFormatWithThousandsSeparators[desktop]" classname="vade.ui.usage.UsageProjectionTest" time="0.0"/>
+  <testcase name="durationsFormatAcrossScales[desktop]" classname="vade.ui.usage.UsageProjectionTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

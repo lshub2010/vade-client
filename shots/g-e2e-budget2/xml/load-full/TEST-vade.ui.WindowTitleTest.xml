@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="WindowTitleTest[desktop]" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:16.537Z" hostname="WIN-SOHFNBA79AT" time="0.011">
+  <properties/>
+  <testcase name="windowTitleIsTheProductNameNotTheSkeletonPlaceholder[desktop]" classname="vade.ui.WindowTitleTest" time="0.0"/>
+  <testcase name="desktopMainNeverSaysUiSkeletonOutsideComments[desktop]" classname="vade.ui.WindowTitleTest" time="0.01"/>
+  <testcase name="mainKtPutsTheConstantOnTheWindowInsteadOfALiteral[desktop]" classname="vade.ui.WindowTitleTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

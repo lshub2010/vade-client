@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="CapabilitiesModulesTest[desktop]" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:31.373Z" hostname="WIN-SOHFNBA79AT" time="0.311">
+  <properties/>
+  <testcase name="loadingFaceIsNotTheEmptyFace[desktop]" classname="vade.ui.destinations.CapabilitiesModulesTest" time="0.032"/>
+  <testcase name="readyFaceListsTheModulesWithTheirOnlineState[desktop]" classname="vade.ui.destinations.CapabilitiesModulesTest" time="0.046"/>
+  <testcase name="noCatalogKeepsTheDemoEntriesAndTheOldPlaceholder[desktop]" classname="vade.ui.destinations.CapabilitiesModulesTest" time="0.036"/>
+  <testcase name="emptyFaceSaysCoreReportedNoModules[desktop]" classname="vade.ui.destinations.CapabilitiesModulesTest" time="0.026"/>
+  <testcase name="catalogDeclarationsReplaceTheDemoEntries[desktop]" classname="vade.ui.destinations.CapabilitiesModulesTest" time="0.033"/>
+  <testcase name="failedFaceShowsTheCategoryAndItsRetryEntryReissues[desktop]" classname="vade.ui.destinations.CapabilitiesModulesTest" time="0.039"/>
+  <testcase name="moduleStatusEventReachesTheCatalogAndTriggersExactlyOneRepull[desktop]" classname="vade.ui.destinations.CapabilitiesModulesTest" time="0.066"/>
+  <testcase name="revisionChangeRecomposesTheEntryList[desktop]" classname="vade.ui.destinations.CapabilitiesModulesTest" time="0.033"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="DilatedOutlineTest[desktop]" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:24.426Z" hostname="WIN-SOHFNBA79AT" time="0.002">
+  <properties/>
+  <testcase name="dilatedOutlineBoundsGrowByDilationOnAllFourSides[desktop]" classname="vade.ui.component.liquid.DilatedOutlineTest" time="0.001"/>
+  <testcase name="zeroDilationKeepsTheOriginalRadius[desktop]" classname="vade.ui.component.liquid.DilatedOutlineTest" time="0.0"/>
+  <testcase name="offsetShiftsTheDilatedRectWithoutBreakingConcentricity[desktop]" classname="vade.ui.component.liquid.DilatedOutlineTest" time="0.0"/>
+  <testcase name="pillStaysAPerfectCapsuleWhenDilated[desktop]" classname="vade.ui.component.liquid.DilatedOutlineTest" time="0.0"/>
+  <testcase name="dilatedPillCornerArcTracksTheDilatedRect[desktop]" classname="vade.ui.component.liquid.DilatedOutlineTest" time="0.001"/>
+  <testcase name="plainRoundedRectRadiusGrowsWithDilation[desktop]" classname="vade.ui.component.liquid.DilatedOutlineTest" time="0.0"/>
+  <testcase name="degenerateRadiusIsCappedByTheDilatedHalfExtent[desktop]" classname="vade.ui.component.liquid.DilatedOutlineTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

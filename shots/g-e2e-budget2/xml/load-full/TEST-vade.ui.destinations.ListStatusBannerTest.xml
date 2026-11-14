@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ListStatusBannerTest[desktop]" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:31.686Z" hostname="WIN-SOHFNBA79AT" time="0.58">
+  <properties/>
+  <testcase name="appShowsConnectingWhileTheFirstPageIsInFlightThenGoesQuiet[desktop]" classname="vade.ui.destinations.ListStatusBannerTest" time="0.136"/>
+  <testcase name="sessionsScreenRendersTheErrorAndTheSelfRescueCommandWhenFailed[desktop]" classname="vade.ui.destinations.ListStatusBannerTest" time="0.067"/>
+  <testcase name="appWithFailingRealSourceShowsTheErrorInsteadOfSilence[desktop]" classname="vade.ui.destinations.ListStatusBannerTest" time="0.072"/>
+  <testcase name="sessionsScreenDrawsNoBannerAtAllWhenConnected[desktop]" classname="vade.ui.destinations.ListStatusBannerTest" time="0.064"/>
+  <testcase name="sessionsScreenDefaultStatusIsThePreChangeBehaviour[desktop]" classname="vade.ui.destinations.ListStatusBannerTest" time="0.055"/>
+  <testcase name="appWithFixtureSourceStillLabelsTheListAsFixtures[desktop]" classname="vade.ui.destinations.ListStatusBannerTest" time="0.077"/>
+  <testcase name="appWithConnectedRealSourceNeverClaimsFixtures[desktop]" classname="vade.ui.destinations.ListStatusBannerTest" time="0.057"/>
+  <testcase name="sessionsScreenKeepsTheFixtureNoteWhenHandedFixtures[desktop]" classname="vade.ui.destinations.ListStatusBannerTest" time="0.052"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

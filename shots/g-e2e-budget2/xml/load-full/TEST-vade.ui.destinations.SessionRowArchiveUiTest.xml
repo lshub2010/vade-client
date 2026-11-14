@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="SessionRowArchiveUiTest[desktop]" tests="10" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:32.909Z" hostname="WIN-SOHFNBA79AT" time="0.279">
+  <properties/>
+  <testcase name="knownGroupResolvesToItsNameAndColor[desktop]" classname="vade.ui.destinations.SessionRowArchiveUiTest" time="0.001"/>
+  <testcase name="archivedRowRendersTheBadgeAndLiveRowDoesNot[desktop]" classname="vade.ui.destinations.SessionRowArchiveUiTest" time="0.058"/>
+  <testcase name="theBadgeIsAnIconNotText[desktop]" classname="vade.ui.destinations.SessionRowArchiveUiTest" time="0.077"/>
+  <testcase name="groupedRowShowsTheGroupNameAndUngroupedRowShowsNothing[desktop]" classname="vade.ui.destinations.SessionRowArchiveUiTest" time="0.049"/>
+  <testcase name="unknownGroupRendersTheRawIdOnTheRow[desktop]" classname="vade.ui.destinations.SessionRowArchiveUiTest" time="0.023"/>
+  <testcase name="unknownGroupFallsBackToTheRawIdInsteadOfPretendingUngrouped[desktop]" classname="vade.ui.destinations.SessionRowArchiveUiTest" time="0.0"/>
+  <testcase name="invalidColorIsRejectedRatherThanInvented[desktop]" classname="vade.ui.destinations.SessionRowArchiveUiTest" time="0.0"/>
+  <testcase name="blankGroupNameFallsBackToTheId[desktop]" classname="vade.ui.destinations.SessionRowArchiveUiTest" time="0.0"/>
+  <testcase name="noGroupMeansNoTagSoTheRowAddsNothing[desktop]" classname="vade.ui.destinations.SessionRowArchiveUiTest" time="0.0"/>
+  <testcase name="archivedAndGroupedRowShowsBothWithoutLosingTheTitle[desktop]" classname="vade.ui.destinations.SessionRowArchiveUiTest" time="0.07"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

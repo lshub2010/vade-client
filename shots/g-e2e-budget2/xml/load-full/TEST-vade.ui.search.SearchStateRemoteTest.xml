@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="SearchStateRemoteTest[desktop]" tests="15" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:38.648Z" hostname="WIN-SOHFNBA79AT" time="0.068">
+  <properties/>
+  <testcase name="aSupersededRemoteRunNeverOverwritesTheNewerResults[desktop]" classname="vade.ui.search.SearchStateRemoteTest" time="0.032"/>
+  <testcase name="endToEndRealAdapterDrivesTheStateToTheRemoteLabel[desktop]" classname="vade.ui.search.SearchStateRemoteTest" time="0.004"/>
+  <testcase name="aFailedRemoteRunIsAFailureStateNeverAnEmptyResult[desktop]" classname="vade.ui.search.SearchStateRemoteTest" time="0.003"/>
+  <testcase name="switchingBackToLocalDropsRemoteRowsAndRelabels[desktop]" classname="vade.ui.search.SearchStateRemoteTest" time="0.001"/>
+  <testcase name="injectedSeamRunsRemoteAndTheLabelFollowsTheRealSource[desktop]" classname="vade.ui.search.SearchStateRemoteTest" time="0.001"/>
+  <testcase name="resetReturnsToTheInjectedDefaults[desktop]" classname="vade.ui.search.SearchStateRemoteTest" time="0.001"/>
+  <testcase name="retryingAfterAFailureGetsBackToRealResults[desktop]" classname="vade.ui.search.SearchStateRemoteTest" time="0.001"/>
+  <testcase name="aNewQueryDropsTheStaleFailure[desktop]" classname="vade.ui.search.SearchStateRemoteTest" time="0.001"/>
+  <testcase name="switchingToLocalCancelsAnInFlightRemoteRun[desktop]" classname="vade.ui.search.SearchStateRemoteTest" time="0.019"/>
+  <testcase name="useRemoteWithoutASeamCannotPretend[desktop]" classname="vade.ui.search.SearchStateRemoteTest" time="0.0"/>
+  <testcase name="failureCategoriesFollowTheFrozenTable[desktop]" classname="vade.ui.search.SearchStateRemoteTest" time="0.001"/>
+  <testcase name="withoutInjectionTheLocalPathIsByteForByteTheOldBehavior[desktop]" classname="vade.ui.search.SearchStateRemoteTest" time="0.001"/>
+  <testcase name="switchingToRemoteClearsLocalRowsAndRelabels[desktop]" classname="vade.ui.search.SearchStateRemoteTest" time="0.002"/>
+  <testcase name="serverTotalWinsOverThePageRowCount[desktop]" classname="vade.ui.search.SearchStateRemoteTest" time="0.001"/>
+  <testcase name="retryWithoutAFailureDoesNotDoubleRun[desktop]" classname="vade.ui.search.SearchStateRemoteTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

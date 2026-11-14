@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="RealModulePageSourceTest[desktop]" tests="15" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:37.482Z" hostname="WIN-SOHFNBA79AT" time="0.195">
+  <properties/>
+  <testcase name="fetchPageSendsTheExactMethodStringAndParams[desktop]" classname="vade.ui.module.RealModulePageSourceTest" time="0.032"/>
+  <testcase name="depthNinePageIsRejectedAndSurfacesToTheCaller[desktop]" classname="vade.ui.module.RealModulePageSourceTest" time="0.004"/>
+  <testcase name="internalErrorKeepsItsC04NameAndClassifiesAsNeedsReconnect[desktop]" classname="vade.ui.module.RealModulePageSourceTest" time="0.003"/>
+  <testcase name="offWhitelistComponentIsRejectedThroughTheParserPath[desktop]" classname="vade.ui.module.RealModulePageSourceTest" time="0.003"/>
+  <testcase name="timeoutIsClassifiedAsRetryable[desktop]" classname="vade.ui.module.RealModulePageSourceTest" time="0.121"/>
+  <testcase name="nonObjectSchemaIsRejectedAsFatal[desktop]" classname="vade.ui.module.RealModulePageSourceTest" time="0.003"/>
+  <testcase name="blankParamsAreRefusedBeforeAnyFrameIsSent[desktop]" classname="vade.ui.module.RealModulePageSourceTest" time="0.002"/>
+  <testcase name="scriptKeyPageIsRejectedAsFatalAndNothingIsCached[desktop]" classname="vade.ui.module.RealModulePageSourceTest" time="0.003"/>
+  <testcase name="fetchStateSendsTheExactMethodStringAndParams[desktop]" classname="vade.ui.module.RealModulePageSourceTest" time="0.005"/>
+  <testcase name="loadPageAndLoadStateReturnNullBeforeFirstFetchNeverEmptyTree[desktop]" classname="vade.ui.module.RealModulePageSourceTest" time="0.001"/>
+  <testcase name="authFailedErrorKeepsItsC04NameAndClassifiesAsNeedsReconnect[desktop]" classname="vade.ui.module.RealModulePageSourceTest" time="0.002"/>
+  <testcase name="transportNeverConnectedIsClassifiedAsNeedsReconnect[desktop]" classname="vade.ui.module.RealModulePageSourceTest" time="0.001"/>
+  <testcase name="fetchStateSuccessCachesTheStateObject[desktop]" classname="vade.ui.module.RealModulePageSourceTest" time="0.002"/>
+  <testcase name="fetchPageSuccessKeepsExactNodeCountAndCachesTheRawSchema[desktop]" classname="vade.ui.module.RealModulePageSourceTest" time="0.003"/>
+  <testcase name="declarationsAndStatusAreHonestEmptyWithoutAnyRpc[desktop]" classname="vade.ui.module.RealModulePageSourceTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

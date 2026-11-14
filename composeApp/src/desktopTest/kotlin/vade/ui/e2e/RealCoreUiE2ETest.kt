@@ -164,7 +164,7 @@ class RealCoreUiE2ETest {
      * 组合 UI 超时的取证包：光有 `ComposeTimeoutException: Condition still not satisfied`
      * 分不清是「App 没拿到数据」还是「拿到数据但没渲染」。
      *
-     * 这里补三件事：
+     * 这里补三件事，外加一句**可 grep 的定性**（`verdict   : RENDER-STALL` / `DATA-PATH-FAIL`）：
      *  1. `source.state` —— 共享的真源当时连没连上；
      *  2. 一个**独立探针** [uiStateProbe]：用同一个 source 新建一个 UiState（异步读路径），
      *     15 s 内能不能到 Ready、拿到几行 —— 它 Ready 而 App 没渲染，就是 UI 层的事；
@@ -175,21 +175,34 @@ class RealCoreUiE2ETest {
         cause: Throwable,
         mainClockTimeMs: Long,
         semanticsDump: String,
-    ): String = buildString {
-        append("composed App never rendered the seeded title '").append(SEEDED_TITLES.first()).append("': ")
-        append(cause::class.simpleName).append(": ").append(cause.message)
-        append("\n--- compose e2e diagnostics ----------------------------------------------")
-        append("\nmainClock    : ").append(mainClockTimeMs).append("ms advanced")
-        append("\nsource state : ").append(runCatching { source.state.value.toString() }.getOrElse { "unreadable: $it" })
-        append("\nloader probe : ").append(runCatching { uiStateProbe(source) }.getOrElse { "probe failed: $it" })
-        append("\ncore         : alive=").append(handle?.isAlive ?: false)
-            .append(" command=").append(handle?.commandLine ?: "n/a")
-        append("\nsemantics tree:")
-        semanticsDump.lines().forEach { append("\n  | ").append(it) }
-        append("\nhint         : if the probe reached Ready with rows, the data path works and this is a ")
-        append("Compose/rendering stall (read the semantics tree: empty list = rows never reached the ")
-        append("composition, error banner = the app's own loader failed); if the probe is also non-Ready, ")
-        append("the shared source never delivered — a real failure, not a timeout budget problem.")
+    ): String {
+        val state = runCatching { source.state.value.toString() }.getOrElse { "unreadable: $it" }
+        val probe = runCatching { uiStateProbe(source) }.getOrElse { "probe failed: $it" }
+        val dataPathOk = probe.startsWith("phase=Ready")
+        val verdict = if (dataPathOk) {
+            "RENDER-STALL — the data path works (a fresh UiState on the SAME source reached Ready " +
+                "within 15s with rows, core alive), so this is the composition/rendering segment, " +
+                "NOT the READY budget and NOT a core crash. Read the semantics tree: an empty list " +
+                "means rows never reached the composition; an error banner means the app's own loader " +
+                "failed."
+        } else {
+            "DATA-PATH-FAIL — a fresh UiState on the same source could not reach Ready either, so the " +
+                "shared wire is not delivering. This is a real failure (core or transport), not a " +
+                "rendering/load timeout: read source state + the core's command line below."
+        }
+        return buildString {
+            append("composed App never rendered the seeded title '").append(SEEDED_TITLES.first()).append("': ")
+            append(cause::class.simpleName).append(": ").append(cause.message)
+            append("\nverdict      : ").append(verdict)
+            append("\n--- compose e2e diagnostics ----------------------------------------------")
+            append("\nmainClock    : ").append(mainClockTimeMs).append("ms advanced")
+            append("\nsource state : ").append(state)
+            append("\nloader probe : ").append(probe)
+            append("\ncore         : alive=").append(handle?.isAlive ?: false)
+                .append(" command=").append(handle?.commandLine ?: "n/a")
+            append("\nsemantics tree:")
+            semanticsDump.lines().forEach { append("\n  | ").append(it) }
+        }
     }
 
     /** 用同一个真源新建一个 UiState，最多等 15 s 到 Ready，返回可读结论（不抛异常）。 */

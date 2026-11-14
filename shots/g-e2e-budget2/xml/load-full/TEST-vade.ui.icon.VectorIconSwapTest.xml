@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="VectorIconSwapTest[desktop]" tests="13" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:34.001Z" hostname="WIN-SOHFNBA79AT" time="0.565">
+  <properties/>
+  <testcase name="navIconOrNullMapsTheFourDestinationIds[desktop]" classname="vade.ui.icon.VectorIconSwapTest" time="0.0"/>
+  <testcase name="searchOverlayRendersVectorButtonsNeverGlyphText[desktop]" classname="vade.ui.icon.VectorIconSwapTest" time="0.052"/>
+  <testcase name="fixedFilesCarryNoGlyphTextLiterals[desktop]" classname="vade.ui.icon.VectorIconSwapTest" time="0.019"/>
+  <testcase name="glassNavBarRendersVectorsNeverGlyphText[desktop]" classname="vade.ui.icon.VectorIconSwapTest" time="0.019"/>
+  <testcase name="navIconOrNullReturnsNullForUnknownIds[desktop]" classname="vade.ui.icon.VectorIconSwapTest" time="0.0"/>
+  <testcase name="miuixShowcaseRendersNoCharacterIcons[desktop]" classname="vade.ui.icon.VectorIconSwapTest" time="0.218"/>
+  <testcase name="appendedVectorsAreNonNullAndDistinct[desktop]" classname="vade.ui.icon.VectorIconSwapTest" time="0.0"/>
+  <testcase name="profileChipsShowSelectionByStyleNotGlyph[desktop]" classname="vade.ui.icon.VectorIconSwapTest" time="0.035"/>
+  <testcase name="fixedBottomBarFallsBackToCircleVectorNotGlyph[desktop]" classname="vade.ui.icon.VectorIconSwapTest" time="0.063"/>
+  <testcase name="motionProbeRendersVectorIconsNotGlyphs[desktop]" classname="vade.ui.icon.VectorIconSwapTest" time="0.062"/>
+  <testcase name="materialSkinBottomBarRendersVectorsNeverGlyphText[desktop]" classname="vade.ui.icon.VectorIconSwapTest" time="0.054"/>
+  <testcase name="inputBarMicRendersVectorNotGlyphOnBothSkins[desktop]" classname="vade.ui.icon.VectorIconSwapTest" time="0.024"/>
+  <testcase name="miuixSkinBottomBarRendersVectorsNeverGlyphText[desktop]" classname="vade.ui.icon.VectorIconSwapTest" time="0.019"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

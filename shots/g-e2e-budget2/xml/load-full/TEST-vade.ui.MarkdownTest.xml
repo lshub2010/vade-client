@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="MarkdownTest[desktop]" tests="13" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:15.238Z" hostname="WIN-SOHFNBA79AT" time="0.022">
+  <properties/>
+  <testcase name="bulletAndOrderedListsStaySeparate[desktop]" classname="vade.ui.MarkdownTest" time="0.013"/>
+  <testcase name="plainTextIsRecognisedSoTheFrozenBubbleCanRenderIt[desktop]" classname="vade.ui.MarkdownTest" time="0.002"/>
+  <testcase name="headingKeepsItsLevel[desktop]" classname="vade.ui.MarkdownTest" time="0.002"/>
+  <testcase name="underscoreInsideAnIdentifierIsNotItalic[desktop]" classname="vade.ui.MarkdownTest" time="0.001"/>
+  <testcase name="theFixtureReplyParsesIntoTheExpectedShape[desktop]" classname="vade.ui.MarkdownTest" time="0.0"/>
+  <testcase name="nestedBoldItalicKeepsBothFlags[desktop]" classname="vade.ui.MarkdownTest" time="0.001"/>
+  <testcase name="linkCarriesItsUrlAndKeepsTheLabel[desktop]" classname="vade.ui.MarkdownTest" time="0.0"/>
+  <testcase name="pathologicalInputNeverThrows[desktop]" classname="vade.ui.MarkdownTest" time="0.001"/>
+  <testcase name="escapedMarkerIsLiteral[desktop]" classname="vade.ui.MarkdownTest" time="0.0"/>
+  <testcase name="fencedCodeKeepsLanguageAndVerbatimBody[desktop]" classname="vade.ui.MarkdownTest" time="0.001"/>
+  <testcase name="boldItalicAndInlineCodeBecomeRuns[desktop]" classname="vade.ui.MarkdownTest" time="0.0"/>
+  <testcase name="unfinishedBoldStaysLiteral[desktop]" classname="vade.ui.MarkdownTest" time="0.001"/>
+  <testcase name="unfinishedFenceDoesNotSwallowOrThrow[desktop]" classname="vade.ui.MarkdownTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="VadeSessionSearchCodecTest[desktop]" tests="17" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:38.571Z" hostname="WIN-SOHFNBA79AT" time="0.015">
+  <properties/>
+  <testcase name="searchUnknownSessionIdSurfacesAsNotFoundFromCore[desktop]" classname="vade.ui.protocol.VadeSessionSearchCodecTest" time="0.006"/>
+  <testcase name="searchOffsetNegativeRefused[desktop]" classname="vade.ui.protocol.VadeSessionSearchCodecTest" time="0.0"/>
+  <testcase name="searchTotalIsTheServerCountEvenWhenItDisagreesWithHits[desktop]" classname="vade.ui.protocol.VadeSessionSearchCodecTest" time="0.003"/>
+  <testcase name="searchLimitNegativeRefused[desktop]" classname="vade.ui.protocol.VadeSessionSearchCodecTest" time="0.0"/>
+  <testcase name="searchSnippetTravelsVerbatimNeverReclipped[desktop]" classname="vade.ui.protocol.VadeSessionSearchCodecTest" time="0.0"/>
+  <testcase name="searchHappyPathRoundTripThroughTheRealClient[desktop]" classname="vade.ui.protocol.VadeSessionSearchCodecTest" time="0.002"/>
+  <testcase name="searchEmptyQueryRefusedBeforeAnyFrame[desktop]" classname="vade.ui.protocol.VadeSessionSearchCodecTest" time="0.002"/>
+  <testcase name="searchQueryOver200CodePointsRefused[desktop]" classname="vade.ui.protocol.VadeSessionSearchCodecTest" time="0.0"/>
+  <testcase name="mustLngOrNullKeepsNullAndPresenceDistinct[desktop]" classname="vade.ui.protocol.VadeSessionSearchCodecTest" time="0.0"/>
+  <testcase name="searchSnippetOffsetZeroAndNullAreDistinct[desktop]" classname="vade.ui.protocol.VadeSessionSearchCodecTest" time="0.0"/>
+  <testcase name="searchMissingRequiredResultFieldsRaisePayloadDecodeException[desktop]" classname="vade.ui.protocol.VadeSessionSearchCodecTest" time="0.0"/>
+  <testcase name="searchDefaultsCarryOnlyTheQuery[desktop]" classname="vade.ui.protocol.VadeSessionSearchCodecTest" time="0.0"/>
+  <testcase name="searchNoResultsDecodesEmptyListAndZeroTotal[desktop]" classname="vade.ui.protocol.VadeSessionSearchCodecTest" time="0.001"/>
+  <testcase name="searchLimitZeroRefused[desktop]" classname="vade.ui.protocol.VadeSessionSearchCodecTest" time="0.0"/>
+  <testcase name="searchBlankQueryRefusedBeforeAnyFrame[desktop]" classname="vade.ui.protocol.VadeSessionSearchCodecTest" time="0.001"/>
+  <testcase name="searchLimitAbove100Refused[desktop]" classname="vade.ui.protocol.VadeSessionSearchCodecTest" time="0.0"/>
+  <testcase name="searchParamsWireShapeIsTheContractsVerbatim[desktop]" classname="vade.ui.protocol.VadeSessionSearchCodecTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

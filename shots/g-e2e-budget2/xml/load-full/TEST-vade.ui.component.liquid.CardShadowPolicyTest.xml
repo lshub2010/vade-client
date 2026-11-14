@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="CardShadowPolicyTest[desktop]" tests="10" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:24.417Z" hostname="WIN-SOHFNBA79AT" time="0.008">
+  <properties/>
+  <testcase name="inlineEditCardStaysAFloatingLayer[desktop]" classname="vade.ui.component.liquid.CardShadowPolicyTest" time="0.0"/>
+  <testcase name="staticCardsUseShadow0AndAHairlineNeverMaterialElevation[desktop]" classname="vade.ui.component.liquid.CardShadowPolicyTest" time="0.004"/>
+  <testcase name="shadowHierarchyGrowsWithLayerLevel[desktop]" classname="vade.ui.component.liquid.CardShadowPolicyTest" time="0.0"/>
+  <testcase name="staticCardLeavesNoVisibleShadowAboveItsTopEdge[desktop]" classname="vade.ui.component.liquid.CardShadowPolicyTest" time="0.001"/>
+  <testcase name="realFloatingLayersKeepTheFloatCueInsteadOfDroppingToTheCardToken[desktop]" classname="vade.ui.component.liquid.CardShadowPolicyTest" time="0.0"/>
+  <testcase name="staticCardKeepsTheLayerGradient[desktop]" classname="vade.ui.component.liquid.CardShadowPolicyTest" time="0.0"/>
+  <testcase name="staticCardFadeIsWideEnoughToReadAsAFade[desktop]" classname="vade.ui.component.liquid.CardShadowPolicyTest" time="0.002"/>
+  <testcase name="staticCardPeakStaysInsideTheThreePercentBudget[desktop]" classname="vade.ui.component.liquid.CardShadowPolicyTest" time="0.0"/>
+  <testcase name="approvalCardIsNotMaterialElevation[desktop]" classname="vade.ui.component.liquid.CardShadowPolicyTest" time="0.001"/>
+  <testcase name="darkCardTracksTheLightOneWithoutBlowingTheDarkCanvas[desktop]" classname="vade.ui.component.liquid.CardShadowPolicyTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

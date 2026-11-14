@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ModuleRegistryTest[desktop]" tests="20" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:26.380Z" hostname="WIN-SOHFNBA79AT" time="0.012">
+  <properties/>
+  <testcase name="unknownIconNameFallsBackToNoneAndUnknownPageKeysAreIgnored[desktop]" classname="vade.ui.data.ModuleRegistryTest" time="0.001"/>
+  <testcase name="sameModuleTwoInstancesAreSeparateNodesAndStatusAggregates[desktop]" classname="vade.ui.data.ModuleRegistryTest" time="0.004"/>
+  <testcase name="manifestWithoutUiDeclaresTheModuleButProducesNoPages[desktop]" classname="vade.ui.data.ModuleRegistryTest" time="0.0"/>
+  <testcase name="statusOfAnUnregisteredModuleIsOfflineAndQueriesReturnNull[desktop]" classname="vade.ui.data.ModuleRegistryTest" time="0.0"/>
+  <testcase name="statusOnlyModuleNeverAppearsInDeclarations[desktop]" classname="vade.ui.data.ModuleRegistryTest" time="0.0"/>
+  <testcase name="redeclaringTheSameManifestKeepsOnlineStatusAndPosition[desktop]" classname="vade.ui.data.ModuleRegistryTest" time="0.001"/>
+  <testcase name="twoModulesAccumulateInArrivalOrder[desktop]" classname="vade.ui.data.ModuleRegistryTest" time="0.0"/>
+  <testcase name="manifestDeclarationKeepsTitleAndPagesVerbatimInManifestOrder[desktop]" classname="vade.ui.data.ModuleRegistryTest" time="0.0"/>
+  <testcase name="wrongShapedUiOrPagesIsRefusedNotTreatedAsNoPages[desktop]" classname="vade.ui.data.ModuleRegistryTest" time="0.0"/>
+  <testcase name="unknownFieldsOnModuleStatusAreIgnored[desktop]" classname="vade.ui.data.ModuleRegistryTest" time="0.002"/>
+  <testcase name="pageWithoutIdFailsTheWholeManifestInsteadOfVanishing[desktop]" classname="vade.ui.data.ModuleRegistryTest" time="0.0"/>
+  <testcase name="moduleStatusDecodesEveryFieldVerbatimAndEntersTheRegistry[desktop]" classname="vade.ui.data.ModuleRegistryTest" time="0.0"/>
+  <testcase name="repeatedStatusForTheSameInstanceIsIdempotent[desktop]" classname="vade.ui.data.ModuleRegistryTest" time="0.001"/>
+  <testcase name="statusFlipUpdatesOnlineAndVersionInPlace[desktop]" classname="vade.ui.data.ModuleRegistryTest" time="0.0"/>
+  <testcase name="registryDeclarationsFeedEntryRulesWithTitlesIconsAndTheVersionGate[desktop]" classname="vade.ui.data.ModuleRegistryTest" time="0.001"/>
+  <testcase name="moduleStatusWithoutOnlineIsMalformedAndLeavesTheRegistryUntouched[desktop]" classname="vade.ui.data.ModuleRegistryTest" time="0.001"/>
+  <testcase name="onEventIgnoresEveryNonModuleEvent[desktop]" classname="vade.ui.data.ModuleRegistryTest" time="0.0"/>
+  <testcase name="clearDropsEverythingSoAReconnectStartsFromTheWireNotFromMemory[desktop]" classname="vade.ui.data.ModuleRegistryTest" time="0.0"/>
+  <testcase name="moduleStatusWithNumericVersionIsMalformedNotSilentlyUnversioned[desktop]" classname="vade.ui.data.ModuleRegistryTest" time="0.0"/>
+  <testcase name="manifestMissingModuleIdThrowsInsteadOfInventingIdentity[desktop]" classname="vade.ui.data.ModuleRegistryTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

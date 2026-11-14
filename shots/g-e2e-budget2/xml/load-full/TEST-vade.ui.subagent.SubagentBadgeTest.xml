@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="SubagentBadgeTest[desktop]" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:42.523Z" hostname="WIN-SOHFNBA79AT" time="0.002">
+  <properties/>
+  <testcase name="fiveStatesMapToFiveDistinctRoundTripRawValues[desktop]" classname="vade.ui.subagent.SubagentBadgeTest" time="0.001"/>
+  <testcase name="fiveStatesMapToFiveDistinctIcons_exhaustive[desktop]" classname="vade.ui.subagent.SubagentBadgeTest" time="0.0"/>
+  <testcase name="accentEdgeColorFollowsStateTokens[desktop]" classname="vade.ui.subagent.SubagentBadgeTest" time="0.0"/>
+  <testcase name="unknownRawStateStaysNeutralInsteadOfPretendingToRun[desktop]" classname="vade.ui.subagent.SubagentBadgeTest" time="0.0"/>
+  <testcase name="labelsAreDistinctAndDescriptionsCarryTheChineseWord[desktop]" classname="vade.ui.subagent.SubagentBadgeTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

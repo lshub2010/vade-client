@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="CoreBootDiagnosticsTest[desktop]" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:19:18.501Z" hostname="WIN-SOHFNBA79AT" time="22.413">
+  <properties/>
+  <testcase name="missingInterpreterFailsImmediatelyWithFullDiagnostics[desktop]" classname="vade.ui.e2e.CoreBootDiagnosticsTest" time="15.093"/>
+  <testcase name="verdictSeparatesLoadFromCrashWithoutReadingTheTails[desktop]" classname="vade.ui.e2e.CoreBootDiagnosticsTest" time="0.01"/>
+  <testcase name="neverPrintingLauncherFailsAtItsOwnBudgetNotAtTheCeiling[desktop]" classname="vade.ui.e2e.CoreBootDiagnosticsTest" time="5.121"/>
+  <testcase name="budgetIsDeadlockInsuranceNotAPerformanceTarget[desktop]" classname="vade.ui.e2e.CoreBootDiagnosticsTest" time="0.0"/>
+  <testcase name="launcherExitingImmediatelyFailsFastWithTailEvidence[desktop]" classname="vade.ui.e2e.CoreBootDiagnosticsTest" time="2.172"/>
+  <system-out><![CDATA[DIAG-SAMPLE spawn-failure >>>
+core could not be spawned: IOException: Cannot run program "C:\Users\LENSHLD\AppData\Local\Temp\vade-e2e-diag-15468022651435452529\python-that-does-not-exist.exe": CreateProcess error=2, 系统找不到指定的文件。
+verdict   : SPAWN-FAIL — the interpreter/launcher never started (ProcessBuilder.start() itself threw): this is a broken command line or missing venv — NOT machine load and NOT the core. Compare the 'command' line below with a working run, and read the IOException text in 'child'.
+--- core boot diagnostics -------------------------------------------------
+elapsed   : waited 16ms of 180000ms budget (deadlock guard, NOT expected cost)
+spawn     : 2ms from ProcessBuilder.start() to the child running (Windows 1.6-5.3s is normal; >10s means the machine is thrashing)
+command   : C:\Users\LENSHLD\AppData\Local\Temp\vade-e2e-diag-15468022651435452529\python-that-does-not-exist.exe C:\Users\LENSHLD\AppData\Local\Temp\vade-e2e-diag-15468022651435452529\diag_launcher.py --data-dir C:\Users\LENSHLD\AppData\Local\Temp\vade-e2e-diag-15468022651435452529\data
+env       : PYTHONUTF8=1 PYTHONIOENCODING=utf-8
+data_dir  : C:\Users\LENSHLD\AppData\Local\Temp\vade-e2e-diag-15468022651435452529\data
+child     : not spawned (spawn failure: IOException: Cannot run program "C:\Users\LENSHLD\AppData\Local\Temp\vade-e2e-diag-15468022651435452529\python-that-does-not-exist.exe": CreateProcess error=2, 系统找不到指定的文件。)
+machine   : cpus=16 loadAvg=n/a(Windows) javaProcs=n/a pythonProcs=n/a (process enumeration did not finish within 15000ms on a 500+ process machine — counts NOT collected; load cannot be judged from this run)
+stdout tail (last 40 lines, 0 kept):
+  | (empty — the child never wrote a line)
+stderr tail (last 40 lines, 0 kept):
+  | (empty — the child never wrote a line)
+<<< DIAG-SAMPLE spawn-failure
+DIAG-SAMPLE exit-7 >>>
+core exited before READY (exit=7); no fatal line on stdout
+verdict   : CORE-FAIL-EARLY — failed after 2.1s, far below the measured idle boot cost (2.3-9.8s) — this is NOT machine load. Read the stderr tail for the Python exception (missing module / bad path / bad config), or the stdout fatal line.
+--- core boot diagnostics -------------------------------------------------
+elapsed   : waited 2143ms of 180000ms budget (deadlock guard, NOT expected cost)
+spawn     : 18ms from ProcessBuilder.start() to the child running (Windows 1.6-5.3s is normal; >10s means the machine is thrashing)
+command   : D:/HermesWorkspace/Vade/Vade/.venv/Scripts/python.exe C:\Users\LENSHLD\AppData\Local\Temp\vade-e2e-diag-5637825529440472468\diag_launcher.py --data-dir C:\Users\LENSHLD\AppData\Local\Temp\vade-e2e-diag-5637825529440472468\data
+env       : PYTHONUTF8=1 PYTHONIOENCODING=utf-8
+data_dir  : C:\Users\LENSHLD\AppData\Local\Temp\vade-e2e-diag-5637825529440472468\data
+child     : alive=false exit=7 pid=21156
+machine   : cpus=16 loadAvg=n/a(Windows) javaProcs=12 pythonProcs=106 unreadable=25 of 578 (sampled 24ms before failure)
+stdout tail (last 40 lines, 1 kept):
+  | {"stage": "boot", "data_dir": "injected"}
+stderr tail (last 40 lines, 1 kept):
+  | BOOM: injected missing dependency (vade.llm.nothere)
+<<< DIAG-SAMPLE exit-7
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

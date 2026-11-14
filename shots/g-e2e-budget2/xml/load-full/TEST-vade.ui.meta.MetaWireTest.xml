@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="MetaWireTest[desktop]" tests="23" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:34.662Z" hostname="WIN-SOHFNBA79AT" time="0.209">
+  <properties/>
+  <testcase name="archiveSendsTheExactFrameAndUpdatesTheRow[desktop]" classname="vade.ui.meta.MetaWireTest" time="0.019"/>
+  <testcase name="twoStateImplementationAdvertisesNoClearCapability[desktop]" classname="vade.ui.meta.MetaWireTest" time="0.002"/>
+  <testcase name="deletingAGroupSendsTheFrameAndKeepsEverySession[desktop]" classname="vade.ui.meta.MetaWireTest" time="0.002"/>
+  <testcase name="deleteFailureRestoresTheRowAndKeepsTheConfirmSheet[desktop]" classname="vade.ui.meta.MetaWireTest" time="0.006"/>
+  <testcase name="reloadAfterClearKeepsTheNullProjection[desktop]" classname="vade.ui.meta.MetaWireTest" time="0.023"/>
+  <testcase name="loadGroupsFailureIsAFailedStateWithRetryEntry_notAnEmptyList[desktop]" classname="vade.ui.meta.MetaWireTest" time="0.003"/>
+  <testcase name="retryAfterAFailedLoadSucceedsAndClearsTheFailure[desktop]" classname="vade.ui.meta.MetaWireTest" time="0.003"/>
+  <testcase name="pinSendsTheExactFrameAndKeepsTheOptimisticValue[desktop]" classname="vade.ui.meta.MetaWireTest" time="0.006"/>
+  <testcase name="createGroupFailureDoesNotFabricateALocalRow[desktop]" classname="vade.ui.meta.MetaWireTest" time="0.016"/>
+  <testcase name="updateGroupSendsOnlyChangedKeysAndFailureLeavesTheGroupUntouched[desktop]" classname="vade.ui.meta.MetaWireTest" time="0.016"/>
+  <testcase name="deleteGroupFailureRestoresBothTheGroupAndTheMembership[desktop]" classname="vade.ui.meta.MetaWireTest" time="0.003"/>
+  <testcase name="clearAndKeepProduceTwoDifferentFrames[desktop]" classname="vade.ui.meta.MetaWireTest" time="0.028"/>
+  <testcase name="pinFailureRollsBackToThePreviousValue[desktop]" classname="vade.ui.meta.MetaWireTest" time="0.003"/>
+  <testcase name="errorBannerIsDismissableWithoutLosingTheUnderlyingFailure[desktop]" classname="vade.ui.meta.MetaWireTest" time="0.003"/>
+  <testcase name="forRealSendsTheRenameFrameAndUpdatesTheRow[desktop]" classname="vade.ui.meta.MetaWireTest" time="0.026"/>
+  <testcase name="archiveFailureRollsBackToThePreviousValue[desktop]" classname="vade.ui.meta.MetaWireTest" time="0.003"/>
+  <testcase name="renameFailureRollsBackTheTitleAndKeepsTheSheetWithACategorizedError[desktop]" classname="vade.ui.meta.MetaWireTest" time="0.003"/>
+  <testcase name="deleteRemovesTheRowOnlyAfterTheCallSucceeds[desktop]" classname="vade.ui.meta.MetaWireTest" time="0.002"/>
+  <testcase name="moveToGroupFailureRollsBackTheMembership[desktop]" classname="vade.ui.meta.MetaWireTest" time="0.022"/>
+  <testcase name="loadGroupsMapsServerRowsInServerOrder[desktop]" classname="vade.ui.meta.MetaWireTest" time="0.013"/>
+  <testcase name="clearingBothFieldsIsOneFrameWithTwoNullKeys[desktop]" classname="vade.ui.meta.MetaWireTest" time="0.003"/>
+  <testcase name="clearingIsRefusedWhileCreating[desktop]" classname="vade.ui.meta.MetaWireTest" time="0.001"/>
+  <testcase name="moveToUngroupedSendsExplicitNullOnTheWire[desktop]" classname="vade.ui.meta.MetaWireTest" time="0.003"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

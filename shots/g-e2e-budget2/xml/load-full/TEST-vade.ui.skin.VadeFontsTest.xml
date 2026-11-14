@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="VadeFontsTest[desktop]" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:42.521Z" hostname="WIN-SOHFNBA79AT" time="0.001">
+  <properties/>
+  <testcase name="miuix_typography_does_not_inherit_the_seam_yet[desktop]" classname="vade.ui.skin.VadeFontsTest" time="0.0"/>
+  <testcase name="uninstalling_returns_to_default[desktop]" classname="vade.ui.skin.VadeFontsTest" time="0.0"/>
+  <testcase name="typography_defaults_are_untouched_before_install[desktop]" classname="vade.ui.skin.VadeFontsTest" time="0.001"/>
+  <testcase name="install_reaches_every_typography_default_and_bumps_generation[desktop]" classname="vade.ui.skin.VadeFontsTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ChatFlowTest[desktop]" tests="28" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:05.942Z" hostname="WIN-SOHFNBA79AT" time="0.216">
+  <properties/>
+  <testcase name="toolCardPolicyFollowsD94[desktop]" classname="vade.ui.ChatFlowTest" time="0.022"/>
+  <testcase name="fixtureCarriesOnePendingApprovalRenderedInline[desktop]" classname="vade.ui.ChatFlowTest" time="0.098"/>
+  <testcase name="fixtureStartsMidStreamSoTheStreamingStateIsReal[desktop]" classname="vade.ui.ChatFlowTest" time="0.004"/>
+  <testcase name="keyUpAndOtherKeysAreNotConsumed[desktop]" classname="vade.ui.ChatFlowTest" time="0.017"/>
+  <testcase name="sendFromIdleAppendsUserThenStreamingAssistant[desktop]" classname="vade.ui.ChatFlowTest" time="0.012"/>
+  <testcase name="stagingIsCappedAtTheRfcLimit[desktop]" classname="vade.ui.ChatFlowTest" time="0.001"/>
+  <testcase name="blankDraftCannotBeSent[desktop]" classname="vade.ui.ChatFlowTest" time="0.0"/>
+  <testcase name="textProjectionFollowsRfc0004[desktop]" classname="vade.ui.ChatFlowTest" time="0.002"/>
+  <testcase name="queueBadgeShowsTheCountNotAStaleNumber[desktop]" classname="vade.ui.ChatFlowTest" time="0.002"/>
+  <testcase name="denyAndTimeoutAreDistinctTerminalStates[desktop]" classname="vade.ui.ChatFlowTest" time="0.009"/>
+  <testcase name="approvalDetailTogglesOpenAndShut[desktop]" classname="vade.ui.ChatFlowTest" time="0.0"/>
+  <testcase name="metaEnterOnAnEmptyComposerIsConsumedButSendsNothing[desktop]" classname="vade.ui.ChatFlowTest" time="0.001"/>
+  <testcase name="metaEnterSendsAndPlainEnterDoesNot[desktop]" classname="vade.ui.ChatFlowTest" time="0.0"/>
+  <testcase name="attachmentChipSaysTheOriginalIsNotKept[desktop]" classname="vade.ui.ChatFlowTest" time="0.007"/>
+  <testcase name="decisionsOnlyApplyToUndecidedPendingApprovals[desktop]" classname="vade.ui.ChatFlowTest" time="0.0"/>
+  <testcase name="toolCardViewMapsTheRfcFieldsOntoTheFrozenComponent[desktop]" classname="vade.ui.ChatFlowTest" time="0.002"/>
+  <testcase name="sendingWhileStreamingQueuesWithPositions[desktop]" classname="vade.ui.ChatFlowTest" time="0.001"/>
+  <testcase name="byteAndDurationFormatting[desktop]" classname="vade.ui.ChatFlowTest" time="0.0"/>
+  <testcase name="stopKeepsGeneratedTextAndReportsChars[desktop]" classname="vade.ui.ChatFlowTest" time="0.0"/>
+  <testcase name="tickingToTheEndCompletesTheTurn[desktop]" classname="vade.ui.ChatFlowTest" time="0.001"/>
+  <testcase name="interruptingTheCurrentTurnStartsTheNextQueuedOne[desktop]" classname="vade.ui.ChatFlowTest" time="0.0"/>
+  <testcase name="deltaAfterInterruptIsDropped[desktop]" classname="vade.ui.ChatFlowTest" time="0.001"/>
+  <testcase name="toolMetaDropsMissingFieldsInsteadOfPrintingDashes[desktop]" classname="vade.ui.ChatFlowTest" time="0.008"/>
+  <testcase name="cancellingTheThirdRemovesItAndShiftsTheRest[desktop]" classname="vade.ui.ChatFlowTest" time="0.0"/>
+  <testcase name="allowingEvolvesTheCardInPlaceWithoutNewRows[desktop]" classname="vade.ui.ChatFlowTest" time="0.001"/>
+  <testcase name="stagedAttachmentProgressIsDrivenByTicksNotHardCoded[desktop]" classname="vade.ui.ChatFlowTest" time="0.001"/>
+  <testcase name="batchSizeCountsTheSharedBatchId[desktop]" classname="vade.ui.ChatFlowTest" time="0.0"/>
+  <testcase name="previewOpensAndCloses[desktop]" classname="vade.ui.ChatFlowTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

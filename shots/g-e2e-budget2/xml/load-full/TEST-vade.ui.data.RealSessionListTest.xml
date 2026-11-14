@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="RealSessionListTest[desktop]" tests="11" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:28.294Z" hostname="WIN-SOHFNBA79AT" time="0.388">
+  <properties/>
+  <testcase name="rowMapsIntoSummaryWithFixtureCompatibleBucketAndLabel[desktop]" classname="vade.ui.data.RealSessionListTest" time="0.001"/>
+  <testcase name="pinnedRowBucketsToPinnedAndOverridesRecency[desktop]" classname="vade.ui.data.RealSessionListTest" time="0.0"/>
+  <testcase name="sessionsRawReplyTimeoutMapsOntoTimeout[desktop]" classname="vade.ui.data.RealSessionListTest" time="0.275"/>
+  <testcase name="messagesAttachesAndParsesTheSnapshotThread[desktop]" classname="vade.ui.data.RealSessionListTest" time="0.023"/>
+  <testcase name="labelsMirrorTheFixtureVocabulary[desktop]" classname="vade.ui.data.RealSessionListTest" time="0.0"/>
+  <testcase name="nullTitleFallsBackAndArchivedRowsAreSkipped[desktop]" classname="vade.ui.data.RealSessionListTest" time="0.0"/>
+  <testcase name="sessionsBeforeConnectFailsFastWithUnavailable[desktop]" classname="vade.ui.data.RealSessionListTest" time="0.002"/>
+  <testcase name="attachWithoutSnapshotReturnsAnEmptyThread[desktop]" classname="vade.ui.data.RealSessionListTest" time="0.039"/>
+  <testcase name="sessionListErrorReplySurfacesAsVadeExceptionWithTheWireCode[desktop]" classname="vade.ui.data.RealSessionListTest" time="0.017"/>
+  <testcase name="bucketFollowsTheAgeLadderExactlyLikeTheFixtures[desktop]" classname="vade.ui.data.RealSessionListTest" time="0.0"/>
+  <testcase name="initialLoadPagesThroughSessionListWithContractParams[desktop]" classname="vade.ui.data.RealSessionListTest" time="0.03"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

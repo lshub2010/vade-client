@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="VadeContractFramesTest[desktop]" tests="24" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:38.340Z" hostname="WIN-SOHFNBA79AT" time="0.084">
+  <properties/>
+  <testcase name="unknownEventTypeIsIgnoredNeverFatal[desktop]" classname="vade.ui.protocol.VadeContractFramesTest" time="0.0"/>
+  <testcase name="budgetEventCarriesDedupTripleAndDegradedFlag[desktop]" classname="vade.ui.protocol.VadeContractFramesTest" time="0.002"/>
+  <testcase name="turnDeltaDefaultsPartIndexZeroAndKindText[desktop]" classname="vade.ui.protocol.VadeContractFramesTest" time="0.0"/>
+  <testcase name="inputValueSerializesAllThreeContractShapes[desktop]" classname="vade.ui.protocol.VadeContractFramesTest" time="0.002"/>
+  <testcase name="attachParamsOmitNullKeysAndNameTheContractFields[desktop]" classname="vade.ui.protocol.VadeContractFramesTest" time="0.001"/>
+  <testcase name="coalesceMarkerIsRecognizedOnTheFrame[desktop]" classname="vade.ui.protocol.VadeContractFramesTest" time="0.0"/>
+  <testcase name="allDeclaredEventTypesParseIntoDistinctSubtypes[desktop]" classname="vade.ui.protocol.VadeContractFramesTest" time="0.067"/>
+  <testcase name="taskListResultDecodesViewsAndLimits[desktop]" classname="vade.ui.protocol.VadeContractFramesTest" time="0.003"/>
+  <testcase name="modelListNotModifiedKeepsCacheSemantics[desktop]" classname="vade.ui.protocol.VadeContractFramesTest" time="0.0"/>
+  <testcase name="toolCallTwoStageResultDecodesApprovalOffer[desktop]" classname="vade.ui.protocol.VadeContractFramesTest" time="0.003"/>
+  <testcase name="usageObjectCarriesFrozenThreePlusRfc0005Appends[desktop]" classname="vade.ui.protocol.VadeContractFramesTest" time="0.0"/>
+  <testcase name="unknownTaskStateMapsToUnknownNotCrash[desktop]" classname="vade.ui.protocol.VadeContractFramesTest" time="0.0"/>
+  <testcase name="contentPartWireShapeIsTheContracts[desktop]" classname="vade.ui.protocol.VadeContractFramesTest" time="0.001"/>
+  <testcase name="errorCodesPinAll34DeclaredNames[desktop]" classname="vade.ui.protocol.VadeContractFramesTest" time="0.0"/>
+  <testcase name="turnDeltaBufferKeepsPartsSeparateAndJoinsInOrder[desktop]" classname="vade.ui.protocol.VadeContractFramesTest" time="0.001"/>
+  <testcase name="attachResultDecodesSnapshotPathAndReplayPath[desktop]" classname="vade.ui.protocol.VadeContractFramesTest" time="0.0"/>
+  <testcase name="snapshotMissingTasksKeyMeansNoProgressMayBeFabricated[desktop]" classname="vade.ui.protocol.VadeContractFramesTest" time="0.0"/>
+  <testcase name="turnApprovalResolvedCarriesChildTurnStateAndRequestKey[desktop]" classname="vade.ui.protocol.VadeContractFramesTest" time="0.002"/>
+  <testcase name="turnDeltaBufferClearsOnNewTurn[desktop]" classname="vade.ui.protocol.VadeContractFramesTest" time="0.0"/>
+  <testcase name="sessionModelGetResultMapsSourceAndDanglingChoice[desktop]" classname="vade.ui.protocol.VadeContractFramesTest" time="0.0"/>
+  <testcase name="vadeExceptionExposesFieldAndReasonPointers[desktop]" classname="vade.ui.protocol.VadeContractFramesTest" time="0.0"/>
+  <testcase name="malformedKnownEventPayloadIsDroppedWithCallbackAndSeqStillAdvances[desktop]" classname="vade.ui.protocol.VadeContractFramesTest" time="0.0"/>
+  <testcase name="unknownTurnStateRendersAsRunning[desktop]" classname="vade.ui.protocol.VadeContractFramesTest" time="0.0"/>
+  <testcase name="snapshotCarriesModelBadgeAndPendingInputs[desktop]" classname="vade.ui.protocol.VadeContractFramesTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

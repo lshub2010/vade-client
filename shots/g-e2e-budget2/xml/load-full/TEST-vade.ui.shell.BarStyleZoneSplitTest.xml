@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="BarStyleZoneSplitTest[desktop]" tests="13" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:40.432Z" hostname="WIN-SOHFNBA79AT" time="0.163">
+  <properties/>
+  <testcase name="fixedZoneExpressionNeverMentionsThePillHeight[desktop]" classname="vade.ui.shell.BarStyleZoneSplitTest" time="0.002"/>
+  <testcase name="shellFeedsTheStyleAwareZoneIntoTheContentInsets[desktop]" classname="vade.ui.shell.BarStyleZoneSplitTest" time="0.002"/>
+  <testcase name="hiddenBarReservesNothingOnBothForms[desktop]" classname="vade.ui.shell.BarStyleZoneSplitTest" time="0.0"/>
+  <testcase name="fixedZoneIsSmallerThanFloatingOnEveryInset[desktop]" classname="vade.ui.shell.BarStyleZoneSplitTest" time="0.0"/>
+  <testcase name="fixedZoneIsItsOwnRowBehindItsRulePlusTheInset[desktop]" classname="vade.ui.shell.BarStyleZoneSplitTest" time="0.0"/>
+  <testcase name="bothFormsGrowWithTheInset[desktop]" classname="vade.ui.shell.BarStyleZoneSplitTest" time="0.0"/>
+  <testcase name="fixedContentScrollsClearOfTheDockedBar[desktop]" classname="vade.ui.shell.BarStyleZoneSplitTest" time="0.063"/>
+  <testcase name="barZoneForRoutesEachStyleToItsOwnFormula[desktop]" classname="vade.ui.shell.BarStyleZoneSplitTest" time="0.0"/>
+  <testcase name="floatingBarRendersExactlyItsZoneTall[desktop]" classname="vade.ui.shell.BarStyleZoneSplitTest" time="0.043"/>
+  <testcase name="fixedBarRendersExactlyItsZoneTall[desktop]" classname="vade.ui.shell.BarStyleZoneSplitTest" time="0.019"/>
+  <testcase name="floatingZoneKeepsTheThreePinnedTargets[desktop]" classname="vade.ui.shell.BarStyleZoneSplitTest" time="0.0"/>
+  <testcase name="fixedZoneDropsThePillTermButKeepsItsOwnRow[desktop]" classname="vade.ui.shell.BarStyleZoneSplitTest" time="0.001"/>
+  <testcase name="desktopFixedBlankDropsFromThirtyNineToZero[desktop]" classname="vade.ui.shell.BarStyleZoneSplitTest" time="0.032"/>
+  <system-out><![CDATA[ZONE_SPLIT desktop(inset=0) fixedFootprint=65.0.dp fixedZoneBefore=104.0.dp blankBefore=39.0.dp fixedZoneAfter=65.0.dp blankAfter=0.0.dp blankUnderLegacy88=23.0.dp floatingFootprint=104.0.dp floatingZone=104.0.dp floatingBlank=0.0.dp
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

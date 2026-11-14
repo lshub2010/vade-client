@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="UsageLoaderTest[desktop]" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:42.534Z" hostname="WIN-SOHFNBA79AT" time="0.343">
+  <properties/>
+  <testcase name="successGoesLoadingThenReadyWithTheRealDto[desktop]" classname="vade.ui.usage.UsageLoaderTest" time="0.019"/>
+  <testcase name="retryBeforeAnyLoadIsANoOpAndSessionIdStaysNull[desktop]" classname="vade.ui.usage.UsageLoaderTest" time="0.0"/>
+  <testcase name="staleGenerationNeverOverwritesTheNewerSession[desktop]" classname="vade.ui.usage.UsageLoaderTest" time="0.114"/>
+  <testcase name="blankSessionIdFailsWithoutCallingTheSource[desktop]" classname="vade.ui.usage.UsageLoaderTest" time="0.001"/>
+  <testcase name="failureIsFailedNotAnEmptyReadyAndCarriesItsCategory[desktop]" classname="vade.ui.usage.UsageLoaderTest" time="0.002"/>
+  <testcase name="disposeStopsLateRepliesFromWriting[desktop]" classname="vade.ui.usage.UsageLoaderTest" time="0.064"/>
+  <testcase name="retryReissuesTheSameSessionAndCanReachReady[desktop]" classname="vade.ui.usage.UsageLoaderTest" time="0.002"/>
+  <testcase name="staleFailureNeverOverwritesTheNewerReady[desktop]" classname="vade.ui.usage.UsageLoaderTest" time="0.138"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

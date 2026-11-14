@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="MetaActionsRealTest[desktop]" tests="14" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:24.616Z" hostname="WIN-SOHFNBA79AT" time="0.42">
+  <properties/>
+  <testcase name="renameRefusesBlankTitleWithoutSending[desktop]" classname="vade.ui.data.MetaActionsRealTest" time="0.019"/>
+  <testcase name="createGroupSendsExactFrameAndReturnsServerId[desktop]" classname="vade.ui.data.MetaActionsRealTest" time="0.035"/>
+  <testcase name="updateGroupSendsOnlyPresentKeys[desktop]" classname="vade.ui.data.MetaActionsRealTest" time="0.018"/>
+  <testcase name="createGroupRefusesBlankNameAndBadColorWithoutSending[desktop]" classname="vade.ui.data.MetaActionsRealTest" time="0.002"/>
+  <testcase name="deleteSendsExactFrame[desktop]" classname="vade.ui.data.MetaActionsRealTest" time="0.031"/>
+  <testcase name="updateGroupRefusesNoChangeAndBlankNameWithoutSending[desktop]" classname="vade.ui.data.MetaActionsRealTest" time="0.002"/>
+  <testcase name="renameSendsExactFrameAndChecksOk[desktop]" classname="vade.ui.data.MetaActionsRealTest" time="0.054"/>
+  <testcase name="listGroupsSendsEmptyParamsAndMapsContractRows[desktop]" classname="vade.ui.data.MetaActionsRealTest" time="0.035"/>
+  <testcase name="assignWritesGroupIdOrNullVerbatim[desktop]" classname="vade.ui.data.MetaActionsRealTest" time="0.02"/>
+  <testcase name="errorsPropagateWithCodeIntactAndCategoryMapped[desktop]" classname="vade.ui.data.MetaActionsRealTest" time="0.122"/>
+  <testcase name="groupRowMissingRequiredIconOrColorThrowsInsteadOfZeroValue[desktop]" classname="vade.ui.data.MetaActionsRealTest" time="0.004"/>
+  <testcase name="deleteGroupSendsExactFrameAndRefusesOkFalse[desktop]" classname="vade.ui.data.MetaActionsRealTest" time="0.031"/>
+  <testcase name="pinAndArchiveSendExactFrames[desktop]" classname="vade.ui.data.MetaActionsRealTest" time="0.045"/>
+  <testcase name="assignRefusesBlankGroupIdWithoutSending[desktop]" classname="vade.ui.data.MetaActionsRealTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="BottomBarSemanticsTest[desktop]" tests="19" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:40.597Z" hostname="WIN-SOHFNBA79AT" time="0.325">
+  <properties/>
+  <testcase name="floatingPillKeepsItsOneSelectedTabAndTabRoles[desktop]" classname="vade.ui.shell.BottomBarSemanticsTest" time="0.022"/>
+  <testcase name="fixedBarKeepsItsSelectionSemanticsInDarkTheme[desktop]" classname="vade.ui.shell.BottomBarSemanticsTest" time="0.018"/>
+  <testcase name="fixedBarHasExactlyOneSelectedTabForEveryTab[desktop]" classname="vade.ui.shell.BottomBarSemanticsTest" time="0.042"/>
+  <testcase name="blurredCapsuleKeepsTheApprovedTint[desktop]" classname="vade.ui.shell.BottomBarSemanticsTest" time="0.0"/>
+  <testcase name="navRailUnselectedSlotPaintsNoFill[desktop]" classname="vade.ui.shell.BottomBarSemanticsTest" time="0.0"/>
+  <testcase name="fixedBarItemDeclaresSemanticsBeforeClickable[desktop]" classname="vade.ui.shell.BottomBarSemanticsTest" time="0.001"/>
+  <testcase name="sharedGlassTokensAreNotMoved[desktop]" classname="vade.ui.shell.BottomBarSemanticsTest" time="0.0"/>
+  <testcase name="fixedBarItemsAllCarryTheTabRole[desktop]" classname="vade.ui.shell.BottomBarSemanticsTest" time="0.016"/>
+  <testcase name="fixedBarTabsStillDispatchTheirIndex[desktop]" classname="vade.ui.shell.BottomBarSemanticsTest" time="0.058"/>
+  <testcase name="noBlurCapsuleIsOpaqueInDarkThemeToo[desktop]" classname="vade.ui.shell.BottomBarSemanticsTest" time="0.001"/>
+  <testcase name="twoFormsCountTheirSelectionIndependently[desktop]" classname="vade.ui.shell.BottomBarSemanticsTest" time="0.035"/>
+  <testcase name="noBlurCapsuleIsOpaqueWithinTheBleedBudget[desktop]" classname="vade.ui.shell.BottomBarSemanticsTest" time="0.001"/>
+  <testcase name="allThreeNavFormsCarryTheSameSemanticsBlock[desktop]" classname="vade.ui.shell.BottomBarSemanticsTest" time="0.001"/>
+  <testcase name="blurredPillKeepsItsOneSelectedTabAndTabRoles[desktop]" classname="vade.ui.shell.BottomBarSemanticsTest" time="0.029"/>
+  <testcase name="fixedBarMergesEachTabIntoASingleLabelledNode[desktop]" classname="vade.ui.shell.BottomBarSemanticsTest" time="0.037"/>
+  <testcase name="navRailKeepsItsOneSelectedTabAndTabRoles[desktop]" classname="vade.ui.shell.BottomBarSemanticsTest" time="0.017"/>
+  <testcase name="noBlurBranchUsesTheLocalOverrideNotTheRawToken[desktop]" classname="vade.ui.shell.BottomBarSemanticsTest" time="0.001"/>
+  <testcase name="fixedBarUnselectedTabsExplicitlyReportFalse[desktop]" classname="vade.ui.shell.BottomBarSemanticsTest" time="0.021"/>
+  <testcase name="fixedBarEveryTabIsReachableByText[desktop]" classname="vade.ui.shell.BottomBarSemanticsTest" time="0.023"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

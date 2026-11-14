@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="PrimitiveParseTest[desktop]" tests="14" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:37.478Z" hostname="WIN-SOHFNBA79AT" time="0.002">
+  <properties/>
+  <testcase name="rowWithBadAlignIsRejected[desktop]" classname="vade.ui.module.PrimitiveParseTest" time="0.0"/>
+  <testcase name="listWithZeroTemplateChildrenIsRejected[desktop]" classname="vade.ui.module.PrimitiveParseTest" time="0.0"/>
+  <testcase name="listParsesWithSingleTemplateChild[desktop]" classname="vade.ui.module.PrimitiveParseTest" time="0.0"/>
+  <testcase name="allSevenWhitelistComponentsParse[desktop]" classname="vade.ui.module.PrimitiveParseTest" time="0.0"/>
+  <testcase name="buttonMayNotCarryChildren[desktop]" classname="vade.ui.module.PrimitiveParseTest" time="0.0"/>
+  <testcase name="columnParsesWithGapAndChildren[desktop]" classname="vade.ui.module.PrimitiveParseTest" time="0.001"/>
+  <testcase name="textLeafWithNeitherDataRefNorLiteralIsRejected[desktop]" classname="vade.ui.module.PrimitiveParseTest" time="0.0"/>
+  <testcase name="rowParsesWithAlignAndWrap[desktop]" classname="vade.ui.module.PrimitiveParseTest" time="0.0"/>
+  <testcase name="textLeafParsesWithStyleMaxLinesAndFormat[desktop]" classname="vade.ui.module.PrimitiveParseTest" time="0.0"/>
+  <testcase name="cardMayCarryChildren[desktop]" classname="vade.ui.module.PrimitiveParseTest" time="0.0"/>
+  <testcase name="textLeafWithLiteralTextParses[desktop]" classname="vade.ui.module.PrimitiveParseTest" time="0.0"/>
+  <testcase name="tabsChildWithoutTabTitleIsRejected[desktop]" classname="vade.ui.module.PrimitiveParseTest" time="0.0"/>
+  <testcase name="textLeafMayNotCarryChildren[desktop]" classname="vade.ui.module.PrimitiveParseTest" time="0.0"/>
+  <testcase name="tabsParseWithTabTitlesAndSelected[desktop]" classname="vade.ui.module.PrimitiveParseTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
