@@ -95,9 +95,10 @@ fun MiuixShowcasePage(
                         Text("构建矩阵核对", fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = c.onSurface)
                         Text("miuix · chat showcase", fontSize = MiuixTokens.tinySize, color = c.onSurfaceVariant)
                     }
-                    skin.Button("批注", onClick = {}, style = BtnStyle.Text)
+                    // v2 §3 图标即按钮 —— 顶栏不放文字按钮。
+                    skin.Button("⋯", onClick = {}, style = BtnStyle.Text)
                     Spacer(Modifier.width(6.dp))
-                    skin.Button("发送", onClick = {}, style = BtnStyle.Primary)
+                    skin.Button("↑", onClick = {}, style = BtnStyle.Primary)
                 }
             }
 
@@ -187,12 +188,33 @@ fun MiuixShowcasePage(
                             trailing = { skin.Switch(checked = true, onCheckedChange = {}) },
                             onClick = {},
                         )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            skin.Button("主操作", {}, BtnStyle.Primary)
-                            skin.Button("次操作", {}, BtnStyle.Secondary)
-                            skin.Button("危险", {}, BtnStyle.Danger)
-                            skin.Button("文字", {}, BtnStyle.Text)
-                            skin.Button("禁用", {}, BtnStyle.Secondary, enabled = false)
+                        // v2 §3 图标即按钮：五种 BtnStyle 全部用图标演示，11sp 说明文字
+                        // 只是标签（不是按钮）。
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            listOf(
+                                "↑" to BtnStyle.Primary,
+                                "＋" to BtnStyle.Secondary,
+                                "✕" to BtnStyle.Danger,
+                                "⋯" to BtnStyle.Text,
+                            ).forEach { (glyph, style) ->
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    skin.Button(glyph, {}, style)
+                                    Text(
+                                        when (style) {
+                                            BtnStyle.Primary -> "主"
+                                            BtnStyle.Secondary -> "次"
+                                            BtnStyle.Danger -> "危"
+                                            BtnStyle.Text -> "文"
+                                        },
+                                        fontSize = MiuixTokens.tinySize,
+                                        color = c.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                skin.Button("＋", {}, BtnStyle.Secondary, enabled = false)
+                                Text("禁", fontSize = MiuixTokens.tinySize, color = c.onSurfaceVariant)
+                            }
                         }
                     }
                 }

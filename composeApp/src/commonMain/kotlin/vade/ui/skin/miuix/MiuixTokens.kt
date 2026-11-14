@@ -70,11 +70,12 @@ internal object MiuixTokens {
         hairline = Color(0xFFDCDAD5),
         // Glass base (§5). This is the *no-haze* base a glass layer reads as until the app
         // shell registers a HazeState — ChatThread/shell are outside this batch, so the
-        // composer/bar degrade to tint + hairline + shadowFloat. 26% (the §5 blur-tint
+        // composer/bar/sheet degrade to tint + hairline + shadowFloat. 26% (the §5 blur-tint
         // value) is invisible as a *field* on the warm canvas; the degrade shape needs to
-        // lift the layer off the page while staying translucent. The §5 26/34 tints stay
-        // encoded in `Skin.glass` (`SkinGlass`) for the real-blur wiring.
-        surfaceGlass = Color.White.copy(alpha = 0.68f),
+        // lift the layer off the page while staying translucent (0.78 = backdrop ghosts
+        // through without staying readable — glass, not a second page). The §5 26/34 tints
+        // stay encoded in `Skin.glass` (`SkinGlass`) for the real-blur wiring.
+        surfaceGlass = Color.White.copy(alpha = 0.78f),
         // §8 row 1 — static-card shadow `0 1 2 rgba(0,0,0,.06)`.
         shadowSoft = Color.Black.copy(alpha = 0.06f),
         // §8 row 2 — float-layer shadow `0 12 32 rgba(0,0,0,.18)`.
@@ -103,7 +104,7 @@ internal object MiuixTokens {
         canvas = Color(0xFF000000),
         hairline = Color(0xFF3A3A3C),
         // Dark: the §5 34 % black tint is invisible on #000000 — lift with the surface tone.
-        surfaceGlass = Color(0xFF1C1C1E).copy(alpha = 0.72f),
+        surfaceGlass = Color(0xFF1C1C1E).copy(alpha = 0.78f),
         shadowSoft = Color.Black.copy(alpha = 0.35f),
         shadowFloat = Color.Black.copy(alpha = 0.55f),
         glowAccent = Color(0xFF5B8DEF),

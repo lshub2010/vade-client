@@ -434,7 +434,8 @@ internal fun MiuixAttachmentChip(
                 }
                 if (failed && onRetry != null) {
                     Spacer(Modifier.width(8.dp))
-                    Text("重试", fontSize = 11.sp, color = colors.primary, modifier = Modifier.clickable { onRetry() })
+                    // v2 §3 图标即按钮：重试用 ↻，不用文字。
+                    Text("↻", fontSize = 14.sp, color = colors.primary, modifier = Modifier.clickable { onRetry() })
                 }
                 if (onRemove != null) {
                     Spacer(Modifier.width(8.dp))
