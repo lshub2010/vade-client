@@ -5,6 +5,9 @@
 > KDoc）、新增 `desktopTest/.../AppShellMetaGroupWiringTest.kt`。**未碰** `data/**`、`meta/**`、
 > `skin/**`、`chat/**`、`icon/**`、`protocol/**`、`component/liquid/**`、`build.gradle.kts`；
 > `contracts/vade` 指针未改（`15312d0`）。**未 push、未合并**，无 `--amend`/`--rebase`/`--reset`。
+> 补充事实：提交后 `origin/main` 前进到 `39303ff`（只动 `docs/QUICKSTART.md` 与
+> `shots/g-live/PLAYBOOK.md`），本分支因此 `ahead 1, behind 1`；按「绝不合并」未合入，
+> 与本次改动的文件零重叠。
 
 ---
 
