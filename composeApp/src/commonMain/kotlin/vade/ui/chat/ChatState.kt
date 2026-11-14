@@ -5,20 +5,29 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import vade.ui.skin.AttachmentState
 import vade.ui.skin.Decision
 import vade.ui.skin.InputMode
 import vade.ui.chat.ApprovalOutcome
+import kotlinx.coroutines.CancellationException
 import kotlin.time.TimeSource
 
 /**
- * U1-b · chat state — **derived, disposable, client-only** (D98).
+ * U1-b → v1.1 · chat state — **derived, disposable, client-only** (D98).
  *
- * There is no `ProtocolClient` in this slice: the thread starts from [ChatFixtures] and every
- * transition below is the one the RPC will drive later, written against RFC-0004 (parts) and
- * RFC-0006 (turn states, queue, interrupt) so the view layer does not change when the source
- * does. The three transitions that carry acceptance criteria are deliberately *pure* and
- * time-free ([tick] advances one stream chunk; [stop] ends a turn; [submit] queues), which is
- * why `ChatFlowTest` can assert them without a window or a clock.
+ * There is no live core in this slice: the thread starts from [ChatFixtures] and every
+ * transition below is the one the RPC will drive later, written against RFC-0004 (parts)
+ * and RFC-0006 (turn states, queue, interrupt) so the view layer does not change when the
+ * source does. The three transitions that carry acceptance criteria are deliberately *pure*
+ * and time-free ([tick] advances one stream chunk; [stop] ends a turn; [submit] queues),
+ * which is why `ChatFlowTest` can assert them without a window or a clock.
+ *
+ * v1.1 additions (this slice) hang off two **injectable narrow interfaces**:
+ *  - [AttachmentUploader] — the blob upload channel ([stageUpload] / [runUpload] /
+ *    [cancelUpload] / [retryUpload]); the default is the in-memory fake, the real
+ *    `/ui/blob` channel is one implementation away (RESULT.md · 未接线清单);
+ *  - [ChatTurnGateway] — `message/edit_resubmit` + `turn/regenerate` ([confirmEdit] /
+ *    [regenerate]); same deal, [InMemoryTurnGateway] stands in this round.
  *
  * Nothing here is persisted, so dropping the object costs nothing that matters.
  */
@@ -26,6 +35,10 @@ class ChatState(
     val sessionId: String,
     private val script: List<String> = ChatFixtures.streamScript,
     preset: ChatPreset = ChatPreset.Live,
+    /** Blob upload channel (injectable; in-memory fake this round). */
+    private val uploader: AttachmentUploader = InMemoryAttachmentUploader(),
+    /** `message/edit_resubmit` + `turn/regenerate` channel (injectable; fake this round). */
+    private val turns: ChatTurnGateway = InMemoryTurnGateway(),
 ) {
     private val seed = ChatFixtures.threadFor(sessionId)
 
@@ -60,12 +73,18 @@ class ChatState(
 
     val isStreaming: Boolean get() = runningId != null
 
-    val canSend: Boolean get() = draft.isNotBlank() || staged.isNotEmpty()
+    /**
+     * Sendable = text, or at least one **finished** upload. An in-flight / failed chip is
+     * not content (上传中点发送不带未完成附件); it stays in the composer and keeps moving.
+     */
+    val canSend: Boolean
+        get() = draft.isNotBlank() ||
+            staged.any { it.attachment.state == AttachmentState.Uploaded }
 
     val inputMode: InputMode
         get() = when {
             isStreaming -> InputMode.Streaming
-            draft.isNotBlank() || staged.isNotEmpty() -> InputMode.Composing
+            canSend -> InputMode.Composing
             else -> InputMode.Idle
         }
 
@@ -97,6 +116,12 @@ class ChatState(
     }
 
     fun removeStaged(fileId: String) {
+        // A removed uploader chip must also drop its request, so a still-running transfer
+        // cannot resurrect it (same bookkeeping as cancelUpload).
+        staged.firstOrNull { it.attachment.fileId == fileId }?.uploadId?.let { id ->
+            uploadRequests.remove(id)
+            cancelledUploads += id
+        }
         staged.removeAll { it.attachment.fileId == fileId }
     }
 
@@ -105,13 +130,16 @@ class ChatState(
         var moving = false
         for (index in staged.indices) {
             val current = staged[index]
-            if (current.attachment.state != vade.ui.skin.AttachmentState.Uploading) continue
+            if (current.attachment.state != AttachmentState.Uploading) continue
+            // Uploader-driven chips move only via their own channel events (runUpload);
+            // tickUploads drives the legacy fixture chips (uploadId == null) alone.
+            if (current.uploadId != null) continue
             val next = (current.attachment.progress + step).coerceAtMost(1f)
             val done = next >= 1f
             staged[index] = current.copy(
                 attachment = current.attachment.copy(
                     progress = if (done) 1f else next,
-                    state = if (done) vade.ui.skin.AttachmentState.Uploaded else vade.ui.skin.AttachmentState.Uploading,
+                    state = if (done) AttachmentState.Uploaded else AttachmentState.Uploading,
                     detail = if (done) current.uploadedDetail else null,
                 ),
             )
@@ -120,23 +148,314 @@ class ChatState(
         return moving
     }
 
+    // --- edit & resubmit (v1.1 · message/edit_resubmit) --------------------------
+
+    /**
+     * The message being edited inline (its **original** id), or null. The editor replaces
+     * the bubble in the thread — it is an inline card, never a dialog.
+     */
+    var editingId by mutableStateOf<String?>(null)
+        private set
+
+    /** The inline editor's content — what [confirmEdit] sends, trimmed. */
+    var editDraft by mutableStateOf("")
+        private set
+
+    /** 空内容禁止重发：the confirm control stays disabled on whitespace-only drafts. */
+    val canConfirmEdit: Boolean
+        get() = editingId != null && editDraft.isNotBlank()
+
+    /**
+     * Only the **last** user message is editable (`edit_resubmit` notes: "only the last
+     * user message is editable"), and never a queued row (its turn does not exist yet).
+     */
+    fun canEditMessage(messageId: String): Boolean {
+        if (queuePosition(messageId) > 0) return false
+        val lastUserId = messages.lastOrNull { it.role == ChatRole.User }?.id ?: return false
+        return messageId == lastUserId
+    }
+
+    /** Opens the inline editor prefilled with the row's current text. */
+    fun startEdit(messageId: String): Boolean {
+        if (!canEditMessage(messageId)) return false
+        if (editingId != null && editingId != messageId) return false // one editor at a time
+        editingId = messageId
+        editDraft = messages.firstOrNull { it.id == messageId }?.bodyText ?: ""
+        return true
+    }
+
+    fun updateEditDraft(text: String) {
+        if (editingId == null) return
+        editDraft = text
+    }
+
+    fun cancelEdit() {
+        editingId = null
+        editDraft = ""
+    }
+
+    /**
+     * `message/edit_resubmit`: sends the trimmed editor text with the **original message
+     * id** and, on success, projects the edit in place — the row's text becomes the new
+     * text (the `message.edited` projection) and wears 「已编辑」; its attachments are
+     * carried over. The rerun turn streams like a `submit` (queued while busy, with
+     * `reason = edit_resubmit`). Failure keeps the editor open with the draft intact.
+     */
+    suspend fun confirmEdit(): Boolean {
+        val messageId = editingId ?: return false
+        val text = editDraft.trim()
+        if (text.isEmpty()) return false
+        val original = messages.firstOrNull { it.id == messageId } ?: return false
+        val clientMsgId = "c-e-${items.count { it is ChatItem.Message } + 1}"
+        try {
+            turns.editResubmit(sessionId, messageId, listOf(ContentPart.Text(text)), clientMsgId)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            lastNotice = "重发失败：${error.message ?: "通道异常"}（原文未变，可重试）"
+            return false
+        }
+        val index = items.indexOfFirst { it is ChatItem.Message && it.message.id == messageId }
+        if (index >= 0) {
+            items[index] = ChatItem.Message(
+                original.copy(
+                    parts = listOf(ContentPart.Text(text)) + original.attachments,
+                    edited = true,
+                ),
+            )
+        }
+        editingId = null
+        editDraft = ""
+        if (isStreaming) {
+            queue += QueuedTurn(
+                messageId = messageId,
+                clientMsgId = clientMsgId,
+                text = text,
+                reason = "edit_resubmit",
+            )
+        } else {
+            startAssistantTurn(messageId)
+        }
+        return true
+    }
+
+    // --- regenerate (v1.1 · turn/regenerate) --------------------------------------
+
+    /**
+     * Only the **last** assistant message, only in a terminal state, only while idle
+     * (`turn/regenerate` data.reason carries `turn_active|not_tail|not_head`; the client
+     * refuses those up front instead of waiting for the error).
+     */
+    fun canRegenerate(messageId: String): Boolean {
+        if (isStreaming || queue.isNotEmpty()) return false
+        val lastAssistantId = messages.lastOrNull { it.role == ChatRole.Assistant }?.id ?: return false
+        if (messageId != lastAssistantId) return false
+        val message = messages.firstOrNull { it.id == messageId } ?: return false
+        return !message.superseded && when (message.state) {
+            MessageState.Completed, MessageState.Interrupted, MessageState.Failed, MessageState.Cancelled -> true
+            MessageState.Running, MessageState.Queued -> false
+        }
+    }
+
+    /**
+     * `turn/regenerate`: a new turn for the same user message. The old assistant row is
+     * **kept** — marked 「旧版本」 and greyed out by the page — never deleted
+     * (`turn.superseded` projection); the fresh turn streams below it.
+     */
+    suspend fun regenerate(messageId: String): Boolean {
+        if (!canRegenerate(messageId)) return false
+        val clientMsgId = "c-r-${items.count { it is ChatItem.Message } + 1}"
+        try {
+            turns.regenerate(sessionId, messageId, clientMsgId)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            lastNotice = "重新生成失败：${error.message ?: "通道异常"}"
+            return false
+        }
+        val index = items.indexOfFirst { it is ChatItem.Message && it.message.id == messageId }
+        if (index >= 0) {
+            val old = (items[index] as ChatItem.Message).message
+            items[index] = ChatItem.Message(old.copy(superseded = true))
+        }
+        startAssistantTurn(messageId)
+        return true
+    }
+
+    // --- attachment uploads (injectable AttachmentUploader channel) ----------------
+
+    private var uploadSeq = 0
+    private val uploadRequests = mutableMapOf<String, PendingAttachment>()
+    private val cancelledUploads = mutableSetOf<String>()
+
+    /** Uploader chips currently transferring (a11y hint / tests). */
+    val uploadingCount: Int
+        get() = staged.count { it.uploadId != null && it.attachment.state == AttachmentState.Uploading }
+
+    /**
+     * Adds the chip (上传中 0%) and registers the pending transfer. Returns the upload id
+     * the page runs with [runUpload], or null when the RFC cap is hit or the same pick is
+     * already staged un-finished (同一文件不重复加 chip; a finished chip does not block a
+     * fresh pick).
+     */
+    fun stageUpload(request: PendingAttachment): String? {
+        if (staged.size >= MAX_PER_TURN) {
+            lastNotice = "单轮最多 $MAX_PER_TURN 个附件（RFC-0004 §6.1）"
+            return null
+        }
+        val duplicate = staged.any {
+            it.attachment.state != AttachmentState.Uploaded && it.pending?.identity == request.identity
+        }
+        if (duplicate) {
+            lastNotice = "同一文件只保留一个上传（失败用 ↻ 重试）"
+            return null
+        }
+        uploadSeq += 1
+        val uploadId = "u-$uploadSeq"
+        uploadRequests[uploadId] = request
+        staged += StagedAttachment(
+            attachment = vade.ui.skin.AttachmentView(
+                fileId = uploadId,
+                fileName = request.name,
+                mime = request.mime,
+                state = AttachmentState.Uploading,
+                progress = 0f,
+            ),
+            part = ContentPart.File(uploadId, request.name, request.sizeBytes, request.mime),
+            uploadedDetail = pendingUploadedDetail(request),
+            uploadId = uploadId,
+            pending = request,
+        )
+        return uploadId
+    }
+
+    /**
+     * Runs the transfer for [uploadId] to completion. **The caller owns the coroutine** —
+     * cancelling it is the real abort (上传中可取消); [cancelUpload] is the UI-side removal
+     * that also turns any late event into a no-op, so a cancelled chip can never resurrect.
+     */
+    suspend fun runUpload(uploadId: String) {
+        val request = uploadRequests[uploadId] ?: return
+        try {
+            val blobId = uploader.upload(request, uploadId) { progress ->
+                if (uploadId !in cancelledUploads) updateUploadProgress(uploadId, progress)
+            }
+            if (uploadId in cancelledUploads) return // late completion is dropped
+            completeUpload(uploadId, blobId, request)
+        } catch (error: CancellationException) {
+            throw error // structured cancellation propagates; the chip is already gone
+        } catch (error: Exception) {
+            if (uploadId in cancelledUploads) return
+            failUpload(uploadId, error.message?.takeIf { it.isNotBlank() } ?: "上传失败")
+        }
+    }
+
+    /** Chip removal + abort bookkeeping. The caller cancels the in-flight job itself. */
+    fun cancelUpload(uploadId: String): Boolean {
+        val index = staged.indexOfFirst { it.uploadId == uploadId }
+        if (index < 0) return false
+        uploadRequests.remove(uploadId)
+        cancelledUploads += uploadId
+        staged.removeAt(index)
+        return true
+    }
+
+    /** 失败重试：the SAME chip flips back to 上传中 0% — never a second chip. */
+    fun retryUpload(uploadId: String): Boolean {
+        val index = staged.indexOfFirst { it.uploadId == uploadId }
+        if (index < 0) return false
+        val current = staged[index]
+        if (current.attachment.state != AttachmentState.Failed) return false
+        if (!uploadRequests.containsKey(uploadId)) return false
+        staged[index] = current.copy(
+            attachment = current.attachment.copy(
+                state = AttachmentState.Uploading,
+                progress = 0f,
+                detail = null,
+            ),
+        )
+        return true
+    }
+
+    private fun updateUploadProgress(uploadId: String, progress: Float) {
+        val index = staged.indexOfFirst { it.uploadId == uploadId }
+        if (index < 0) return
+        val current = staged[index]
+        staged[index] = current.copy(
+            attachment = current.attachment.copy(
+                progress = progress.coerceIn(0f, 1f),
+                state = AttachmentState.Uploading,
+            ),
+        )
+    }
+
+    private fun completeUpload(uploadId: String, blobId: String, request: PendingAttachment) {
+        val index = staged.indexOfFirst { it.uploadId == uploadId }
+        if (index < 0) return
+        val current = staged[index]
+        val part = if (request.width != null && request.height != null) {
+            ContentPart.Image(
+                fileId = blobId,
+                name = request.name,
+                size = request.sizeBytes,
+                width = request.width ?: 0,
+                height = request.height ?: 0,
+                mime = request.mime,
+            )
+        } else {
+            ContentPart.File(blobId, request.name, request.sizeBytes, request.mime)
+        }
+        staged[index] = current.copy(
+            attachment = current.attachment.copy(
+                fileId = blobId,
+                state = AttachmentState.Uploaded,
+                progress = 1f,
+                detail = current.uploadedDetail,
+            ),
+            part = part,
+        )
+        uploadRequests.remove(uploadId)
+    }
+
+    private fun failUpload(uploadId: String, message: String) {
+        val index = staged.indexOfFirst { it.uploadId == uploadId }
+        if (index < 0) return
+        val current = staged[index]
+        staged[index] = current.copy(
+            attachment = current.attachment.copy(
+                state = AttachmentState.Failed,
+                progress = 0f,
+                detail = message,
+            ),
+        )
+    }
+
+    private fun pendingUploadedDetail(request: PendingAttachment): String =
+        if (request.width != null && request.height != null) {
+            "${formatBytes(request.sizeBytes)} · ${request.width}×${request.height} · $COMPRESSED_NOTE"
+        } else {
+            formatBytes(request.sizeBytes)
+        }
+
     // --- turns ----------------------------------------------------------------
 
     /**
      * `ui/submit` (FR-8.35 / RFC-0006 §5.4): one user bubble + one turn. While another turn
      * runs the new one is queued (`turn.queued`) and wears 「排队中 #N」 instead of starting.
      *
-     * Returns the new `client_msg_id`, or null when the composer is empty (empty text must not
-     * be sendable).
+     * Only **finished** uploads ride along (上传中点发送不带未完成附件): in-flight and
+     * failed chips stay staged and keep moving. Returns the new `client_msg_id`, or null
+     * when neither text nor a finished attachment is present (empty must not be sendable).
      */
     fun submit(): String? {
         val text = draft.trim()
-        if (text.isEmpty() && staged.isEmpty()) return null
+        val ready = staged.filter { it.attachment.state == AttachmentState.Uploaded }
+        if (text.isEmpty() && ready.isEmpty()) return null
         val clientMsgId = "c-${items.count { it is ChatItem.Message } + 1}"
         val messageId = "m-${sessionId}-${clientMsgId}"
         val parts = buildList {
             if (text.isNotEmpty()) add(ContentPart.Text(text))
-            staged.forEach { add(it.part) }
+            ready.forEach { add(it.part) }
         }
         val busy = isStreaming
         items += ChatItem.Message(
@@ -145,11 +464,11 @@ class ChatState(
                 role = ChatRole.User,
                 parts = parts,
                 state = if (busy) MessageState.Queued else MessageState.Completed,
-                badges = if (staged.any { it.part is ContentPart.Image }) listOf(COMPRESSED_NOTE) else emptyList(),
+                badges = if (ready.any { it.part is ContentPart.Image }) listOf(COMPRESSED_NOTE) else emptyList(),
                 clientMsgId = clientMsgId,
             ),
         )
-        staged.clear()
+        staged.removeAll { it.attachment.state == AttachmentState.Uploaded }
         draft = ""
         lastNotice = null
 
@@ -165,7 +484,12 @@ class ChatState(
     fun cancelQueued(clientMsgId: String): Boolean {
         val removed = queue.firstOrNull { it.clientMsgId == clientMsgId } ?: return false
         queue.remove(removed)
-        items.removeAll { it is ChatItem.Message && it.message.id == removed.messageId }
+        // A `submit` entry owns the bubble it created — cancelling deletes it. An
+        // `edit_resubmit` entry only queues the rerun of an EXISTING row: cancelling
+        // drops the queued turn and the (edited) row stays.
+        if (removed.reason == "submit") {
+            items.removeAll { it is ChatItem.Message && it.message.id == removed.messageId }
+        }
         return true
     }
 
@@ -447,4 +771,12 @@ data class StagedAttachment(
     val attachment: vade.ui.skin.AttachmentView,
     val part: ContentPart,
     val uploadedDetail: String,
+    /**
+     * Non-null when this chip rides the injectable [AttachmentUploader] channel (its
+     * progress arrives from the channel's events via `runUpload`). Null = legacy fixture
+     * chip, driven by `tickUploads` (the no-channel demo path).
+     */
+    val uploadId: String? = null,
+    /** The pick behind the chip — identity used to refuse duplicate staging. */
+    val pending: PendingAttachment? = null,
 )

@@ -99,6 +99,19 @@ data class ChatMessage(
     val badges: List<String> = emptyList(),
     /** `client_msg_id` from `ui/submit`; kept so a fake turn can be cancelled by id. */
     val clientMsgId: String? = null,
+
+    /**
+     * v1.1 · `message/edit_resubmit` projection: this row's text was edited in place
+     * (server rows are immutable — the old one only gains `superseded_by`; the client
+     * bubble re-projects `message.edited.text` and wears 「已编辑」).
+     */
+    val edited: Boolean = false,
+
+    /**
+     * v1.1 · `turn/regenerate` projection (`turn.superseded`): an OLDER version of this
+     * turn. **Kept in the thread, never deleted** — greyed out and badged 「旧版本」.
+     */
+    val superseded: Boolean = false,
 ) {
     /** RFC-0004 §6.2 projection (text + `[image: …]` placeholders). */
     val projection: String get() = parts.textProjection()
@@ -309,10 +322,15 @@ fun ChatMessage.toView(): vade.ui.skin.MessageView {
         state == MessageState.Queued -> badges
         else -> badges
     }
+    // v1.1 版本徽标：编辑过的行 「已编辑」；被重生成取代的旧版本 「旧版本」。
+    val versionBadges = listOfNotNull(
+        "已编辑".takeIf { edited },
+        "旧版本".takeIf { superseded },
+    )
     return vade.ui.skin.MessageView(
         id = id,
         text = bodyText,
-        badges = dynamic,
+        badges = dynamic + versionBadges,
         isError = state == MessageState.Failed,
     )
 }

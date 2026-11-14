@@ -171,8 +171,44 @@ fun ChatIconGlyph(
     }
 }
 
-/** Fills [box] with the glyph, for call sites that already own the Box sizing. */
+/**
+ * Fills [box] with the glyph, for call sites that already own the Box sizing.
+ */
 @Composable
 fun ChatIconCanvas(icon: ChatIcon, tint: Color, box: Modifier = Modifier) {
     Canvas(box) { paint(icon, tint) }
+}
+
+/**
+ * Vector-icon button (visual-language §3.1: for new call sites the ONLY allowed icon form
+ * is an `ImageVector` from `vade.ui.icon`) — same contract as [ChatIconButton]: a ≥44dp
+ * circular touch target, a mandatory [contentDescription] on the box, `indication = null`
+ * press feedback. Used for the v1.1 actions (编辑 / 重新生成 / 回形针 / 确认 / 取消).
+ */
+@Composable
+fun ChatVectorIconButton(
+    vector: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    tint: Color = LocalSkin.current.colors.onSurfaceVariant,
+    boxSize: Dp = 44.dp,
+    iconSize: Dp = 20.dp,
+) {
+    Box(
+        modifier
+            .size(boxSize)
+            .semantics { this.contentDescription = contentDescription }
+            .clip(CircleShape)
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        vade.ui.icon.VadeIcon(
+            vector = vector,
+            contentDescription = null, // the box carries the label — keep a single a11y node
+            size = iconSize,
+            tint = tint,
+        )
+    }
 }
