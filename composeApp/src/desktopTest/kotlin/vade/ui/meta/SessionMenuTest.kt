@@ -85,8 +85,8 @@ class SessionMenuTest {
         s.onMenuItem("s-2", SessionMenuItem.NewGroup)
         val sheet = s.editor as? MetaEditor.GroupSheet
         assertTrue(sheet != null && sheet.isNew)
-        assertTrue(MetaIcons[sheet.draftIcon] != null, "新建表单默认图标必须在白名单内")
-        assertTrue(MetaColors.isValid(sheet.draftColor), "新建表单默认颜色必须是合法 #RRGGBB")
+        assertTrue(sheet.draftIcon?.let { MetaIcons[it] } != null, "新建表单默认图标必须在白名单内")
+        assertTrue(sheet.draftColor?.let { MetaColors.isValid(it) } == true, "新建表单默认颜色必须是合法 #RRGGBB")
     }
 
     @Test

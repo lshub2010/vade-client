@@ -25,14 +25,19 @@ data class MetaSession(
     val groupId: String? = null,
 )
 
-/** 一个用户自建分组（服务端 `session/group.*` 五方法的落点）。 */
+/**
+ * 一个用户自建分组（服务端 `session/group.*` 五方法的落点）。
+ *
+ * [iconName] / [colorHex] **可空**：契约 1.4.0 起 `group.icon` / `group.color` 是可选字段，
+ * `session/group.update` 的显式 null 就是「清除」。UI 对 null 渲染中性占位（无图标 / 无强调色）。
+ */
 data class MetaGroup(
     val id: String,
     val name: String,
-    /** `ICON_NAMES` 白名单名；非法名由服务端拒收，UI 侧构造时走 [MetaIcons]。 */
-    val iconName: String,
-    /** 大写 `#RRGGBB`。 */
-    val colorHex: String,
+    /** `ICON_NAMES` 白名单名；null = 已清除（服务端存 null）。 */
+    val iconName: String?,
+    /** 大写 `#RRGGBB`；null = 已清除（服务端存 null）。 */
+    val colorHex: String?,
 )
 
 /** 所有面向用户的文案常量集中在这一处，测试（GROUP_DELETE_NOTE 等）直接钉住。 */
@@ -76,8 +81,35 @@ object MetaCopy {
     const val TITLE_EMPTY_ERROR = "名称不能为空"
     const val GROUP_DRAFT_INVALID = "图标或颜色不在允许范围内"
 
-
     /** 分组列表为空时的空态（测试⑦）。 */
     const val GROUPS_EMPTY_TITLE = "还没有分组"
     const val GROUPS_EMPTY_BODY = "用「新建分组」把会话按项目分类，支持自定义图标与颜色。"
+
+    // --- g-meta-wire：失败态 / 重试 / 显式 null 缺口 ---------------------------------
+
+    /** 分组列表**加载失败**（≠ 空表）：标题 + 正文 + 唯一主行动「重试」。 */
+    const val GROUPS_LOAD_FAILED_TITLE = "分组加载失败"
+    const val GROUPS_LOAD_FAILED_BODY = "没能从 core 取回分组列表。这不等于「没有分组」，检查连接后重试。"
+    const val RETRY = "重试"
+    const val GROUPS_LOADING = "正在加载分组…"
+
+    /** 写动作失败横条上的关闭按钮（无障碍文案）。 */
+    const val ACTION_FAILED_DISMISS = "关闭错误提示"
+
+    /** 异常没有可读 message 时的兜底原因（绝不留空串给用户看）。 */
+    const val UNKNOWN_FAILURE_DETAIL = "core 没有返回可读原因"
+
+    /**
+     * 「清除图标 / 清除颜色」（线格式的显式 null）。`session/group.update` 的
+     * `icon` / `color` 自契约 1.4.0 起是三态：键缺省 = 保持不变、JSON null = 清除、
+     * 字符串 = 设置。UI 只在实现方提供 [SessionMetaGroupEdit] 时显示这两个按钮。
+     */
+    const val GROUP_CLEAR_ICON = "清除图标"
+    const val GROUP_CLEAR_COLOR = "清除颜色"
+
+    /** 新建分组时三个字段都要有值：窄接口 `createGroup` 的图标/颜色是必填。 */
+    const val GROUP_CLEAR_EDIT_ONLY = "新建分组时必须选择图标与颜色，创建后可清除。"
+
+    /** 注入的实现只会两态（null = 保持），表达不了清除 —— 明确拒收，不静默假装。 */
+    const val GROUP_CLEAR_UNSUPPORTED = "当前数据层不支持清除图标或颜色（只实现了两态 updateGroup）。"
 }
