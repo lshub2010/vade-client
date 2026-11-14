@@ -133,7 +133,13 @@ private fun ShellBody(state: UiState) {
             Modifier
                 .fillMaxSize()
                 .background(skin.colors.canvas)
-                .asGlassSource(glass),
+                // Two independent captures of the SAME content, on purpose:
+                //  - `asGlassSource` feeds haze (glass top bar + search overlay);
+                //  - `captureGlassBackdrop` feeds miuix-blur (the KSU pill's lens/blur).
+                // Dropping the second one is what made the pill's indicator sample an
+                // unpainted surface and render as a grey smear — both must stay.
+                .asGlassSource(glass)
+                .captureGlassBackdrop(contentBackdrop),
         ) {
             if (metrics.useRail) {
                 NavRail(
@@ -223,11 +229,12 @@ private fun ShellBody(state: UiState) {
                     .align(Alignment.BottomCenter)
                     .padding(barInsets),
             ) {
-                GlassNavBar(
+                VadeBottomBar(
                     items = navItems(),
                     selected = state.dest.ordinal,
                     onSelect = { index -> state.select(Destination.entries[index]) },
                     style = state.barStyle,
+                    backdrop = contentBackdrop,
                 )
             }
         }
@@ -334,7 +341,10 @@ private fun VerticalRule() {
 
 /** Bottom-bar rows: the four destinations, in contract order (FR-8.77). */
 private fun navItems(): List<BottomBarItem> = Destination.entries.map {
-    BottomBarItem(id = it.id, label = it.label, icon = null, glyph = it.glyph)
+    // w2-icons: the Tabler vector is the icon; the CJK glyph is no longer a fallback
+    // that ships — `glyph` stays null so a missing vector is visible, not disguised
+    // as a correct icon (docs/visual-language.md §3 bans character icons).
+    BottomBarItem(id = it.id, label = it.label, icon = it.icon)
 }
 
 /**
