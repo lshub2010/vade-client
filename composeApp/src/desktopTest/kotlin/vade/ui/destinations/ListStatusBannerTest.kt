@@ -45,7 +45,9 @@ class ListStatusBannerTest {
 
     /** 非假源，一行真数据；标题在 fixtures 里不存在。 */
     private class OneRowSource : SessionSource {
-        override suspend fun sessions(): List<SessionSummary> = listOf(
+        // 契约自 g-archive-ui 起带 includeArchived；默认值只写在接口上，
+        // 每个实现都必须声明这个形参。本测试不看归档，忽略该开关。
+        override suspend fun sessions(includeArchived: Boolean): List<SessionSummary> = listOf(
             SessionSummary(
                 id = "ui-assert-real",
                 title = REAL_ROW_TITLE,
@@ -63,7 +65,7 @@ class ListStatusBannerTest {
 
     /** 非假源，读列表失败——正是「real 但没有有效配对码」在 loader 里的结果。 */
     private class FailingSource : SessionSource {
-        override suspend fun sessions(): List<SessionSummary> = throw VadeException(
+        override suspend fun sessions(includeArchived: Boolean): List<SessionSummary> = throw VadeException(
             VadeErrorCodes.UNAVAILABLE,
             "core at 127.0.0.1:18755 not reachable within 15000ms (auto-connect)",
         )
@@ -81,9 +83,9 @@ class ListStatusBannerTest {
      * 走到。真 core 的握手永远晚于首帧，闸门复刻的就是这个正常时序。
      */
     private class GatedSource(private val gate: CompletableDeferred<Unit>) : SessionSource {
-        override suspend fun sessions(): List<SessionSummary> {
+        override suspend fun sessions(includeArchived: Boolean): List<SessionSummary> {
             gate.await()
-            return OneRowSource().sessions()
+            return OneRowSource().sessions(includeArchived)
         }
 
         override suspend fun messages(sessionId: String): List<ChatMessage> = emptyList()

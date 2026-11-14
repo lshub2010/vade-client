@@ -8,7 +8,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.currentRecomposeScope
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
@@ -103,18 +107,37 @@ const val FIXTURE_NOTE: String =
  * 仍然带着同一份旧快照，永远读到旧值（实测 `emission=Connecting` 之后再也没有第二次）。
  * 能解决的是「换一次组合」——新组合拿的是新快照。
  *
- * 所以这里在首帧之后用 [currentRecomposeScope] 让本作用域失效一次：第二遍组合读到的就是
- * 最新状态。`Connecting` 的 `hasRows` 判据是第二道保险（见 [vade.ui.shell.listStatusOf]），
+ * ## 为什么不用 `currentRecomposeScope.invalidate()`（g-first-run-fix 实测）
+ *
+ * 上一版就是那么做的，代价是一个**比原问题严重得多的回归**：目的地切换后内容区停在
+ * 上一屏。原因有两层，都是实测的：
+ *
+ *  1. 本函数是**有返回值的 composable**，没有自己的 restart scope —— `currentRecomposeScope`
+ *     拿到的就是**调用方** [vade.ui.shell.DestinationHost] 的作用域（探针实测两者
+ *     identityHashCode 相同）。所以那句 `invalidate()` 失效的不是「这一条横幅」，
+ *     而是**整个目的地分发器**。
+ *  2. 分发器的作用域被自己 effect 里的 `invalidate()` 失效过一次之后，就**再也不接受
+ *     失效**了：探针在一次六跳的目的地序列里看到 `DestinationHost` 只进入过一次
+ *     （首帧），之后 `state.dest` 的每次写入都只重组了 `ShellBody`（导航栏/top bar），
+ *     内容区一个节点都没重画 —— 也就是「导航说『能力』选中了，屏上还是设置页」。
+ *
+ * 所以这里改成**普通 state 写入**（`settled = true`）：它是受支持的失效路径，只会让
+ * 本作用域重组一次；再由 `key(settled)` 换分组，让 `read()` 在新快照里算第二遍。
+ * 回归钉子见 `AppShellDestinationDispatchTest`（连跳五次，每一跳都断言内容跟着导航走）。
+ *
+ * `Connecting` 的 `hasRows` 判据仍是第二道保险（见 [vade.ui.shell.listStatusOf]）：
  * 万一第二遍也赶在写入之前，有行时也不会说错话。
  */
 @Composable
 internal fun settledListStatus(read: () -> ListStatus): ListStatus {
-    val scope = currentRecomposeScope
-    LaunchedEffect(scope) {
-        // 首帧已上屏；让下一帧在新快照里重算一次。
-        scope.invalidate()
+    var settled by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        // 首帧已上屏：合上闩锁。这是一次**普通 state 写入**，只会让本作用域再组合一次。
+        settled = true
     }
-    return read()
+    // 合上闩锁时 `key(settled)` 换一个分组，里面的 `read()` 因此在**新快照**里重算一遍
+    // （首帧那遍可能落在 loader 的写入窗口里，见上文 KDoc）。
+    return key(settled) { read() }
 }
 
 /**
@@ -123,7 +146,15 @@ internal fun settledListStatus(read: () -> ListStatus): ListStatus {
  * 只读 skin token，不引入任何 toolkit（C-09 · `MaterialImportGuardTest`）。
  */
 @Composable
-internal fun ListStatusBanner(status: ListStatus, modifier: Modifier = Modifier) {
+internal fun ListStatusBanner(
+    status: ListStatus,
+    modifier: Modifier = Modifier,
+    /**
+     * 宿主已经用**自己那条带重试的失败横幅**说过分类与传输原话了 —— 此时只留标题与
+     * 自救命令，别把同一句话在同一屏上说两遍（重复的后果是可测的：`需要重连` 会数到 2）。
+     */
+    compact: Boolean = false,
+) {
     val skin = LocalSkin.current
     when (status) {
         // 连上了：没有横幅。不是「隐藏文案」，是真的不组合这个节点——空节点会留下空白
@@ -154,7 +185,10 @@ internal fun ListStatusBanner(status: ListStatus, modifier: Modifier = Modifier)
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             UiText(status.headline, size = 12, weight = FontWeight.SemiBold, color = skin.colors.error)
-            UiText(status.detail, size = 11, color = skin.colors.onSurfaceVariant)
+            // compact = 宿主已经说过分类/传输原话（那条卡还带重试），这里不再重复。
+            if (!compact) {
+                UiText(status.detail, size = 11, color = skin.colors.onSurfaceVariant)
+            }
             // 自救命令：一行可照抄的启动命令。必须整体是一个文本节点——用户要能一次选中
             // 整行复制，测试也按这一个节点断言 `VADE_SOURCE` / `VADE_PAIR_CODE`。
             UiText(status.remedy, size = 10, color = skin.colors.onSurfaceVariant)
