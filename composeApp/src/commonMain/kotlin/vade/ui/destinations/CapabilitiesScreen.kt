@@ -10,8 +10,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import vade.ui.module.ModulePageEntry
+import vade.ui.module.ModulePageEntryList
+import vade.ui.module.ModulePageEntryRules
+import vade.ui.module.ModulePageHost
+import vade.ui.module.ModulePageSource
+import vade.ui.module.ModulePageSources
 import vade.ui.skin.LocalSkin
 
 /**
@@ -20,9 +30,10 @@ import vade.ui.skin.LocalSkin
  * data). Modules / skills / memories, plus the mobile "模块页面" entry point that D105
  * puts in this tab.
  *
- * FR-8.79: when no module declares `ui.pages[]`, the 模块页面 entry must **not** appear —
- * no empty tab, no placeholder row. Since C-19 is not frozen (U1-h), this screen shows
- * exactly that: the sections exist, the entry is absent, and the copy explains why.
+ * FR-8.79 (C-19 已实现)：声明了 `ui.pages[]` 的模块在这里得到「模块 + 页面标题」入口，
+ * 点开就地进入 [ModulePageHost]（页内导航，不新增一级目的地——FR-8.77 四个 tab 不变）；
+ * 未声明页面的模块**不渲染整个区块**——没有空 tab、空列表、灰掉的占位行（§8.2）。
+ * 数据经 [pageSource]（本轮内存示例树驱动；接真协议只需实现该窄接口，见模块包 KDoc）。
  *
  * [contentPadding] is the shell's floating glass bar zones (see `shell/AppShell.kt`).
  */
@@ -30,8 +41,24 @@ import vade.ui.skin.LocalSkin
 fun CapabilitiesScreen(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
+    pageSource: ModulePageSource = ModulePageSources.demo(),
 ) {
     val skin = LocalSkin.current
+    val entryIndex = remember(pageSource) { ModulePageEntryRules.build(pageSource.declarations()) }
+    var openEntry by remember { mutableStateOf<ModulePageEntry?>(null) }
+
+    val opened = openEntry
+    if (opened != null) {
+        ModulePageHost(
+            entry = opened,
+            source = pageSource,
+            onBack = { openEntry = null },
+            modifier = modifier,
+            contentPadding = contentPadding,
+        )
+        return
+    }
+
     Column(
         modifier
             .fillMaxSize()
@@ -60,12 +87,15 @@ fun CapabilitiesScreen(
             body = "删除需二次确认（U1-e）。",
         )
 
-        SectionLabel("模块页面")
-        EmptyStateCard(
-            title = "入口不显示",
-            body = "没有声明 ui.pages[] 的模块 → 按 FR-8.79 不显示入口（不是空列表）。" +
-                "C-19 冻结后 U1-h 在这里列出「模块 + 页面标题」。",
-        )
+        // FR-8.79 / C-19 §8.2：没有声明 ui.pages 的模块 → 这里什么都不出现。
+        // 区块整体只在入口集合非空时渲染（EntryIndex.isEmpty 覆盖「无分组且无隐藏页」）。
+        if (!entryIndex.isEmpty) {
+            SectionLabel("模块页面")
+            ModulePageEntryList(
+                index = entryIndex,
+                onOpen = { openEntry = it },
+            )
+        }
         Spacer(Modifier.padding(bottom = 8.dp))
     }
 }

@@ -5,6 +5,7 @@ import com.composables.icons.tabler.Tabler
 import com.composables.icons.tabler.filled.PlayerStop
 import com.composables.icons.tabler.outline.Activity
 import com.composables.icons.tabler.outline.ArrowUp
+import com.composables.icons.tabler.outline.ChartBar
 import com.composables.icons.tabler.outline.Check
 import com.composables.icons.tabler.outline.ChevronDown
 import com.composables.icons.tabler.outline.ChevronLeft
@@ -16,6 +17,7 @@ import com.composables.icons.tabler.outline.Hourglass
 import com.composables.icons.tabler.outline.Shield
 import com.composables.icons.tabler.outline.Inbox
 import com.composables.icons.tabler.outline.LayoutGrid
+import com.composables.icons.tabler.outline.List
 import com.composables.icons.tabler.outline.MessageCircle
 import com.composables.icons.tabler.outline.Palette
 import com.composables.icons.tabler.outline.Paperclip
@@ -23,9 +25,12 @@ import com.composables.icons.tabler.outline.Pencil
 import com.composables.icons.tabler.outline.Pin
 import com.composables.icons.tabler.outline.Refresh
 import com.composables.icons.tabler.outline.Search
+import com.composables.icons.tabler.outline.Settings
+import com.composables.icons.tabler.outline.Tool
 import com.composables.icons.tabler.outline.Trash
 import com.composables.icons.tabler.outline.User
 import com.composables.icons.tabler.outline.X
+import com.composables.icons.tabler.outline.File
 
 /**
  * The app's icon vocabulary (w2-icons, docs/visual-language.md §3): **semantic names** over
@@ -118,4 +123,21 @@ object VadeIcons {
 
     /** Failure / blocked (nothing failed yet). */
     val Failed: ImageVector = Tabler.Outline.Ban
+
+    // --- C-19 module pages (g-module stick; RFC-0009 §4.2 page icon enum) --------
+
+    /** Page icon `list` — queue / list-style module pages (javap-verified getter `getList`). */
+    val PageList: ImageVector = Tabler.Outline.List
+
+    /** Page icon `chart` — stats module pages (`getChartBar`). */
+    val PageChart: ImageVector = Tabler.Outline.ChartBar
+
+    /** Page icon `settings` — preferences module pages (`getSettings`). */
+    val PageSettings: ImageVector = Tabler.Outline.Settings
+
+    /** Page icon `tool` — tool-pages (`getTool`). */
+    val PageTool: ImageVector = Tabler.Outline.Tool
+
+    /** Page icon `file` and the fallback for missing/unknown icon declarations (`getFile`). */
+    val PageFile: ImageVector = Tabler.Outline.File
 }
