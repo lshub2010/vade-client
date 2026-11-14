@@ -80,6 +80,7 @@ import vade.ui.icon.VadeIcons
 import vade.ui.skin.AttachmentState
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.MessageView
+import vade.ui.component.insets.composerNavClearance
 import vade.ui.component.liquid.VadeShadows
 import vade.ui.component.liquid.layeredShadow
 import vade.ui.skin.glass.GlassSurface
@@ -208,8 +209,11 @@ fun ChatThread(
                 Spacer(Modifier.height(2.dp))
             }
             // v2 §1：列表底部内边距 = composer 实测高度 + 24dp（滚到底时最后一条不被遮）。
+            // 实测高度含 composer 自身的 padding（onSizeChanged 挂在 .padding 外侧），g-inset2
+            // 给 composer 底部叠了导航条 clearance 后，spacer 会 1:1 跟涨——最后一条消息
+            // 始终滚出 composer + 导航条区域。公式提成 [composerListSpacer] 供测试钉住。
             val density = LocalDensity.current
-            Spacer(Modifier.height(with(density) { composerHeightPx.toDp() } + 24.dp))
+            Spacer(Modifier.height(with(density) { composerListSpacer(composerHeightPx.toDp()) }))
         }
 
         ComposerOverlay(
@@ -682,6 +686,14 @@ private fun Modifier.glassFallback(skin: vade.ui.skin.Skin): Modifier {
 }
 
 /**
+ * v2 §1 content-side formula, extracted so `ComposerInsetsTest` can pin it: the
+ * list pads by the composer's MEASURED height (its own padding included) + 24 dp,
+ * so the newest message scrolls clear of the composer — and, since g-inset2, of
+ * the navigation-bar zone the composer now clears.
+ */
+internal fun composerListSpacer(composerHeight: Dp): Dp = composerHeight + 24.dp
+
+/**
  * The independent floating layer: queue strip + the skin's InputBar + the out-of-frame
  * SendOrb (both C-09 components — RFC-0011 removed the page-built composer).
  * Measures itself into [onHeightChanged] so the list can pad by 高度 + 24dp (§1).
@@ -724,9 +736,14 @@ private fun BoxScope.ComposerOverlay(
             .align(Alignment.BottomCenter)
             .fillMaxWidth()
             // 键盘弹出时浮层整体上移（§1；桌面 inset 为 0，此 modifier 无副作用）。
+            // g-inset2 (P1-1)：键盘收起时胶囊底部叠上导航条 clearance——真机 API 30 三键条
+            // 直接画在胶囊上、输入热区被吞。桌面/Wasm 两个 inset 都读到 0 → 布局与原来
+            // 逐像素一致；键盘弹出时 IME 盖住导航条且根部 imePadding 已抬升整页，
+            // clearance = max(0, nav − ime) = 0，与 ime 不重复计数（不变式由
+            // ComposerInsetsTest 钉住）。
             .imePadding()
             .onPreviewKeyEvent { event -> handleComposerKeys(event, state) }
-            .padding(start = gutter, end = gutter, bottom = 16.dp)
+            .padding(start = gutter, end = gutter, bottom = 16.dp + composerNavClearance())
             .onSizeChanged { onHeightChanged(it.height) },
     ) {
         Column(
