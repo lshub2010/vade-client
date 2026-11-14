@@ -61,9 +61,9 @@ import com.composables.icons.tabler.outline.Paperclip
 import com.composables.icons.tabler.outline.Pin
 import com.composables.icons.tabler.outline.PlayerPlay
 import com.composables.icons.tabler.outline.Refresh
-import com.composables.icons.tabler.outline.Rocket
 import com.composables.icons.tabler.outline.Search
 import com.composables.icons.tabler.outline.Sparkles
+import com.composables.icons.tabler.outline.Tool
 import com.composables.icons.tabler.outline.Trash
 import com.composables.icons.tabler.outline.User
 import com.composables.icons.tabler.outline.X
@@ -183,6 +183,23 @@ object VadeIcons {
 
     /** Model surface / picker header (FR-8.46 switcher, RFC-0005) — `Sparkles` verified in the 2.2.1 outline jar. */
     val Model: ImageVector = Tabler.Outline.Sparkles
+
+    // --- C-19 module pages (g-module stick; RFC-0009 §4.2 page icon enum) --------
+
+    /** Page icon `list` — queue / list-style module pages (javap-verified getter `getList`). */
+    val PageList: ImageVector = Tabler.Outline.List
+
+    /** Page icon `chart` — stats module pages (`getChartBar`). */
+    val PageChart: ImageVector = Tabler.Outline.ChartBar
+
+    /** Page icon `settings` — preferences module pages (`getSettings`). */
+    val PageSettings: ImageVector = Tabler.Outline.Settings
+
+    /** Page icon `tool` — tool-pages (`getTool`). */
+    val PageTool: ImageVector = Tabler.Outline.Tool
+
+    /** Page icon `file` and the fallback for missing/unknown icon declarations (`getFile`). */
+    val PageFile: ImageVector = Tabler.Outline.File
 }
 
 /**

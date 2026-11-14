@@ -1,0 +1,706 @@
+package vade.ui.module
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.runtime.snapshots.SnapshotStateMap
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.serialization.json.JsonObject
+import vade.ui.UiText
+import vade.ui.component.liquid.VadeShadows
+import vade.ui.component.liquid.layeredShadow
+import vade.ui.icon.VadeIcon
+import vade.ui.icon.VadeIcons
+import vade.ui.skin.AttachmentState
+import vade.ui.skin.AttachmentView
+import vade.ui.skin.BtnStyle
+import vade.ui.skin.LocalSkin
+import vade.ui.skin.ToolCardState
+import vade.ui.skin.ToolCallView
+
+/**
+ * C-19 模块页面的原生渲染层：解析校验（[ModulePageParser]，fail-closed）→ 绑定解析
+ * （[ModulePageResolver]，三根只读绑定）→ 本文件的机械映射 ResolvedNode → Compose。
+ *
+ * 硬红线：
+ *  - **没有 WebView**——全部是 Compose 原生组件 + `Skin` 的 C-09 白名单组件；
+ *  - 4 个宿主组件（MessageBubble / InputBar / ApprovalDialog / BottomBar）在解析期整页拒渲，
+ *    渲染层根本拿不到它们；
+ *  - `Switch` 宿主不本地翻转（checked 只来自绑定，翻转只发动作）；`TextField` 只写本地
+ *    `$input` 内存（N2：不做双向绑定）；动作参数只有字面量 / bind / input 三种来源。
+ *
+ * 视觉（docs/visual-language.md §12「模块页面」行）：页面外壳 `xl` 圆角 + 发丝线 +
+ * 极浅分层阴影；模块卡片 `lg`；绑定值缺失显示空值不崩（§5.4）。
+ */
+
+/** C-19 页面图标枚举 → 语义矢量；`None` 不画图标（§4.2）。 */
+private fun PageIcon.vectorOrNull(): ImageVector? = when (this) {
+    PageIcon.List -> VadeIcons.PageList
+    PageIcon.Chart -> VadeIcons.PageChart
+    PageIcon.Settings -> VadeIcons.PageSettings
+    PageIcon.Tool -> VadeIcons.PageTool
+    PageIcon.File -> VadeIcons.PageFile
+    PageIcon.None -> null
+}
+
+// ---------------------------------------------------------------------------
+// 入口列表（能力页「模块页面」区块的内容）
+// ---------------------------------------------------------------------------
+
+/**
+ * 能力页的入口列表：每个**声明了 `ui.pages[]`** 的模块一张 `lg` 卡，卡内每页一行
+ * （模块 + 页面标题，§8.1）；版本门控的页面只给一行「需要更新的客户端」说明。
+ * 调用方（`CapabilitiesScreen`）在 [ModuleEntryIndex.isEmpty] 时**不渲染本区块**。
+ */
+@Composable
+fun ModulePageEntryList(
+    index: ModuleEntryIndex,
+    onOpen: (ModulePageEntry) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val skin = LocalSkin.current
+    Column(
+        modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        for (group in index.groups) {
+            ModulePageCard(shape = RoundedCornerShape(skin.shapes.lg)) {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                    UiText(
+                        group.moduleTitle,
+                        size = 15,
+                        weight = FontWeight.SemiBold,
+                        color = skin.colors.onSurface,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    for (entry in group.entries) {
+                        skin.ListItem(
+                            title = entry.pageTitle,
+                            subtitle = null,
+                            leading = entry.icon.vectorOrNull()?.let { vector ->
+                                {
+                                    VadeIcon(
+                                        vector,
+                                        contentDescription = null,
+                                        size = 20.dp,
+                                        tint = skin.colors.onSurfaceVariant,
+                                    )
+                                }
+                            },
+                            trailing = {
+                                VadeIcon(
+                                    VadeIcons.ChevronRight,
+                                    contentDescription = null,
+                                    size = 20.dp,
+                                    tint = skin.colors.onSurfaceVariant,
+                                )
+                            },
+                            onClick = { onOpen(entry) },
+                        )
+                    }
+                }
+            }
+        }
+        if (index.hidden.isNotEmpty()) {
+            ModulePageCard(shape = RoundedCornerShape(skin.shapes.lg)) {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for (note in index.hidden) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            VadeIcon(
+                                VadeIcons.Waiting,
+                                contentDescription = null,
+                                size = 16.dp,
+                                tint = skin.colors.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.size(8.dp))
+                            UiText(
+                                "${note.moduleTitle} › ${note.pageTitle}：此页面需要更新的客户端（v${note.version}）",
+                                size = 13,
+                                color = skin.colors.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 模块卡片容器：`lg` 圆角 + 1px 发丝线 + §8 row-1 极浅分层阴影（shadow0）。 */
+@Composable
+private fun ModulePageCard(shape: RoundedCornerShape, content: @Composable () -> Unit) {
+    val skin = LocalSkin.current
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .layeredShadow(VadeShadows.card, shape, dark = skin.colors.isDark)
+            .clip(shape)
+            .background(skin.colors.surface)
+            .border(1.dp, skin.colors.hairline, shape),
+    ) {
+        content()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 页面宿主
+// ---------------------------------------------------------------------------
+
+/**
+ * 模块页宿主：面包屑 + 返回、离线/状态不可用/需要会话三种 banner、错误卡
+ * （MANIFEST_INVALID，最多 3 条定位，§7.2）、正文（外壳 `xl` + 发丝线）。
+ *
+ * 页内 `navigate`（module:&lt;page_id&gt;）在宿主内推进面包屑栈（§8.3：上限 3 层，
+ * 第 4 次替换栈顶）；其余 navigate 目标与 `tools/call` / `ui/submit` 通过回调交给
+ * 接线方——本轮协议未接（见 RESULT 未接线清单）。
+ */
+@Composable
+fun ModulePageHost(
+    entry: ModulePageEntry,
+    source: ModulePageSource,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+    hasActiveSession: Boolean = false,
+    onToolCall: (PageAction.ToolCall, kotlinx.serialization.json.JsonObject) -> Unit = { _, _ -> },
+    onSubmit: (List<String>) -> Unit = {},
+    onNavigateOut: (NavigateTarget) -> Unit = {},
+) {
+    val skin = LocalSkin.current
+    val declaredPages = remember(source, entry.moduleId) { declaredPageIds(source, entry.moduleId) }
+
+    // 面包屑栈：深度 1 = 页面标题；navigate 到同模块另一页入栈（≤3 层，第 4 次替换栈顶）。
+    val stack = remember { mutableStateListOf(entry) }
+    val current = stack.last()
+    var refresh by remember(current.pageId) { mutableIntStateOf(0) }
+
+    // `$input` 只存客户端内存（§5.3）：不进快照、不同步、不落盘，页面销毁即丢。
+    val inputs = remember(current.pageId) { mutableStateMapOf<String, String>() }
+    val tabSelections = remember(current.pageId) { mutableStateMapOf<String, Int>() }
+
+    val status = remember(current.moduleId, refresh) { source.status(current.moduleId) }
+    val raw = remember(current.pageId, refresh) { source.loadPage(current.moduleId, current.pageId) }
+    val state = remember(current.pageId, refresh) { source.loadState(current.moduleId, current.instanceId, current.pageId) }
+    val parseResult = remember(current.pageId, raw, declaredPages) {
+        raw?.let { ModulePageParser.parse(it, declaredPages) }
+    }
+
+    val env = PageEnv(
+        state = state,
+        moduleOnline = status.online,
+        moduleVersion = status.version,
+        inputs = inputs.toMap(),
+        hasSession = hasActiveSession,
+    )
+    val report = PageResolveReport()
+    val resolved = (parseResult as? ParseResult.Ok)?.root?.let {
+        ModulePageResolver.resolve(it, env, report)
+    }
+
+    val dispatch: (PageAction) -> Unit = { action ->
+        when (action) {
+            is PageAction.Navigate -> when (val target = action.target) {
+                is NavigateTarget.ModulePage -> {
+                    val module = source.declarations().firstOrNull { it.moduleId == current.moduleId }
+                    val page = module?.pages?.firstOrNull { it.pageId == target.pageId }
+                    if (module != null && page != null) {
+                        val next = ModulePageEntry(
+                            moduleId = module.moduleId,
+                            instanceId = module.instanceId,
+                            moduleTitle = module.moduleTitle,
+                            pageId = page.pageId,
+                            pageTitle = page.title,
+                            icon = page.icon,
+                            version = page.version,
+                            requiresSession = page.requiresSession,
+                        )
+                        // §8.3：上限 3 层，第 4 次 navigate 替换栈顶（防「浏览器历史」化）。
+                        if (stack.size >= 3) stack[stack.lastIndex] = next else stack.add(next)
+                    }
+                }
+                else -> onNavigateOut(target)
+            }
+            is PageAction.ToolCall -> {
+                if (ModulePageResolver.actionEnabled(action, env)) {
+                    val args = ModulePageResolver.resolveArgs(action.args, env, report)
+                    if (args != null) onToolCall(action, args)
+                }
+            }
+            is PageAction.UiSubmit -> {
+                if (ModulePageResolver.actionEnabled(action, env)) {
+                    onSubmit(ModulePageResolver.resolveSubmitTexts(action.parts, env, report))
+                }
+            }
+        }
+    }
+
+    Column(
+        modifier
+            .fillMaxSize()
+            .background(skin.colors.canvas)
+            .verticalScroll(rememberScrollState())
+            .padding(contentPadding)
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        HostHeader(stack, onBack = { if (stack.size > 1) stack.removeAt(stack.lastIndex) else onBack() })
+        BannerRow(current, status, state, hasActiveSession, onRetry = { refresh += 1 })
+        when {
+            raw == null -> UnavailableCard(onRetry = { refresh += 1 }, onBack = onBack)
+            parseResult is ParseResult.Rejected -> ModulePageErrorCard(
+                moduleTitle = current.moduleTitle,
+                pageTitle = current.pageTitle,
+                reasons = parseResult.reasons,
+                onBack = onBack,
+                onRetry = { refresh += 1 },
+            )
+            resolved != null -> PageShell {
+                RenderResolved(
+                    node = resolved,
+                    path = "root",
+                    env = env,
+                    inputs = inputs,
+                    tabSelections = tabSelections,
+                    dispatch = dispatch,
+                )
+            }
+            else -> UnavailableCard(onRetry = { refresh += 1 }, onBack = onBack)
+        }
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+/** 顶栏：返回（图标按钮，触摸区 44dp）+ 面包屑「模块 › 页 A › 页 B」（§8.3）。 */
+@Composable
+private fun HostHeader(stack: SnapshotStateList<ModulePageEntry>, onBack: () -> Unit) {
+    val skin = LocalSkin.current
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .clickable(onClick = onBack),
+            contentAlignment = Alignment.Center,
+        ) {
+            VadeIcon(
+                VadeIcons.Back,
+                contentDescription = if (stack.size > 1) "返回上一页" else "返回能力页",
+                size = 20.dp,
+                tint = skin.colors.onSurface,
+            )
+        }
+        Spacer(Modifier.size(8.dp))
+        val breadcrumb = (listOf(stack.first().moduleTitle) + stack.map { it.pageTitle })
+            .joinToString(" › ")
+        UiText(breadcrumb, size = 15, weight = FontWeight.SemiBold, color = skin.colors.onSurface)
+    }
+}
+
+/** 三种顶部横幅（§5.4 / §7.4 / §4.2）：离线、状态不可用（可重试）、需要会话。 */
+@Composable
+private fun BannerRow(
+    entry: ModulePageEntry,
+    status: ModuleStatus,
+    state: kotlinx.serialization.json.JsonObject?,
+    hasActiveSession: Boolean,
+    onRetry: () -> Unit,
+) {
+    val skin = LocalSkin.current
+    val message = when {
+        !status.online -> "模块离线——显示最后一次成功渲染的结构，动作已禁用"
+        state == null -> "模块状态不可用——绑定值显示为空，可重试"
+        entry.requiresSession && !hasActiveSession -> "需要先打开会话——此页面的提交动作已禁用"
+        else -> null
+    } ?: return
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(skin.shapes.xs))
+            .background(skin.colors.surfaceVariant)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        VadeIcon(
+            if (status.online) VadeIcons.Waiting else VadeIcons.Failed,
+            contentDescription = null,
+            size = 16.dp,
+            tint = skin.colors.onSurfaceVariant,
+        )
+        Spacer(Modifier.size(8.dp))
+        UiText(message, size = 13, color = skin.colors.onSurfaceVariant, modifier = Modifier.weight(1f))
+        if (!status.online || state == null) {
+            Box(
+                Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .clickable(onClick = onRetry),
+                contentAlignment = Alignment.Center,
+            ) {
+                VadeIcon(VadeIcons.Refresh, contentDescription = "重试", size = 18.dp, tint = skin.colors.onSurface)
+            }
+        }
+    }
+}
+
+/** 渲染期拒渲的错误卡（§7.2）：模块名、页面标题、MANIFEST_INVALID、最多 3 条定位。 */
+@Composable
+private fun ModulePageErrorCard(
+    moduleTitle: String,
+    pageTitle: String,
+    reasons: List<String>,
+    onBack: () -> Unit,
+    onRetry: () -> Unit,
+) {
+    val skin = LocalSkin.current
+    ModulePageCard(shape = RoundedCornerShape(skin.shapes.xl)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            UiText("页面无法渲染", size = 20, weight = FontWeight.SemiBold, color = skin.colors.onSurface)
+            UiText(
+                "$moduleTitle › $pageTitle · MANIFEST_INVALID",
+                size = 13,
+                color = skin.colors.onSurfaceVariant,
+            )
+            for (reason in reasons.take(3)) {
+                UiText("· $reason", size = 13, color = skin.colors.onSurfaceVariant)
+            }
+            if (reasons.size > 3) {
+                UiText("……共 ${reasons.size} 条问题", size = 13, color = skin.colors.onSurfaceVariant)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                skin.Button(text = "重试", onClick = onRetry, style = BtnStyle.Secondary)
+                skin.Button(text = "返回", onClick = onBack, style = BtnStyle.Primary)
+            }
+        }
+    }
+}
+
+/** `ui/page.get` 不可用（NOT_FOUND / UNAVAILABLE）→ 卡片 + 重试，不白屏（§7.4）。 */
+@Composable
+private fun UnavailableCard(onRetry: () -> Unit, onBack: () -> Unit) {
+    val skin = LocalSkin.current
+    ModulePageCard(shape = RoundedCornerShape(skin.shapes.xl)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            UiText("页面不可用", size = 20, weight = FontWeight.SemiBold, color = skin.colors.onSurface)
+            UiText("页面暂时取不到，可重试或返回。", size = 13, color = skin.colors.onSurfaceVariant)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                skin.Button(text = "重试", onClick = onRetry, style = BtnStyle.Secondary)
+                skin.Button(text = "返回", onClick = onBack, style = BtnStyle.Primary)
+            }
+        }
+    }
+}
+
+/** 页面外壳：`xl` 圆角 + 发丝线 + shadow0（visual language §12「模块页面」行）。 */
+@Composable
+private fun PageShell(content: @Composable () -> Unit) {
+    val skin = LocalSkin.current
+    val shape = RoundedCornerShape(skin.shapes.xl)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .layeredShadow(VadeShadows.card, shape, dark = skin.colors.isDark)
+            .clip(shape)
+            .background(skin.colors.surface)
+            .border(1.dp, skin.colors.hairline, shape)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        content()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ResolvedNode → Compose 的递归映射（不做任何决策）
+// ---------------------------------------------------------------------------
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun RenderResolved(
+    node: ResolvedNode,
+    path: String,
+    env: PageEnv,
+    inputs: SnapshotStateMap<String, String>,
+    tabSelections: SnapshotStateMap<String, Int>,
+    dispatch: (PageAction) -> Unit,
+) {
+    when (node) {
+        is ResolvedNode.Column -> Column(
+            Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(node.gap.dpSize.dp),
+        ) {
+            node.children.forEachIndexed { index, child ->
+                RenderResolved(child, "$path.$index", env, inputs, tabSelections, dispatch)
+            }
+        }
+
+        is ResolvedNode.Row -> {
+            val arrangement = Arrangement.spacedBy(node.gap.dpSize.dp)
+            val alignment = when (node.align) {
+                RowAlign.Start -> Alignment.Top
+                RowAlign.Center -> Alignment.CenterVertically
+                RowAlign.End -> Alignment.Bottom
+            }
+            if (node.wrap) {
+                FlowRow(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = arrangement,
+                    verticalArrangement = arrangement,
+                ) {
+                    node.children.forEachIndexed { index, child ->
+                        RenderResolved(child, "$path.$index", env, inputs, tabSelections, dispatch)
+                    }
+                }
+            } else {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = arrangement,
+                    verticalAlignment = alignment,
+                ) {
+                    node.children.forEachIndexed { index, child ->
+                        RenderResolved(child, "$path.$index", env, inputs, tabSelections, dispatch)
+                    }
+                }
+            }
+        }
+
+        is ResolvedNode.Tabs -> {
+            val selected = tabSelections[path] ?: node.selectedIndex
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    node.tabs.forEachIndexed { index, tab ->
+                        LocalSkin.current.Button(
+                            text = tab.title,
+                            onClick = { tabSelections[path] = index },
+                            style = if (index == selected) BtnStyle.Primary else BtnStyle.Secondary,
+                        )
+                    }
+                }
+                val tab = node.tabs.getOrNull(selected) ?: node.tabs.first()
+                RenderResolved(tab.child, "$path.tab", env, inputs, tabSelections, dispatch)
+            }
+        }
+
+        is ResolvedNode.ListBlock -> Column(
+            Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (node.rows.isEmpty()) {
+                UiText(node.emptyText, size = 13, color = LocalSkin.current.colors.onSurfaceVariant)
+            } else {
+                node.rows.forEachIndexed { index, row ->
+                    RenderResolved(row, "$path.$index", env, inputs, tabSelections, dispatch)
+                }
+            }
+            if (node.total > node.shown) {
+                UiText(
+                    "共 ${node.total} 项，每屏最多显示 ${node.shown} 项",
+                    size = 13,
+                    color = LocalSkin.current.colors.onSurfaceVariant,
+                )
+            }
+        }
+
+        is ResolvedNode.TextLeaf -> {
+            if (node.text.isNotEmpty()) RenderTextLeaf(node)
+        }
+
+        is ResolvedNode.Component -> RenderComponent(
+            node = node,
+            path = path,
+            env = env,
+            inputs = inputs,
+            tabSelections = tabSelections,
+            dispatch = dispatch,
+        )
+    }
+}
+
+/** `text` 叶的 style → 字号/字重（visual language §四：页面标题 20/600、正文 15、次要 13）。 */
+@Composable
+private fun RenderTextLeaf(node: ResolvedNode.TextLeaf) {
+    val skin = LocalSkin.current
+    when (node.style) {
+        PageTextStyle.Title -> UiText(
+            node.text, size = 20, weight = FontWeight.SemiBold,
+            color = skin.colors.onSurface, maxLines = node.maxLines,
+        )
+        PageTextStyle.Subtitle -> UiText(
+            node.text, size = 15, weight = FontWeight.Medium,
+            color = skin.colors.onSurface, maxLines = node.maxLines,
+        )
+        PageTextStyle.Body -> UiText(
+            node.text, size = 15,
+            color = skin.colors.onSurface, maxLines = node.maxLines,
+        )
+        PageTextStyle.Caption -> UiText(
+            node.text, size = 13,
+            color = skin.colors.onSurfaceVariant, maxLines = node.maxLines,
+        )
+        PageTextStyle.Mono -> UiText(
+            node.text,
+            style = TextStyle(fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = skin.colors.onSurface),
+            maxLines = node.maxLines,
+        )
+    }
+}
+
+@Composable
+private fun RenderComponent(
+    node: ResolvedNode.Component,
+    path: String,
+    env: PageEnv,
+    inputs: SnapshotStateMap<String, String>,
+    tabSelections: SnapshotStateMap<String, Int>,
+    dispatch: (PageAction) -> Unit,
+) {
+    val skin = LocalSkin.current
+    when (val p = node.payload) {
+        is ResolvedComponent.Button -> skin.Button(
+            text = p.text,
+            onClick = { p.action?.let(dispatch) },
+            style = p.style,
+            enabled = p.enabled,
+        )
+
+        is ResolvedComponent.TextField -> skin.TextField(
+            value = p.value,
+            onValueChange = { newValue ->
+                val id = p.inputId ?: return@TextField
+                // max_length ≤4096（§4.5）：超长直接不接受，不做隐形截断提示。
+                if (p.maxLength <= 0 || newValue.length <= p.maxLength) inputs[id] = newValue
+            },
+            placeholder = p.placeholder,
+            enabled = p.enabled,
+        )
+
+        is ResolvedComponent.Card -> skin.Card(
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (!p.title.isNullOrEmpty()) {
+                    UiText(p.title, size = 15, weight = FontWeight.SemiBold, color = skin.colors.onSurface)
+                }
+                if (!p.subtitle.isNullOrEmpty()) {
+                    UiText(p.subtitle, size = 13, color = skin.colors.onSurfaceVariant)
+                }
+                p.children.forEachIndexed { index, child ->
+                    RenderResolved(child, "$path.$index", env, inputs, tabSelections, dispatch)
+                }
+            }
+        }
+
+        is ResolvedComponent.ListItem -> skin.ListItem(
+            title = p.title,
+            leading = p.leadingIcon?.vectorOrNull()?.let { vector ->
+                {
+                    VadeIcon(vector, contentDescription = null, size = 20.dp, tint = skin.colors.onSurfaceVariant)
+                }
+            },
+            subtitle = p.subtitle,
+            trailing = when {
+                !p.trailingText.isNullOrEmpty() -> {
+                    { UiText(p.trailingText, size = 13, color = skin.colors.onSurfaceVariant) }
+                }
+                p.action != null -> {
+                    {
+                        VadeIcon(
+                            VadeIcons.ChevronRight, contentDescription = null,
+                            size = 20.dp, tint = skin.colors.onSurfaceVariant,
+                        )
+                    }
+                }
+                else -> null
+            },
+            onClick = p.action
+                ?.takeIf { env.moduleOnline }
+                ?.let { action -> { dispatch(action) } },
+            enabled = p.action == null || env.moduleOnline,
+        )
+
+        // Switch 宿主不本地翻转（§4.5）：checked 只来自绑定，翻转只发动作，
+        // 状态由下一次 ui/state.get 反映（本轮协议未接 → 翻转发回调、不翻转 UI）。
+        is ResolvedComponent.Switch -> skin.Switch(
+            checked = p.checked,
+            onCheckedChange = { p.action?.let(dispatch) },
+            enabled = p.enabled,
+        )
+
+        is ResolvedComponent.ToolCallCard -> skin.ToolCallCard(
+            call = ToolCallView(
+                id = "module-page-$path",
+                name = p.tool,
+                args = p.argsPreview,
+                result = p.resultSummary,
+                risk = "low",
+                isError = p.state == ToolNodeState.Failed,
+            ),
+            state = when (p.state) {
+                ToolNodeState.Running -> ToolCardState.Expanded
+                ToolNodeState.WaitingApproval -> ToolCardState.PendingApproval
+                else -> ToolCardState.Collapsed
+            },
+            onToggle = {},
+        )
+
+        is ResolvedComponent.AttachmentChip -> {
+            val view = AttachmentView(
+                fileId = p.fileId,
+                fileName = p.name,
+                mime = p.mime,
+                state = when (p.state) {
+                    ChipNodeState.Validating -> AttachmentState.Validating
+                    ChipNodeState.Uploading -> AttachmentState.Uploading
+                    ChipNodeState.Uploaded -> AttachmentState.Uploaded
+                    ChipNodeState.Failed -> AttachmentState.Failed
+                },
+            )
+            if (p.action != null && env.moduleOnline) {
+                // skin.AttachmentChip 没有点击槽（C-09 冻结签名）；click 只能 navigate（Q4），
+                // 所以用一层可点容器承载，chip 本体不换。
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(skin.shapes.sm))
+                        .clickable { p.action.let(dispatch) },
+                ) {
+                    skin.AttachmentChip(view)
+                }
+            } else {
+                skin.AttachmentChip(view)
+            }
+        }
+    }
+}
