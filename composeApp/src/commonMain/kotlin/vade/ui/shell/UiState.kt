@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import vade.ui.data.FakeSessions
+import vade.ui.chat.ChatPreset
 import vade.ui.data.SessionGroup
 import vade.ui.data.SessionSummary
 import vade.ui.data.TimeBucket
@@ -23,6 +24,10 @@ class UiState(
     initialSkinId: String,
     initialDest: Destination,
     initialPanelOpen: Boolean = false,
+    /** U1-b: open straight into a session (deep link / screenshot loop). */
+    initialSessionId: String? = null,
+    /** U1-b: derived-state seed for the detail screen; `Live` is the app default. */
+    val chatPreset: ChatPreset = ChatPreset.Live,
 ) {
     var dest by mutableStateOf(initialDest)
         private set
@@ -33,7 +38,7 @@ class UiState(
     var barStyle by mutableStateOf(initialBar)
         private set
 
-    var selectedSessionId by mutableStateOf<String?>(null)
+    var selectedSessionId by mutableStateOf(initialSessionId)
         private set
 
     /** Right panel starts collapsed (D89: default off, `⌘\` toggles — button here). */

@@ -87,7 +87,7 @@ private fun ShellBody(state: UiState) {
         val session = state.selectedSession
         val detailOpen = state.dest == Destination.Sessions && session != null && !metrics.twoPane
 
-        Row(Modifier.fillMaxSize().background(skin.colors.surfaceVariant)) {
+        Row(Modifier.fillMaxSize().background(skin.colors.canvas)) {
             if (metrics.useRail) {
                 NavRail(
                     width = metrics.railWidth,
@@ -100,8 +100,8 @@ private fun ShellBody(state: UiState) {
             Column(Modifier.weight(1f).fillMaxHeight()) {
                 if (detailOpen) {
                     TopBar(
-                        title = session?.title ?: "",
-                        subtitle = "会话详情 · 消息流由 U1-b 承载",
+                        title = session.title,
+                        subtitle = "会话详情 · 消息流 / 工具卡为假数据",
                         floating = metrics.tier == Tier.Compact,
                         leading = { TopBarButton("←") { state.back() } },
                     )
@@ -179,11 +179,21 @@ private fun DestinationHost(metrics: ShellMetrics, state: UiState) {
                     )
                     VerticalRule()
                     Box(Modifier.weight(1f).fillMaxHeight()) {
-                        SessionDetailScreen(state.selectedSession)
+                        SessionDetailScreen(
+                            session = state.selectedSession,
+                            preset = state.chatPreset,
+                            animate = state.chatPreset == vade.ui.chat.ChatPreset.Live,
+                        )
                     }
                 }
             } else if (state.selectedSessionId != null) {
-                SessionDetailScreen(state.selectedSession)
+                SessionDetailScreen(
+                    session = state.selectedSession,
+                    preset = state.chatPreset,
+                    animate = state.chatPreset == vade.ui.chat.ChatPreset.Live,
+                    // The pushed-detail top bar above already carries this title.
+                    showTitle = false,
+                )
             } else {
                 SessionsScreen(
                     groups = state.groups(),
@@ -220,7 +230,7 @@ private fun RightPanel(onClose: () -> Unit) {
             }
             skin.Button("×", onClick = onClose, style = BtnStyle.Text)
         }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(skin.colors.outline.copy(alpha = 0.30f)))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(skin.colors.hairline))
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             UiText("暂无模块页面", size = 12, weight = FontWeight.SemiBold)
             UiText(
@@ -240,7 +250,7 @@ private fun RightPanel(onClose: () -> Unit) {
 
 @Composable
 private fun VerticalRule() {
-    Box(Modifier.width(1.dp).fillMaxHeight().background(LocalSkin.current.colors.outline.copy(alpha = 0.28f)))
+    Box(Modifier.width(1.dp).fillMaxHeight().background(LocalSkin.current.colors.hairline))
 }
 
 /** Bottom-bar rows: the four destinations, in contract order (FR-8.77). */

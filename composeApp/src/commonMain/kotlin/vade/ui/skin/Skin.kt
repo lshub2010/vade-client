@@ -112,9 +112,16 @@ interface Skin {
     // --- 8-11: AMEND-22 / D93 additions ---------------------------------------
 
     /**
-     * 8 · MessageBubble (D92): assistant full width capped at [maxWidth], user
-     * right-aligned bubble, system centred notice. [actions] is the per-message
-     * action row (copy / retry / branch …); the page decides which exist.
+     * 8 · MessageBubble (D92/D92a): assistant full width capped at [maxWidth] and
+     * **without a bubble** (visual language §5: content first, no chat-bubble wall),
+     * user right-aligned bubble with a 6dp tail corner, system centred notice.
+     * [actions] is the per-message action row (copy / retry / branch …); the page
+     * decides which exist.
+     *
+     * [body] is the optional rich-content slot (added after the C-09 freeze, 2026-11-14):
+     * when non-null the skin renders it instead of [MessageView.text], so a page can pass
+     * its markdown renderer without the skin knowing how markdown works. Null keeps the
+     * frozen behaviour byte-for-byte.
      */
     @Composable
     fun MessageBubble(
@@ -123,31 +130,53 @@ interface Skin {
         maxWidth: Dp = 760.dp,
         actions: List<MessageAction> = emptyList(),
         onAction: (MessageAction) -> Unit = {},
+        body: (@Composable () -> Unit)? = null,
     )
 
     /**
      * 9 · AttachmentChip (D95/D96): file_id + mime + upload state. Copy must say
      * "已压缩，原图未保留" — never imply the original is downloadable.
+     *
+     * [leading] is the optional 28×28 thumbnail slot (added after the C-09 freeze,
+     * 2026-11-14): the page owns the bitmap, the chip owns the frame. Null keeps the
+     * old mime-letter placeholder.
      */
     @Composable
     fun AttachmentChip(
         attachment: AttachmentView,
         onRetry: (() -> Unit)? = null,
         onRemove: (() -> Unit)? = null,
+        leading: (@Composable () -> Unit)? = null,
     )
 
     /**
      * 10 · ToolCallCard (D94): success collapses, failure auto-expands,
      * `risk=high` approval stays expanded. The page picks [state]; the skin does
      * not decide policy.
+     *
+     * [meta] is the optional footer slot (added after the C-09 freeze, 2026-11-14): the
+     * page passes `duration_ms` / `batch_id` / error-code rows, which the frozen
+     * [ToolCallView] has no field for (RESULT · 需要 RFC 的那一条已由这个槽位关闭)。
+     * The skin draws it only while the card is expanded; null renders nothing.
      */
     @Composable
-    fun ToolCallCard(call: ToolCallView, state: ToolCardState, onToggle: () -> Unit = {})
+    fun ToolCallCard(
+        call: ToolCallView,
+        state: ToolCardState,
+        onToggle: () -> Unit = {},
+        meta: (@Composable () -> Unit)? = null,
+    )
 
     /**
      * 11 · InputBar (D88): multi-line growth, send / stop, attachment slot, and
      * the voice button — which a platform hides entirely when it has no on-device
      * STT (D97), so [voiceAvailable] false means "do not draw", not "grey it out".
+     *
+     * [sendEnabled] / [maxLines] were added after the C-09 freeze (2026-11-14), both
+     * optional: `sendEnabled = false` renders the send control in its disabled state
+     * (visual language §5 主按钮 disabled: muted 30% fill, no outline) without the page
+     * having to hide it, and [maxLines] caps growth (visual language: six lines, then
+     * the field scrolls internally).
      */
     @Composable
     fun InputBar(
@@ -159,6 +188,8 @@ interface Skin {
         attachments: (@Composable () -> Unit)? = null,
         enabled: Boolean = true,
         voiceAvailable: Boolean = false,
+        sendEnabled: Boolean = enabled,
+        maxLines: Int = 6,
     )
 }
 
@@ -181,6 +212,21 @@ data class SkinColors(
     val error: Color,
     val onError: Color,
     val isDark: Boolean = false,
+    // --- optional tokens added after the C-09 freeze (2026-11-14) --------------
+    // Each one falls back to a token that already existed, so a skin that does not
+    // implement the visual-language palette keeps rendering exactly as before.
+
+    /** App backdrop behind cards (`#F7F7F8` light / `#0E0E10` dark in the visual language). */
+    val canvas: Color = surface,
+
+    /** 1px separator colour. Cards use it *instead of* a shadow (visual language §1.2). */
+    val hairline: Color = outline,
+
+    /** Tool-card status bar: 成功 `#2F7D5A`. */
+    val success: Color = primary,
+
+    /** Tool-card status bar: 审批 / warn `#B26A00`. */
+    val warning: Color = error,
 )
 
 @Immutable
@@ -189,11 +235,25 @@ data class SkinShapes(
     val medium: Dp = 14.dp,
     val large: Dp = 22.dp,
     val pill: Dp = 999.dp,
+    // --- optional steps added after the C-09 freeze (2026-11-14) --------------
+    // The visual language scales 8 / 12 / 16 / 20 / 28; `small`/`medium`/`large`
+    // keep their old meaning so no existing call site moves.
+
+    /** xs · 8dp — thumbnails, inline code, small tags. */
+    val xs: Dp = small,
+
+    /** xl · 28dp — bottom sheets, command palette, full-screen overlays. */
+    val xl: Dp = large,
 )
 
 @Immutable
 data class SkinTypography(
     val title: TextStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.SemiBold),
+    /**
+     * Body default. The chat reading column overrides this to the visual-language
+     * 15sp / 1.55 inside `MarkdownText`; every other page passes an explicit size to
+     * `UiText`, so this stays 14sp and no existing screen re-flows.
+     */
     val body: TextStyle = TextStyle(fontSize = 14.sp),
     val caption: TextStyle = TextStyle(fontSize = 11.sp),
     val mono: TextStyle = TextStyle(fontSize = 12.sp, fontFamily = FontFamily.Monospace),

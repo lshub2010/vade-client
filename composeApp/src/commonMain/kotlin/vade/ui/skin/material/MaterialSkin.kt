@@ -29,6 +29,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import vade.ui.skin.BtnStyle
@@ -54,19 +55,33 @@ class MaterialSkin(
     override val id: String = skinId
 
     override val colors = vade.ui.skin.SkinColors(
-        primary = Color(0xFF2F5D8A),
+        // Visual language §2 light tokens. No `#6750A4` anywhere: the accent is a
+        // graphite-neutral indigo, and colour appears only on accent/status surfaces.
+        primary = Color(0xFF5B5BD6),
         onPrimary = Color(0xFFFFFFFF),
-        surface = Color(0xFFFCFCFD),
-        surfaceVariant = Color(0xFFF1F3F6),
-        onSurface = Color(0xFF1A1C1F),
-        onSurfaceVariant = Color(0xFF59616B),
-        outline = Color(0xFFB7BEC8),
-        error = Color(0xFFB3261E),
+        surface = Color(0xFFFFFFFF),
+        surfaceVariant = Color(0xFFF0F0F2), // surfaceSunken: code blocks, chips, inputs
+        onSurface = Color(0xFF17171A),
+        onSurfaceVariant = Color(0xFF6B6B73),
+        outline = Color(0xFFE6E6E9), // hairline
+        error = Color(0xFFD93A3A),
         onError = Color(0xFFFFFFFF),
         isDark = false,
+        canvas = Color(0xFFF7F7F8),
+        hairline = Color(0xFFE6E6E9),
+        success = Color(0xFF2F7D5A),
+        warning = Color(0xFFB26A00),
     )
 
-    override val shapes = vade.ui.skin.SkinShapes()
+    /** Visual language §3: 8 / 12 / 16 / 20 / 28 + pill. Three steps per screen, max. */
+    override val shapes = vade.ui.skin.SkinShapes(
+        small = 12.dp,
+        medium = 16.dp,
+        large = 20.dp,
+        pill = 999.dp,
+        xs = 8.dp,
+        xl = 28.dp,
+    )
     override val typography = vade.ui.skin.SkinTypography()
     override val motion = vade.ui.skin.SkinMotion()
 
@@ -77,25 +92,32 @@ class MaterialSkin(
         val c = colors
         val bg: Color
         val fg: Color
+        val radius: Dp
+        val border: Color?
         when (style) {
-            BtnStyle.Primary -> { bg = c.primary; fg = c.onPrimary }
-            BtnStyle.Secondary -> { bg = c.surfaceVariant; fg = c.onSurface }
-            BtnStyle.Danger -> { bg = c.error; fg = c.onError }
-            BtnStyle.Text -> { bg = Color.Transparent; fg = c.primary }
+            // 主按钮 pill：accent 底 + 白字；禁用 textMuted @30% 底、无描边 (视觉规范 §5).
+            BtnStyle.Primary -> { bg = c.primary; fg = c.onPrimary; radius = shapes.pill; border = null }
+            // 次要按钮 sm(12dp)：透明底 + hairline.
+            BtnStyle.Secondary -> { bg = Color.Transparent; fg = c.onSurface; radius = shapes.small; border = c.hairline }
+            BtnStyle.Danger -> { bg = c.error; fg = c.onError; radius = shapes.small; border = null }
+            BtnStyle.Text -> { bg = Color.Transparent; fg = c.primary; radius = shapes.small; border = null }
         }
+        val fill = if (!enabled && style == BtnStyle.Primary) c.onSurfaceVariant.copy(alpha = 0.30f) else bg
+        val shape = RoundedCornerShape(radius)
         Box(
             modifier = Modifier
-                .height(38.dp)
-                .alpha(if (enabled) 1f else 0.42f)
-                .clip(RoundedCornerShape(shapes.small))
-                .background(bg)
+                .height(if (style == BtnStyle.Text) 36.dp else 40.dp)
+                .alpha(if (enabled) 1f else if (style == BtnStyle.Primary) 1f else 0.42f)
+                .clip(shape)
+                .background(fill)
+                .then(if (border != null) Modifier.border(1.dp, border, shape) else Modifier)
                 .clickable(enabled = enabled, onClick = onClick)
                 .padding(horizontal = if (style == BtnStyle.Text) 8.dp else 16.dp),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 text = text,
-                color = fg,
+                color = if (!enabled) c.onSurfaceVariant else fg,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
@@ -145,11 +167,12 @@ class MaterialSkin(
 
     @Composable
     override fun Card(modifier: Modifier, content: @Composable () -> Unit) {
+        // 视觉规范 §1.2：1px 发丝线代替阴影；边框 + 底色，不叠阴影（禁止三者同用）。
         Box(
             modifier = modifier
                 .clip(RoundedCornerShape(shapes.medium))
                 .background(colors.surface)
-                .border(1.dp, colors.outline.copy(alpha = 0.28f), RoundedCornerShape(shapes.medium)),
+                .border(1.dp, colors.hairline, RoundedCornerShape(shapes.medium)),
         ) {
             content()
             if (notInstalledNotice != null) {
@@ -341,21 +364,25 @@ class MaterialSkin(
         maxWidth: androidx.compose.ui.unit.Dp,
         actions: List<vade.ui.skin.MessageAction>,
         onAction: (vade.ui.skin.MessageAction) -> Unit,
-    ) = MaterialMessageBubble(message, role, maxWidth, actions, onAction, colors, shapes, typography)
+        body: (@Composable () -> Unit)?,
+    ) = MaterialMessageBubble(message, role, maxWidth, actions, onAction, body, colors, shapes, typography)
 
+    /** 附件 chip（视觉规范 §5）：`sm` 圆角、28×28 缩略图、名称 13sp。 */
     @Composable
     override fun AttachmentChip(
         attachment: vade.ui.skin.AttachmentView,
         onRetry: (() -> Unit)?,
         onRemove: (() -> Unit)?,
-    ) = MaterialAttachmentChip(attachment, onRetry, onRemove, colors, shapes, typography)
+        leading: (@Composable () -> Unit)?,
+    ) = MaterialAttachmentChip(attachment, onRetry, onRemove, leading, colors, shapes, typography)
 
     @Composable
     override fun ToolCallCard(
         call: vade.ui.skin.ToolCallView,
         state: vade.ui.skin.ToolCardState,
         onToggle: () -> Unit,
-    ) = MaterialToolCallCard(call, state, onToggle, colors, shapes, typography)
+        meta: (@Composable () -> Unit)?,
+    ) = MaterialToolCallCard(call, state, onToggle, meta, colors, shapes, typography)
 
     @Composable
     override fun InputBar(
@@ -367,6 +394,8 @@ class MaterialSkin(
         attachments: (@Composable () -> Unit)?,
         enabled: Boolean,
         voiceAvailable: Boolean,
+        sendEnabled: Boolean,
+        maxLines: Int,
     ) = MaterialInputBar(
         value = value,
         onValueChange = onValueChange,
@@ -376,6 +405,8 @@ class MaterialSkin(
         attachments = attachments,
         enabled = enabled,
         voiceAvailable = voiceAvailable,
+        sendEnabled = sendEnabled,
+        maxLines = maxLines,
         colors = colors,
         shapes = shapes,
         typography = typography,

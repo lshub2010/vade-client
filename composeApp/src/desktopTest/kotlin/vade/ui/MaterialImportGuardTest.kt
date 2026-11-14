@@ -22,7 +22,7 @@ class MaterialImportGuardTest {
     fun businessPagesDoNotImportMaterial3() {
         val root = File(moduleDir(), "src/commonMain/kotlin/vade/ui")
         val offenders = mutableListOf<String>()
-        for (dir in listOf("destinations", "shell", "search")) {
+        for (dir in listOf("destinations", "shell", "search", "chat")) {
             val packageDir = File(root, dir)
             assertTrue(packageDir.isDirectory, "missing ${packageDir.path} — test must run from ui/composeApp")
             packageDir.walkTopDown().filter { it.extension == "kt" }.forEach { file ->

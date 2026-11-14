@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import vade.ui.destinations.Destination
+import vade.ui.chat.ChatPreset
 import vade.ui.shell.AppShell
 import vade.ui.shell.UiState
 import vade.ui.skin.BottomBarStyle
@@ -27,10 +28,21 @@ fun App(
     initialDest: Destination = Destination.Sessions,
     initialPanelOpen: Boolean = false,
     initialSearchQuery: String? = null,
+    /** U1-b: open a session on launch (`--open=`), used by the screenshot loop. */
+    initialSessionId: String? = null,
+    /** U1-b: seed the detail screen's derived state (`--chat=`); `Live` for the real app. */
+    chatPreset: ChatPreset = ChatPreset.Live,
 ) {
     Skins.installBuiltIns()
     val state = remember {
-        UiState(initialBar, initialSkinId, initialDest, initialPanelOpen).also { created ->
+        UiState(
+            initialBar = initialBar,
+            initialSkinId = initialSkinId,
+            initialDest = initialDest,
+            initialPanelOpen = initialPanelOpen,
+            initialSessionId = initialSessionId,
+            chatPreset = chatPreset,
+        ).also { created ->
             // U1-c screenshot / deep-link hook: same path as tapping 搜索 in the top bar.
             if (initialSearchQuery != null) {
                 created.openSearch()
