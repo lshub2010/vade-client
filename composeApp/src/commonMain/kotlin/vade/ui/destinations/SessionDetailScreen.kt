@@ -80,7 +80,7 @@ fun SessionDetailScreen(
      * 组合根交下来的适配器包（`data/AdapterProvider`，见 `VadeAdapters.kt`）。
      *
      * **默认 null 是有意的**：`AppShell` 这一轮还没接线（它正被另一棒改），所以四处调用点
-     * 都取默认值 ⇒ 两件东西仍落在内存假实现上，行为与接线前逐字节相同。
+     * 都取默认值 ⇒ 模型 actions、turns、uploader 三件仍落在内存假实现上，行为与接线前逐字节相同。
      * 三段回退：[modelActions]（形参）> [adapters] > 内存假实现，见 [pickScreenSeam]；
      * 适配器查找抛异常时退回假实现并在 header 里显示一行可读原因（不静默吞）。
      */

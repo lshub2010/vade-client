@@ -177,7 +177,7 @@ meta 的三段回退另有：`metaWiringUsesTheProviderActionsForThisSession`（
 ### 4.1 `:composeApp:desktopTest --rerun`
 
 ```
-BUILD SUCCESSFUL in 3m 53s
+BUILD SUCCESSFUL in 3m 26s
 12 actionable tasks: 6 executed, 6 up-to-date
 ```
 按 `composeApp/build/test-results/desktopTest/TEST-*.xml` 聚合（71 个文件）：
@@ -195,27 +195,28 @@ tests=761 failures=0 errors=0 skipped=1
 
 | 次数 | 命令 | `UiStateSourceWiringTest` | `RealCoreE2ETest` |
 |---|---|---|---|
-| 1 | 全量 `desktopTest --rerun`（16:30 起，XML `2026-11-14T16:35:44Z`） | 20/20 绿 | 6/6 绿 |
+| 1 | 全量 `desktopTest --rerun`（XML `2026-11-14T16:35:44Z`） | 20/20 绿 | 6/6 绿 |
 | 2 | 单跑这两个类（XML `2026-11-14T16:49:47Z` / `16:50:30Z`，BUILD SUCCESSFUL 1m 53s） | 20/20 绿 | 6/6 绿 |
+| 3 | 最终全量 `desktopTest --rerun`（XML `16:55:31Z … 16:57:06Z`，BUILD SUCCESSFUL 3m 26s） | 20/20 绿 | 6/6 绿 |
 
-两轮 0 红，所以没有「跑了几次/哪几次/哪几条」可记。这仍然只是**两次采样**：那两条的既往抖动
-与本轮改动无关（本轮没碰 `shell/**`、`protocol/**`、`data/**`），**不把这两次绿写成「抖动已消失」**；
+三轮 0 红，所以没有「跑了几次/哪几次/哪几条」可记。这仍然只是**三次采样**：那两条的既往抖动
+与本轮改动无关（本轮没碰 `shell/**`、`protocol/**`、`data/**`），**不把这三轮绿写成「抖动已消失」**；
 断言与 skip 一条未动、没有 `@Ignore`、没有把超时调大。
 
 ### 4.2 `:composeApp:assembleDebug`
 
 ```
-BUILD SUCCESSFUL in 1m 55s
+BUILD SUCCESSFUL in 1m 48s
 39 actionable tasks: 20 executed, 18 from cache, 1 up-to-date
 ```
 产物：`composeApp/build/outputs/apk/debug/composeApp-debug.apk`
-22,157,475 B（mtime 11月 15 00:40）
-md5 `f085f8c9effa6b86b463738c353e212b`
+22,246,470 B（mtime 11月 15 00:59）
+md5 `a836fe03340c48c9449f09d05d4d9734`
 
 ### 4.3 `:composeApp:compileKotlinWasmJs`
 
 ```
-BUILD SUCCESSFUL in 1m 40s
+BUILD SUCCESSFUL in 58s
 4 actionable tasks: 3 executed, 1 up-to-date
 ```
 三条日志里 `grep '^e: '` 为空；本轮四个 `commonMain` 文件无新增 warning（`commonMain` 未引入任何
@@ -224,7 +225,7 @@ JVM 专有 API：新增代码只用 `Exception` / `String` / 数据类，没有 
 `RealCoreUiE2ETest` **同一个 API 的同一类告警**（仓库现有写法就是 v1 的 `runComposeUiTest`），
 不是本轮引入的新类别；没有为此改测试写法。
 
-全量 `desktopTest` 的结果 XML `timestamp="2026-11-14T16:35:44.760Z"`。
+全量 `desktopTest` 的结果 XML `timestamp` 区间 `2026-11-14T16:55:31.040Z … 16:57:06.303Z`。
 
 ### 4.4 变异自验（5 条，全部落在预期的用例上）
 
@@ -350,7 +351,10 @@ LaunchedEffect(Unit) { meta.loadGroups() }
 
 ### 证据时间戳
 
-- 代码 + 测试 commit `e68da4b`（`git log --oneline -1`）
-- `desktopTest` 全量：mtime 与 XML `timestamp="2026-11-14T…"` 属同一次 `--rerun`
-- APK：`22,157,475 B` / md5 `f085f8c9effa6b86b463738c353e212b`（00:40 的本轮产物，非旧包）
+- 代码 + 测试 commit `e68da4b`；本报告的 commit 见 `git log -1 -- shots/g-wire-screens/RESULT.md`
+- 最终三目标跑在「`e68da4b` + 一行 KDoc 措辞修正」的树上（`SessionDetailScreen` 的
+  「两件东西」→「模型 actions、turns、uploader 三件」，纯注释、无语义变化，随本报告一起提交）；
+  §4 的数字全部取自那次
+- `desktopTest` 全量：XML `timestamp` 区间 `2026-11-14T16:55:31.040Z … 16:57:06.303Z`
+- APK：`22,246,470 B` / md5 `a836fe03340c48c9449f09d05d4d9734`（00:59 的本轮产物，非旧包）
 - 变异日志：5 条全红，逐条列在 §4.4
