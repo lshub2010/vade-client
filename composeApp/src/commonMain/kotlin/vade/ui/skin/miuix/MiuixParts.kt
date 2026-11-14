@@ -1,11 +1,14 @@
 package vade.ui.skin.miuix
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,7 +34,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -60,21 +67,24 @@ import vade.ui.skin.ToolCardState
  * `miuix` implementations of C-09 components 7-11.
  *
  * Same rule as `MaterialParts.kt`: free composables that `MiuixSkin` delegates to, so the
- * Skin class stays readable. Every container is a Miuix `Surface` with a 1 dp stroke and no
- * elevation, and corners stay on the spec ladder (12 / 16 / 20 dp, 28 dp for the sheet)
- * rather than the material skin's 8 / 14 / 22.
+ * Skin class stays readable. Every container is a Miuix `Surface` with a 1 dp stroke and the
+ * v2 §8 layering (static cards get `shadowSoft`, float layers get `shadowFloat`), and corners
+ * stay on the v2 six-step ladder (xs 12 / sm 16 / md 20 / lg 24 / xl 28 / sheet 32).
  */
 
 // --- 7 · ApprovalDialog ------------------------------------------------------
 
 /**
- * A bottom sheet, not a centred card — that is Miuix's own confirmation form
- * (spike/miuix RESULT.md §三.3: "真实形态是底部 sheet").
+ * A **floating sheet card** (v2 §9), not a flush bottom sheet and not a centred card —
+ * margins 12 dp on left/right/bottom, all four corners at the v2 `sheet` step (32 dp),
+ * glass base + 1 dp hairline + a real `shadowFloat`, and the 36×4 grabber that says
+ * "pull down to dismiss". Miuix's own confirmation form is the bottom sheet (spike/miuix
+ * RESULT.md §三.3); v2 §9 floats the same form above the screen edge.
  *
  * Deviations from an `OverlayDialog` build, on purpose: upstream `OverlayDialog` only draws
  * inside a `MiuixPopupHost`, which exists *solely* inside Miuix's `Scaffold` (RESULT.md §五
  * R6). The C-09 contract puts the dialog wherever the page composes it, and pages must not
- * grow a Miuix `Scaffold` just to host a sheet, so the scrim + sheet are composed here from
+ * grow a Miuix `Scaffold` just to host a sheet, so the scrim + card are composed here from
  * Miuix `Surface`/`Text`/`Button`.
  *
  * Layout rules from the task book §T2: the whole argument block scrolls, buttons stack
@@ -90,28 +100,47 @@ internal fun MiuixApprovalDialog(
     typography: SkinTypography,
 ) {
     MiuixScope(colors) {
+        // §9: the scrim is rgba(0,0,0,.24) + backdrop blur — blur needs the shell-side
+        // HazeState wiring, so the scrim ships alone (documented degrade, §T3).
         Box(
-            modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (colors.isDark) 0.55f else 0.32f)),
+            modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.24f)),
             contentAlignment = Alignment.BottomCenter,
         ) {
+            // Four corners equal (§9: 四角同圆); `widthIn` must come *before* `fillMaxWidth`:
+            // chained the other way round the width is already pinned to the parent's, so the
+            // 560 dp cap silently did nothing and the desktop card stretched the full window.
+            val cardShape = RoundedCornerShape(MiuixTokens.sheetRadius)
             Surface(
-                // `widthIn` must come *before* `fillMaxWidth`: chained the other way round the
-                // width is already pinned to the parent's, so the 560 dp cap silently did
-                // nothing and the desktop sheet stretched the full 1266 px window.
-                modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth(),
-                // Spec §五 弹层/sheet: `xl` (28 dp) top corners, flush with the window edge.
-                // `SkinShapes` has no `xl` slot, so the spec's own value is used literally.
-                shape = RoundedCornerShape(topStart = MiuixTokens.sheetRadius, topEnd = MiuixTokens.sheetRadius),
-                color = colors.surface,
+                modifier = Modifier
+                    .padding(start = 12.dp, end = 12.dp, bottom = 12.dp)
+                    .widthIn(max = 560.dp)
+                    .fillMaxWidth()
+                    // §8 row 2: a float layer is defined by having a shadow.
+                    .shadow(
+                        elevation = if (colors.isDark) 16.dp else 12.dp,
+                        shape = cardShape,
+                        ambientColor = colors.shadowFloat,
+                        spotColor = colors.shadowFloat,
+                    ),
+                shape = cardShape,
+                color = colors.surfaceGlass,
                 contentColor = colors.onSurface,
-                border = BorderStroke(1.dp, colors.outline),
+                border = BorderStroke(1.dp, colors.hairline),
                 shadowElevation = 0.dp,
             ) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    // Drag hint — the physical affordance of a sheet.
+                    // §9 grabber: 36×4dp, radius 2, white 70% (dark) / black 24% (light),
+                    // 8 dp from the card top. Its only job is "this sheet can be pulled down".
                     Box(
-                        Modifier.align(Alignment.CenterHorizontally).size(width = 32.dp, height = 3.dp)
-                            .clip(CircleShape).background(colors.outline),
+                        Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .padding(top = 2.dp)
+                            .size(width = 36.dp, height = 4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(
+                                if (colors.isDark) Color.White.copy(alpha = 0.70f)
+                                else Color.Black.copy(alpha = 0.24f),
+                            ),
                     )
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -192,7 +221,8 @@ private fun RiskTag(risk: String, colors: SkinColors) {
     val high = risk == "high"
     Text(
         text = "risk=$risk",
-        fontSize = 10.sp,
+        // 字号四档的下限是 11（v2 字号纪律：不得回到 8–10sp）。
+        fontSize = MiuixTokens.tinySize,
         fontWeight = FontWeight.Medium,
         color = if (high) colors.error else colors.onSurfaceVariant,
         modifier = Modifier
@@ -209,7 +239,7 @@ private fun RiskTag(risk: String, colors: SkinColors) {
 // --- 8 · MessageBubble -------------------------------------------------------
 
 /**
- * D92 layout, brought onto the spec's radius ladder (`ui-visual-language.md` §五 消息).
+ * D92 layout, brought onto the v2 radius ladder (`ui-visual-language.md` §五 消息 + §10).
  *
  * The three roles are *not* three variations of one bubble — the spec makes them three
  * different things, and the previous revision collapsed that distinction:
@@ -217,8 +247,9 @@ private fun RiskTag(risk: String, colors: SkinColors) {
  *  - **assistant**: no bubble, no border, no fill. Full width up to [maxWidth], text sits
  *    directly on the page. This is what makes a long answer read like a document instead of a
  *    chat bubble wall (§一 原则 4), and it is the single biggest visual delta vs `material`.
- *  - **user**: right-aligned, `surface` + hairline, `lg` (20 dp) corners with a squared-off
- *    bottom-end corner as the bubble tail, capped at 78 % of the reading column.
+ *  - **user**: right-aligned, `surface` + hairline, `lg` (24 dp) corners with the **6 dp**
+ *    bottom-end tail (v2 keeps the fixed 6 dp tail — it is not on the radius ladder), capped
+ *    at 78 % of the reading column.
  *  - **system**: centred 11 sp caption in a hairline pill.
  *
  * The old revision gave the assistant a `Surface` + hairline at the `md` radius, i.e. it drew
@@ -275,16 +306,17 @@ internal fun MiuixMessageBubble(
                 // --- user: the only real bubble --------------------------------------
                 else -> Surface(
                     modifier = Modifier.widthIn(max = minOf(maxWidth * 0.78f, 520.dp)),
-                    // `lg` with a 6 dp bottom-end tail (§五 消息（用户）: "右下角 6dp（气泡尾）").
+                    // `lg` (24 dp) with the 6 dp bottom-end tail (§五 消息（用户）:
+                    // "右下角 6dp（气泡尾）" — v2 keeps the fixed 6 dp value).
                     shape = RoundedCornerShape(
-                        topStart = shapes.large,
-                        topEnd = shapes.large,
-                        bottomStart = shapes.large,
-                        bottomEnd = MiuixTokens.radiusXs,
+                        topStart = shapes.lg,
+                        topEnd = shapes.lg,
+                        bottomStart = shapes.lg,
+                        bottomEnd = MiuixTokens.bubbleTail,
                     ),
                     color = colors.surface,
                     contentColor = colors.onSurface,
-                    border = BorderStroke(1.dp, colors.outline),
+                    border = BorderStroke(1.dp, colors.hairline),
                     shadowElevation = 0.dp,
                 ) {
                     Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
@@ -301,7 +333,7 @@ internal fun MiuixMessageBubble(
                     message.badges.forEach { badge ->
                         Text(
                             text = badge,
-                            fontSize = 10.sp,
+                            fontSize = MiuixTokens.tinySize,
                             color = colors.onSurfaceVariant,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(shapes.pill))
@@ -330,8 +362,9 @@ internal fun MiuixMessageBubble(
 // --- 9 · AttachmentChip ------------------------------------------------------
 
 /**
- * Compact 8 dp chip (material uses a pill): a 20 dp mime square, the file name, the state
- * copy, and — when uploading — a 2 dp progress hairline under the text.
+ * v2 附件卡 (§10: md 20dp) — a 28 dp mime square at the `xs` (12 dp) step, the file name,
+ * the state copy, and — when uploading — a 2 dp progress hairline under the text. Static
+ * card layering: hairline + `shadowSoft` (§8 row 1).
  *
  * Copy rule (D96): an uploaded image says "已压缩，原图未保留", never "点击查看原图".
  */
@@ -354,11 +387,18 @@ internal fun MiuixAttachmentChip(
     }
     MiuixScope(colors) {
         Surface(
-            modifier = Modifier.heightIn(min = 38.dp),
-            shape = RoundedCornerShape(shapes.small),
+            modifier = Modifier
+                .heightIn(min = 38.dp)
+                .shadow(
+                    elevation = 2.dp,
+                    shape = RoundedCornerShape(shapes.md),
+                    ambientColor = colors.shadowSoft,
+                    spotColor = colors.shadowSoft,
+                ),
+            shape = RoundedCornerShape(shapes.md),
             color = colors.surface,
             contentColor = colors.onSurface,
-            border = BorderStroke(1.dp, if (failed) colors.error else colors.outline),
+            border = BorderStroke(1.dp, if (failed) colors.error else colors.hairline),
             shadowElevation = 0.dp,
         ) {
             Row(
@@ -394,7 +434,8 @@ internal fun MiuixAttachmentChip(
                 }
                 if (failed && onRetry != null) {
                     Spacer(Modifier.width(8.dp))
-                    Text("重试", fontSize = 11.sp, color = colors.primary, modifier = Modifier.clickable { onRetry() })
+                    // v2 §3 图标即按钮：重试用 ↻，不用文字。
+                    Text("↻", fontSize = 14.sp, color = colors.primary, modifier = Modifier.clickable { onRetry() })
                 }
                 if (onRemove != null) {
                     Spacer(Modifier.width(8.dp))
@@ -411,7 +452,7 @@ internal fun MiuixAttachmentChip(
  * D94 states are rendered, not decided: `Collapsed` shows one line, `Expanded` /
  * `PendingApproval` show the redacted args plus the result. Hierarchy comes from a 3 dp
  * leading accent bar rather than a filled header, which is what makes it read as a tool log
- * instead of another card.
+ * instead of another card. Static-card layering: hairline + `shadowSoft` (v2 §8 row 1).
  */
 @Composable
 internal fun MiuixToolCallCard(
@@ -439,11 +480,18 @@ internal fun MiuixToolCallCard(
     }
     MiuixScope(colors) {
         Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(shapes.medium),
+            modifier = Modifier
+                .fillMaxWidth()
+                .shadow(
+                    elevation = 2.dp,
+                    shape = RoundedCornerShape(shapes.md),
+                    ambientColor = colors.shadowSoft,
+                    spotColor = colors.shadowSoft,
+                ),
+            shape = RoundedCornerShape(shapes.md),
             color = colors.surface,
             contentColor = colors.onSurface,
-            border = BorderStroke(1.dp, if (call.isError) colors.error.copy(alpha = 0.5f) else colors.outline),
+            border = BorderStroke(1.dp, if (call.isError) colors.error.copy(alpha = 0.5f) else colors.hairline),
             shadowElevation = 0.dp,
         ) {
             Column {
@@ -505,15 +553,21 @@ internal fun MiuixToolCallCard(
 // --- 11 · InputBar -----------------------------------------------------------
 
 /**
- * D88 composer. Spec (`ui-visual-language.md` §五 输入框): `md` corners, `surface` + hairline,
- * and a 2 dp accent stroke on focus — not a glow, not an underline.
+ * The v2 **floating composer** (§1/§2):
  *
- * The send control is a **12 dp rounded square**, deliberately not the material skin's circle:
- * Miuix's own composer uses a rounded rect, and the shape contrast is what makes the two skins
- * distinguishable in a blind test. It is 38 dp, i.e. a comfortable mouse target (spec allows
- * 32 dp minimum on desktop).
+ *  - an **independent float layer** with 16 dp clear on every side — never a flush,
+ *    full-width bar; `xl` (28 dp) corners, glass base (`surfaceGlass` + 1 dp hairline) and a
+ *    real `shadowFloat` (§8 row 2: a float layer is defined by its shadow);
+ *  - the send control is a **48 dp ball OUTSIDE the field**, 12 dp to its right, vertically
+ *    centred (§2) — nothing send-shaped lives inside the box. States: content = `accent`
+ *    solid + 12 dp accent glow (§8 row 3); empty = glass + hairline, muted glyph; streaming
+ *    = the same ball turns **stop** (■), tinted icon + stroke only, never a red ball;
+ *  - press = `scale 0.92` over 180 ms with the one v2 curve (§2/§7);
+ *  - `voiceAvailable = false` draws nothing at all (D97) — not a greyed-out mic.
  *
- * `voiceAvailable = false` draws nothing at all (D97) — not a greyed-out mic.
+ * The glass is the *degrade* shape for now: `surfaceGlass` tint + hairline + `shadowFloat`.
+ * A real backdrop blur (§5) needs the app shell to register a `HazeState` +
+ * `Modifier.hazeSource`, which lives in `chat/`/`shell/` — outside this batch's directory.
  */
 @Composable
 internal fun MiuixInputBar(
@@ -533,86 +587,181 @@ internal fun MiuixInputBar(
 ) {
     val streaming = mode == InputMode.Streaming
     MiuixScope(colors) {
-        Column(Modifier.fillMaxWidth().background(colors.surface)) {
-            Box(Modifier.fillMaxWidth().height(1.dp).background(colors.outline))
-            Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-                if (attachments != null) {
-                    attachments()
-                    Spacer(Modifier.height(6.dp))
-                }
-                Row(verticalAlignment = Alignment.Bottom) {
-                    // Spec §五 输入框: `surface` + `hairline` at rest, 2 dp `accent` stroke on
-                    // focus. The first screenshot had the 2 dp accent ring *always on*, which
-                    // reads as an error state rather than a focus state. Focus is now tracked
-                    // from the field's own InteractionSource, so the ring appears only when the
-                    // caret is really in it.
-                    val interaction = remember { MutableInteractionSource() }
-                    val focused by interaction.collectIsFocusedAsState()
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 40.dp, max = 132.dp)
-                            .clip(RoundedCornerShape(shapes.medium))
-                            .background(colors.surface)
-                            .border(
-                                width = if (focused) 2.dp else 1.dp,
-                                color = when {
-                                    focused -> colors.primary
-                                    else -> colors.outline
-                                },
-                                shape = RoundedCornerShape(shapes.medium),
-                            )
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                    ) {
-                        if (value.isEmpty()) {
-                            Text("输入消息…", style = typography.body, color = colors.onSurfaceVariant)
-                        }
-                        BasicTextField(
-                            value = value,
-                            onValueChange = onValueChange,
-                            enabled = enabled,
-                            interactionSource = interaction,
-                            textStyle = typography.body.copy(color = colors.onSurface),
-                            modifier = Modifier.fillMaxWidth(),
+        val fieldShape = RoundedCornerShape(shapes.xl)
+        val floatElevation = if (colors.isDark) 16.dp else 12.dp
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal = MiuixTokens.composerMargin,
+                    vertical = MiuixTokens.composerMargin,
+                ),
+        ) {
+            if (attachments != null) {
+                attachments()
+                Spacer(Modifier.height(8.dp))
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Focus is tracked from the field's own InteractionSource, so the accent ring
+                // appears only when the caret is really in it (the first v1 screenshot had it
+                // always on, which read as an error state).
+                val interaction = remember { MutableInteractionSource() }
+                val focused by interaction.collectIsFocusedAsState()
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        // §8 row 2: the composer is a float layer — shadow first, so it casts
+                        // from the surface bounds instead of being clipped by the glass.
+                        .shadow(
+                            elevation = floatElevation,
+                            shape = fieldShape,
+                            ambientColor = colors.shadowFloat,
+                            spotColor = colors.shadowFloat,
                         )
+                        .clip(fieldShape)
+                        .background(colors.surfaceGlass)
+                        // §五 输入框: 1 dp hairline at rest, 2 dp `accent` stroke on focus —
+                        // not a glow, not an underline.
+                        .border(
+                            width = if (focused) 2.dp else 1.dp,
+                            color = if (focused) colors.primary else colors.hairline,
+                            shape = fieldShape,
+                        )
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        if (voiceAvailable) {
+                            GlassIconButton(colors, enabled) { }
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Box(Modifier.weight(1f).heightIn(min = 32.dp)) {
+                            if (value.isEmpty()) {
+                                Text("输入消息…", style = typography.body, color = colors.onSurfaceVariant)
+                            }
+                            BasicTextField(
+                                value = value,
+                                onValueChange = onValueChange,
+                                enabled = enabled,
+                                interactionSource = interaction,
+                                textStyle = typography.body.copy(color = colors.onSurface),
+                                cursorBrush = SolidColor(colors.primary),
+                                maxLines = maxLines,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
                     }
-                    Spacer(Modifier.width(6.dp))
-                    // D97: no on-device STT ⇒ no button at all.
-                    if (voiceAvailable) {
-                        SquareButton("◍", colors.surfaceVariant, colors.onSurfaceVariant, shapes, enabled) { }
-                        Spacer(Modifier.width(6.dp))
-                    }
-                    SquareButton(
-                        glyph = if (streaming) "■" else "↑",
-                        bg = if (streaming) colors.error else colors.primary,
-                        fg = if (streaming) colors.onError else colors.onPrimary,
-                        shapes = shapes,
-                        enabled = if (streaming) true else enabled,
-                    ) { if (streaming) onStop() else onSend() }
                 }
+                Spacer(Modifier.width(MiuixTokens.sendBallGap))
+                SendBall(
+                    streaming = streaming,
+                    sendEnabled = sendEnabled,
+                    enabled = enabled,
+                    colors = colors,
+                    onSend = onSend,
+                    onStop = onStop,
+                )
             }
         }
     }
 }
 
-/** 38 dp, `small` (12 dp) corner — deliberately not a circle (that is the material skin's shape). */
+/**
+ * The §2 send ball: 48 dp, *outside* the field, vertically centred. Glow is a 12 dp radial
+ * halo behind the ball (`glowAccent` @ 28 % → transparent, §8 row 3) — a glow, not a shadow;
+ * press scales the whole thing (halo included) to 0.92 over 180 ms (§2).
+ */
 @Composable
-private fun SquareButton(
-    glyph: String,
-    bg: Color,
-    fg: Color,
-    shapes: SkinShapes,
+private fun SendBall(
+    streaming: Boolean,
+    sendEnabled: Boolean,
     enabled: Boolean,
-    onClick: () -> Unit,
+    colors: SkinColors,
+    onSend: () -> Unit,
+    onStop: () -> Unit,
 ) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.92f else 1f,
+        animationSpec = tween(durationMillis = 180, easing = MiuixTokens.motion.easing),
+        label = "sendBallPress",
+    )
+    // `active` is the accent state: content present (or the page's own canSend signal).
+    val active = !streaming && sendEnabled
+    // §2: an empty ball stays clickable ("触发提示"); only a fully disabled field is inert.
+    val clickable = streaming || enabled
+    val haloSize = MiuixTokens.sendBallSize + 24.dp // 12 dp of glow on every side
+    Box(modifier = Modifier.size(haloSize), contentAlignment = Alignment.Center) {
+        if (active) {
+            Box(
+                Modifier
+                    .size(haloSize)
+                    .background(
+                        brush = Brush.radialGradient(
+                            // Hold ~full strength up to the ball's rim, fade over the 12 dp ring.
+                            0.64f to colors.glowAccent.copy(alpha = 0.28f),
+                            1f to Color.Transparent,
+                        ),
+                        shape = CircleShape,
+                    ),
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(MiuixTokens.sendBallSize)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    alpha = if (!enabled && !streaming) 0.45f else 1f
+                }
+                .clip(CircleShape)
+                .then(
+                    when {
+                        // 生成中：同一球位变停止，只染图标与描边，不整球变红（§2）。
+                        streaming -> Modifier
+                            .background(colors.surfaceGlass)
+                            .border(1.5.dp, colors.error, CircleShape)
+                        // 有内容：accent 实心 + 辉光（§2）。
+                        active -> Modifier.background(colors.primary)
+                        // 空：玻璃 + 1px 发丝线，图标 muted（§2）。
+                        else -> Modifier
+                            .background(colors.surfaceGlass)
+                            .border(1.dp, colors.hairline, CircleShape)
+                    },
+                )
+                .clickable(
+                    interactionSource = interaction,
+                    indication = null,
+                    enabled = clickable,
+                ) { if (streaming) onStop() else onSend() },
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = if (streaming) "■" else "↑",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = when {
+                    streaming -> colors.error
+                    active -> colors.onPrimary
+                    else -> colors.onSurfaceVariant
+                },
+            )
+        }
+    }
+}
+
+/** D97: mic placeholder — a hairline glass orb, only drawn when [voiceAvailable] is true. */
+@Composable
+private fun GlassIconButton(colors: SkinColors, enabled: Boolean, onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .size(38.dp)
-            .clip(RoundedCornerShape(shapes.small))
-            .background(if (enabled) bg else bg.copy(alpha = 0.45f))
-            .clickable(enabled = enabled) { onClick() },
+            .size(36.dp)
+            .clip(CircleShape)
+            .background(colors.surfaceGlass)
+            .border(1.dp, colors.hairline, CircleShape)
+            .clickable(enabled = enabled, interactionSource = remember { MutableInteractionSource() }, indication = null) { onClick() },
         contentAlignment = Alignment.Center,
     ) {
-        Text(glyph, fontSize = 14.sp, color = fg)
+        Text("◉", fontSize = 14.sp, color = colors.onSurfaceVariant)
     }
 }
