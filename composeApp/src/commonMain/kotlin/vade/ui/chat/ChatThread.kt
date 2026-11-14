@@ -47,6 +47,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
@@ -747,11 +749,15 @@ private fun RiskBadge(risk: String) {
  *
  * 注意是给内容的 modifier，不是往 GlassSurface 里塞 `fillMaxSize` 的子盒子 —
  * 那会把 wrap-content 的玻璃层撑满整个可用高度。
+ *
+ * **它不是 composer 圆角缺陷的原因**（g-composer-shape 实测纠正）：那条缺陷是
+ * `Modifier.shadow` 在 `.clip` 外层挖出的矩形洞，与本函数无关。但这里仍然要按
+ * [shape] 裁一次——矩形背景铺在圆角容器里会露方角，只是 3/255 的浅染不容易看见。
  */
 @Composable
-private fun Modifier.glassFallback(skin: vade.ui.skin.Skin): Modifier {
+private fun Modifier.glassFallback(skin: vade.ui.skin.Skin, shape: Shape = RectangleShape): Modifier {
     if (LocalGlassHazeState.current != null) return this
-    return background(skin.colors.surfaceGlass.copy(alpha = 0.88f))
+    return background(skin.colors.surfaceGlass.copy(alpha = 0.88f), shape)
 }
 
 /**
@@ -1037,7 +1043,7 @@ private fun ImagePreviewSheet(image: ContentPart.Image, onClose: () -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     // blur 未接线时的可读性兜底（见 glassFallback 的 KDoc）。
-                    .glassFallback(skin),
+                    .glassFallback(skin, sheetShape),
             ) {
                 // 白条手柄：36×4dp、2dp 圆角、距卡顶 8dp，只说明"可下拉关闭"。
                 Box(
