@@ -1,9 +1,125 @@
-# §11 运动模糊 — box 核（真物理）vs 方向性高斯，A/B 实测
+# §11 运动模糊 — box / 三角核 / 方向性高斯，三核 A/B 实测（两轮）
 
-分支 `tmp/motion-probe`，commit `01653c8`。只涉及 `vade/ui/motion/` + `vade/ui/demo/` + `tools/`，
-`chat/` `shell/` `skin/` 未动。
+分支 `tmp/motion-probe`。第一轮（commit `01653c8`）确定 box 为默认；第二轮（本版）加入
+**三角核（Bartlett）**、**真实内容夹具**与**拍频度量**，用数据复核了第一轮的默认选择。
 
-## 零、这一版改了什么
+## 〇、第二轮：三角核 + 真实内容 + 拍频（本版新增）
+
+第一轮出图后，父代理在 `ab-box-6.png` 上发现：HUD 的 `REFERENCE` 实心色块平滑无条纹，
+但 8 行 `MOTION BLUR` 大字全是**回音状**（每字母上下叠 2–3 道等距横带）。同核同参数、
+只有内容不同 —— 怀疑是核长 13px 与字母横笔间距 4–7px 的**拍频**。本版三个动作：
+
+1. 新增 `KernelShape.Triangle`（`w[i] ∝ half+1−|i−c|`，即 box ⊛ box），三端可切换；
+2. 探针内容改为**真实形态**（中英混排 3–60 字、13/15/20sp 混排、一条代码块、一条图标行），
+   同一真实内容同半径出三图 `real-box-6 / real-triangle-6 / real-gaussian-6`；
+3. 新增 `tools/motion-beat-metric.py`（拖影区域**垂直自相关** → 主周期/强度 + 接缝深度）。
+
+### 〇.1 逐张开图（全部开图确认过）
+
+- **`ab-triangle-6.png`（病理夹具，三角核）** — `MOTION BLUR` 仍可读；字母仍有上下两道亮带，
+  但中缝比 box **软**、两端渐削。6× 放大对比：box 的中缝是硬边（两道亮带对比清晰），
+  三角核的中缝被斜坡部分填平。HUD：`kernel = triangle 1x13 / Bartlett w ∝ half+1-|i-c| (box⊛box)`。
+  小号 `REFERENCE` 字比 box 下**略糊**（小笔画特征被削顶，见 〇.4 代价）。
+- **`real-box-6.png` vs `real-triangle-6.png`（真实内容，同 6dp）— 目视几乎不可分**：
+  20sp 标题（新会话/构建产物/为什么）两者都可读；15sp 正文都被抹成灰条；代码行
+  （`gradle :composeApp:desktopTest`）两者都半可读；都读作"快速滚动"，无回音感。
+- **`real-gaussian-6.png`（真实内容，高斯）** — 明显更"雾"：正文更糊、`REFERENCE` 更软，
+  偏"失焦"而非"在动"。
+- **`real-freeze-0.png`** — 真实内容锐利基线（度量对照）。
+
+### 〇.2 拍频度量（`tools/motion-beat-metric.py`）
+
+方法：逐文本行取行剖面（对"有点亮的列"求行均值），在**行内**做归一化垂直自相关。
+三个数：`acf2`（滞后 2px 自相关 = 拖影平台平坦度）、`period/strength`（自相关最深负谷的
+滞后与幅度 = 亮带结构的间距与强度，即"叠影"的周期）、`seam`（中缝深度：两翼峰与中央谷
+之比，"两道亮带之间黑缝"的直接读数）。开图定位：那些"横带"就是**字形自身的
+帽线/暗中腰/基线**结构被 13px 核部分合并的产物 —— 34sp 字的中腰高度 ≈ 核长，是最坏共振点。
+
+病理夹具（34sp，6dp 冻结）：
+
+| 文件 | acf2 | 主周期 px | 强度 | seam | 判定 |
+|---|---|---|---|---|---|
+| `ab-box-6.png` | +0.630 | **12.0** | **0.736** | **0.027** | FAINT |
+| `ab-triangle-6.png` | +0.383 | 11.0 | **0.465** | 0.010 | NONE |
+| `ab-gaussian-6.png` | +0.417 | 11.0 | 0.569 | 0.003 | NONE |
+| （对照）`freeze-0.png` 锐利 | −0.033 | 5.5 | 0.275 | 0.147 | ECHO（带结构的源头） |
+
+**三角核把叠影强度砍 37%（0.736→0.465）、中缝砍 63%（0.027→0.010），三项里两项目视相关
+指标优于高斯** —— 与理论一致（旁瓣 −13.3dB→−25.3dB，§三.6）。
+
+真实内容（13–20sp 混排，6dp 冻结）：
+
+| 文件 | acf2 | 主周期 px | 强度 | seam | 判定 |
+|---|---|---|---|---|---|
+| `real-freeze-0.png`（锐利） | −0.067 | 5.5 | 0.358 | 0.062 | FAINT |
+| `real-box-6.png` | +0.321 | 6.5 | 0.627 | **−0.009** | NONE |
+| `real-triangle-6.png` | +0.388 | 6.5 | 0.626 | **−0.000** | NONE |
+| `real-gaussian-6.png` | +0.550 | 9.0 | 0.761 | 0.005 | NONE |
+
+**真实内容上三种核的 seam 全部 ≈ 0（NONE）** —— 13–20sp 的字形中腰在 13px 核下被完全填平，
+**第一轮看到的"回音"是病理夹具（34sp 等宽、行内暗腰 ≈ 核长）独有的共振，不是真实内容的
+问题**。gaussian 的强度 0.761 偏高是单峰剖面的自相关谷（钟形拖影在自身宽度处反相关），
+不是叠影 —— 它的 seam 同样 ≈ 0。box 与 triangle 在真实内容上**三项指标全部持平**
+（0.627 vs 0.626 / −0.009 vs −0.000）。
+
+### 〇.3 拖影剖面与细节保留（真实内容）
+
+`motion-streak-profile.py`（真实内容；`d(profile)/dy` = 核的形状）：
+
+| 文件 | ramp px | slope_cv | end_ratio | curv | 读数 |
+|---|---|---|---|---|---|
+| `real-box-6.png` | **13** | **0.000** | **1.000** | **0.000** | **PLATEAU**（完美平台） |
+| `real-triangle-6.png` | 12 | 0.414 | 0.517 | 0.211 | 钟形**差分**（= 三角核本身，见下） |
+| `real-gaussian-6.png` | 12 | 0.421 | 0.519 | 0.221 | BELL |
+| `ab-triangle-6.png`（病理） | 11 | 0.364 | 0.529 | 0.224 | 同上 |
+
+注意：三角核对阶跃的响应 `step ⊛ triangle` 的**一阶差分就是三角核本身**（先升后降的钟形），
+所以分类器把它读成 "BELL" —— 这是**数学必然**，不是实现错；它与高斯的区别在
+`MotionBlurTriangleKernelTest` 的频域断言（|三角| = |半长 box|²、旁瓣 −25dB）与拍频表，
+不在 slope_cv。box 在真实内容上依然是唯一的完美平台（slope_cv 0.000）。
+
+`motion-metrics.py`（lap_var，锐利基线 2129.25）：
+
+| 文件 | lap_var | 相对锐利 | 说明 |
+|---|---|---|---|
+| `real-box-6.png` | 203.75 | 0.096 | 基准 |
+| `real-triangle-6.png` | **243.37** | **0.114** | 比 box 多 19% 高频细节 |
+| `real-gaussian-6.png` | 44.01 | 0.021 | **box 保留 4.6 倍细节于高斯** |
+| `ab-triangle-6.png`（病理） | 364.48 | — | box 327.87 / 高斯 78.44（§三.2），三角最高 |
+
+### 〇.4 帧率（四组，桌面 5 秒锯齿滚动）
+
+```
+FPS_RESULT blur=on  kernel=box      frames=493 avgMs=10.16 p95Ms=10.94 maxMs=65.09 fps= 98.4
+FPS_RESULT blur=on  kernel=triangle frames=496 avgMs=10.10 p95Ms=11.03 maxMs=62.12 fps= 99.0
+FPS_RESULT blur=on  kernel=gaussian frames=494 avgMs=10.13 p95Ms=11.04 maxMs=62.91 fps= 98.7
+FPS_RESULT blur=off kernel=box      frames=501 avgMs= 9.99 p95Ms=10.91 maxMs=17.82 fps=100.1
+```
+
+| 组 | 平均帧时间 | 相对 off | 判定（≥80%） |
+|---|---|---|---|
+| **triangle** | **10.10 ms** | **98.9%** | ✅ 三者最快 |
+| gaussian | 10.13 ms | 98.6% | ✅ |
+| box | 10.16 ms | 98.3% | ✅ |
+| off | 9.99 ms | 100%（基线） | — |
+
+与预测一致：三角核与 box 是**同一个 1×13 卷积、只换权重**，成本相同（0.06ms 差异是噪声）。
+
+### 〇.5 最终选择：**box 仍为默认；三角核保留为可选项**（任务分支 B）
+
+1. **真实内容上没有任何核出现回音**（seam 全部 ≈ 0）—— 第一轮的"拍频"是病理夹具
+   （34sp 等宽字、行内暗腰 ≈ 核长 13px）独有的共振。**"box 有回音"不成立。**
+2. box 在真实内容上保留**完美平台剖面**（slope_cv 0.000）与 4.6 倍于高斯的细节，
+   且帧率 98.3% of off —— 第一轮的结论全部维持。
+3. 三角核**没有**在真实内容上明显好于 box（任务给"改默认"设的前提不触发）：
+   三项拍频指标持平、目视不可分，且它放弃"精确物理积分"的语义、小字特征削顶
+   （`REFERENCE` 变软）。**不设为默认。**
+4. 但三角核在**大字/周期性内容**上真实减害（叠影强度 −37%、中缝 −63%、旁瓣 −12dB、
+   成本 0）→ **保留为 `MotionBlurKernel.Triangle` 选项**，用于大号等宽/代码块/表格线
+   等周期性内容占主导的列表（`--kernel=triangle` / `?kernel=triangle` 一行可切）。
+5. 半径上限维持 6dp：真实内容上三个核都可读，无需降到 4dp。
+
+## 零、第一轮改了什么（box vs 高斯）
 
 上一版把**方向性**做对了，但**核的形状**是错的。本版修掉：
 
@@ -25,6 +141,8 @@ box 的一阶差分是 **13 个 0.066~0.070 的常数**（平台），高斯是 
 | Android (API 31+) | ✅（上一版 assembleDebug 通过） | ❌ 未跑设备 | **各向同性高斯（无核选择）** | **平台限制，见 §六.1** |
 
 **最终选择：box 为默认（`DEFAULT_MOTION_BLUR_KERNEL = Box`），高斯保留为降级路径。**
+（第二轮加入三角核后**维持不变**，复核证据见 §〇.5：真实内容上无回音、box 平台与细节
+优势不变；三角核以可选项保留。）
 
 理由不是"物理更诚实"这种形容词，是四条实测：
 
@@ -43,11 +161,11 @@ export GRADLE_USER_HOME=D:/Hermes/tools/gradle-home
 | 命令 | 结果 |
 |---|---|
 | `:composeApp:desktopMainClasses` | BUILD SUCCESSFUL |
-| `:composeApp:desktopTest --rerun-tasks` | BUILD SUCCESSFUL，**43 tests / 0 failures** |
-| `:composeApp:compileKotlinWasmJs` | BUILD SUCCESSFUL（box 核代码在 commonMain expect 下编到 wasm 通过） |
+| `:composeApp:desktopTest --rerun-tasks` | BUILD SUCCESSFUL，第一轮 **43 / 0**，第二轮（本版）**56 / 0** |
+| `:composeApp:compileKotlinWasmJs` | BUILD SUCCESSFUL（box+triangle 核代码在 commonMain expect 下编到 wasm 通过） |
 
 测试构成：`SearchFlowTest` 19 + `MaterialImportGuardTest` 2 + `MotionBlurMathTest` 10 +
-**`MotionBlurBoxKernelTest` 12（本版新增）** = **43**（上一版 31，+12）。
+`MotionBlurBoxKernelTest` 12 + **`MotionBlurTriangleKernelTest` 13（第二轮新增）** = **56**（第一轮 43，+13）。
 
 `MotionBlurBoxKernelTest` 的 12 条：
 
@@ -257,7 +375,33 @@ ASCII 剖面：
 
 **目视判断：box 更像"快速滚动"，高斯更像"失焦"。** 与 §三.1/§三.2 的数字同向。
 
-## 四、帧率（三组，桌面，5 秒锯齿滚动）
+### 三.6 三角核的频域证据（`MotionBlurTriangleKernelTest`，本版新增）
+
+"三角核 = box ⊛ box"不是比喻，是逐抽头恒等式：`triangleKernelWeights(13)` 与
+`boxKernelWeights(7)` 自卷积**逐项相等**（1e-6 内）。由此 `|三角响应| = |半长 box 响应|²`，
+直接推出旁瓣抑制：
+
+| 量 | box 13 抽头 | triangle 13 抽头 | 来源 |
+|---|---|---|---|
+| 最差旁瓣 | **−13.27 dB** | **−25.31 dB** | 测试直接算 |DTFT| |
+| 增益 @ 4px 周期（f=1/4） | 0.0769 | 0.0204（3.8×↓） | 同上 |
+| 增益 @ 5px 周期 | 0.1245 | 0.0534（2.3×↓） | 同上 |
+| 增益 @ 6/7px 周期 | 0.0769 | **0.0000（零点）** | 同上 |
+| 周期图案上的输出纹波（4px） | 0.0769 | 0.0204 | `echoDepth` |
+| 周期图案上的输出纹波（5px） | 0.1538 | 0.0612 | 同上 |
+| 周期图案上的输出纹波（7px） | 0.0769 | 0.0000 | 同上 |
+
+即：**矩形核的 −13dB 旁瓣把 4–7px 的字形横笔间距原样带回图像（叠影）；三角核平方响应后
+同周期增益砍 2.3–3.8×、6/7px 处归零。** 这是"为什么三角核能减叠影"的机制层证明，
+〇.2 的图像度量是它的现象层确认。
+
+精确性说明：Bartlett(2h+1) = box(h+1) ⊛ box(h+1)，所以"响应平方"里的 box 是**半长 box**，
+不是 13 抽头 box 自己 —— 低频段两者都 ≈ 1，行文说"box 响应的平方"在操作上成立，
+测试里则逐点断言 `|triangle(f)| = |box7(f)|²`（f ∈ 0.005…0.5，误差 < 2e-3）。
+
+## 四、帧率（第一轮三组 + 第二轮四组，桌面，5 秒锯齿滚动）
+
+第一轮（三组）：
 
 `--fps` 模式，逐帧 `withFrameNanos` 采样，同一 build、同一窗口尺寸：
 
@@ -288,7 +432,7 @@ p95 不受影响（12.72 / 11.00 vs 10.82）。不构成降级理由。
 ### 核参数（`commonMain`，三端共享）
 
 ```kotlin
-enum class MotionBlurKernel { Box, Gaussian }
+enum class MotionBlurKernel { Box, Triangle, Gaussian }
 val DEFAULT_MOTION_BLUR_KERNEL = MotionBlurKernel.Box
 
 fun boxKernelTaps(radiusDp: Float, density: Float): Int {
@@ -303,6 +447,20 @@ fun boxKernelWeights(taps: Int): FloatArray {
     val weight = 1f / taps
     return FloatArray(taps) { weight }       // 和 = 1，配 gain = 1
 }
+
+// 第二轮新增：三角核（Bartlett），与 box 同一 tap 网格，只换权重
+fun triangleKernelWeights(taps: Int): FloatArray {
+    require(taps >= 1) { "kernel needs at least one tap, got $taps" }
+    val centre = taps / 2
+    var sum = 0f
+    val raw = FloatArray(taps) { i ->
+        val w = (centre + 1 - abs(i - centre)).toFloat()   // taper 到最小权重（非截断形）
+        sum += w
+        w
+    }
+    for (i in raw.indices) raw[i] = raw[i] / sum          // 归一化，gain 仍传 1
+    return raw
+}
 ```
 
 `N = 2 × max(1, round(radiusDp × density)) + 1`。**奇数由结构保证**，不是碰巧：
@@ -311,10 +469,10 @@ fun boxKernelWeights(taps: Int): FloatArray {
 
 ### 平台路径
 
-| 端 | box | gaussian（降级） |
-|---|---|---|
-| Desktop / Wasm | `saveLayer` + `ImageFilter.makeMatrixConvolution(kernelW=1, kernelH=N, kernel=1/N…, gain=1f, bias=0f, offsetX=0, offsetY=N/2, tileMode=CLAMP, convolveAlpha=true, input=null, crop=null)` | `ImageFilter.makeBlur(sigmaX, sigmaY, FilterTileMode.CLAMP)` |
-| Android 31+ | **无** —— `Modifier.blur` 不收核 | `Modifier.blur(radiusDp.dp, Unbounded)`（各向同性） |
+| 端 | box | triangle（第二轮新增） | gaussian（降级） |
+|---|---|---|---|
+| Desktop / Wasm | `saveLayer` + `ImageFilter.makeMatrixConvolution(kernelW=1, kernelH=N, kernel=1/N…, gain=1f, bias=0f, offsetX=0, offsetY=N/2, tileMode=CLAMP, convolveAlpha=true, input=null, crop=null)` | **同一调用，只把 `kernel` 换成 `triangleKernelWeights(taps)`**（成本相同） | `ImageFilter.makeBlur(sigmaX, sigmaY, FilterTileMode.CLAMP)` |
+| Android 31+ | **无** —— `Modifier.blur` 不收核 | **无**（同左） | `Modifier.blur(radiusDp.dp, Unbounded)`（各向同性） |
 
 `saveLayer` 是有效路径：Skia 在 `restore()` 合成图层时应用 layer paint 的 image filter，
 被包裹的整棵子树作为一张图被滤波，且不改布局、不改命中区域（§11 要求）。
@@ -331,6 +489,7 @@ CLAMP 则延伸边缘像素。
 
 ```kotlin
 private data class BoxKey(val taps: Int)
+private data class TriangleKey(val taps: Int)   // 第二轮新增，同因：不能与 box 共槽
 private data class GaussianKey(val sigmaX: Float, val sigmaY: Float)
 ```
 
@@ -340,10 +499,12 @@ private data class GaussianKey(val sigmaX: Float, val sigmaY: Float)
 
 ### 切换入口
 
-- 桌面：`--kernel=gaussian`（默认 box；只认 `gaussian` 一个值，打字错不会静默换核）
-- Wasm：`?kernel=gaussian`
-- `MotionProbeConfig.kernel`，HUD 显示 `kernel = box 1x13` 或 `kernel = gaussian (fallback)`
-- `FPS_RESULT` 行加了 `kernel=` 字段，三组数据不会混淆
+- 桌面：`--kernel=box|triangle|gaussian`（默认 box；只认这三个值，打字错不会静默换核）
+- Wasm：`?kernel=triangle` 等三个值
+- 内容夹具：桌面 `--content=real|pathological`，Wasm `?content=`（默认 `real`）
+- `MotionProbeConfig.kernel`，HUD 显示 `kernel = box 1x13` / `kernel = triangle 1x13` /
+  `kernel = gaussian (fallback)`
+- `FPS_RESULT` 行带 `kernel=` 字段，各组数据不会混淆
 
 ### 明确排除的方案
 
@@ -365,9 +526,14 @@ private data class GaussianKey(val sigmaX: Float, val sigmaY: Float)
 2. **box 核抽头在整数像素网格上，没有子像素采样。** `makeMatrixConvolution` 的
    `offsetX/offsetY` 是 **Int**，13 个抽头严格落在 1px 网格上。§三.3 已证明这与理想 box 卷积
    逐像素一致（内部最大误差 0.8/255），所以**不是实现缺陷**；但在 34sp 大字上，
-   12px 拖影会把字内横笔（间距约 4px）复制成多条，观感比高斯"更花"。这是 box 的真实物理
-   结果，不是伪影 —— 真实相机拍高速滚动的等宽字体也是这个样子。更平滑需要子像素抽头
-   （本 API 做不到）或 2 抽头/px 的加宽核（`N = 4r+1`，只能把复制频率提高一倍）。
+   12px 拖影会把字形内的亮带结构（帽线/暗中腰/基线，间距 4–7px）部分保留成
+   "上下叠 2–3 道横带"的观感（第一轮误判为"横笔被复制"，第二轮 §〇.2 用拍频度量定位：
+   是**字形自身带结构被 13px 核部分合并**的产物，行内暗腰 ≈ 核长时最明显）。
+   真实相机拍高速滚动的等宽字体也是这个样子。**第二轮实测：13–20sp 真实内容上该结构
+   完全被填平（seam ≈ 0，三核皆然），且三角核可把 34sp 上的叠影强度再砍 37%、
+   中缝砍 63%（§〇.2/§三.6）** —— 大字/周期性内容为主的列表可切 `--kernel=triangle`。
+   更平滑需要子像素抽头（本 API 做不到）或 2 抽头/px 的加宽核（`N = 4r+1`，只能把复制
+   频率提高一倍）。
 3. **Android 没有运行时证据。** 上一版 `assembleDebug` 通过、APK 生成，但本机无 Android 31+
    设备/模拟器，`Modifier.blur` 的实际出图未验证；本版未重跑 `assembleDebug`（矩阵不变）。
 4. **Android <31 直接降级为无模糊**，返回 `this`，不装 graphics layer。
@@ -401,34 +567,49 @@ gradle :composeApp:compileKotlinWasmJs
 # 取 classpath
 gradle :composeApp:desktopMainClasses :composeApp:printRuntimeClasspath -q | tail -1 > cp.txt
 
-# A/B 两张图（唯一变量是 --kernel）
+# A/B 两张图（唯一变量是 --kernel）+ 第二轮的三角核与真实内容四张
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/capture-motion.ps1 \
   -Java "D:/Hermes/tools/jdk21/bin/java.exe" -ClassPathFile cp.txt \
-  -OutFile shots/motion/ab-box-6.png -FreezeBlur 6
+  -OutFile shots/motion/ab-box-6.png -FreezeBlur 6 -Content pathological
 
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/capture-motion.ps1 \
   -Java "D:/Hermes/tools/jdk21/bin/java.exe" -ClassPathFile cp.txt \
-  -OutFile shots/motion/ab-gaussian-6.png -FreezeBlur 6 -Kernel gaussian
+  -OutFile shots/motion/ab-triangle-6.png -FreezeBlur 6 -Kernel triangle -Content pathological
+
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/capture-motion.ps1 \
+  -Java "D:/Hermes/tools/jdk21/bin/java.exe" -ClassPathFile cp.txt \
+  -OutFile shots/motion/ab-gaussian-6.png -FreezeBlur 6 -Kernel gaussian -Content pathological
+
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/capture-motion.ps1 \
+  -Java "D:/Hermes/tools/jdk21/bin/java.exe" -ClassPathFile cp.txt \
+  -OutFile shots/motion/real-box-6.png -FreezeBlur 6 -Kernel box -Content real
+# real-triangle-6 / real-gaussian-6 / real-freeze-0 同理换 -Kernel / -FreezeBlur 0
 
 # 真实滚动（默认 box）
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/capture-motion.ps1 \
   -Java "D:/Hermes/tools/jdk21/bin/java.exe" -ClassPathFile cp.txt \
   -OutFile shots/motion/live-scroll-box.png -AutoScroll
 
-# 三组帧率
+# 四组帧率（第二轮）
 java -cp "$(cat cp.txt)" vade.ui.MainKt --motion-probe --fps --autoscroll
+java -cp "$(cat cp.txt)" vade.ui.MainKt --motion-probe --fps --autoscroll --kernel=triangle
 java -cp "$(cat cp.txt)" vade.ui.MainKt --motion-probe --fps --autoscroll --kernel=gaussian
 java -cp "$(cat cp.txt)" vade.ui.MainKt --motion-probe --fps --autoscroll --blur=off
 
-# 度量（需要 numpy + pillow）
-python tools/motion-metrics.py shots/motion/freeze-0.png \
-  shots/motion/ab-box-6.png shots/motion/ab-gaussian-6.png shots/motion/live-scroll-box.png
-python tools/motion-streak-profile.py shots/motion/ab-box-6.png shots/motion/ab-gaussian-6.png
+# 度量（需要 numpy + pillow；.probe-venv 里有）
+python tools/motion-metrics.py shots/motion/real-freeze-0.png \
+  shots/motion/real-box-6.png shots/motion/real-triangle-6.png shots/motion/real-gaussian-6.png
+python tools/motion-streak-profile.py shots/motion/real-box-6.png \
+  shots/motion/real-triangle-6.png shots/motion/real-gaussian-6.png
+python tools/motion-beat-metric.py shots/motion/ab-box-6.png shots/motion/ab-triangle-6.png \
+  shots/motion/ab-gaussian-6.png shots/motion/real-freeze-0.png \
+  shots/motion/real-box-6.png shots/motion/real-triangle-6.png shots/motion/real-gaussian-6.png
 ```
 
-桌面参数：`--motion-probe` / `--freeze-blur=<dp>` / `--blur=off` / `--kernel=gaussian` /
-`--autoscroll` / `--fps`。现有分支（`--bar` `--dest` `--size` `--panel` / `--search`）未改动。
-Wasm query：`?motion-probe&freeze=6&kernel=gaussian`。
+桌面参数：`--motion-probe` / `--freeze-blur=<dp>` / `--blur=off` / `--kernel=box|triangle|gaussian` /
+`--content=real|pathological` / `--autoscroll` / `--fps`。现有分支（`--bar` `--dest` `--size` `--panel` /
+`--search`）未改动。
+Wasm query：`?motion-probe&freeze=6&kernel=triangle&content=real`。
 
 ## 八、踩坑记录（给后续实现省时间）
 
@@ -462,3 +643,9 @@ Wasm query：`?motion-probe&freeze=6&kernel=gaussian`。
 15. **"实现对了"要用理想卷积验证，不要靠目测。** 把锐利帧做理想 13 抽头 box 卷积，与真实帧
     逐像素比，内部最大误差 0.8/255 —— 这才排除了"看起来像但其实是别的东西"，
     也顺手证伪了"box 会引入梳状伪影"的猜测（comb score 反而更低）。
+16. **区域级自相关测不出拍频。** 拍频度量第一版对整个列表区域做垂直 ACF，三张图全是
+    ~0.007 无区分 —— 13px 核的平滑拖影自己就在 lag 2–5 强自相关，把带结构的信号埋掉。
+    改成**逐文本行**（行剖面 = 对有字列求行均值；行内归一化 ACF；行界外用真实暗背景，
+    不做合成 padding）才分开（强度 box 0.736 / tri 0.465 / gauss 0.569）。还要意识到
+    "回音横带"是**字形自身的帽线/暗中腰/基线**被核部分合并的产物，不是核引入的振荡 ——
+    box 无负瓣，数学上不可能振铃；换核改变的是"这些带被填平的程度"。
