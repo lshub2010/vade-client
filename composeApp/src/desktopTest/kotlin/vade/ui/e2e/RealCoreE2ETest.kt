@@ -717,6 +717,7 @@ class CoreHandle(private val python: String, private val launcher: File, val dat
             processSnapshot = snapshot,
             hitCeiling = hitCeiling,
             spawnMs = spawnMs(),
+            spawnFailed = spawnFailure != null,
         )
         return CoreBootException(
             message = message,

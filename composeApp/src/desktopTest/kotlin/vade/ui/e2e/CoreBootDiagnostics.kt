@@ -27,13 +27,19 @@ import java.lang.management.ManagementFactory
  * > **死锁保险**：正常 boot 仍然是**条件驱动**（读到 READY 行立刻返回，不等满），
  * > 180 s 只在真挂死时兜底。**它不是预期耗时**，也不是「慢慢等」的许可。
  *
+ * 支持「这不是 core 慢，是预算小」的定量（`shots/g-e2e-budget/`）：33 轮 × 12 路
+ * = **396 次启动全部到达 READY**，其中 2 轮中位数已 > 30 s、单次最长 **69.4 s** ——
+ * 一次真挂死都没有，红的全是预算。
+ *
  * 若某天 boot 真花到 180 s，那不是预算问题，是 core 起了 100 倍——届时失败消息里的
- * 进程数与尾部输出足以分清「机器被烧满」还是「core 崩了」。
+ * `verdict` 标签 + 进程数与尾部输出足以分清「机器被烧满」还是「core 崩了」。
  *
- * ## 失败消息必须自带取证包
+ * ## 失败消息必须自带取证包（且结论必须在第一行）
  *
- * 见 [CoreDiagnostics.formatBootFailure]：已等时长、完整命令行、stdout/stderr 尾部、
- * 失败当时本机 java/python 进程数，以及一句按**实测耗时分档**的结论提示。
+ * 见 [CoreDiagnostics.formatBootFailure]：第一行 headline，**第二行 `verdict   :`**（可 grep 的
+ * 标签 `SPAWN-FAIL` / `CORE-FAIL-EARLY` / `LIKELY-LOAD` / `INCONCLUSIVE` / `CALLER-BUDGET` /
+ * `CEILING-HIT` + 一句下一步），然后是已等时长、spawn 耗时（**单独计时，不并入等待**）、
+ * 完整命令行、stdout/stderr 尾部、失败当时本机 java/python 进程数。
  */
 internal object CoreBootBudget {
 
@@ -70,6 +76,14 @@ internal object CoreBootBudget {
     /** > 25 s → 已经进了实测的并发区间（中位 19.6–31.6 s），优先怀疑机器负载。 */
     const val SLOW_MS = 25_000L
 
+    /**
+     * spawn 本身就慢到这个数以上 → 进程表在抖（Windows 进程创建常态 1.6–5.3 s）。
+     *
+     * 这条**不参与**「等 READY」的预算（两者分开计时，见 `CoreHandle.elapsedMs/spawnMs`），
+     * 但它会作为一行独立证据写进判词：spawn 都>10 s 的机器，READY 等 40 s 也就没什么可惊讶的。
+     */
+    const val SPAWN_SLOW_MS = 10_000L
+
     /** 实测数据（写进失败提示，让人不必去翻 shot 目录）。 */
     const val MEASURED = "idle 2.3-9.8s, 12-way median 19.6-31.6s, worst 37.7s"
 }
@@ -91,8 +105,10 @@ class CoreBootException(
  * 输出形如：
  * ```
  * core did not print READY within 180000ms; no fatal line on stdout
+ * verdict   : CEILING-HIT — waited 180.0s and hit the deadlock ceiling — that is 4.8× the worst …
  * --- core boot diagnostics -------------------------------------------------
- * elapsed   : 180042ms (budget 180000ms — deadlock guard, NOT expected cost)
+ * elapsed   : waited 180042ms of 180000ms budget (deadlock guard, NOT expected cost)
+ * spawn     : 2140ms from ProcessBuilder.start() to the child running (…)
  * command   : "D:/.../python.exe" "C:/.../e2e_core_launcher.py" "--data-dir" "C:/.../data"
  * env       : PYTHONUTF8=1 PYTHONIOENCODING=utf-8
  * data_dir  : C:\...\data
@@ -102,7 +118,6 @@ class CoreBootException(
  *   | {"stage": "boot", "data_dir": "C:\\...\\data"}
  * stderr tail (last 40 lines, 11 kept):
  *   | INFO:     Started server process [1234]
- * hint      : waited 180.0s > 25s — ...
  * ```
  */
 internal object CoreDiagnostics {
@@ -242,13 +257,41 @@ internal object CoreDiagnostics {
     }
 
     /**
-     * 一句结论提示，按**实测耗时分档**给出下一步该看哪里。
-     * 分段依据是 [CoreBootBudget] 里的实测数字，不是拍脑袋。
+     * 失败的一句话定性（**可 grep 的**机器标签）：下次红，先看消息第 2 行的 `verdict   :`
+     * 前缀，不必读代码、不必翻 80 行尾部输出。
+     *
+     * 分档依据是 [CoreBootBudget] 里的实测数字，不是拍脑袋：
+     *
+     * | 标签 | 触发条件 | 下一步 |
+     * |---|---|---|
+     * | `SPAWN-FAIL` | `ProcessBuilder.start()` 自己抛 | 命令/venv 坏了，与 core 无关 |
+     * | `CORE-FAIL-EARLY` | 等 READY < 12 s 就死 | 看 stderr 尾部的 Python 异常 |
+     * | `LIKELY-LOAD` | 等 READY > 25 s 才死 | 先看 javaProcs/pythonProcs，机器被抢 |
+     * | `INCONCLUSIVE` | 12–25 s | 先找 stdout 的 fatal 行 |
+     * | `CALLER-BUDGET` | 调用方自己给了个比并发区间还小的预算 | 测试自己的问题，不是 core |
+     * | `CEILING-HIT` | 等满了生产上限（180 s） | 真挂死或机器被压到 4.8× 超载 |
+     */
+    fun category(
+        elapsedMs: Long,
+        timeoutMs: Long,
+        hitCeiling: Boolean,
+        spawnFailed: Boolean = false,
+    ): String = when {
+        spawnFailed -> "SPAWN-FAIL"
+        hitCeiling && timeoutMs < CoreBootBudget.SLOW_MS -> "CALLER-BUDGET"
+        hitCeiling -> "CEILING-HIT"
+        elapsedMs < CoreBootBudget.FAST_FAIL_MS -> "CORE-FAIL-EARLY"
+        elapsedMs > CoreBootBudget.SLOW_MS -> "LIKELY-LOAD"
+        else -> "INCONCLUSIVE"
+    }
+
+    /**
+     * 结论正文（不含标签），按**实测耗时分档**给出下一步该看哪里。
      *
      * [hitCeiling] = 这次是「等满自己的上限」而不是「子进程提前死了/拒绝启动」——
      * 两者的下一步完全不同，所以必须区分（否则 5 s 的小预算会被告成「机器负载」）。
      */
-    fun hint(elapsedMs: Long, timeoutMs: Long, hitCeiling: Boolean): String = when {
+    fun explain(elapsedMs: Long, timeoutMs: Long, hitCeiling: Boolean): String = when {
         hitCeiling && timeoutMs < CoreBootBudget.SLOW_MS ->
             "the wait hit the CALLER-SUPPLIED budget of ${timeoutMs}ms, which is below the measured " +
                 "contention band. Production ceiling is ${CoreBootBudget.READY_TIMEOUT_MS}ms; this run was " +
@@ -277,9 +320,45 @@ internal object CoreDiagnostics {
                 "is none, suspect load on this machine rather than the core."
     }
 
+    /**
+     * `verdict   :` 整行 = 可 grep 的标签 + 结论正文 +（必要时）spawn 侧的负载证据。
+     *
+     * spawn 耗时**单独**成句，绝不并进「等 READY 花了多久」——Windows 上
+     * `ProcessBuilder.start()` 常态就要 1.6–5.3 s，混在一起会让 5 s 的预算报成「等了 12 s」。
+     */
+    fun verdictLine(
+        elapsedMs: Long,
+        timeoutMs: Long,
+        hitCeiling: Boolean,
+        spawnFailed: Boolean,
+        spawnMs: Long,
+    ): String {
+        val tag = category(elapsedMs, timeoutMs, hitCeiling, spawnFailed)
+        val body = if (spawnFailed) {
+            "the interpreter/launcher never started (ProcessBuilder.start() itself threw): this is a " +
+                "broken command line or missing venv — NOT machine load and NOT the core. Compare the " +
+                "'command' line below with a working run, and read the IOException text in 'child'."
+        } else {
+            explain(elapsedMs, timeoutMs, hitCeiling)
+        }
+        val spawnNote = if (spawnMs > CoreBootBudget.SPAWN_SLOW_MS) {
+            " [spawn alone took ${spawnMs}ms > 10s: the process table itself is thrashing, so a slow " +
+                "READY is expected — this run is load-bound, not code-bound]"
+        } else {
+            ""
+        }
+        return "$tag — $body$spawnNote"
+    }
+
     fun fmt(ms: Long): String = String.format("%.1f", ms / 1000.0)
 
-    /** 拼装最终异常消息（headline 保留旧文案，老测试按子串断言）。 */
+    /**
+     * 拼装最终异常消息（headline 保留旧文案，老测试按子串断言）。
+     *
+     * 结构上把 `verdict` **放在 headline 下面第一行**：JUnit 报告里一条红消息动辄 80 行
+     * （40 行 stdout + 40 行 stderr），结论埋在最后等于没有结论。标签可 grep → 下次红
+     * 直接用 `verdict   : LIKELY-LOAD` 就能筛出所有「机器忙」的红。
+     */
     fun formatBootFailure(
         headline: String,
         elapsedMs: Long,
@@ -294,8 +373,12 @@ internal object CoreDiagnostics {
         processSnapshot: String,
         hitCeiling: Boolean = true,
         spawnMs: Long = 0L,
+        spawnFailed: Boolean = false,
     ): String = buildString {
         append(headline)
+        append("\nverdict   : ").append(
+            verdictLine(elapsedMs, timeoutMs, hitCeiling, spawnFailed, spawnMs),
+        )
         append("\n--- core boot diagnostics -------------------------------------------------")
         append("\nelapsed   : waited ${elapsedMs}ms of ${timeoutMs}ms budget (deadlock guard, NOT expected cost)")
         append("\nspawn     : ${spawnMs}ms from ProcessBuilder.start() to the child running" +
@@ -317,6 +400,5 @@ internal object CoreDiagnostics {
         } else {
             stderrTail.split('\n').forEach { append("\n  | ").append(it) }
         }
-        append("\nhint      : ").append(hint(elapsedMs, timeoutMs, hitCeiling))
     }
 }
