@@ -66,7 +66,16 @@ data class SessionGroup(val bucket: TimeBucket, val sessions: List<SessionSummar
  * `observeEvents()` is empty because no fixture ever emits an event.
  */
 object FakeSessions : SessionSource {
-    override suspend fun sessions(): List<SessionSummary> = all
+    /**
+     * 夹具源**没有**服务端筛选这回事：两档都返回 [all]（含两行 `archived`）。
+     *
+     * 为什么不按 [includeArchived] 过滤：`includeArchived = false` 的语义是「与既有行为
+     * 逐字节一致」，而假数据的默认列表本来就是这 6 行（`RealCoreUiE2ETest` 的
+     * `FIXTURE_IDS` 逐一钉着）。在这里把 s-wasm / s-agp 滤掉就是改了默认列表，而且演示
+     * 界面里再也看不到「已归档」标记 —— 那正是本棒要让人看见的东西。真源一侧的筛选语义
+     * 由 `sessionRowToSummary` 与 `RealSessionSource` 的测试钉住。
+     */
+    override suspend fun sessions(includeArchived: Boolean): List<SessionSummary> = all
 
     override suspend fun messages(sessionId: String): List<ChatMessage> =
         ChatFixtures.threadFor(sessionId).items

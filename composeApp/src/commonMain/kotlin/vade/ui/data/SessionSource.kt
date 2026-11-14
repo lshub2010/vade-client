@@ -28,8 +28,20 @@ sealed interface VadeEvent
  * the fake one simply answers immediately.
  */
 interface SessionSource {
-    /** Session rows for the list screen, in no particular order (UI groups/buckets them). */
-    suspend fun sessions(): List<SessionSummary>
+    /**
+     * Session rows for the list screen, in no particular order (UI groups/buckets them).
+     *
+     * ## [includeArchived]（g-archive-ui）
+     * 归档行要不要进结果。默认 `false` 与既有行为**逐字节一致**：`session/list` 不传
+     * `archived`（契约默认 false），投影 [vade.ui.data.sessionRowToSummary] 也会把
+     * 「core 明明发了、但带 `archived_at`」的行丢掉。传 `true` 时投影不再把归档行当
+     * 过滤谓词丢弃，行上带 `archived = true` 照样返回 —— 归档视图/「已归档」标记的入口。
+     *
+     * 注意这是**客户端接受度**开关，不是线上过滤器：契约 `session/list.params.archived`
+     * 的 `true` 意思是「只回归档行」（筛选反转成一档纯归档视图），所以这里刻意不动线上
+     * 参数 —— 传 `true` 只放宽本地投影，不改变请求（见 [RealSessionSource.sessions]）。
+     */
+    suspend fun sessions(includeArchived: Boolean = false): List<SessionSummary>
 
     /** The message thread of one session, oldest first. */
     suspend fun messages(sessionId: String): List<ChatMessage>
