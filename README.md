@@ -132,3 +132,21 @@ contributors**（[许可原文](https://github.com/tabler/tabler-icons/blob/main
 若后续采用，需在此声明：本软件使用 HarmonyOS Sans 字体（© Huawei Device Co., Ltd.），
 按 HarmonyOS Sans Fonts License Agreement 使用。
 
+## 快速开始
+
+- **从零到跑起桌面客户端**：[docs/QUICKSTART.md](docs/QUICKSTART.md) —— 分步命令 + 预期输出 +
+  常见错误解法（SDK not found / Gradle 版本不符 / `D:\d\` 双前缀 / UP-TO-DATE 假绿灯等，全部本机复现过）。
+  文档顶部有**当前状态表**：哪些能用、哪些还是假数据（现状：**UI 全部假数据，未连 core**，真连接见主仓 `docs/ALPHA.md` 的 W2）、哪些未实现——别把计划当现状。
+- **构建矩阵为什么钉死这些版本、动了会怎样**：[docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) ——
+  Miuix 0.9.x → compileSdk 37 → AGP 9.x → `builtInKotlin`/`newDsl` 双开关 → AGP 10 拆模块的完整链条。
+
+最小路径（Windows / MSYS bash；每步的预期输出与坑见 QUICKSTART）：
+
+```bash
+source D:/Hermes/tools/env/vade-env.sh
+export JAVA_HOME=D:/Hermes/tools/jdk21
+export PATH="/d/Hermes/tools/gradle-9.6.1/bin:$PATH"   # vade-env.sh 把 8.10.2 排最前，必须覆盖
+gradle :composeApp:desktopMainClasses                  # 编译桌面端
+gradle :composeApp:run                                 # 起窗口（假数据，会话列表 + 底栏四目的地）
+```
+
