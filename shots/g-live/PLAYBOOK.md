@@ -161,9 +161,12 @@ PATH=/d/Hermes/tools/gradle-9.6.1/bin:$PATH gradle :composeApp:desktopTest \
    （主仓 `core/vade/session/manager.py:670-674, 309-313`），客户端映射成 `（无标题）`
    （`data/SessionRowMapping.kt:39`）。所以「首次运行配对流程」如果不先改名，列表里会出现一行
    `（无标题）` —— 属实数据行为，不是 bug，但 UI 要给改名的入口。
-3. **Failed 横幅没有重试按钮**：`UiState.retrySessions()`（`shell/UiState.kt:139-141`）存在，
-   但没有任何 UI 调它（全仓 grep 只有 SessionsLoader/UiState 自己）。真模式下 core 不可达 →
-   横幅常驻，用户只能重启应用（或等一个会触发刷新的事件）。接线属于 shell/，不在本棒权限内。
+3. ~~**Failed 横幅没有重试按钮**~~ → **已关闭（`g-error-retry`）**。当时的现状是 `UiState.retrySessions()`
+   没有任何 UI 调它、横幅常驻只能重启；现在 `LoadErrorBanner` 带「⟳ 重试」胶囊（`retryDescription`
+   有会话列表与单会话两条），点击 → 清错 → 按钮变「重试中…」并禁用。防连点的不变量是
+   `error == null && phase ∈ {Loading, Failed}`。`g-first-run` 又补了第二件事：连不上时横幅里
+   **可照抄的启动命令**（host/port 取真实配置，配对码只显示占位符 `<配对码>`，绝不回显）。
+   视觉证据：`shots/g-error-retry/banner-light.png`（淡红卡片 + 警示图标 + 分类与传输原话 + 人话提示）。
 4. **wasm 的配对码只能进 URL**（见 §2c）：`fetch` 读不到 `Set-Cookie`，页面 shell 配对是正路，
    未接线。
 5. **`git worktree` 不带 submodule**：本 worktree 一开始 `contracts/vade` 是空的，

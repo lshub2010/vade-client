@@ -11,13 +11,13 @@
 |---|---|---|
 | 桌面端编译 `gradle :composeApp:desktopMainClasses` | ✅ 可用 | 2026-11-14 实测 `BUILD SUCCESSFUL in 4s` |
 | 桌面端启动 `gradle :composeApp:run` | ✅ 可用，窗口真实渲染 | 实测拉起 `vade.ui.MainKt` 进程；截图 `shots/g-docs/desktop-quickstart-fixed.png` |
-| 客户端全量测试 `gradle :composeApp:desktopTest --rerun` | ✅ **368 tests / 0 failures / 1 skipped** | 2026-11-14 实测（`build/test-results/desktopTest/TEST-*.xml` 逐文件 tests= 求和）；skipped = `VadeClientSmokeTest`（环境变量门控，见 §4） |
+| 客户端全量测试 `gradle :composeApp:desktopTest --rerun` | ✅ **1118 tests / 0 failures / 0 errors / 1 skipped** | 2026-11-15 实测（`build/test-results/desktopTest/TEST-*.xml` 逐文件 tests= 求和，105 个类）；skipped = `VadeClientSmokeTest`（环境变量门控，见 §4）。**判据是三目标**：另加 `assembleDebug` + `compileKotlinWasmJs`，只跑桌面测试会把 Wasm 的编译错误整个藏住 |
 | Android APK 构建 `gradle :composeApp:assembleDebug` | ✅ 可用 | 2026-11-14 实测，`composeApp-debug.apk` **21,878,888 字节** |
 | Wasm 编译与链接 | ✅ 编译 + 链接均通过 | `compileKotlinWasmJs` 绿；`compileProductionExecutableKotlinWasmJs` 产出 `composeApp.wasm` **13,681,513 字节**。**浏览器里跑起来未验证** |
 | 桌面打包分发 | ✅ **已实测出包** | `packageMsi` → `vade-ui-0.1.0.msi` **93,312,713 字节**；`createDistributable` → app-image **153.6 MB**（自带 jlink 运行时，运行机不需 JDK）。⚠️ alpha 序列的版本号限制见 `deploy/desktop/README.md` |
-| **UI 数据** | ❌ **仍是 fixtures，未连 core** | `App()` 默认 `source = FakeSessionSource()`（`vade/ui/App.kt`）。真数据源 `RealSessionSource` 已实现并有 36 条测试，但 **`UiState` 尚未读它**（接线在 `w-wire` 批进行中） |
-| 真连接（`ui/attach`、配对、断线重连接进 UI） | ❌ **UI 未接线** | 协议层 `VadeClient` 已覆盖 **34/34 方法、34/34 事件键**，但没有任何页面调用它 → ALPHA.md 的 **W2** |
-| 真聊天（`ui/submit` / `turn.delta` 流式 / 中断） | ❌ 未接 UI | 同上。协议客户端对真核的冒烟记录见 `shots/w1-proto/smoke.md` |
+| **UI 数据** | ✅ **默认 fixtures（刻意的），真模式一条开关切换** | `App()` 的默认参数仍是 `source = FakeSessionSource()`（`vade/ui/App.kt`）——这是**有意为之**，让「真模式」永远是显式选择，否则测试与真机行为会纠缠。真源已接线：`RawSourceStrings` → `SourceConfig.parse` → `Spec.Real` → `AutoConnectingSessionSource`（15 s 预算）→ `RealSessionSource`；三端开关分别是桌面 `VADE_SOURCE/VADE_HOST/VADE_PORT`、Android intent extra `vade.source=real`、Wasm `?source=real&host=…&port=…`。端到端证据：`RealCoreUiE2ETest` 起真 core、断言「界面出现 core 铸造的会话标题」**且**「假数据专有字符串一个都不在」 |
+| 真连接（`ui/attach`、配对、断线重连） | ✅ **已接线**（配对码仍是启动期一次读入，界面内不可输入） | `RealSessionSource.connect()` 走 `ui/session` 配对 + `ui/attach`；协议层 `VadeClient` 覆盖 **35/35 方法**（含 RFC-0015 的 `ui/modules`）。配对码来自配置（桌面 env / Android intent / Wasm URL），**运行期没有输入控件**；界面内给的是可照抄的自救命令而不是重试码输入框 |
+| 真聊天（`ui/submit` / `turn.delta` 流式 / 中断） | 🟡 **通道已接，真核流式端到端未复验** | `TurnGatewayReal` 已接 `ChatTranscriptSource`（历史 + **原始事件流**，不是 `observeEvents()` 的有损投影）；写入侧走同步 seam。但「发一条消息看到真核流式吐字」这条验收句**本机没有跑过**，别按已完成记账 |
 | 搜索 | ⚠️ 契约已支持，UI 仍降级 | 契约 1.5.0 **已有** `session/search`（RFC-0014）；客户端 codec 由 `p-search` 批补，UI 仍走本地缓存索引 |
 | echo 模块在 UI 里可调（ALPHA A3） | ❌ 不可演示 | echo 模块已迁出主仓到独立仓 `vade-module-echo`；模块页宿主（`g-module`）未落地，UI 未接线 |
 | 会话元数据编辑（重命名/置顶/分组/图标/颜色） | ✅ UI 完整，⚠️ 未接真 RPC | `vade/ui/meta/` 8 文件 + 30 条测试；`SessionMetaActions` 的真适配器由 `w-adapt` 批实现 |
@@ -144,7 +144,7 @@ BUILD SUCCESSFUL in 5s
 11 actionable tasks: 4 executed, 7 up-to-date
 ```
 
-对 `composeApp/build/test-results/desktopTest/*.xml` 逐文件汇总（实测）：**368 tests / 0 failures / 0 errors / 1 skipped**（2026-11-14 合并十余批后的数；这条数字随批次增长，读的时候以自己跑出来的为准）。
+对 `composeApp/build/test-results/desktopTest/*.xml` 逐文件汇总（实测）：**1118 tests / 0 failures / 0 errors / 1 skipped**（2026-11-15 合并夜间十余批后的数；这条数字随批次增长，读的时候以自己跑出来的为准）。
 
 唯一 skipped 是 `vade.ui.protocol.VadeClientSmokeTest`：它用 `org.junit.Assume` 门控——只有设了
 `VADE_SMOKE_PORT` 等环境变量才会真连一个 core 跑冒烟，普通执行标记 skipped（**不是静默 pass**）。
