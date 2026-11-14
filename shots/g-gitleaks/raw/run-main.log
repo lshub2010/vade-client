@@ -1,0 +1,8 @@
+== gitleaks 8.30.1 ==
+== target: D:/HermesWorkspace/Vade/Vade @ 0138437 ==
+  final-Vade-workdir: 0 命中
+  final-Vade-history: 0 命中
+  final-Vade-history-all: 0 命中
+  grep: 工作区 6 条 / 全历史 597 条（值已掩码，见 grep-Vade.log）
+== 合计 gitleaks 命中: 0 ==
+MAIN_EXIT=0

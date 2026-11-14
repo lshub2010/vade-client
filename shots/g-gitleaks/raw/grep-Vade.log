@@ -1,0 +1,19 @@
+### WORKTREE D:/HermesWorkspace/Vade/Vade
+   PRIVATE_KEY_HEADER   .\core\tests\test_skill\test_proposal.py:159  len=26 p3='---'
+   PRIVATE_KEY_HEADER   .\core\tests\test_skill\test_audit.py:15  len=26 p3='---'
+   PRIVATE_KEY_HEADER   .\.venv\Lib\site-packages\cryptography\hazmat\primitives\serialization\ssh.py:77  len=30 p3='---'
+   PRIVATE_KEY_HEADER   .\core\tests\audit\test_redact.py:11  len=22 p3='---'
+   PRIVATE_KEY_HEADER   .\core\tests\loop\test_tool_card_fields.py:179  len=26 p3='---'
+   AWS_AKIA             .\core\tests\loop\test_args_redaction.py:119  len=20 p3='AKI'
+   TOTAL_WORKTREE_MATCHES=6
+   POSITIVE_CONTROL files_containing_Vade=352
+### HISTORY D:/HermesWorkspace/Vade/Vade
+   AWS_AKIA             core/tests/loop/test_args_redaction.py  len=20 occurrences=52
+   PRIVATE_KEY_HEADER   core/tests/audit/test_redact.py  len=22 occurrences=159
+   PRIVATE_KEY_HEADER   core/tests/loop/test_tool_card_fields.py  len=26 occurrences=52
+   PRIVATE_KEY_HEADER   core/tests/test_skill/test_audit.py  len=26 occurrences=172
+   PRIVATE_KEY_HEADER   core/tests/test_skill/test_proposal.py  len=26 occurrences=162
+   TOTAL_HISTORY_OCCURRENCES=597  commits=214
+   distinct_values[AWS_AKIA]=1 lens=[20]
+   distinct_values[PRIVATE_KEY_HEADER]=2 lens=[22, 26]
+### SUMMARY Vade: worktree=6 history=597

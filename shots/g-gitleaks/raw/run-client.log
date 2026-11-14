@@ -1,0 +1,8 @@
+== gitleaks 8.30.1 ==
+== target: D:/HermesWorkspace/Vade-client @ e800bc4 ==
+  final-Vade-client-workdir: 0 命中
+  final-Vade-client-history: 0 命中
+  final-Vade-client-history-all: 0 命中
+  grep: 工作区 0 条 / 全历史 0 条（值已掩码，见 grep-Vade-client.log）
+== 合计 gitleaks 命中: 0 ==
+CLIENT_EXIT=0

@@ -1,0 +1,12 @@
+### WORKTREE D:/HermesWorkspace/Vade-client
+   TOTAL_WORKTREE_MATCHES=0
+   POSITIVE_CONTROL files_containing_Vade=228
+### WORKTREE D:/HermesWorkspace/Vade/Vade
+   PRIVATE_KEY_HEADER   .\core\tests\test_skill\test_proposal.py:159  len=26 p3='---'
+   PRIVATE_KEY_HEADER   .\core\tests\test_skill\test_audit.py:15  len=26 p3='---'
+   PRIVATE_KEY_HEADER   .\.venv\Lib\site-packages\cryptography\hazmat\primitives\serialization\ssh.py:77  len=30 p3='---'
+   PRIVATE_KEY_HEADER   .\core\tests\loop\test_tool_card_fields.py:179  len=26 p3='---'
+   PRIVATE_KEY_HEADER   .\core\tests\audit\test_redact.py:11  len=22 p3='---'
+   AWS_AKIA             .\core\tests\loop\test_args_redaction.py:119  len=20 p3='AKI'
+   TOTAL_WORKTREE_MATCHES=6
+   POSITIVE_CONTROL files_containing_Vade=351

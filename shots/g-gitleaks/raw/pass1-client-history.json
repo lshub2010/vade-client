@@ -1,0 +1,23 @@
+[
+ {
+  "RuleID": "generic-api-key",
+  "Description": "Detected a Generic API Key, potentially exposing access to various services and sensitive operations.",
+  "StartLine": 202,
+  "EndLine": 202,
+  "StartColumn": 10,
+  "EndColumn": 53,
+  "Match": "Sec-WebSocket-Key: REDACTED\"",
+  "Secret": "REDACTED",
+  "File": "docs/QUICKSTART.md",
+  "SymlinkFile": "",
+  "Commit": "75f6c6f925073d72ebd25eff22999e6444652131",
+  "Link": "https://github.com/lshub2010/vade-client/blob/75f6c6f925073d72ebd25eff22999e6444652131/docs/QUICKSTART.md?plain=1#L202",
+  "Entropy": 4.168296,
+  "Author": "GINGSHAN",
+  "Email": "lshub2010@outlook.com",
+  "Date": "2026-11-14T11:38:28Z",
+  "Message": "docs(alpha): 快速开始 + 环境矩阵 —— 新人从零跑起桌面客户端\n\n- docs/QUICKSTART.md：当前状态表（UI 仍全假数据未连 core，真连接=W2）、\n  环境要求、构建/启动/测试/APK/core 启动全步骤（含实测输出）、\n  7 条常见错误与解法（全部本机复现：SDK not found / Gradle\u003c9.6.0 /\n  D:\\d\\ 双前缀 / properties 反斜杠 / UP-TO-DATE 假绿灯 / daemon 旧环境 / tasks 怪癖）\n- docs/ENVIRONMENT.md：版本矩阵与链条（Miuix 0.9.4→compileSdk 37→AGP 9.5.1\n  →Gradle 9.6.1→builtInKotlin/newDsl 双关→AGP 10 拆模块），每项附依据\n- README 仅追加「快速开始」一节，指向两文；既有内容（含第三方许可四段）未动\n- 实测：desktopMainClasses/desktopTest(154/0/1 skipped)/run(真窗口+截图)/\n  assembleDebug(APK 20.5MB)/core healthz+/ws 101；截图 shots/g-docs/\n- 未 push、未 merge",
+  "Tags": [],
+  "Fingerprint": "75f6c6f925073d72ebd25eff22999e6444652131:docs/QUICKSTART.md:generic-api-key:202"
+ }
+]

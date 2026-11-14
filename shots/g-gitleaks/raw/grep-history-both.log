@@ -1,0 +1,11 @@
+### HISTORY D:/HermesWorkspace/Vade-client
+   TOTAL_HISTORY_OCCURRENCES=0  commits=167
+### HISTORY D:/HermesWorkspace/Vade/Vade
+   AWS_AKIA             core/tests/loop/test_args_redaction.py  len=20 occurrences=50
+   PRIVATE_KEY_HEADER   core/tests/audit/test_redact.py  len=22 occurrences=157
+   PRIVATE_KEY_HEADER   core/tests/loop/test_tool_card_fields.py  len=26 occurrences=50
+   PRIVATE_KEY_HEADER   core/tests/test_skill/test_audit.py  len=26 occurrences=170
+   PRIVATE_KEY_HEADER   core/tests/test_skill/test_proposal.py  len=26 occurrences=160
+   TOTAL_HISTORY_OCCURRENCES=587  commits=212
+   distinct_values[AWS_AKIA]=1 lens=[20]
+   distinct_values[PRIVATE_KEY_HEADER]=2 lens=[22, 26]
