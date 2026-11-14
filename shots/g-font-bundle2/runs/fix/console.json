@@ -1,0 +1,25 @@
+[
+ {
+  "ts": 1794685944726.335,
+  "level": "error",
+  "text": "Failed to load resource: the server responded with a status of 404 (File not found)",
+  "url": "http://127.0.0.1:9181/favicon.ico"
+ },
+ {
+  "ts": 1794685945482.538,
+  "level": "log",
+  "text": "[vade-font] installed 'fonts/vade-sans-sc.woff2' (1012640 B, family Vade Sans SC)"
+ },
+ {
+  "ts": 1794685945542.612,
+  "level": "warning",
+  "text": "WebGL: INVALID_ENUM: getParameter: invalid parameter name, WEBGL_debug_renderer_info not enabled",
+  "url": "http://127.0.0.1:9181/composeApp.js"
+ },
+ {
+  "ts": 1794685945542.839,
+  "level": "warning",
+  "text": "WebGL: INVALID_ENUM: getParameter: invalid parameter name, WEBGL_debug_renderer_info not enabled",
+  "url": "http://127.0.0.1:9181/composeApp.js"
+ }
+]

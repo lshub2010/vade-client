@@ -1,0 +1,76 @@
+
+=== phase fix  query=''  offline=False ===
+[PASS] 首帧: frame-01.png 69488 B sha256 7ef52e63bb85de5a… t=14.005s ink=3198
+[PASS] 不同帧数: 2 个首段 + 0 个迟到帧（4718, 69488 B）
+[PASS] 稳定帧: frame-01.png 69488 B sha256 7ef52e63bb85de5a… ink=3198
+[PASS] 字体安装日志: [vade-font] installed 'fonts/vade-sans-sc.woff2' (1012640 B, family Vade Sans SC)
+[PASS] gstatic 请求（应为 0）: 0 个
+[PASS] 字体请求: 1 个，例 http://127.0.0.1:9181/fonts/vade-sans-sc.woff2
+[PASS] gstatic 失败（离线证据）: 0 条失败，例 None
+[PASS] 空闲 30s 是否自变（应稳定）: 1 种字节，t=[117.715, 127.872, 137.952, 148.031]
+[PASS] DOM: {"canvases": 0, "fontFaces": 0, "bodyChildren": ["DIV"]}
+[PASS] 首帧 vs 稳定帧（应相同）: {"all": 0.0, "list": 0.0, "detail": 0.0, "topbar": 0.0, "thread": 0.0, "cjk_rows": 0.0}
+[PASS] AX 节点: 189 个；样例 ['Vade', '搜索', '新建会话', '展开右面板', '会话', '活动']
+[PASS] 未捕获异常: 0 条
+
+=== phase fix-offline  query=''  offline=True ===
+[PASS] 首帧: frame-01.png 69488 B sha256 7ef52e63bb85de5a… t=18.573s ink=3198
+[PASS] 不同帧数: 2 个首段 + 0 个迟到帧（4718, 69488 B）
+[PASS] 稳定帧: frame-01.png 69488 B sha256 7ef52e63bb85de5a… ink=3198
+[PASS] 字体安装日志: [vade-font] installed 'fonts/vade-sans-sc.woff2' (1012640 B, family Vade Sans SC)
+[PASS] gstatic 请求（应为 0）: 0 个
+[PASS] 字体请求: 1 个，例 http://127.0.0.1:9181/fonts/vade-sans-sc.woff2
+[PASS] gstatic 失败（离线证据）: 0 条失败，例 None
+[PASS] 空闲 30s 是否自变（应稳定）: 1 种字节，t=[40.647, 50.722, 60.786, 70.869]
+[PASS] DOM: {"canvases": 0, "fontFaces": 0, "bodyChildren": ["DIV"]}
+[PASS] 首帧 vs 稳定帧（应相同）: {"all": 0.0, "list": 0.0, "detail": 0.0, "topbar": 0.0, "thread": 0.0, "cjk_rows": 0.0}
+[PASS] AX 节点: 189 个；样例 ['Vade', '搜索', '新建会话', '展开右面板', '会话', '活动']
+[PASS] 未捕获异常: 0 条
+
+=== phase ref  query='font=off'  offline=False ===
+[PASS] 首帧: frame-01.png 45439 B sha256 7d2ddc81a3fdf80a… t=13.038s ink=2427
+[PASS] 不同帧数: 2 个首段 + 1 个迟到帧（4718, 45439 B）
+[PASS] 稳定帧: late-00.png 70271 B sha256 cb0d42a815434027… ink=3363
+[PASS] 字体安装日志: None
+[PASS] gstatic 请求（对照：应 >0）: 11 个，例 https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.117.woff2
+[PASS] 字体请求: 11 个，例 https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.117.woff2
+[PASS] gstatic 失败（离线证据）: 0 条失败，例 []
+[PASS] 空闲 30s 是否自变（应稳定）: 1 种字节，t=[116.013, 126.116, 136.24, 146.392]
+[PASS] DOM: {"canvases": 0, "fontFaces": 0, "bodyChildren": ["DIV"]}
+[PASS] 首帧 vs 稳定帧（应不同=豆腐窗口）: {"all": 0.03182, "list": 0.13529, "detail": 0.00099, "topbar": 0.0144, "thread": 0.0013, "cjk_rows": 0.15893}
+[PASS] AX 节点: 189 个；样例 ['Vade', '搜索', '新建会话', '展开右面板', '会话', '活动']
+[PASS] 未捕获异常: 0 条
+
+=== phase control  query='font=off'  offline=True ===
+[PASS] 首帧: frame-01.png 45439 B sha256 7d2ddc81a3fdf80a… t=9.655s ink=2427
+[PASS] 不同帧数: 2 个首段 + 0 个迟到帧（4718, 45439 B）
+[PASS] 稳定帧: frame-01.png 45439 B sha256 7d2ddc81a3fdf80a… ink=2427
+[PASS] 字体安装日志: None
+[PASS] gstatic 请求（对照：应 >0）: 77 个，例 https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.117.woff2
+[PASS] 字体请求: 77 个，例 https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.117.woff2
+[PASS] gstatic 失败（离线证据）: 77 条失败，例 [{'url': 'https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.117.woff2', 'error': 'net::ERR_CONNECTION_REFUSED', 'blocked': None}, {'url': 'https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.118.woff2', 'error': 'net::ERR_CONNECTION_REFUSED', 'blocked': None}]
+[PASS] 空闲 30s 是否自变（应稳定）: 1 种字节，t=[15.33, 25.45, 35.569, 45.751]
+[PASS] DOM: {"canvases": 0, "fontFaces": 0, "bodyChildren": ["DIV"]}
+[PASS] 首帧 vs 稳定帧（离线对照：应保持豆腐不变）: {"all": 0.0, "list": 0.0, "detail": 0.0, "topbar": 0.0, "thread": 0.0, "cjk_rows": 0.0}
+[PASS] AX 节点: 189 个；样例 ['Vade', '搜索', '新建会话', '展开右面板', '会话', '活动']
+[PASS] 未捕获异常: 0 条
+
+=== phase missing  query='font=fonts/nope.woff2'  offline=True ===
+[PASS] 首帧: frame-01.png 45439 B sha256 7d2ddc81a3fdf80a… t=14.703s ink=2427
+[PASS] 不同帧数: 2 个首段 + 0 个迟到帧（4718, 45439 B）
+[PASS] 稳定帧: frame-01.png 45439 B sha256 7d2ddc81a3fdf80a… ink=2427
+[PASS] 字体安装日志: [vade-font] FAILED to install 'fonts/nope.woff2': HTTP 404 — falling back to FontFamily.Default (CJK will go through CMP's gstatic fallback, i.e. tofu when offline)
+[PASS] gstatic 请求（不涉及）: 77 个，例 https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.117.woff2
+[PASS] 字体请求: 78 个，例 http://127.0.0.1:9181/fonts/nope.woff2
+[PASS] gstatic 失败（离线证据）: 77 条失败，例 [{'url': 'https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.117.woff2', 'error': 'net::ERR_CONNECTION_REFUSED', 'blocked': None}, {'url': 'https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.118.woff2', 'error': 'net::ERR_CONNECTION_REFUSED', 'blocked': None}]
+[PASS] 空闲 30s 是否自变（应稳定）: 1 种字节，t=[21.535, 31.636, 41.792, 51.908]
+[PASS] DOM: {"canvases": 0, "fontFaces": 0, "bodyChildren": ["DIV"]}
+[PASS] 首帧 vs 稳定帧（离线对照：应保持豆腐不变）: {"all": 0.0, "list": 0.0, "detail": 0.0, "topbar": 0.0, "thread": 0.0, "cjk_rows": 0.0}
+[PASS] AX 节点: 189 个；样例 ['Vade', '搜索', '新建会话', '展开右面板', '会话', '活动']
+[PASS] 未捕获异常: 0 条
+
+=== 像素对比：ref（?font=off + 在线 gstatic，稳定帧=真中文基准）vs 各自首帧 ===
+fix          diff={"all": 0.02423, "list": 0.10841, "detail": 8e-05, "topbar": 0.01037, "thread": 0.00011, "cjk_rows": 0.12343} ink={'ref': 3363, 'other': 3198} bytes={'ref': 70271, 'other': 69488}
+fix-offline  diff={"all": 0.02423, "list": 0.10841, "detail": 8e-05, "topbar": 0.01037, "thread": 0.00011, "cjk_rows": 0.12343} ink={'ref': 3363, 'other': 3198} bytes={'ref': 70271, 'other': 69488}
+control      diff={"all": 0.03182, "list": 0.13529, "detail": 0.00099, "topbar": 0.0144, "thread": 0.0013, "cjk_rows": 0.15893} ink={'ref': 3363, 'other': 2427} bytes={'ref': 70271, 'other': 45439}
+missing      diff={"all": 0.03182, "list": 0.13529, "detail": 0.00099, "topbar": 0.0144, "thread": 0.0013, "cjk_rows": 0.15893} ink={'ref': 3363, 'other': 2427} bytes={'ref': 70271, 'other': 45439}

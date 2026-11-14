@@ -298,7 +298,7 @@ class Harness:
     def stage_bundle(self) -> str:
         root = self.args.repo
         src = os.path.join(root, "composeApp/build/kotlin-webpack/wasmJs/productionExecutable")
-        index = os.path.join(root, "composeApp/build/processedResources/wasmJs/main/index.html")
+        res = os.path.join(root, "composeApp/build/processedResources/wasmJs/main")
         stage = os.path.join(root, "composeApp/build/wasm-web")
         if not os.path.isdir(src):
             raise SystemExit(f"bundle missing: {src}\n"
@@ -308,7 +308,16 @@ class Harness:
             s = os.path.join(src, name)
             if os.path.isfile(s):
                 shutil.copy2(s, os.path.join(stage, name))
-        shutil.copy2(index, os.path.join(stage, "index.html"))
+        # `wasmJsBrowserDistribution` merges `processedResources/wasmJs/main` over the webpack
+        # output — `index.html` lives there, and so does every `src/wasmJsMain/resources` file
+        # (e.g. the bundled CJK font; staging only the webpack output 404s it and silently falls
+        # back to fetching fonts from gstatic, i.e. it tests a bundle nobody deploys).
+        for dirpath, _, files in os.walk(res):
+            rel = os.path.relpath(dirpath, res)
+            dest = stage if rel == "." else os.path.join(stage, rel)
+            os.makedirs(dest, exist_ok=True)
+            for f in files:
+                shutil.copy2(os.path.join(dirpath, f), os.path.join(dest, f))
         return stage
 
     def start_server(self, serve_dir: str):
