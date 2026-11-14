@@ -48,6 +48,8 @@ import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.NavItem
 import vade.ui.skin.glass.LocalGlassHazeState
+import vade.ui.component.liquid.captureGlassBackdrop
+import vade.ui.component.liquid.rememberGlassBackdrop
 
 /**
  * The whole shell: four destinations, four breakpoints, a glass top bar and (on phones) a
@@ -109,6 +111,11 @@ private val BOTTOM_BAR_ZONE = 88.dp
 private fun ShellBody(state: UiState) {
     val skin = LocalSkin.current
     val glass = LocalGlassHazeState.current
+    // w2-bottombar: the app-content capture the floating pill blurs/refracts (miuix-blur).
+    // Two pipelines coexist on purpose: haze drives the glass top bar + search overlay,
+    // miuix-blur drives the KSU-style pill (it has lens/refraction/highlight that haze
+    // lacks). The content area is the single capture surface for the pill.
+    val contentBackdrop = rememberGlassBackdrop()
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val metrics = metricsFor(maxWidth)
         val session = state.selectedSession
@@ -326,8 +333,8 @@ private fun VerticalRule() {
 }
 
 /** Bottom-bar rows: the four destinations, in contract order (FR-8.77). */
-private fun navItems(): List<NavItem> = Destination.entries.map {
-    NavItem(id = it.id, label = it.label, glyph = it.glyph)
+private fun navItems(): List<BottomBarItem> = Destination.entries.map {
+    BottomBarItem(id = it.id, label = it.label, icon = null, glyph = it.glyph)
 }
 
 /**
