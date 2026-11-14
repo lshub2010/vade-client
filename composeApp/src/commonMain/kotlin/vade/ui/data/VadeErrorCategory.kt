@@ -1,6 +1,7 @@
 package vade.ui.data
 
 import vade.ui.protocol.VadeErrorCodes
+import vade.ui.protocol.VadeException
 
 /**
  * The four buckets a UI can act on (c-data §4). One C-04 code maps to exactly one
@@ -95,3 +96,19 @@ object VadeErrorMapping {
     fun categoryOf(code: String): VadeErrorCategory =
         categories[code] ?: VadeErrorCategory.Retryable
 }
+
+/**
+ * Throwable → UI bucket for a failed [SessionSource] read (w-wire). A [VadeException]
+ * carries its own C-04 name and goes through the frozen [VadeErrorMapping] table; any
+ * other throwable (transport-level IOException, an unexpected crash) takes the gentlest
+ * default — [VadeErrorCategory.Retryable] — so the failure surfaces with a retry
+ * affordance. This classifies the banner; it is never used to swallow a failure: the
+ * caller still reports Failed (w-wire: a failed load is never silently an empty list).
+ */
+fun loadErrorCategoryOf(t: Throwable): VadeErrorCategory = when (t) {
+    is VadeException -> VadeErrorMapping.categoryOf(t.code)
+    else -> VadeErrorCategory.Retryable
+}
+
+/** The C-04 code [t] carried when it came through the protocol seam, else `null`. */
+fun loadErrorCodeOf(t: Throwable): String? = (t as? VadeException)?.code

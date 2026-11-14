@@ -137,3 +137,17 @@ object FakeSessions : SessionSource {
         }
     }
 }
+
+/**
+ * FR-8.26 grouping for an ARBITRARY row list — the grouping `UiState` uses once its rows
+ * come from a real [SessionSource] (w-wire). Same bucket order ([TimeBucket] declaration
+ * order == the IA order of [FakeSessions.groups]'s private table), same within-bucket
+ * descending `updatedAt` sort, same empty-bucket drop. Kept beside [FakeSessions.groups]
+ * so the two grouping contracts cannot drift apart — the shell wiring test pins that a
+ * source serving the fixture rows groups identically to [FakeSessions.groups].
+ */
+fun sessionGroups(rows: List<SessionSummary>): List<SessionGroup> =
+    TimeBucket.entries.mapNotNull { bucket ->
+        val items = rows.filter { it.bucket == bucket }.sortedByDescending { it.updatedAt }
+        if (items.isEmpty()) null else SessionGroup(bucket, items)
+    }
