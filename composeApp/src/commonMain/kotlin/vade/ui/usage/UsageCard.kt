@@ -2,6 +2,7 @@ package vade.ui.usage
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +14,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,9 +43,10 @@ import vade.ui.skin.LocalSkin
  * The composable invents nothing: wherever a field was not delivered, the projection
  * said [TokenCell.NotReported] and the row reads「暂无数据」in muted ink. No fake zeros.
  *
- * Reaching real data later = wiring the data layer to call `VadeClient.sessionUsageGet`
- * and to lift `usage` off `turn.completed` / `usage.budget` events, then passing the
- * DTOs into [UsagePanel]. Zero UI change.
+ * G: the read itself now exists — [UsageSection] renders Loading / Failed(+retry) /
+ * Ready, and [UsageSectionLive] owns a [UsageLoader] over a [UsageSource]
+ * ([UsageSourceReal] over `VadeClient.sessionUsageGet`). This function stays the pure
+ * Ready renderer over the decoded DTO.
  */
 @Composable
 fun UsagePanel(
@@ -92,10 +98,15 @@ fun UsagePanel(
         } else {
             UsageRow("输入 tokens", sessionRows.chatPrompt)
             UsageRow("输出 tokens", sessionRows.chatCompletion)
-            UsageRow("合计 tokens", sessionRows.chatTotal)
+            UsageRow("chat 合计 tokens", sessionRows.chatTotal)
             UsageRow("turns", sessionRows.turns)
             UsageRow("用量缺失 turns（source=none）", sessionRows.partialTurns)
             UsageRow("辅助调用 tokens（aux）", sessionRows.auxTotal)
+            // 服务端合计原样显示：total_tokens = chat + aux 是契约算式，客户端不另算。
+            UsageRow("总 tokens（chat + aux）", sessionRows.total)
+            if (sessionRows.totalMatches == false) {
+                MutedLine("注意：服务端 total_tokens 与 chat+aux 不一致（违反 rpc.json §session/usage.get 的 total_tokens = chat + aux），已原样显示服务端值，未在客户端改写。")
+            }
             for (model in sessionRows.models) {
                 UsageRow("按模型 · ", model.name, model.total, model.turns)
             }
@@ -112,6 +123,125 @@ fun UsagePanel(
                 BudgetBar(budget.fraction, budgetColor(budget.level, LocalSkin.current.colors))
             }
             BudgetCaption(budget)
+        }
+    }
+}
+
+/**
+ * G · the wired 用量 section: the panel over a **live** read of `session/usage.get`.
+ *
+ * This is the drop-in the shell composes (`ActivityScreen`'s 用量 slot). Three states,
+ * no fourth:
+ *  - [UsageLoadState.Loading] → 「加载中」card (never a stale or fabricated number);
+ *  - [UsageLoadState.Failed] → category label + C-04 code + hint + a **retry row**
+ *    (refresh icon, click = [onRetry] → `session/usage.get` again);
+ *  - [UsageLoadState.Ready] → the existing [UsagePanel] renderer over the decoded DTO.
+ */
+@Composable
+fun UsageSection(
+    state: UsageLoadState,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+    lastTurn: VadeUsage? = null,
+    budgetNotice: UsageBudgetPayload? = null,
+) {
+    when (state) {
+        UsageLoadState.Loading -> UsageLoadingCard(modifier)
+        is UsageLoadState.Failed -> UsageFailedCard(state.error, onRetry, modifier)
+        is UsageLoadState.Ready -> UsagePanel(
+            session = state.usage,
+            lastTurn = lastTurn,
+            budgetNotice = budgetNotice,
+            modifier = modifier,
+        )
+    }
+}
+
+/**
+ * Self-driving variant: owns a [UsageLoader] over [source] and (re)loads whenever
+ * [sessionId] changes, so wiring the page is a two-argument call. A blank/null session id
+ * renders the「尚未选择会话」empty state — no request, no fabricated numbers.
+ */
+@Composable
+fun UsageSectionLive(
+    source: UsageSource,
+    sessionId: String?,
+    modifier: Modifier = Modifier,
+    lastTurn: VadeUsage? = null,
+    budgetNotice: UsageBudgetPayload? = null,
+) {
+    val scope = rememberCoroutineScope()
+    val loader = remember(source) { UsageLoader(source, scope) }
+    DisposableEffect(loader) { onDispose { loader.dispose() } }
+    LaunchedEffect(loader, sessionId) {
+        if (!sessionId.isNullOrBlank()) loader.load(sessionId)
+    }
+    if (sessionId.isNullOrBlank()) {
+        EmptyStateCard(
+            icon = VadeIcons.Empty,
+            title = "尚未选择会话",
+            body = "打开一个会话后，这里通过 session/usage.get 拉取真实的 token 统计与预算进度。",
+            modifier = modifier,
+        )
+        return
+    }
+    UsageSection(
+        state = loader.state,
+        onRetry = loader::retry,
+        modifier = modifier,
+        lastTurn = lastTurn,
+        budgetNotice = budgetNotice,
+    )
+}
+
+/** Loading: an honest placeholder —「加载中」, no numbers of any kind. */
+@Composable
+private fun UsageLoadingCard(modifier: Modifier = Modifier) {
+    val colors = LocalSkin.current.colors
+    PanelCard(modifier) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            VadeIcon(
+                VadeIcons.Waiting,
+                contentDescription = "加载中",
+                size = 16.dp,
+                tint = colors.onSurfaceVariant,
+            )
+            Spacer(Modifier.width(8.dp))
+            UiText("加载中…", size = 13, weight = FontWeight.Medium, color = colors.onSurface)
+        }
+        MutedLine("正在请求 session/usage.get（${usageStateLabel(UsageLoadState.Loading)}），返回前不显示任何占位数字。")
+    }
+}
+
+/** Failed: category-first banner + the exact C-04 code + a retry row that re-issues the read. */
+@Composable
+private fun UsageFailedCard(error: UsageLoadError, onRetry: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = LocalSkin.current.colors
+    PanelCard(modifier) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            VadeIcon(
+                VadeIcons.Failed,
+                contentDescription = "加载失败",
+                size = 16.dp,
+                tint = colors.error,
+            )
+            Spacer(Modifier.width(8.dp))
+            UiText("用量加载失败", size = 13, weight = FontWeight.SemiBold, color = colors.error)
+        }
+        UiText(error.label, size = 13, color = colors.onSurface)
+        MutedLine(error.hint)
+        // 可重试入口：同一 session_id 再发一次 session/usage.get（不是空数据、不是假成功）。
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(percent = 50))
+                .background(colors.surfaceVariant)
+                .clickable(onClick = onRetry)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            VadeIcon(VadeIcons.Refresh, contentDescription = "重试", size = 16.dp, tint = colors.onSurface)
+            Spacer(Modifier.width(6.dp))
+            UiText(error.retryLabel, size = 12, weight = FontWeight.Medium, color = colors.onSurface)
         }
     }
 }
@@ -269,11 +399,10 @@ private fun BudgetBar(fraction: Float, color: Color) {
 
 @Composable
 private fun BudgetCaption(budget: BudgetRows) {
-    val colors = LocalSkin.current.colors
+    // 单一文案来源（budgetCaption）：ratio=null →「未启用」，绝不出现 0%。
     UiText(
-        "已用 ${budget.used.display()} / 上限 ${budget.limit.display()}（${budget.percent.display()}）" +
-            " · 状态 ${budget.state.display()} · ${budget.enforced.display()}",
+        budgetCaption(budget),
         size = 12,
-        color = colors.onSurfaceVariant,
+        color = LocalSkin.current.colors.onSurfaceVariant,
     )
 }
