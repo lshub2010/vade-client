@@ -1,10 +1,11 @@
 // Model picker — the drawing side.
 //
-// Composables only; every decision (badges, accent, selectability, empty state) was made
-// in `ModelOption.kt` / `ModelState.kt` and is tested there. Visual recipe is the
-// `GroupCard` one from `destinations/GroupCards.kt` — md corners, 1dp hairline, the §8
-// `shadow0` layered shadow via [layeredShadow] — rebuilt here rather than imported so the
-// model package stays independent of the destinations package.
+// Composables only; every decision (badges, accent, selectability, empty state, the
+// read-only degrade, the failure copy) was made in `ModelOption.kt` / `ModelState.kt` /
+// `ModelFailure.kt` and is tested there. Visual recipe is the `GroupCard` one from
+// `destinations/GroupCards.kt` — md corners, 1dp hairline, the §8 `shadow0` layered shadow
+// via [layeredShadow] — rebuilt here rather than imported so the model package stays
+// independent of the destinations package.
 //
 // Hard lines from the visual language / guards:
 //  - vectors only (IconGuardTest scans this package) — no glyph characters anywhere;
@@ -12,6 +13,10 @@
 //  - `layeredShadow(VadeShadows.card)` for the static card, never `Modifier.shadow`;
 //  - touch targets ≥44dp (header row and every model row are padded past that);
 //  - icons carry a contentDescription, or are decorative inside an already-labeled row.
+//
+// What the card must SHOW (not merely compute): the 「只读」 chip + reason when the core has
+// no model surface (FR-8.46), the classified error of a failed pull / write, why the default
+// scope is read-only, and why 「跟随全局默认」 is disabled until `p-nullkey` lands.
 
 package vade.ui.model
 
@@ -52,11 +57,12 @@ import vade.ui.skin.LocalSkin
 
 /**
  * The expandable model picker card. Collapsed: header with title + the current model line
- * (always visible, so the reader sees what would answer without expanding). Expanded: the
- * 「无可用模型」 empty state when there is nothing to list, otherwise one [ModelOptionRow]
- * per entry plus — session scope only — the 「跟随全局默认」 row that clears the override.
+ * (always visible, so the reader sees what would answer without expanding) + the 「只读」
+ * chip on the FR-8.46 degrade. Expanded: the read-only / 「无可用模型」 states when there is
+ * nothing to list, otherwise one [ModelOptionRow] per entry plus — session scope only — the
+ * 「跟随全局默认」 row that clears the override.
  *
- * [footerNote] is where the honest provenance line goes (this round: 假数据 · 未接 core).
+ * [footerNote] is where the honest provenance line goes (fixture vs real adapter).
  */
 @Composable
 fun ModelPickerCard(
@@ -100,6 +106,11 @@ fun ModelPickerCard(
                     maxLines = 1,
                 )
             }
+            // FR-8.46 must be visible WITHOUT expanding: an old core is not "no models".
+            if (state.readOnly) {
+                ReadOnlyChip()
+                Spacer(Modifier.width(8.dp))
+            }
             VadeIcon(
                 VadeIcons.ChevronDown,
                 contentDescription = if (expanded) "收起模型列表" else "展开模型列表",
@@ -107,10 +118,17 @@ fun ModelPickerCard(
                 tint = skin.colors.onSurfaceVariant,
             )
         }
+        // Honest state above the fold: the degrade reason, a blocked write, a failed pull and
+        // a failed write all show here, so nobody has to expand the card to learn the outcome.
+        state.readOnlyReason?.let { NoticeLine(it) }
+        if (!state.readOnly) state.writeBlockedReason?.let { NoticeLine(it) }
+        state.loadFailure?.let { FailureNotice(it) }
+        state.writeFailure?.let { FailureNotice(it) }
         if (expanded) {
             Box(Modifier.fillMaxWidth().height(1.dp).background(skin.colors.hairline))
             when (val content = state.content()) {
-                is ModelPickerContent.NoModels -> PickerEmptyState(content)
+                is ModelPickerContent.ReadOnly -> PickerEmptyState(content.title, content.body)
+                is ModelPickerContent.NoModels -> PickerEmptyState(content.title, content.body)
                 is ModelPickerContent.Rows -> PickerRows(state, content)
             }
             footerNote?.let {
@@ -127,9 +145,58 @@ fun ModelPickerCard(
     }
 }
 
-/** 「无可用模型」 — a real empty state with an explanation, never a bare empty list. */
+/** 「只读」 badge — the core has no model surface (or cannot take model writes). */
 @Composable
-private fun PickerEmptyState(state: ModelPickerContent.NoModels) {
+private fun ReadOnlyChip() {
+    val skin = LocalSkin.current
+    val shape = RoundedCornerShape(skin.shapes.xs)
+    Box(
+        modifier = Modifier
+            .clip(shape)
+            .background(skin.colors.surfaceVariant)
+            .border(1.dp, skin.colors.outline, shape)
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+    ) {
+        UiText("只读", size = 11, color = skin.colors.onSurfaceVariant, maxLines = 1)
+    }
+}
+
+/** One explanation line (the degrade reason / why a scope cannot be written). */
+@Composable
+private fun NoticeLine(text: String) {
+    val skin = LocalSkin.current
+    UiText(
+        text = text,
+        size = 11,
+        color = skin.colors.onSurfaceVariant,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 6.dp),
+    )
+}
+
+/** A failed model RPC: 分类 + headline, then core's own words. Never silent. */
+@Composable
+private fun FailureNotice(failure: ModelFailure) {
+    val skin = LocalSkin.current
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 6.dp),
+    ) {
+        UiText(
+            text = "${failure.headline}（${failure.category.label}）",
+            size = 12,
+            weight = FontWeight.SemiBold,
+            color = skin.colors.error,
+        )
+        UiText(text = failure.body, size = 11, color = skin.colors.onSurfaceVariant)
+    }
+}
+
+/** The read-only / 「无可用模型」 body — a real state with an explanation, never a bare list. */
+@Composable
+private fun PickerEmptyState(title: String, body: String) {
     val skin = LocalSkin.current
     Column(
         Modifier
@@ -146,9 +213,9 @@ private fun PickerEmptyState(state: ModelPickerContent.NoModels) {
             )
         }
         Spacer(Modifier.height(10.dp))
-        UiText(state.title, size = 15, weight = FontWeight.SemiBold)
+        UiText(title, size = 15, weight = FontWeight.SemiBold)
         Spacer(Modifier.height(6.dp))
-        UiText(state.body, size = 12, color = skin.colors.onSurfaceVariant)
+        UiText(body, size = 12, color = skin.colors.onSurfaceVariant)
     }
 }
 
@@ -163,20 +230,39 @@ private fun PickerRows(state: ModelState, content: ModelPickerContent.Rows) {
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         if (state.scope is ModelScope.Session) {
-            FollowDefaultRow(selected = state.selectedId == null, enabled = content.interactive) {
+            FollowDefaultRow(
+                selected = state.selectedId == null,
+                enabled = content.interactive && state.canClearOverride && !state.writePending,
+                blockedReason = state.clearOverrideBlockedReason,
+            ) {
                 state.followGlobalDefault()
             }
         }
-        content.rows.forEach { row -> ModelOptionRow(row, onClick = { state.select(row.option.id) }) }
+        content.rows.forEach { row ->
+            ModelOptionRow(
+                row = row,
+                enabled = row.clickable && !state.writePending,
+                onClick = { state.select(row.option.id) },
+            )
+        }
     }
 }
 
 /**
  * Session scope only: 「跟随全局默认」 — clearing the explicit override. Selected when no
  * override exists, so exactly one row of the whole picker is highlighted at any time.
+ *
+ * [blockedReason] is non-null while the clear frame cannot be carried (real wiring before
+ * `p-nullkey`: the DTO omits a null `model_id`, so core answers INVALID_ARGUMENT). The row is
+ * then disabled AND says why — offering an action the client cannot honour would be a lie.
  */
 @Composable
-private fun FollowDefaultRow(selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
+private fun FollowDefaultRow(
+    selected: Boolean,
+    enabled: Boolean,
+    blockedReason: String?,
+    onClick: () -> Unit,
+) {
     val skin = LocalSkin.current
     val style = modelRowStyle(skin.colors, selected, selectable = true)
     val shape = RoundedCornerShape(skin.shapes.sm)
@@ -197,15 +283,24 @@ private fun FollowDefaultRow(selected: Boolean, enabled: Boolean, onClick: () ->
         }
         Spacer(Modifier.width(8.dp))
         Column {
-            UiText("跟随全局默认", size = 14, weight = FontWeight.Normal, color = style.titleColor)
-            UiText("清除本会话覆盖；按 全局默认 > priority 兜底", size = 11, color = style.metaColor)
+            UiText(
+                text = "跟随全局默认",
+                size = 14,
+                weight = FontWeight.Normal,
+                color = if (!enabled && !selected) skin.colors.onSurfaceVariant else style.titleColor,
+            )
+            UiText(
+                text = blockedReason ?: "清除本会话覆盖；按 全局默认 > priority 兜底",
+                size = 11,
+                color = style.metaColor,
+            )
         }
     }
 }
 
 /** One model row: check slot, title + provider line, the three badges, detail when selected. */
 @Composable
-private fun ModelOptionRow(row: ModelRow, onClick: () -> Unit) {
+private fun ModelOptionRow(row: ModelRow, enabled: Boolean, onClick: () -> Unit) {
     val skin = LocalSkin.current
     val style = modelRowStyle(skin.colors, row.selected, row.option.selectable)
     val shape = RoundedCornerShape(skin.shapes.sm)
@@ -215,7 +310,7 @@ private fun ModelOptionRow(row: ModelRow, onClick: () -> Unit) {
             .clip(shape)
             .background(style.background ?: Color.Transparent)
             .border(1.dp, style.border, shape)
-            .clickable(enabled = row.clickable, onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

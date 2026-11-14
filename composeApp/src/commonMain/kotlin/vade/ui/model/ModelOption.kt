@@ -248,11 +248,17 @@ fun modelRowStyle(colors: SkinColors, selected: Boolean, selectable: Boolean): M
 
 /**
  * What the picker body draws. `NoModels` is a real state, not an empty list: RFC-0005 §7
- * bans presenting 空列表 as "没有模型" — the copy says who can fix it.
+ * bans presenting 空列表 as "没有模型" — the copy says who can fix it. `ReadOnly` is the
+ * FR-8.46 degrade (-32601 / unknown method) and is deliberately a SEPARATE state: an old core
+ * has no model surface at all, so showing 「无可用模型」 there would send the reader to a
+ * provider setting that does not exist.
  */
 sealed interface ModelPickerContent {
     /** [interactive] = writes allowed (false on the FR-8.46 read-only degrade). */
     data class Rows(val rows: List<ModelRow>, val interactive: Boolean) : ModelPickerContent
+
+    /** 「此 core 不支持模型选择」 — models stayed `null`, so there is nothing to draw but the badge. */
+    data class ReadOnly(val title: String, val body: String) : ModelPickerContent
 
     /** 「无可用模型」 — [body] differs between "no provider" and "old core, read-only". */
     data class NoModels(val title: String, val body: String) : ModelPickerContent
@@ -272,7 +278,20 @@ fun modelPickerContent(
     models: List<ModelEntry>?,
     readOnly: Boolean,
     selectedId: String?,
+    /**
+     * Whether this state has a write method at all. False on the FR-8.46 degrade and on the
+     * global-default scope of a real core (contract 1.5.0 has no default write) — rows render
+     * but refuse clicks, which is the honest form of "you cannot change this here".
+     */
+    writesEnabled: Boolean = !readOnly,
 ): ModelPickerContent {
+    if (models == null && readOnly) {
+        return ModelPickerContent.ReadOnly(
+            title = "此 core 不支持模型选择",
+            body = "旧版 core 没有 model/list（-32601 / unknown method）——客户端降级为只读。" +
+                "这里显示「列表未知」而不是「没有模型」：core 升级后列表会自动出现（FR-8.46）。",
+        )
+    }
     if (models.isNullOrEmpty()) {
         return ModelPickerContent.NoModels(
             title = "无可用模型",
@@ -283,6 +302,7 @@ fun modelPickerContent(
             },
         )
     }
+    val interactive = !readOnly && writesEnabled
     val options = models.map(ModelOption::of)
     return ModelPickerContent.Rows(
         rows = options.map { option ->
@@ -290,9 +310,9 @@ fun modelPickerContent(
                 option = option,
                 selected = option.id == selectedId,
                 detail = option.detail,
-                clickable = option.selectable && !readOnly,
+                clickable = option.selectable && interactive,
             )
         },
-        interactive = !readOnly,
+        interactive = interactive,
     )
 }
