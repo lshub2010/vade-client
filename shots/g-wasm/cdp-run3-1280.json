@@ -1,0 +1,181 @@
+{
+ "console": [],
+ "exceptions": [],
+ "log_entries": [
+  {
+   "t_rel": 0.518,
+   "level": "warning",
+   "source": "rendering",
+   "text": "WebGL: INVALID_ENUM: getParameter: invalid parameter name, WEBGL_debug_renderer_info not enabled"
+  },
+  {
+   "t_rel": 0.518,
+   "level": "warning",
+   "source": "rendering",
+   "text": "WebGL: INVALID_ENUM: getParameter: invalid parameter name, WEBGL_debug_renderer_info not enabled"
+  }
+ ],
+ "perf": {
+  "navigation": {
+   "domContentLoadedEventEnd": 259,
+   "loadEventEnd": 259,
+   "responseEnd": 9,
+   "domInteractive": 258
+  },
+  "paint": [
+   {
+    "name": "first-paint",
+    "startTime": 104.30500000715256
+   },
+   {
+    "name": "first-contentful-paint",
+    "startTime": 938.8950000107288
+   }
+  ],
+  "resources": [
+   {
+    "name": "composeApp.js",
+    "initiatorType": "script",
+    "duration": 61,
+    "size": 531244,
+    "end": 153,
+    "start": 92
+   },
+   {
+    "name": "bfa5198fb2fe683c613a.wasm",
+    "initiatorType": "fetch",
+    "duration": 156,
+    "size": 8640616,
+    "end": 405,
+    "start": 249
+   },
+   {
+    "name": "b2d4e812c14a7c2e6150.wasm",
+    "initiatorType": "fetch",
+    "duration": 147,
+    "size": 4035306,
+    "end": 404,
+    "start": 256
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.117.woff2",
+    "initiatorType": "fetch",
+    "duration": 470,
+    "size": 28164,
+    "end": 1392,
+    "start": 922
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.118.woff2",
+    "initiatorType": "fetch",
+    "duration": 63,
+    "size": 25020,
+    "end": 1457,
+    "start": 1394
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.116.woff2",
+    "initiatorType": "fetch",
+    "duration": 61,
+    "size": 28420,
+    "end": 1519,
+    "start": 1459
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.115.woff2",
+    "initiatorType": "fetch",
+    "duration": 61,
+    "size": 30268,
+    "end": 1582,
+    "start": 1521
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.114.woff2",
+    "initiatorType": "fetch",
+    "duration": 63,
+    "size": 31012,
+    "end": 1646,
+    "start": 1583
+   },
+   {
+    "name": "I_uyMoGduATTei9eI8daxVHDyfisHr71-vrgfE71.woff2",
+    "initiatorType": "fetch",
+    "duration": 129,
+    "size": 382724,
+    "end": 1776,
+    "start": 1647
+   },
+   {
+    "name": "rP2up3q65FkAtHfwd-eIS2brbDN6gxP34F9jRRCe4W3gfQ8QA_9Edkw.woff2",
+    "initiatorType": "fetch",
+    "duration": 93,
+    "size": 58008,
+    "end": 1873,
+    "start": 1780
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.119.woff2",
+    "initiatorType": "fetch",
+    "duration": 61,
+    "size": 41588,
+    "end": 1934,
+    "start": 1873
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.112.woff2",
+    "initiatorType": "fetch",
+    "duration": 59,
+    "size": 30772,
+    "end": 1995,
+    "start": 1936
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.113.woff2",
+    "initiatorType": "fetch",
+    "duration": 59,
+    "size": 31296,
+    "end": 2055,
+    "start": 1996
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.106.woff2",
+    "initiatorType": "fetch",
+    "duration": 60,
+    "size": 33508,
+    "end": 2116,
+    "start": 2056
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.111.woff2",
+    "initiatorType": "fetch",
+    "duration": 59,
+    "size": 33464,
+    "end": 2177,
+    "start": 2117
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.108.woff2",
+    "initiatorType": "fetch",
+    "duration": 60,
+    "size": 34444,
+    "end": 2237,
+    "start": 2178
+   }
+  ],
+  "canvases": 0,
+  "bodyKids": [
+   "DIV"
+  ],
+  "vadePerf": {
+   "canvasAdded": null,
+   "firstRAF": 419.134,
+   "rafCount": 3,
+   "pageErrors": [],
+   "rejections": []
+  }
+ },
+ "vade_perf": null,
+ "load_event_t_rel": 0.28,
+ "probe_screenshot": "shots/g-wasm/cdp-run3-1280-at-probe.png",
+ "wall_total_s": 12.08
+}

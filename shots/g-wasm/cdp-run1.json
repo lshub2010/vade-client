@@ -1,0 +1,189 @@
+{
+ "console": [],
+ "exceptions": [],
+ "log_entries": [
+  {
+   "t_rel": 0.328,
+   "level": "error",
+   "source": "network",
+   "text": "Failed to load resource: the server responded with a status of 404 (File not found)"
+  },
+  {
+   "t_rel": 0.556,
+   "level": "warning",
+   "source": "rendering",
+   "text": "WebGL: INVALID_ENUM: getParameter: invalid parameter name, WEBGL_debug_renderer_info not enabled"
+  },
+  {
+   "t_rel": 0.556,
+   "level": "warning",
+   "source": "rendering",
+   "text": "WebGL: INVALID_ENUM: getParameter: invalid parameter name, WEBGL_debug_renderer_info not enabled"
+  }
+ ],
+ "perf": {
+  "navigation": {
+   "domContentLoadedEventEnd": 262,
+   "loadEventEnd": 262,
+   "responseEnd": 13,
+   "domInteractive": 261
+  },
+  "paint": [
+   {
+    "name": "first-paint",
+    "startTime": 127.21500000357628
+   },
+   {
+    "name": "first-contentful-paint",
+    "startTime": 1029.859999999404
+   }
+  ],
+  "resources": [
+   {
+    "name": "composeApp.js",
+    "initiatorType": "script",
+    "duration": 69,
+    "size": 531244,
+    "end": 130,
+    "start": 61
+   },
+   {
+    "name": "bfa5198fb2fe683c613a.wasm",
+    "initiatorType": "fetch",
+    "duration": 163,
+    "size": 8640616,
+    "end": 405,
+    "start": 243
+   },
+   {
+    "name": "b2d4e812c14a7c2e6150.wasm",
+    "initiatorType": "fetch",
+    "duration": 103,
+    "size": 4035306,
+    "end": 359,
+    "start": 256
+   },
+   {
+    "name": "favicon.ico",
+    "initiatorType": "other",
+    "duration": 11,
+    "size": 760,
+    "end": 279,
+    "start": 268
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.117.woff2",
+    "initiatorType": "fetch",
+    "duration": 147,
+    "size": 28164,
+    "end": 1154,
+    "start": 1006
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.118.woff2",
+    "initiatorType": "fetch",
+    "duration": 62,
+    "size": 25020,
+    "end": 1217,
+    "start": 1155
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.116.woff2",
+    "initiatorType": "fetch",
+    "duration": 59,
+    "size": 28420,
+    "end": 1278,
+    "start": 1219
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.115.woff2",
+    "initiatorType": "fetch",
+    "duration": 61,
+    "size": 30268,
+    "end": 1340,
+    "start": 1279
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.114.woff2",
+    "initiatorType": "fetch",
+    "duration": 61,
+    "size": 31012,
+    "end": 1403,
+    "start": 1342
+   },
+   {
+    "name": "I_uyMoGduATTei9eI8daxVHDyfisHr71-vrgfE71.woff2",
+    "initiatorType": "fetch",
+    "duration": 120,
+    "size": 382724,
+    "end": 1524,
+    "start": 1405
+   },
+   {
+    "name": "rP2up3q65FkAtHfwd-eIS2brbDN6gxP34F9jRRCe4W3gfQ8QA_9Edkw.woff2",
+    "initiatorType": "fetch",
+    "duration": 83,
+    "size": 58008,
+    "end": 1611,
+    "start": 1528
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.119.woff2",
+    "initiatorType": "fetch",
+    "duration": 57,
+    "size": 41588,
+    "end": 1670,
+    "start": 1613
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.112.woff2",
+    "initiatorType": "fetch",
+    "duration": 57,
+    "size": 30772,
+    "end": 1728,
+    "start": 1671
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.113.woff2",
+    "initiatorType": "fetch",
+    "duration": 57,
+    "size": 31296,
+    "end": 1786,
+    "start": 1729
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.106.woff2",
+    "initiatorType": "fetch",
+    "duration": 58,
+    "size": 33508,
+    "end": 1846,
+    "start": 1787
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.111.woff2",
+    "initiatorType": "fetch",
+    "duration": 56,
+    "size": 33464,
+    "end": 1903,
+    "start": 1847
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.108.woff2",
+    "initiatorType": "fetch",
+    "duration": 57,
+    "size": 34444,
+    "end": 1961,
+    "start": 1904
+   }
+  ],
+  "canvases": 0,
+  "vadePerf": {
+   "canvasAdded": null,
+   "firstRAF": 413.7,
+   "rafCount": 3
+  }
+ },
+ "vade_perf": null,
+ "load_event_t_rel": 0.309,
+ "wall_total_s": 12.075
+}
