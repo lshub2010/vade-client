@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="RealCoreE2ETest[desktop]" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-11-14T17:55:48.790Z" hostname="WIN-SOHFNBA79AT" time="46.871">
+  <properties/>
+  <testcase name="realCoreAttachSubmitStreamsOrderedTurnEvents[desktop]" classname="vade.ui.e2e.RealCoreE2ETest" time="15.53"/>
+  <testcase name="coreCrashBeforeReadySurfacesExitCodeAndLeavesNoOrphan[desktop]" classname="vade.ui.e2e.RealCoreE2ETest" time="13.417"/>
+  <testcase name="wrongPairCodeSurfacesAuthFailedFromUiSession[desktop]" classname="vade.ui.e2e.RealCoreE2ETest" time="9.765"/>
+  <testcase name="coreBootTimeoutKillsTheProcessInsteadOfHanging[desktop]" classname="vade.ui.e2e.RealCoreE2ETest" time="4.086"/>
+  <testcase name="wrongPortFailsFastWithClearErrorAndNoPythonAtAll[desktop]" classname="vade.ui.e2e.RealCoreE2ETest" time="2.522"/>
+  <testcase name="requestBudgetExpiresWithTimeoutCodeWhenCoreNeverReplies[desktop]" classname="vade.ui.e2e.RealCoreE2ETest" time="1.551"/>
+  <system-out><![CDATA[E2E-CORE-READY spawnMs=70 waitMs=12342 port=52903 data_dir=C:\Users\LENSHLD\AppData\Local\Temp\vade-e2e-core-436243052367259604\data
+E2E-CORE port=52903 pair_code=<REDACTED><REDACTED> data_dir=C:\Users\LENSHLD\AppData\Local\Temp\vade-e2e-core-436243052367259604\data
+E2E-ATTACH session_id=661a9cf1ac684eeb98e46d07b741f27c from_seq=0 snapshot=true
+E2E-SUBMIT turn_id=55d2359379e144458e1642d375a6ef60 queue_pos=1
+E2E-EVENTS collected=8
+E2E-EVENT idx=0 seq=1 type=SessionAttached SessionAttached(seq=1, coalesced=false, payload=SessionAttachedPayload(sessionId=661a9cf1ac684eeb98e46d07b741f27c, fromSeq=0, state=open, snapshot=true, replayCount=null))
+E2E-EVENT idx=1 seq=2 type=TurnQueued TurnQueued(seq=2, coalesced=false, payload=TurnQueuedPayload(turnId=55d2359379e144458e1642d375a6ef60, state=queued, clientMsgId=e2e-1794678963861, rootTurnId=55d2359379e144458e1642d375a6ef60, version=1, parentTurnId=null, userMessageId=de8d2866356f40c39cca7238b059a171, reason=submit))
+E2E-EVENT idx=2 seq=3 type=QueueUpdated QueueUpdated(seq=3, coalesced=false, payload=QueueUpdatedPayload(sessionId=661a9cf1ac684eeb98e46d07b741f27c, running=null, runningState=null, pending=[QueuePending(turnId=55d2359379e144458e1642d375a6ef60, state=queued, clientMsgId=e2e-1794678963861, enqueuedAt=1794678963870)]))
+E2E-EVENT idx=3 seq=4 type=TurnStarted TurnStarted(seq=4, coalesced=false, payload=TurnStartedPayload(turnId=55d2359379e144458e1642d375a6ef60, state=running, modelId=null, modelSource=null))
+E2E-EVENT idx=4 seq=5 type=QueueUpdated QueueUpdated(seq=5, coalesced=false, payload=QueueUpdatedPayload(sessionId=661a9cf1ac684eeb98e46d07b741f27c, running=55d2359379e144458e1642d375a6ef60, runningState=running, pending=[]))
+E2E-EVENT idx=5 seq=6 type=TurnDelta TurnDelta(seq=6, coalesced=false, payload=TurnDeltaPayload(turnId=55d2359379e144458e1642d375a6ef60, text=E2E echo: scripted provider reply., partIndex=0, kind=text))
+E2E-EVENT idx=6 seq=7 type=TurnDelta TurnDelta(seq=7, coalesced=false, payload=TurnDeltaPayload(turnId=55d2359379e144458e1642d375a6ef60, text= -- done., partIndex=0, kind=text))
+E2E-EVENT idx=7 seq=8 type=TurnCompleted TurnCompleted(seq=8, coalesced=false, payload=TurnCompletedPayload(turnId=55d2359379e144458e1642d375a6ef60, state=completed, usage=VadeUsage(promptTokens=9, completionTokens=12, totalTokens=21, modelId=null, provider=null, source=provider, steps=1, cachedTokens=0, reasoningTokens=0), stoppedReason=stop))
+E2E-CORE-READY spawnMs=35 waitMs=8052 port=52992 data_dir=C:\Users\LENSHLD\AppData\Local\Temp\vade-e2e-core-3926018870077641333\data
+E2E-CORE port=52992 pair_code=<REDACTED><REDACTED> data_dir=C:\Users\LENSHLD\AppData\Local\Temp\vade-e2e-core-3926018870077641333\data
+]]></system-out>
+  <system-err><![CDATA[SLF4J(W): No SLF4J providers were found.
+SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+]]></system-err>
+</testsuite>
