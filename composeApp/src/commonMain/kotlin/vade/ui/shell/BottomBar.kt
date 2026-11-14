@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import vade.ui.UiText
 import vade.ui.component.liquid.GlassBackdrop
 import vade.ui.component.liquid.glassSurface
+import vade.ui.icon.VadeIcons
 import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.LocalSkin
 
@@ -63,9 +64,12 @@ import vade.ui.skin.LocalSkin
 data class BottomBarItem(
     val id: String,
     val label: String,
-    /** Vector icon (2 dp stroke, 24×24 viewport expected); falls back to [glyph]. */
+    /**
+     * Vector icon (2 dp stroke, 24×24 viewport expected); the renderers fall back to the
+     * neutral `VadeIcons.Circle` vector when null — never to a character glyph (w-g-icons).
+     */
     val icon: ImageVector? = null,
-    /** Legacy single-glyph fallback, also the pre-Tabler default. */
+    /** Legacy single-glyph fallback; transitional, only `FloatingBottomBar` still reads it. */
     val glyph: String? = null,
     val badge: String? = null,
 )
@@ -209,16 +213,13 @@ private fun RowScope.FixedBottomBarItem(
         verticalArrangement = Arrangement.Center,
     ) {
         Box(contentAlignment = Alignment.TopEnd) {
-            if (item.icon != null) {
-                Image(
-                    painter = rememberVectorPainter(item.icon),
-                    contentDescription = item.label,
-                    modifier = Modifier.size(20.dp),
-                    colorFilter = ColorFilter.tint(tint),
-                )
-            } else {
-                UiText(item.glyph ?: "•", size = 13, weight = FontWeight.SemiBold, color = tint)
-            }
+            // w-g-icons：图标槽只出矢量——icon 缺省落中性 Circle，绝不回退 "•" 字符（v2 §3）。
+            Image(
+                painter = rememberVectorPainter(item.icon ?: VadeIcons.Circle),
+                contentDescription = item.label,
+                modifier = Modifier.size(20.dp),
+                colorFilter = ColorFilter.tint(tint),
+            )
             if (item.badge != null) {
                 Box(
                     Modifier

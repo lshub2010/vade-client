@@ -31,7 +31,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -43,10 +46,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import vade.ui.UiText
-import vade.ui.shell.TopBarButton
-import vade.ui.shell.UiState
 import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
+import vade.ui.shell.TopBarButton
+import vade.ui.shell.UiState
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.glass.GlassSurface
 
@@ -129,14 +132,14 @@ private fun CompactSearchOverlay(state: UiState, onPick: (SearchHit) -> Unit) {
                         Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        TopBarButton("←", onClick = { state.closeSearch() }, contentDescription = "关闭搜索")
+                        TopBarIconButton(VadeIcons.Back, onClick = { state.closeSearch() }, contentDescription = "关闭搜索")
                         Spacer(Modifier.width(6.dp))
                         Column(Modifier.weight(1f)) {
                             UiText("搜索会话", size = 15, weight = FontWeight.SemiBold)
                             UiText("列表内覆盖层 · 不占一级目的地", size = 10, color = skin.colors.onSurfaceVariant)
                         }
                         if (search.query.isNotEmpty()) {
-                            TopBarButton("✕", onClick = { search.updateQuery("") }, contentDescription = "清空输入")
+                            TopBarIconButton(VadeIcons.Close, onClick = { search.updateQuery("") }, contentDescription = "清空输入")
                         }
                     }
                     Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
@@ -186,7 +189,7 @@ private fun CommandPalette(state: UiState, onPick: (SearchHit) -> Unit) {
                             UiText("命令面板", size = 15, weight = FontWeight.SemiBold)
                             UiText("会话搜索", size = 10, color = skin.colors.onSurfaceVariant)
                         }
-                        TopBarButton("✕", onClick = { state.closeSearch() }, contentDescription = "关闭面板")
+                        TopBarIconButton(VadeIcons.Close, onClick = { state.closeSearch() }, contentDescription = "关闭面板")
                     }
                     Column(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 10.dp)) {
                         SearchInput(search)
@@ -219,6 +222,26 @@ private fun CommandPalette(state: UiState, onPick: (SearchHit) -> Unit) {
 }
 
 // --- shared pieces --------------------------------------------------------------
+
+/**
+ * v2 §3 icon button (44dp touch target) — the **vector** shape of `shell.TopBarButton`.
+ * That one takes a `String` glyph and is still called by `AppShell` (another stick's file),
+ * so its signature is frozen from here; this file renders [VadeIcons] vectors directly.
+ */
+@Composable
+private fun TopBarIconButton(icon: ImageVector, onClick: () -> Unit, contentDescription: String) {
+    val skin = LocalSkin.current
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .clip(RoundedCornerShape(skin.shapes.sm))
+            .semantics { this.contentDescription = contentDescription }
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        VadeIcon(icon, contentDescription = null, size = 16.dp, tint = skin.colors.textOnGlass)
+    }
+}
 
 @Composable
 private fun SearchInput(search: SearchState) {
