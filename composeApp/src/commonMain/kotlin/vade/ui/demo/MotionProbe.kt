@@ -78,10 +78,32 @@ object MotionProbeConfig {
     var measureFps: Boolean = false
 
     /**
-     * Kernel under test. Defaults to the shipped default; `--kernel=gaussian|box` pins it so the
-     * A/B in RESULT.md can be reproduced against the same build.
+     * Kernel under test. Defaults to the shipped default; `--kernel=box|triangle|gaussian` pins
+     * it so the A/B in RESULT.md can be reproduced against the same build.
      */
     var kernel: MotionBlurKernel = DEFAULT_MOTION_BLUR_KERNEL
+
+    /**
+     * Which list content the probe paints.
+     *
+     * [ProbeContent.PATHOLOGICAL] is the original 8×-identical `MOTION BLUR` pattern: 34 sp
+     * monospace, equal length, equal pitch. It is the *worst case* for a box kernel — the glyph
+     * cross-bar pitch (4–7 px) beats against the 13-tap kernel and every letter comes back as
+     * 3–4 evenly spaced echoes. Kept because it is the pattern that *shows* the beat, so it is
+     * the right fixture for the kernel A/B.
+     *
+     * [ProbeContent.REAL] is what a shipping list actually looks like: Chinese/English mixed,
+     * 3–60 characters, three type sizes (13/15/20 sp), one row with a code block, one with an
+     * icon. This is the pattern that decides whether the echo matters in practice — a kernel
+     * that only wins on the pathological fixture has not won.
+     */
+    var content: ProbeContent = ProbeContent.Real
+}
+
+/** See [MotionProbeConfig.content]. */
+enum class ProbeContent {
+    Pathological,
+    Real,
 }
 
 private const val ITEM_COUNT = 30
@@ -109,6 +131,7 @@ fun MotionProbe(
     autoScroll: Boolean = MotionProbeConfig.autoScroll,
     measureFps: Boolean = MotionProbeConfig.measureFps,
     kernel: MotionBlurKernel = MotionProbeConfig.kernel,
+    content: ProbeContent = MotionProbeConfig.content,
     onMeasurementDone: (String) -> Unit = {},
 ) {
     val listState = rememberLazyListState()
@@ -227,7 +250,7 @@ fun MotionProbe(
                 verticalArrangement = Arrangement.spacedBy(ITEM_SPACING),
                 contentPadding = PaddingValues(12.dp),
             ) {
-                items(List(ITEM_COUNT) { it }) { index -> RowItem(index) }
+                items(List(ITEM_COUNT) { it }) { index -> RowItem(index, content) }
             }
         }
         Hud(
@@ -246,11 +269,73 @@ private fun LazyListState.scrollOffsetPx(stridePx: Float): Float =
     firstVisibleItemIndex * stridePx + firstVisibleItemScrollOffset
 
 /**
- * Big, high-contrast text on purpose: motion blur is only legible in a screenshot if there are
- * sharp glyph edges to smear. A card-based list would look nearly identical at 0 dp and 10 dp.
+ * One row of the **real** fixture.
+ *
+ * The shapes here are deliberately the ones that break the pathological pattern's symmetry: a
+ * title/meta pair (20 sp + 13 sp on the same row), a long Chinese sentence that wraps to the full
+ * width (15 sp), a monospace code line (13 sp), and an icon + label row. Nothing repeats at a
+ * fixed pitch, which is the point — a kernel can only look periodic on content that *is* periodic.
  */
+private data class RealRow(
+    val title: String,
+    val meta: String? = null,
+    val body: String? = null,
+    val code: String? = null,
+    val icon: String? = null,
+    val titleSize: Int = 20,
+    val bodySize: Int = 15,
+)
+
+private val REAL_ROWS = listOf(
+    RealRow("新会话", "18:42 · 3 条消息"),
+    RealRow(
+        title = "迁移 §11 运动模糊到 box 核",
+        body = "把方向性高斯换成一维矩形核后，拖影两端变成硬截断，",
+    ),
+    RealRow("gradle :composeApp:desktopTest", code = "--rerun-tasks", titleSize = 15),
+    RealRow("★ 收藏", "12 个", titleSize = 15),
+    RealRow(
+        title = "构建产物",
+        body = "desktopMainClasses 通过，43 个用例全绿，wasm 编译也过了。",
+        titleSize = 20,
+    ),
+    RealRow("为什么", meta = "昨天", body = "半径上限从 10dp 降到 6dp 是因为 34sp 的字会被抹成色块。", bodySize = 15),
+    RealRow("KernelShape", code = "Box · Triangle · Gaussian", titleSize = 15),
+    RealRow(
+        title = "搜索结果：AGP",
+        body = "在 composeApp/build.gradle.kts 里找到 3 处引用，版本 8.7.2。",
+    ),
+    RealRow("好", meta = "2 分钟前"),
+    RealRow(
+        title = "拍频",
+        body = "核长 13px 与字母横笔间距 4–7px 会产生等距回音，这是采样定理的必然结果，不是实现错误。",
+    ),
+    RealRow("makeMatrixConvolution", code = "kernelW = 1, kernelH = taps", titleSize = 13),
+    RealRow("● 运行中", "CPU 12%", titleSize = 15),
+    RealRow(
+        title = "下一步",
+        body = "把三角核设为默认，box 保留为选项，然后在真实内容上再拍一组对比。",
+    ),
+    RealRow("OK", meta = "周一"),
+    RealRow("σ", "0.55 × radius", titleSize = 20),
+    RealRow(
+        title = "拖影剖面",
+        body = "剖面的一阶差分就是核本身 —— profile = step ⊛ kernel，所以 d(profile)/dy = kernel。",
+    ),
+    RealRow("vade.ui.motion", code = "enum class MotionBlurKernel", titleSize = 13),
+    RealRow("◆ 已归档", "2026-11-14", titleSize = 15),
+    RealRow(
+        title = "真实滚动",
+        body = "5.7 dp 半径对应 5763 dp/s，帧率 98.5%，与冻结帧几乎一致。",
+    ),
+    RealRow("A/B", meta = "6dp"),
+)
+
+/** The pathological fixture: 8+ identical rows, which is what makes the beat visible. */
+private val PATHOLOGICAL_TITLE = "MOTION BLUR"
+
 @Composable
-private fun RowItem(index: Int) {
+private fun RowItem(index: Int, content: ProbeContent) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -267,13 +352,70 @@ private fun RowItem(index: Int) {
             fontFamily = FontFamily.Monospace,
             modifier = Modifier.width(44.dp),
         )
-        Text(
-            text = "MOTION BLUR",
-            color = Color(0xFFF2F3F5),
-            fontSize = 34.sp,
-            fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace,
-        )
+        when (content) {
+            ProbeContent.Pathological -> Text(
+                text = PATHOLOGICAL_TITLE,
+                color = Color(0xFFF2F3F5),
+                fontSize = 34.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+            )
+            ProbeContent.Real -> RealRowContent(REAL_ROWS[index % REAL_ROWS.size])
+        }
+    }
+}
+
+/**
+ * Real-content row body. Three type sizes, mixed CJK/Latin, an optional monospace code block and
+ * an optional glyph "icon" — i.e. every property the pathological pattern holds constant is
+ * varied here, which is what makes it a fair test of the kernel rather than of the fixture.
+ */
+@Composable
+private fun RealRowContent(row: RealRow) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.Center) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            row.icon?.let {
+                Text(
+                    text = it,
+                    color = Color(0xFF7AA2FF),
+                    fontSize = 16.sp,
+                    modifier = Modifier.padding(end = 8.dp),
+                )
+            }
+            Text(
+                text = row.title,
+                color = Color(0xFFF2F3F5),
+                fontSize = row.titleSize.sp,
+                fontWeight = if (row.titleSize >= 20) FontWeight.SemiBold else FontWeight.Normal,
+                fontFamily = if (row.code != null) FontFamily.Monospace else FontFamily.Default,
+                maxLines = 1,
+            )
+            row.meta?.let {
+                Text(
+                    text = "  $it",
+                    color = Color(0xFF6E7681),
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                )
+            }
+        }
+        row.body?.let {
+            Text(
+                text = it,
+                color = Color(0xFF9AA4B2),
+                fontSize = row.bodySize.sp,
+                maxLines = 2,
+            )
+        }
+        row.code?.let {
+            Text(
+                text = it,
+                color = Color(0xFF7AA2FF),
+                fontSize = 13.sp,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+            )
+        }
     }
 }
 
@@ -356,6 +498,9 @@ private fun Hud(
                 MotionBlurKernel.Box ->
                     "kernel = box 1x${boxKernelTaps(radiusDp, density.density)}\n" +
                         "N = 2*round(r*density)+1, w=1/N"
+                MotionBlurKernel.Triangle ->
+                    "kernel = triangle 1x${boxKernelTaps(radiusDp, density.density)}\n" +
+                        "Bartlett w ∝ half+1-|i-c| (box⊛box)"
                 MotionBlurKernel.Gaussian ->
                     "kernel = gaussian (fallback)\n" +
                         "sigmaY = r*density*${fmt(MOTION_BLUR_SIGMA_Y_PER_RADIUS, 2)}\n" +

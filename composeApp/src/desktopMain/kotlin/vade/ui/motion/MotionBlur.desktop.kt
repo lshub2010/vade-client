@@ -64,6 +64,8 @@ actual fun Modifier.motionBlur(radiusDp: Float, kernel: MotionBlurKernel): Modif
             val canvas = composeCanvas.nativeCanvas
             val paint = when (kernel) {
                 MotionBlurKernel.Box -> SkiaMotionPaints.forBox(boxKernelTaps(radiusDp, density))
+                MotionBlurKernel.Triangle ->
+                    SkiaMotionPaints.forTriangle(boxKernelTaps(radiusDp, density))
                 MotionBlurKernel.Gaussian -> SkiaMotionPaints.forGaussian(
                     sigmaX = quantize(radiusDp * density * MOTION_BLUR_SIGMA_X_PER_RADIUS),
                     sigmaY = quantize(radiusDp * density * MOTION_BLUR_SIGMA_Y_PER_RADIUS),
@@ -138,6 +140,34 @@ private object SkiaMotionPaints {
         }
     }
 
+    /**
+     * 1×[taps] triangle (Bartlett) convolution — the tapered streak.
+     *
+     * Same call as [forBox] with a different weight vector, so the cost is identical: Skia still
+     * evaluates `1 × N` coefficients per pixel. Only the *shape* changes, and that is the whole
+     * experiment (RESULT.md §三.6): the rectangle's −13 dB sidelobes are what turn a 4–7 px glyph
+     * cross-bar pitch into an echo; the triangle's −25 dB removes it.
+     */
+    fun forTriangle(taps: Int): Paint {
+        val wanted = TriangleKey(taps)
+        paint?.let { if (key == wanted) return it }
+        return replace(wanted) {
+            ImageFilter.makeMatrixConvolution(
+                kernelW = 1,
+                kernelH = taps,
+                kernel = triangleKernelWeights(taps),
+                gain = 1f,
+                bias = 0f,
+                offsetX = 0,
+                offsetY = taps / 2,
+                tileMode = FilterTileMode.CLAMP,
+                convolveAlpha = true,
+                input = null,
+                crop = null,
+            )
+        }
+    }
+
     private inline fun replace(newKey: Any, create: () -> ImageFilter): Paint {
         filter?.close()
         paint?.close()
@@ -155,5 +185,6 @@ private object SkiaMotionPaints {
      * site builds a fresh key object every frame. `data class` gives that for free.
      */
     private data class BoxKey(val taps: Int)
+    private data class TriangleKey(val taps: Int)
     private data class GaussianKey(val sigmaX: Float, val sigmaY: Float)
 }

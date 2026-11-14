@@ -6,6 +6,7 @@ import kotlinx.browser.document
 import kotlinx.browser.window
 import vade.ui.demo.MotionProbe
 import vade.ui.demo.MotionProbeConfig
+import vade.ui.demo.ProbeContent
 import vade.ui.motion.MotionBlurKernel
 
 /**
@@ -17,7 +18,8 @@ import vade.ui.motion.MotionBlurKernel
  * string the wasm build is the ordinary app, so the existing deployment target is unchanged.
  *
  * Query keys: `freeze=<dp>` (pins the radius), `blur=off`, `autoscroll`, `fps`,
- * `kernel=gaussian` (pins the fallback kernel for the A/B; default is the shipped box kernel).
+ * `kernel=box|triangle|gaussian` (pins the kernel for the A/B; default is the shipped one),
+ * `content=real|pathological` (list fixture; default `real`).
  */
 @OptIn(ExperimentalComposeUiApi::class)
 fun main() {
@@ -35,8 +37,15 @@ fun main() {
         MotionProbeConfig.blurEnabled = value("blur")?.equals("off", ignoreCase = true) != true
         MotionProbeConfig.autoScroll = params.contains("autoscroll")
         MotionProbeConfig.measureFps = params.contains("fps")
-        if (value("kernel")?.equals("gaussian", ignoreCase = true) == true) {
-            MotionProbeConfig.kernel = MotionBlurKernel.Gaussian
+        // Only the documented names switch the kernel; a typo keeps the shipped default.
+        when (value("kernel")?.lowercase()) {
+            "box" -> MotionProbeConfig.kernel = MotionBlurKernel.Box
+            "triangle" -> MotionProbeConfig.kernel = MotionBlurKernel.Triangle
+            "gaussian" -> MotionProbeConfig.kernel = MotionBlurKernel.Gaussian
+        }
+        when (value("content")?.lowercase()) {
+            "pathological" -> MotionProbeConfig.content = ProbeContent.Pathological
+            "real" -> MotionProbeConfig.content = ProbeContent.Real
         }
     }
 

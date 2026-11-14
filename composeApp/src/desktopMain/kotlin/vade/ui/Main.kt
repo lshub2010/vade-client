@@ -6,6 +6,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import vade.ui.demo.MotionProbe
 import vade.ui.demo.MotionProbeConfig
+import vade.ui.demo.ProbeContent
 import vade.ui.motion.MotionBlurKernel
 import vade.ui.destinations.Destination
 import vade.ui.skin.BottomBarStyle
@@ -32,9 +33,12 @@ import kotlin.system.exitProcess
  *                                  and the baseline half of the frame-time comparison).
  *   --autoscroll                   with --motion-probe: drive the list with a sawtooth so the
  *                                  live velocity→radius loop can be photographed.
- *   --kernel=box|gaussian          with --motion-probe: pin the blur kernel. Default is the
- *                                  shipped one (box — see MotionBlur.kt); this flag exists so the
+ *   --kernel=box|triangle|gaussian with --motion-probe: pin the blur kernel. Default is the
+ *                                  shipped one (see MotionBlur.kt); this flag exists so the
  *                                  A/B in shots/motion/RESULT.md is reproducible from one build.
+ *   --content=real|pathological    with --motion-probe: list fixture. Default is `real` (the
+ *                                  shipping-like mixed content); `pathological` is the original
+ *                                  8×-identical MOTION BLUR pattern that makes the beat visible.
  *   --fps                          with --motion-probe: measure 5 s of frame times, print
  *                                  `FPS_RESULT …`, then exit. Exit code 0.
  *
@@ -84,10 +88,16 @@ private fun runMotionProbe(args: Array<String>) {
     MotionProbeConfig.blurEnabled = args.flag("--blur=")?.equals("off", ignoreCase = true) != true
     MotionProbeConfig.autoScroll = args.contains("--autoscroll")
     MotionProbeConfig.measureFps = args.contains("--fps")
-    // Anything other than an explicit "gaussian" stays on the shipped default, so a typo cannot
-    // silently change which kernel the screenshots prove.
-    if (args.flag("--kernel=")?.equals("gaussian", ignoreCase = true) == true) {
-        MotionProbeConfig.kernel = MotionBlurKernel.Gaussian
+    // Only the three documented names switch the kernel; anything else (including a typo) keeps
+    // the shipped default, so a screenshot can never silently prove the wrong kernel.
+    when (args.flag("--kernel=")?.lowercase()) {
+        "box" -> MotionProbeConfig.kernel = MotionBlurKernel.Box
+        "triangle" -> MotionProbeConfig.kernel = MotionBlurKernel.Triangle
+        "gaussian" -> MotionProbeConfig.kernel = MotionBlurKernel.Gaussian
+    }
+    when (args.flag("--content=")?.lowercase()) {
+        "pathological" -> MotionProbeConfig.content = ProbeContent.Pathological
+        "real" -> MotionProbeConfig.content = ProbeContent.Real
     }
     val (width, height) = args.flag("--size=")?.let(::parseSize) ?: (900 to 760)
 

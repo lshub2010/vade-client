@@ -66,6 +66,17 @@ const val MOTION_BLUR_SIGMA_Y_PER_RADIUS: Float = 0.55f
  *   motion vector, so every position in that span contributes for an equal share of the
  *   exposure. Convolving with a rectangle of that length *is* the integral, and it is what a
  *   real camera produces: a uniform streak with hard ends, not a soft bell.
+ * - [Triangle] — the *tapered* streak: a Bartlett window, i.e. box ⊛ box. Same smear span as
+ *   [Box], same "stops dead at the ends" reading, but the two hard corners of the rectangle are
+ *   replaced by linear ramps. Its frequency response is the half-length box response *squared*,
+ *   which is the point: a rectangle's |sinc| has −13 dB sidelobes, so any periodic detail
+ *   shorter than the kernel (glyph cross-bars at 4–7 px pitch, hatch patterns, table rules)
+ *   comes back as a visible **echo** — several evenly spaced copies of the same stroke.
+ *   Squaring drops the worst sidelobe to −25 dB and cuts the gain at those pitches by 2.3×
+ *   (5 px) to 3.8× (4 px), with exact nulls at 6 and 7 px (measured: `MotionBlurTriangleKernelTest`),
+ *   which removes the echo while keeping the streak. The cost is that it is no longer the exact
+ *   physical integral; it is the integral seen through a 1-px-wide shutter, which is what a
+ *   real camera's rolling shutter also does.
  * - [Gaussian] — the visual stand-in used before this probe measured the difference. A bell
  *   profile makes a moving list look like a defocused photograph: the streak fades out at both
  *   ends instead of stopping.
@@ -75,12 +86,13 @@ const val MOTION_BLUR_SIGMA_Y_PER_RADIUS: Float = 0.55f
  */
 enum class MotionBlurKernel {
     Box,
+    Triangle,
     Gaussian,
 }
 
 /**
  * Kernel the probe ships with. Decided by measurement, not by taste — RESULT.md §三/§五 record
- * the streak profile and the frame times that chose it.
+ * the streak profile, the beat measurement and the frame times that chose it.
  */
 val DEFAULT_MOTION_BLUR_KERNEL: MotionBlurKernel = MotionBlurKernel.Box
 
@@ -114,6 +126,34 @@ fun boxKernelWeights(taps: Int): FloatArray {
     require(taps >= 1) { "kernel needs at least one tap, got $taps" }
     val weight = 1f / taps
     return FloatArray(taps) { weight }
+}
+
+/**
+ * Weights for the triangle kernel: a **Bartlett window**, `w[i] ∝ half + 1 − |i − centre|`.
+ *
+ * This is box ⊛ box sampled on the *same* N-tap grid as [boxKernelWeights], so the streak keeps
+ * the box's span (13 px at 6 dp) and its hard-stopping ends, but the rectangle's two 90° corners
+ * become linear ramps that run all the way to zero.
+ *
+ * Why the taper and not the literal `N − |i − centre|` form: that form is the *same* triangle
+ * truncated at 54% of its peak (7/13 at the ends), which is still a hard corner — it only reaches
+ * −18.9 dB of sidelobe suppression. Tapering to 0 is what makes the response the *half-length*
+ * box's response squared: −25.3 dB. `MotionBlurTriangleKernelTest` measures both and pins the
+ * difference, so this is a measured choice, not a preference. Both keep N odd, so the centre tap
+ * is exact.
+ */
+fun triangleKernelWeights(taps: Int): FloatArray {
+    require(taps >= 1) { "kernel needs at least one tap, got $taps" }
+    val centre = taps / 2
+    var sum = 0f
+    val raw = FloatArray(taps) { i ->
+        val w = (centre + 1 - abs(i - centre)).toFloat()
+        sum += w
+        w
+    }
+    // Normalise in place: gain stays 1 at the call site, so the layer's brightness is untouched.
+    for (i in raw.indices) raw[i] = raw[i] / sum
+    return raw
 }
 
 /**

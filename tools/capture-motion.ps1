@@ -21,9 +21,11 @@ param(
   [string]$FreezeBlur = '',
   [switch]$BlurOff,
   [switch]$AutoScroll,
-  # 'box' (shipped default) or 'gaussian' (retained fallback). Only 'gaussian' is passed through
-  # so a typo cannot silently produce a screenshot labelled with the wrong kernel.
+  # 'box' | 'triangle' | 'gaussian'. Passed through as --kernel=<name>; only these three names
+  # are forwarded so a typo cannot silently produce a screenshot labelled with the wrong kernel.
   [string]$Kernel = '',
+  # 'real' (default fixture) or 'pathological' (8×-identical MOTION BLUR pattern).
+  [string]$Content = '',
   [string]$Size = '916x774',
   [int]$WaitSec = 45,
   # Long enough for the sawtooth driver to be mid-scroll when the pixels are grabbed.
@@ -77,7 +79,8 @@ $arguments = @(
 if ($FreezeBlur -ne '') { $arguments += "--freeze-blur=$FreezeBlur" }
 if ($BlurOff) { $arguments += '--blur=off' }
 if ($AutoScroll) { $arguments += '--autoscroll' }
-if ($Kernel -eq 'gaussian') { $arguments += '--kernel=gaussian' }
+if ($Kernel -in @('box', 'triangle', 'gaussian')) { $arguments += "--kernel=$Kernel" }
+if ($Content -in @('real', 'pathological')) { $arguments += "--content=$Content" }
 # NOT -WindowStyle Hidden: a hidden window gets no Compose frame clock, so `--autoscroll`
 # never advances the list and the capture reads IDLE. The window is made topmost below anyway.
 $p = Start-Process -FilePath $Java -ArgumentList $arguments -PassThru
