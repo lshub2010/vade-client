@@ -21,6 +21,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import kotlin.concurrent.Volatile
+import vade.ui.chat.ChatTranscriptSource
 import vade.ui.chat.ChatMessage
 import vade.ui.protocol.AttachParams
 import vade.ui.protocol.AttachResult
@@ -152,7 +153,18 @@ class RealSessionSource(
             _client = created
             // Same lifetime as the client: the adapters ARE the client, just behind the
             // five narrow seams (see AdapterProvider).
-            _adapters = RealAdapters(created)
+            _adapters = RealAdapters(
+                created,
+                // B2 · 读侧：history 是 data 层的读（session/messages.get），
+                // events 必须用**原始协议流**——`SessionSource.observeEvents` 是
+                // `mapEvent` 的有损投影（注释原话「六种核心事件 → UI 事件；其余全部丢弃」），
+                // message.appended / message.edited / turn.* 都在被丢的那部分。
+                // 一个“接上了但永远收不到消息事件”的流会编译通过、测试也绿，那正是要避免的假接线。
+                chatTranscript = ChatTranscriptSource.of(
+                    history = { sessionId -> messages(sessionId) },
+                    events = { created.events },
+                ),
+            )
             val s = scope ?: CoroutineScope(SupervisorJob() + Dispatchers.Default).also { scope = it }
             // Both collectors must be SUBSCRIBED before connect() — client.events is a
             // hot SharedFlow without replay, and late subscribers miss early events

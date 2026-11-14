@@ -1,5 +1,6 @@
 package vade.ui.data
 
+import vade.ui.chat.ChatTranscriptSource
 import vade.ui.chat.ChatTurnGateway
 import vade.ui.chat.ContentPart as ChatContentPart
 import vade.ui.chat.EditResubmitReceipt
@@ -21,7 +22,20 @@ import vade.ui.protocol.VadeException
  * argument travels VERBATIM** — core appends a NEW user message and points the old id
  * at it; the adapter never rewrites or re-derives the id (see the frame assertion test).
  */
-class TurnGatewayReal(private val client: VadeClient) : ChatTurnGateway {
+class TurnGatewayReal(
+    private val client: VadeClient,
+    /**
+     * B2 · 读通道（历史快照 + 事件流）。`null` = 本实例只提供写能力 —— 那不是错误，
+     * `ChatState` 会进失败态并明说「没有读历史的通道」，**绝不回退 fixtures**。
+     *
+     * 组合根（[RealAdapters]）把 `RealSessionSource::messages` / `::observeEvents` 传进来，
+     * 于是读侧是**委托**而不是适配：两个方法引用的签名与
+     * [ChatTranscriptSource.of] 的 `history` / `events` 逐字相同。
+     */
+    private val transcriptSource: ChatTranscriptSource? = null,
+) : ChatTurnGateway {
+
+    override fun transcript(): ChatTranscriptSource? = transcriptSource
 
     override suspend fun editResubmit(
         sessionId: String,
