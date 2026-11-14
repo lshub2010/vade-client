@@ -54,6 +54,13 @@ kotlin {
             // already pinned in the root build), and its four Android AARs declare
             // minCompileSdk=37 (this module is already on 37). No AGP/Gradle/compileSdk change.
             implementation("top.yukonga.miuix.kmp:miuix-ui:0.9.4")
+            // w2-bottombar · KernelSU-style floating pill. miuix-blur is a *separate*
+            // artifact from miuix-ui (same version line, four variants: android /
+            // desktop / js / wasmJs); it provides rememberLayerBackdrop /
+            // Modifier.layerBackdrop / drawBackdrop + BackdropEffectScope (blur /
+            // colorControls / runtimeShaderEffect) and the BloomStroke highlight.
+            // Consumed ONLY via vade.ui.component.liquid (shell must stay toolkit-free).
+            implementation("top.yukonga.miuix.kmp:miuix-blur:0.9.4")
             // v2 Wave 0 · real backdrop blur (docs/visual-language.md §5). 2.1.0 is the
             // probe-verified version (shots of tmp/haze-probe: three targets compile, desktop
             // really blurs); its `androidApiElements` / `jvmApiElements` / `wasmJsApiElements`

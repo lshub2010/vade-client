@@ -41,7 +41,9 @@ import vade.ui.destinations.SessionsScreen
 import vade.ui.search.SearchHost
 import vade.ui.skin.BtnStyle
 import vade.ui.skin.LocalSkin
-import vade.ui.skin.NavItem
+import vade.ui.skin.BottomBarStyle
+import vade.ui.component.liquid.captureGlassBackdrop
+import vade.ui.component.liquid.rememberGlassBackdrop
 
 /**
  * The whole shell: four destinations, four breakpoints, three bottom-bar forms.
@@ -82,6 +84,10 @@ fun AppShell(state: UiState) {
 @Composable
 private fun ShellBody(state: UiState) {
     val skin = LocalSkin.current
+    // w2-bottombar: the app-content capture the bars blur/refract. Attached to
+    // the content area only — bars sit outside it, so they never sample
+    // themselves.
+    val contentBackdrop = rememberGlassBackdrop()
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val metrics = metricsFor(maxWidth)
         val session = state.selectedSession
@@ -127,31 +133,42 @@ private fun ShellBody(state: UiState) {
                 }
 
                 Box(Modifier.weight(1f).fillMaxWidth()) {
-                    // Floating / floating+blur bars overlay the content (that is the whole
-                    // point of the form: the list scrolls behind a detached pill). Fixed
-                    // bars take layout space below instead.
-                    val floats = !metrics.useRail && !detailOpen && state.barStyle != vade.ui.skin.BottomBarStyle.Fixed
-                    Box(Modifier.fillMaxSize().padding(bottom = if (floats) 78.dp else 0.dp)) {
+                    // Floating / floating+blur bars overlay the content — that is the whole
+                    // point of the form: the list scrolls behind a detached pill, and the
+                    // glass has real rows to blur (this is why there is no bottom reserve
+                    // here; the old 78 dp stopgap left the pill sampling empty canvas).
+                    val floats = !metrics.useRail && !detailOpen && state.barStyle != BottomBarStyle.Fixed
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .captureGlassBackdrop(contentBackdrop)
+                            // The canvas must be part of the *capture*: the strip behind the
+                            // floating pill is otherwise unpainted, and glass over
+                            // transparent-black reads as 40 % white on black (#666).
+                            .background(skin.colors.canvas),
+                    ) {
                         DestinationHost(metrics = metrics, state = state)
                     }
                     if (floats) {
                         Box(Modifier.align(Alignment.BottomCenter)) {
-                            skin.BottomBar(
+                            VadeBottomBar(
                                 items = navItems(),
                                 selected = state.dest.ordinal,
                                 onSelect = { index -> state.select(Destination.entries[index]) },
                                 style = state.barStyle,
+                                backdrop = contentBackdrop,
                             )
                         }
                     }
                 }
 
-                if (!metrics.useRail && !detailOpen && state.barStyle == vade.ui.skin.BottomBarStyle.Fixed) {
-                    skin.BottomBar(
+                if (!metrics.useRail && !detailOpen && state.barStyle == BottomBarStyle.Fixed) {
+                    VadeBottomBar(
                         items = navItems(),
                         selected = state.dest.ordinal,
                         onSelect = { index -> state.select(Destination.entries[index]) },
                         style = state.barStyle,
+                        backdrop = contentBackdrop,
                     )
                 }
             }
@@ -254,8 +271,8 @@ private fun VerticalRule() {
 }
 
 /** Bottom-bar rows: the four destinations, in contract order (FR-8.77). */
-private fun navItems(): List<NavItem> = Destination.entries.map {
-    NavItem(id = it.id, label = it.label, glyph = it.glyph)
+private fun navItems(): List<BottomBarItem> = Destination.entries.map {
+    BottomBarItem(id = it.id, label = it.label, icon = null, glyph = it.glyph)
 }
 
 /**

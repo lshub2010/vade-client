@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- miuix-blur-android declares minSdk 33 (RuntimeShader). Its whole pipeline is
+         API-gated (isRuntimeShaderSupported() = SDK_INT >= TIRAMISU, every RuntimeShader
+         use is @RequiresApi(33)), so on Android 12 and below the liquid-glass surfaces
+         degrade to plain tint without blur — no crash path. Overriding keeps the app's
+         minSdk 24; verified against miuix-shader-android 0.9.4 sources (see RESULT.md). -->
+    <uses-sdk tools:overrideLibrary="top.yukonga.miuix.kmp.blur" />
 
     <application
         android:allowBackup="false"

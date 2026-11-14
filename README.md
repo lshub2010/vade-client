@@ -88,7 +88,7 @@ done
 | 项 | 状态 |
 |---|---|
 | 四目的地（会话 / 活动 / 能力 / 我的） | 已实现（活动/能力/我的为骨架与空态） |
-| 底栏三态 | 已实现；`blur` 是**垂直 alpha 渐变遮罩**，**不是真模糊**（`haze` 未接） |
+| 底栏三态 | 已实现（w2-bottombar）：三种形态由 shell 层渲染。`Floating`/`FloatingBlur` 为 KernelSU 风格液态玻璃浮动胶囊（阻尼拖拽指示器、按压缩放、速度拉伸、橡皮筋、内层阴影）；`Fixed` 与 `FloatingBlur` 走 **miuix-blur 真模糊**（`drawBackdrop` + blur/lens/BloomStroke 高光）。旧的"垂直 alpha 渐变遮罩"假模糊已从应用路径下线（skin 内实现保留但不再被 shell 调用）。Android < 13 无 RuntimeShader，按库内门控自动退化为纯染色（见 `shots/w2-bottombar/RESULT.md`） |
 | 四档断点 | 已实现：<600 底栏；600–839 rail 80；840–1199 rail 72 + 双栏；≥1200 双栏 + 右面板（默认收起） |
 | C-09 Skin 11 组件 | 接口 + material 实现；`miuix`/`glass` 仅占位 |
 | 会话列表 | 6 条假数据（2 置顶 + 今天 2 + 昨天 1 + 7 天内 1），**未连 core** |
@@ -104,3 +104,22 @@ done
 
 1. 业务页面**不得** import `material3` / `miuix` / `glass`（只能经 `Skin`）；扫描目录含 `destinations`、`shell`、`search`、`chat`。
 2. `Skin.kt` **恰好 11 个** `@Composable fun` —— 少一个说明组件被删，多一个说明有人绕过 C-09 流程加了第 12 个。
+
+## 第三方许可与致谢
+
+### KernelSU
+底栏的浮动胶囊交互（阻尼拖拽指示器、按压缩放、速度拉伸、橡皮筋、内层阴影）移植自
+KernelSU（https://github.com/tiann/KernelSU），Copyright (c) 2023-2026 weishu &
+contributors，以 Apache License 2.0 授权。原实现改编自 compose-miuix-ui 示例
+`IosLiquidGlassNavigationBar`（Apache 2.0）。本项目的移植版本保持同一许可。
+
+### Miuix
+毛玻璃、回弹与主题基础组件来自 Miuix（top.yukonga.miuix.kmp），Apache License 2.0。
+
+### Tabler Icons
+图标来自 Tabler Icons（https://tabler.io/icons），MIT License，Copyright (c) 2018-2026
+Tabler contributors。
+
+### HarmonyOS Sans（待定）
+若后续采用，需在此声明：本软件使用 HarmonyOS Sans 字体（© Huawei Device Co., Ltd.），
+按 HarmonyOS Sans Fonts License Agreement 使用。
