@@ -269,10 +269,14 @@ internal fun FloatingBottomBar(
                 }
                 .selectableGroup()
                 .graphicsLayer { translationX = panelOffset }
+                // §8.3: directional. The light sits above and in front, so the halo is
+                // pushed DOWN by blur/2 and never sideways (offsetX = 0). Without this the
+                // pill's shadow is a symmetric ring — the "糊一层" the spec bans.
                 .dropHalo(
                     shape = pillShape,
                     radius = 10.dp,
                     color = Color.Black,
+                    offset = androidx.compose.ui.unit.DpOffset(0.dp, 5.dp),
                     alpha = if (dark) 0.2f else 0.1f,
                 )
                 .then(

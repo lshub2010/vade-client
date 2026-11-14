@@ -15,13 +15,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import vade.ui.UiText
+import vade.ui.component.liquid.VadeShadows
+import vade.ui.component.liquid.layeredShadow
 import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
 import vade.ui.skin.LocalSkin
@@ -53,12 +54,9 @@ fun GroupCard(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .shadow(
-                elevation = 2.dp,
-                shape = shape,
-                ambientColor = skin.colors.shadowSoft,
-                spotColor = skin.colors.shadowSoft,
-            )
+            // §8: layered + directional, not one translucent slab. `shadow0` = a tight
+            // 1/2dp layer under a wider 2/4dp one, both offset downwards.
+            .layeredShadow(VadeShadows.card, shape, dark = skin.colors.isDark)
             .clip(shape)
             .background(skin.colors.surface)
             .border(1.dp, skin.colors.hairline, shape),
