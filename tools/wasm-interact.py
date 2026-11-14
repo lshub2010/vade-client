@@ -30,6 +30,15 @@ Usage:
     python tools/wasm-interact.py --out-dir D:/tmp/x  # different screenshot dir
     python tools/wasm-interact.py --keep-open         # leave Edge + server up (debugging)
 
+Optional evidence for the *optional skins* (both off by default; the ten-step matrix above
+is untouched either way):
+    --skin miuix              after step 10, walk 我的 → 皮肤 "miuix" chip → 会话 and assert
+                              the surface still renders, the AX tree carries Chinese, and
+                              **no font CDN was contacted at all** (appends one step).
+    --block-external-fonts    block *gstatic* / *fonts.googleapis.com* before the first paint
+                              — the offline condition, so a CJK glyph can only come from the
+                              bundled subset (`VADE_SANS_URL`).
+
 Exit code: 0 = every step PASS, 1 = at least one FAIL (the matrix says which).
 """
 from __future__ import annotations
@@ -232,6 +241,56 @@ class Cdp:
                  "name": (n.get("name") or {}).get("value") or "",
                  "value": (n.get("value") or {}).get("value") or ""}
                 for n in r.get("nodes", [])]
+
+    async def ax_full(self) -> list[dict]:
+        """Same tree as [ax], but keeping `backendDOMNodeId` so a node can be *clicked*."""
+        r = await self.send("Accessibility.getFullAXTree")
+        return [{"role": (n.get("role") or {}).get("value") or "",
+                 "name": (n.get("name") or {}).get("value") or "",
+                 "value": (n.get("value") or {}).get("value") or "",
+                 "node_id": n.get("backendDOMNodeId")}
+                for n in r.get("nodes", [])]
+
+    async def click_named(self, name: str, role: str | None = None) -> dict | None:
+        """Click the first AX node whose accessible name is `name` (exact, then substring).
+
+        Used by the optional `--skin` step: the rail's 我的 item and the settings page's
+        skin chips are identified by the label the app itself publishes, not by a guessed
+        pixel coordinate — a skin switch changes layout metrics, so coordinates would be
+        the flakiest possible way to find them.
+        """
+        nodes = [n for n in await self.ax_full() if n["name"] and n["node_id"]]
+        pick = [n for n in nodes if n["name"] == name and (role is None or n["role"] == role)]
+        if not pick:
+            pick = [n for n in nodes if name in n["name"] and (role is None or n["role"] == role)]
+        if not pick:
+            return None
+        n = pick[0]
+        try:
+            box = await self.send("DOM.getBoxModel", backendNodeId=n["node_id"])
+            quad = box["model"]["content"]
+            x, y = sum(quad[0::2]) / 4.0, sum(quad[1::2]) / 4.0
+        except RuntimeError:
+            return None
+        await self.click(x, y)
+        return {"role": n["role"], "name": n["name"], "xy": [round(x, 1), round(y, 1)]}
+
+
+def external_font_urls(events: list[dict]) -> list[str]:
+    """Every request/response the page made to a font CDN (Skiko's own CJK fallback).
+
+    The bundled subset is served from the app's own origin, so a non-empty result means the
+    build asked `fonts.gstatic.com` for glyphs — i.e. the tofu path came back.
+    """
+    urls = set()
+    for e in events:
+        if e.get("method") not in ("Network.requestWillBeSent", "Network.responseReceived"):
+            continue
+        p = e.get("params") or {}
+        u = ((p.get("request") or {}).get("url") or (p.get("response") or {}).get("url") or "")
+        if "gstatic" in u or "fonts.googleapis" in u:
+            urls.add(u.split("?")[0])
+    return sorted(urls)
 
 
 def ax_text(nodes: list[dict]) -> str:
@@ -482,6 +541,14 @@ async def run(args) -> int:
         h.start_edge(url)
         c = h.cdp = Cdp(h.connect_page)
         await c.connect()
+        if args.block_external_fonts:
+            # Blocked *before* the first paint, so a CJK glyph on screen can only have come
+            # from the bundled subset in the bundle we just staged. Any attempt to reach the
+            # CDN would show up as a blocked network failure in the report instead of
+            # silently succeeding on a machine that happens to have internet.
+            await c.send("Network.setBlockedURLs",
+                         urls=["*gstatic*", "*fonts.googleapis.com*"])
+            print("[info] 外部字体已阻断：*gstatic* / *fonts.googleapis.com*（断网条件）")
         # Attach early enough to see frame #1 of the real load. If the page already painted
         # before we got here (slow attach), reload once — cache bypassed — under our own
         # session: a same-origin reload keeps the renderer, so no "Not attached" detach, which
@@ -684,6 +751,55 @@ async def run(args) -> int:
                         f"与 1280 列表帧差异={d_restore:.4f}",
                  shot=p11, bytes_=n11, verdict="PASS" if ok10 else "FAIL"))
 
+        # ---------- 11 optional: switch skin (`--skin=miuix`) -------------------
+        # Appended, never inserted: the ten steps above are the shipped matrix and stay
+        # byte-identical, so this run is comparable with `shots/g-wasm-rt`.
+        if args.skin and args.skin != "material":
+            # The rail/settings page publish their labels to the AX tree, so the two clicks
+            # are located by name (see Cdp.click_named) instead of by coordinate: the skin
+            # swap changes row heights and chip metrics, coordinates would drift.
+            prof = await c.click_named("我的")
+            await c.drain(1.6)
+            await h.settle()
+            if prof is not None:
+                chip = await c.click_named(args.skin)
+            else:
+                chip = None
+            await c.drain(2.0)
+            await h.settle()
+            p12, profile, n12 = await h.shot(f"12-skin-{args.skin}-profile.png")
+            ax10 = await c.ax()
+            # Text-heavy surface: back to 会话 so the frame carries Chinese everywhere.
+            sessions = await c.click_named("会话")
+            await c.drain(1.8)
+            await h.settle()
+            p13, skinned, n13 = await h.shot(f"13-skin-{args.skin}-sessions.png")
+            ax11 = await c.ax()
+            cjk = [n["name"] for n in ax11 if any("\u4e00" <= ch <= "\u9fff" for ch in n["name"])]
+            ext = external_font_urls(c.events)
+            st_skin = image_stats(skinned)
+            # Tofu is a *pixel* property (the AX tree carries the string either way), so the
+            # verdict here only covers what a script can honestly assert: the switch landed,
+            # the surface repainted, Chinese semantics are on screen, and **no font CDN was
+            # asked for one single glyph**. The PNGs are the visual half of the evidence.
+            ok11 = (
+                prof is not None and chip is not None and sessions is not None
+                and st_skin["stddev"] > 6.0 and len(cjk) > 0
+                and not ext
+            )
+            add(Step("skin", f"切到 {args.skin} 皮肤（我的 → 皮肤 chip → 会话）",
+                     "节点按名字点到；切完仍渲染、AX 有中文、全程 0 个 gstatic 字体请求",
+                     actual=f"我的={prof and prof['xy']} chip={chip and chip['xy']} "
+                            f"会话={sessions and sessions['xy']} 帧 stddev={st_skin['stddev']} "
+                            f"colors={st_skin['colors']} 中文 AX 节点={len(cjk)} "
+                            f"外部字体请求={len(ext)}{(' ' + str(ext[:3])) if ext else ''} "
+                            f"AX 样例={cjk[:6]}",
+                     shot=p13, bytes_=n13, verdict="PASS" if ok11 else "FAIL",
+                     extra={"profile_shot": os.path.basename(p12),
+                            "profile_bytes": n12,
+                            "ax_cjk": cjk[:40],
+                            "external_font_urls": ext}))
+
         # ---------- console / exceptions ---------------------------------------
         await c.drain(0.5)
         console, exceptions, log_entries, net_failures = [], [], [], []
@@ -723,7 +839,10 @@ async def run(args) -> int:
                                 for n in ax if n["name"]][:80],
             "steps": [{"key": s.key, "title": s.title, "expected": s.expected,
                        "actual": s.actual, "shot": os.path.basename(s.shot),
-                       "bytes": s.bytes_, "verdict": s.verdict} for s in steps],
+                       "bytes": s.bytes_, "verdict": s.verdict,
+                       # per-step extras (e.g. the `--skin` step's Chinese AX sample);
+                       # additive: the ten shipped steps carry an empty dict.
+                       "extra": s.extra} for s in steps],
         }
         with open(os.path.join(args.out_dir, "interaction.json"), "w",
                   encoding="utf-8") as f:
@@ -775,6 +894,13 @@ def main():
                     help="screenshot dir (default: <repo>/shots/g-wasm-rt)")
     ap.add_argument("--text", default="wasm 交互验证 hello",
                     help="text typed into the composer and sent with Ctrl+Enter")
+    ap.add_argument("--skin", default="material",
+                    help="skin to switch to AFTER the ten-step matrix (material = skip; "
+                         "e.g. miuix walks 我的 → 皮肤 chip → 会话 and asserts Chinese renders "
+                         "with no font-CDN request). The matrix itself is unchanged.")
+    ap.add_argument("--block-external-fonts", action="store_true",
+                    help="block *gstatic* / *fonts.googleapis.com* before the first paint, so "
+                         "a CJK glyph can only come from the bundled subset (offline condition)")
     ap.add_argument("--keep-open", action="store_true")
     args = ap.parse_args()
     args.repo = os.path.abspath(args.repo)
