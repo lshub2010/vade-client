@@ -220,7 +220,7 @@ class RealCoreE2ETest {
                 )
                 println("E2E-SUBMIT turn_id=${submit.turnId} queue_pos=${submit.queuePos}")
 
-                val events = collectUntilTerminal(received, submit.turnId, deadlineMs = 30_000)
+                val events = collectUntilTerminal(received, submit.turnId, deadlineMs = CoreBootBudget.WAIT_TIMEOUT_MS)
                 println("E2E-EVENTS collected=${events.size}")
                 events.forEachIndexed { i, e -> println("E2E-EVENT idx=$i seq=${e.seq} type=${e::class.simpleName} $e") }
 
@@ -477,7 +477,14 @@ class RealCoreE2ETest {
         val handle = CoreHandle(python = PYTHON, launcher = launcher, dataDir = dir.resolve("data"))
         core = handle
         handle.start()
-        handle.awaitReady(timeoutMs = 30_000)
+        // 预算 = 死锁保险，不是性能断言：实测空载 2.3–9.8 s、12 路并发中位 19.6–31.6 s、
+        // 最长 37.7 s（shots/g-e2e-budget/）。旧值 30 s 落在满负载中位数上，所以常常红。
+        handle.awaitReady(timeoutMs = CoreBootBudget.READY_TIMEOUT_MS)
+        // 每次跑都把真实 boot 成本打出来：报告里的「实际 READY 耗时」就是这一行。
+        println(
+            "E2E-CORE-READY spawnMs=${handle.spawnMillis} waitMs=${handle.waitedMillis} " +
+                "port=${handle.readyInfo.port} data_dir=${handle.dataDir.absolutePath}",
+        )
         println("E2E-CORE port=${handle.readyInfo.port} pair_code=${handle.readyInfo.pairCode} data_dir=${handle.dataDir.absolutePath}")
         return handle
     }
@@ -506,10 +513,14 @@ class RealCoreE2ETest {
     private fun newTempDir(): File = Files.createTempDirectory("vade-e2e-core-").toFile()
 }
 
-/** core 启动失败 / 超时 —— message 必须可读，stderr 尾巴带上供诊断。 */
-class CoreBootException(message: String, val stderrTail: String) : RuntimeException(message)
-
-/** 真 core 子进程的句柄：READY 行解析、deadline 轮询、两段式 kill、孤儿检查。 */
+/**
+ * 真 core 子进程的句柄：READY 行解析、deadline 轮询、两段式 kill、孤儿检查。
+ *
+ * 失败时抛出的 [CoreBootException] 自带完整取证包（已等时长 / 完整命令行 / stdout 与
+ * stderr 尾部 / 本机 java+python 进程数 / 按实测耗时分档的结论提示）——见
+ * [CoreDiagnostics.formatBootFailure]。这样一条红不需要重跑就能分清「core 崩了」还是
+ * 「机器被抢满」。
+ */
 class CoreHandle(private val python: String, private val launcher: File, val dataDir: File) {
 
     data class Ready(val port: Int, val pairCode: String)
@@ -517,6 +528,27 @@ class CoreHandle(private val python: String, private val launcher: File, val dat
     private var process: Process? = null
     private val stdoutLines = java.util.Collections.synchronizedList(mutableListOf<String>())
     private val stderrText = StringBuilder()
+
+    /** 完整 spawn 命令行 —— 进失败消息，让人能原样粘进 shell 复现。 */
+    private val command: List<String> = CoreDiagnostics.commandLineOf(python, launcher, dataDir)
+
+    /** spawn 本身失败（解释器不存在 / 不可执行）时暂存，由 awaitReady 统一报成带取证包的异常。 */
+    private var spawnFailure: Throwable? = null
+
+    /** start() 的单调时刻：spawn 耗时的起点（「等了多久」另外从 spawnDoneAtNanos 算）。 */
+    private var startedAtNanos = 0L
+
+    /**
+     * 子进程真正跑起来的时刻（`ProcessBuilder.start()` 返回）。
+     *
+     * 本机实测：Windows 上 `start()` 本身要 **1.6–5.3 s**（冷启 5.3 s，含 AV/进程创建）。
+     * 所以「等了多久」必须从这一刻算，否则 spawn 的开销会被记到 READY 等待头上，
+     * 让一条 5 s 的预算看起来像 12 s（本仓实测过）。
+     */
+    private var spawnDoneAtNanos = 0L
+
+    /** 后台进程采样器：spawn 时拉起，失败时直接读最近样本（枚举全机进程冷启要 5–10 s，不能同步做）。 */
+    private val sampler = CoreDiagnostics.ProcessSampler()
 
     @Volatile
     var ready: Ready? = null
@@ -529,14 +561,36 @@ class CoreHandle(private val python: String, private val launcher: File, val dat
     val isAlive: Boolean
         get() = process?.isAlive == true
 
+    /** 只为证据/报告：spawn 花了多久、等 READY 等了多久。 */
+    val spawnMillis: Long
+        get() = spawnMs()
+
+    val waitedMillis: Long
+        get() = elapsedMs()
+
+    /** 只读视图，测试可断言失败消息里带的就是这一串。 */
+    val commandLine: String
+        get() = CoreDiagnostics.quote(command)
+
     fun start() {
-        val pb = ProcessBuilder(python, launcher.absolutePath, "--data-dir", dataDir.absolutePath)
+        val pb = ProcessBuilder(command)
         // pair_code 含汉字 + json.dumps(ensure_ascii=False)：子进程 IO 强制 UTF-8，别赌 locale
         pb.environment()["PYTHONUTF8"] = "1"
         pb.environment()["PYTHONIOENCODING"] = "utf-8"
         pb.redirectErrorStream(false)
-        process = pb.start()
-        val p = process!!
+        startedAtNanos = System.nanoTime()
+        // 采样线程先起：等全机进程枚举（冷启 5–10 s）跑完时，失败消息就能直接引用它。
+        sampler.start()
+        process = try {
+            pb.start()
+        } catch (t: Throwable) {
+            // 解释器不存在 / 不可执行时 ProcessBuilder 抛 IOException。不在这里裸抛：
+            // 交给 awaitReady 报成带命令行、耗时、进程数的 CoreBootException。
+            spawnFailure = t
+            null
+        }
+        spawnDoneAtNanos = System.nanoTime()
+        val p = process ?: return
         thread(isDaemon = true, name = "e2e-core-stdout") {
             try {
                 BufferedReader(InputStreamReader(p.inputStream, Charsets.UTF_8)).useLines { lines ->
@@ -555,7 +609,8 @@ class CoreHandle(private val python: String, private val launcher: File, val dat
                     lines.forEach { line ->
                         synchronized(stderrText) {
                             stderrText.append(line).append('\n')
-                            if (stderrText.length > 8000) stderrText.delete(0, stderrText.length - 8000)
+                            // 24000 字符 ≈ 40 行 × 600 字符：足够装下 uvicorn 报错 + limit=8 的 traceback。
+                            if (stderrText.length > 24_000) stderrText.delete(0, stderrText.length - 24_000)
                         }
                     }
                 }
@@ -575,40 +630,115 @@ class CoreHandle(private val python: String, private val launcher: File, val dat
         }
     }
 
-    /** 轮询 + 硬 deadline：READY / 进程退出 / fatal 行 / 超时，四种出口都有明确报错。 */
-    fun awaitReady(timeoutMs: Long): Ready {
-        val p = process ?: fail("core was never started")
+    /**
+     * 轮询 + 硬 deadline：READY / 进程退出 / fatal 行 / 超时，四种出口都有明确报错，
+     * 且**每一种**都带同一套取证包（见 [CoreDiagnostics]）。
+     *
+     * 默认预算是 [CoreBootBudget.READY_TIMEOUT_MS]（180 s = 死锁保险，非预期耗时）。
+     */
+    fun awaitReady(timeoutMs: Long = CoreBootBudget.READY_TIMEOUT_MS): Ready {
+        spawnFailure?.let { t ->
+            throw bootFailure(
+                "core could not be spawned: ${t::class.simpleName}: ${t.message}",
+                elapsedMs(),
+                timeoutMs,
+                hitCeiling = false,
+            )
+        }
+        val p = process ?: throw bootFailure("core was never started", elapsedMs(), timeoutMs, hitCeiling = false)
         val end = System.nanoTime() + timeoutMs * 1_000_000
         while (System.nanoTime() < end) {
             ready?.let { return it }
             if (!p.isAlive) {
-                throw CoreBootException(
-                    "core exited before READY (exit=${p.exitValue()}); " + firstFatalOrEmpty(),
-                    stderrTail(),
+                throw bootFailure(
+                    "core exited before READY (exit=${p.exitValue()}); " +
+                        firstFatalOrEmpty().ifEmpty { "no fatal line on stdout" },
+                    elapsedMs(),
+                    timeoutMs,
+                    hitCeiling = false,
                 )
             }
             firstFatalOrEmpty().takeIf { it.isNotEmpty() }?.let {
-                throw CoreBootException("core reported fatal while booting; $it", stderrTail())
+                throw bootFailure("core reported fatal while booting; $it", elapsedMs(), timeoutMs, hitCeiling = false)
             }
             Thread.sleep(50) // 轮询间隔，有 deadline 兜底
         }
-        throw CoreBootException(
-            "core did not print READY within ${timeoutMs}ms (data_dir=${dataDir.absolutePath}); " + firstFatalOrEmpty(),
-            stderrTail(),
+        throw bootFailure(
+            "core did not print READY within ${timeoutMs}ms; " +
+                firstFatalOrEmpty().ifEmpty { "no fatal line on stdout" },
+            elapsedMs(),
+            timeoutMs,
+            hitCeiling = true,
         )
     }
+
+    /** 「等了多久」= 子进程跑起来之后到失败 —— 不含 spawn 开销（那个单独报）。 */
+    private fun elapsedMs(): Long =
+        if (spawnDoneAtNanos == 0L) 0L else (System.nanoTime() - spawnDoneAtNanos) / 1_000_000
+
+    /** spawn 本身花了多久（Windows 上 1.6–5.3 s 属正常，慢到十几秒就是负载信号）。 */
+    private fun spawnMs(): Long =
+        if (spawnDoneAtNanos == 0L || startedAtNanos == 0L) 0L
+        else (spawnDoneAtNanos - startedAtNanos) / 1_000_000
+
+    /** 子进程此刻的状态（给失败消息的 `child:` 行）。 */
+    private fun childState(): String {
+        val p = process
+            ?: return "not spawned (spawn failure: " +
+                "${spawnFailure?.let { "${it::class.simpleName}: ${it.message}" }})"
+        return if (p.isAlive) {
+            "alive=true exit=n/a pid=${p.pid()}"
+        } else {
+            "alive=false exit=${p.exitValue()} pid=${p.pid()}"
+        }
+    }
+
+    /** 拼装带取证包的异常：命令行 + 已等时长 + stdout/stderr 尾部 + 进程数 + 结论提示。 */
+    private fun bootFailure(
+        headline: String,
+        elapsedMs: Long,
+        timeoutMs: Long,
+        hitCeiling: Boolean,
+    ): CoreBootException {
+        val (outTail, outCount) = CoreDiagnostics.tailOf(stdoutText())
+        val (errTail, errCount) = CoreDiagnostics.tailOf(stderrText.toString())
+        val snapshot = sampler.snapshot()
+        val message = CoreDiagnostics.formatBootFailure(
+            headline = headline,
+            elapsedMs = elapsedMs,
+            timeoutMs = timeoutMs,
+            command = command,
+            dataDir = dataDir,
+            childState = childState(),
+            stdoutTail = outTail,
+            stdoutLines = outCount,
+            stderrTail = errTail,
+            stderrLines = errCount,
+            processSnapshot = snapshot,
+            hitCeiling = hitCeiling,
+            spawnMs = spawnMs(),
+        )
+        return CoreBootException(
+            message = message,
+            stderrTail = errTail,
+            stdoutTail = outTail,
+            elapsedMs = elapsedMs,
+            timeoutMs = timeoutMs,
+            commandLine = commandLine,
+            processSnapshot = snapshot,
+        )
+    }
+
+    private fun stdoutText(): String = synchronized(stdoutLines) { stdoutLines.joinToString("\n") }
 
     private fun firstFatalOrEmpty(): String =
         synchronized(stdoutLines) {
             stdoutLines.firstOrNull { "\"fatal\"" in it }?.take(500).orEmpty()
         }
 
-    private fun stderrTail(): String = synchronized(stderrText) {
-        stderrText.toString().takeLast(1200)
-    }
-
     /** destroy → 等待 → destroyForcibly → 断言死透 → 清临时目录。幂等。 */
     fun kill() {
+        sampler.stop()
         val p = process ?: return
         if (!p.isAlive) {
             cleanupTempDir()

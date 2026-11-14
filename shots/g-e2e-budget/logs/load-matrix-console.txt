@@ -1,0 +1,12 @@
+== starting 1500 s × 16 CPU burners ==
+== run 1 ==
+   rc=0 wall=111s
+== run 2 ==
+   rc=0 wall=105s
+== run 3 ==
+   rc=0 wall=115s
+== run 4 ==
+   rc=0 wall=109s
+== run 5 ==
+   rc=1 wall=289s
+== done ==

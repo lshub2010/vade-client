@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="RealCoreE2ETest[desktop]" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-11-14T17:58:00.579Z" hostname="WIN-SOHFNBA79AT" time="38.088">
+  <properties/>
+  <testcase name="realCoreAttachSubmitStreamsOrderedTurnEvents[desktop]" classname="vade.ui.e2e.RealCoreE2ETest" time="12.965"/>
+  <testcase name="coreCrashBeforeReadySurfacesExitCodeAndLeavesNoOrphan[desktop]" classname="vade.ui.e2e.RealCoreE2ETest" time="3.936"/>
+  <testcase name="wrongPairCodeSurfacesAuthFailedFromUiSession[desktop]" classname="vade.ui.e2e.RealCoreE2ETest" time="12.476"/>
+  <testcase name="coreBootTimeoutKillsTheProcessInsteadOfHanging[desktop]" classname="vade.ui.e2e.RealCoreE2ETest" time="4.081"/>
+  <testcase name="wrongPortFailsFastWithClearErrorAndNoPythonAtAll[desktop]" classname="vade.ui.e2e.RealCoreE2ETest" time="2.734"/>
+  <testcase name="requestBudgetExpiresWithTimeoutCodeWhenCoreNeverReplies[desktop]" classname="vade.ui.e2e.RealCoreE2ETest" time="1.896"/>
+  <system-out><![CDATA[E2E-CORE-READY spawnMs=28 waitMs=7367 port=51883 data_dir=C:\Users\LENSHLD\AppData\Local\Temp\vade-e2e-core-7286475679729227670\data
+E2E-CORE port=51883 pair_code=<REDACTED><REDACTED> data_dir=C:\Users\LENSHLD\AppData\Local\Temp\vade-e2e-core-7286475679729227670\data
+E2E-ATTACH session_id=d66ba54b73154cbab28e2e32e5556335 from_seq=0 snapshot=true
+E2E-SUBMIT turn_id=b9f4d9be091149f2865518f08a1d4149 queue_pos=1
+E2E-EVENTS collected=8
+E2E-EVENT idx=0 seq=1 type=SessionAttached SessionAttached(seq=1, coalesced=false, payload=SessionAttachedPayload(sessionId=d66ba54b73154cbab28e2e32e5556335, fromSeq=0, state=open, snapshot=true, replayCount=null))
+E2E-EVENT idx=1 seq=2 type=TurnQueued TurnQueued(seq=2, coalesced=false, payload=TurnQueuedPayload(turnId=b9f4d9be091149f2865518f08a1d4149, state=queued, clientMsgId=e2e-1794679093170, rootTurnId=b9f4d9be091149f2865518f08a1d4149, version=1, parentTurnId=null, userMessageId=811d9004734a4a07ae6465ec4bd0cba8, reason=submit))
+E2E-EVENT idx=2 seq=3 type=QueueUpdated QueueUpdated(seq=3, coalesced=false, payload=QueueUpdatedPayload(sessionId=d66ba54b73154cbab28e2e32e5556335, running=null, runningState=null, pending=[QueuePending(turnId=b9f4d9be091149f2865518f08a1d4149, state=queued, clientMsgId=e2e-1794679093170, enqueuedAt=1794679093181)]))
+E2E-EVENT idx=3 seq=4 type=TurnStarted TurnStarted(seq=4, coalesced=false, payload=TurnStartedPayload(turnId=b9f4d9be091149f2865518f08a1d4149, state=running, modelId=null, modelSource=null))
+E2E-EVENT idx=4 seq=5 type=QueueUpdated QueueUpdated(seq=5, coalesced=false, payload=QueueUpdatedPayload(sessionId=d66ba54b73154cbab28e2e32e5556335, running=b9f4d9be091149f2865518f08a1d4149, runningState=running, pending=[]))
+E2E-EVENT idx=5 seq=6 type=TurnDelta TurnDelta(seq=6, coalesced=false, payload=TurnDeltaPayload(turnId=b9f4d9be091149f2865518f08a1d4149, text=E2E echo: scripted provider reply., partIndex=0, kind=text))
+E2E-EVENT idx=6 seq=7 type=TurnDelta TurnDelta(seq=7, coalesced=false, payload=TurnDeltaPayload(turnId=b9f4d9be091149f2865518f08a1d4149, text= -- done., partIndex=0, kind=text))
+E2E-EVENT idx=7 seq=8 type=TurnCompleted TurnCompleted(seq=8, coalesced=false, payload=TurnCompletedPayload(turnId=b9f4d9be091149f2865518f08a1d4149, state=completed, usage=VadeUsage(promptTokens=9, completionTokens=12, totalTokens=21, modelId=null, provider=null, source=provider, steps=1, cachedTokens=0, reasoningTokens=0), stoppedReason=stop))
+E2E-CORE-READY spawnMs=33 waitMs=11528 port=57774 data_dir=C:\Users\LENSHLD\AppData\Local\Temp\vade-e2e-core-13804290400464499695\data
+E2E-CORE port=57774 pair_code=<REDACTED><REDACTED> data_dir=C:\Users\LENSHLD\AppData\Local\Temp\vade-e2e-core-13804290400464499695\data
+E2E-WARN temp dir not removed: C:\Users\LENSHLD\AppData\Local\Temp\vade-e2e-core-13804290400464499695
+]]></system-out>
+  <system-err><![CDATA[SLF4J(W): No SLF4J providers were found.
+SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+]]></system-err>
+</testsuite>
