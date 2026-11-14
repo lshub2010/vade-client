@@ -26,9 +26,18 @@ fun App(
     initialSkinId: String = "material",
     initialDest: Destination = Destination.Sessions,
     initialPanelOpen: Boolean = false,
+    initialSearchQuery: String? = null,
 ) {
     Skins.installBuiltIns()
-    val state = remember { UiState(initialBar, initialSkinId, initialDest, initialPanelOpen) }
+    val state = remember {
+        UiState(initialBar, initialSkinId, initialDest, initialPanelOpen).also { created ->
+            // U1-c screenshot / deep-link hook: same path as tapping 搜索 in the top bar.
+            if (initialSearchQuery != null) {
+                created.openSearch()
+                created.updateSearchQuery(initialSearchQuery)
+            }
+        }
+    }
     val skin = remember(state.skinId) { SkinRegistry.get(state.skinId) }
 
     CompositionLocalProvider(LocalSkin provides skin) {

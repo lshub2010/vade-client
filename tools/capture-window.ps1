@@ -25,6 +25,11 @@ param(
   [string]$Size = '480x900',
   [string]$Dest = 'sessions',
   [string]$Panel = 'closed',
+  # U1-c: open the search overlay/palette on launch. `-Search 'AGP'` presets a query,
+  # `-SearchEmpty` opens it with nothing typed. Both take the same state path as the
+  # top-bar 搜索 button, so the capture is a real overlay, not a mock.
+  [string]$Search = '',
+  [switch]$SearchEmpty,
   [int]$WaitSec = 45,
   [int]$SettleMs = 2600
 )
@@ -76,6 +81,8 @@ $arguments = @(
   "--dest=$Dest",
   "--panel=$Panel"
 )
+if ($SearchEmpty) { $arguments += '--search' }
+elseif ($PSBoundParameters.ContainsKey('Search') -and $Search -ne '') { $arguments += "--search=$Search" }
 $p = Start-Process -FilePath $Java -ArgumentList $arguments -PassThru -WindowStyle Hidden
 Write-Output "launched pid=$($p.Id) bar=$Bar size=$Size dest=$Dest"
 

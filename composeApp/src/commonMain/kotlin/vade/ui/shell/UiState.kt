@@ -9,6 +9,8 @@ import vade.ui.data.SessionGroup
 import vade.ui.data.SessionSummary
 import vade.ui.data.TimeBucket
 import vade.ui.destinations.Destination
+import vade.ui.search.SearchHit
+import vade.ui.search.SearchState
 import vade.ui.skin.BottomBarStyle
 
 /**
@@ -41,6 +43,15 @@ class UiState(
     /** Approvals are a U1-d feature; kept at 0 so no badge is faked. */
     val pendingApprovals: Int = 0
 
+    /**
+     * U1-c search state — the phone overlay and the desktop ⌘K palette share it.
+     *
+     * It is deliberately *not* reset when the overlay closes: "从结果进会话再返回，搜索词
+     * 与列表滚动位置保留" (FR-8.27). Disposable by nature, so it stays out of `core/`
+     * (D98).
+     */
+    val search = SearchState()
+
     private val drafts = mutableStateListOf<SessionSummary>()
 
     val selectedSession: SessionSummary?
@@ -66,6 +77,40 @@ class UiState(
     fun back() {
         selectedSessionId = null
     }
+
+    // --- U1-c · search ---------------------------------------------------------
+
+    /** Entry point for the list top bar's 搜索 button and the ⌘K / Ctrl+K shortcut. */
+    fun openSearch() {
+        search.open()
+    }
+
+    fun closeSearch() {
+        search.close()
+    }
+
+    /** `⌘K` toggles: pressed while the palette is up it closes instead of restacking. */
+    fun toggleSearch() {
+        search.toggle()
+    }
+
+    fun updateSearchQuery(text: String) {
+        search.updateQuery(text)
+    }
+
+    /**
+     * Enter / tap on a hit. The overlay closes and the session opens; [search] keeps the
+     * query, the rows, the selection and the scroll offset, so coming back (`←`) and
+     * reopening the search lands where the user left it (FR-8.27 acceptance).
+     */
+    fun openFromSearch(hit: SearchHit) {
+        dest = Destination.Sessions
+        selectedSessionId = hit.session.id
+        search.close()
+    }
+
+    /** The corpus [vade.ui.search.LocalSessionIndex] is allowed to see: cached rows + drafts. */
+    fun cachedSessions(): List<SessionSummary> = groups().flatMap { it.sessions }
 
     fun setSkin(id: String) {
         skinId = id
