@@ -28,11 +28,13 @@ import vade.ui.skin.SkinTypography
  * never through a Miuix type. The values are chosen to be *less* Material rather than
  * "Material in another palette" (task book §四):
  *
- *  - shapes follow the spec ladder exactly (8 / 12 / 16 / 20 / 28, see [shapes]);
+ *  - shapes follow the v2 six-step ladder exactly (xs 12 / sm 16 / md 20 / lg 24 / xl 28 /
+ *    sheet 32, see [shapes]);
  *  - the page background is a warm grey and surfaces are flat white — hierarchy comes from
- *    a 1 dp hairline, never from elevation (Miuix's own default `Card` has no surface at
- *    all, see spike/miuix RESULT.md §五 R5, so every container here paints its own colour
- *    *and* its own stroke);
+ *    a 1 dp hairline, with only the two §8 shadow exceptions (static cards get `shadowSoft`,
+ *    float layers get `shadowFloat`; see visual-language v2 §8). Miuix's own default `Card`
+ *    has no surface at all (spike/miuix RESULT.md §五 R5), so every container here paints
+ *    its own colour *and* its own stroke;
  *  - type follows `ui-visual-language.md` §四 (15 body / 13 secondary / 11 tiny).
  *
  * Dark mode is a second value set over the same semantic names, not a tinted light theme.
@@ -61,6 +63,25 @@ internal object MiuixTokens {
         error = Color(0xFFC03328),
         onError = Color(0xFFFFFFFF),
         isDark = false,
+        // --- v2 tokens (visual-language v2 §2/§5/§8) ------------------------------
+        // The page canvas is the warm grey already used for `surfaceVariant` — v2 renames the
+        // *semantic*, the palette keeps Miuix's own value (颜色可不同，语义必须一致).
+        canvas = Color(0xFFF2F1EF),
+        hairline = Color(0xFFDCDAD5),
+        // Glass base (§5). This is the *no-haze* base a glass layer reads as until the app
+        // shell registers a HazeState — ChatThread/shell are outside this batch, so the
+        // composer/bar degrade to tint + hairline + shadowFloat. 26% (the §5 blur-tint
+        // value) is invisible as a *field* on the warm canvas; the degrade shape needs to
+        // lift the layer off the page while staying translucent. The §5 26/34 tints stay
+        // encoded in `Skin.glass` (`SkinGlass`) for the real-blur wiring.
+        surfaceGlass = Color.White.copy(alpha = 0.68f),
+        // §8 row 1 — static-card shadow `0 1 2 rgba(0,0,0,.06)`.
+        shadowSoft = Color.Black.copy(alpha = 0.06f),
+        // §8 row 2 — float-layer shadow `0 12 32 rgba(0,0,0,.18)`.
+        shadowFloat = Color.Black.copy(alpha = 0.18f),
+        // §8 row 3 — accent glow for the send ball, NOT a shadow colour.
+        glowAccent = Color(0xFF2A62D4),
+        textOnGlass = Color(0xFF141416),
     )
 
     // --- dark ------------------------------------------------------------------
@@ -77,6 +98,16 @@ internal object MiuixTokens {
         error = Color(0xFFFF6B5E),
         onError = Color(0xFF1A0503),
         isDark = true,
+        // --- v2 tokens, dark side ---------------------------------------------------
+        // §8: dark shadows run deeper and longer — 6 % black is invisible on #000000.
+        canvas = Color(0xFF000000),
+        hairline = Color(0xFF3A3A3C),
+        // Dark: the §5 34 % black tint is invisible on #000000 — lift with the surface tone.
+        surfaceGlass = Color(0xFF1C1C1E).copy(alpha = 0.72f),
+        shadowSoft = Color.Black.copy(alpha = 0.35f),
+        shadowFloat = Color.Black.copy(alpha = 0.55f),
+        glowAccent = Color(0xFF5B8DEF),
+        textOnGlass = Color(0xFFF2F2F7),
     )
 
     fun colors(dark: Boolean): SkinColors = if (dark) darkColors else lightColors
@@ -84,38 +115,53 @@ internal object MiuixTokens {
     // --- shapes ----------------------------------------------------------------
 
     /**
-     * Radius ladder. `ui-visual-language.md` §三 fixes the scale at **8 / 12 / 16 / 20 / 28** and
-     * ties each step to a component class; a skin may change colours but *not* the ladder
-     * (§八 验收 2: "同屏 ≤3 种；无 <8dp").
+     * Radius ladder. `ui-visual-language.md` **v2 §10** fixes the six-step scale at
+     * **12 / 16 / 20 / 24 / 28 / 32** and ties each step to a component class; a skin may
+     * change colours but *not* the ladder (§八 验收 2: "同屏 ≤3 种"). The v1 8/12/16/20/28
+     * ladder was raised one notch when the user asked for "大圆角" — 12/16/20 stayed in the
+     * aliases while the whole scale moved, which is precisely the drift §10 forbids.
      *
-     * `SkinShapes` carries only four slots, so the four live steps are mapped to the roles the
-     * spec names, and the 8 dp step is kept as [radiusXs] for inline chips / thumbnails:
+     * `SkinShapes` (v2) carries all six slots plus the two v1 alias names, so [shapes]
+     * points the aliases at the v2 steps by *name* — `small`→sm 16, `medium`→md 20,
+     * `large`→lg 24 — and the extra steps live in the skin-private constants below:
      *
-     *   small  = 12 → 次要按钮、列表项、缩略图   (spec `sm`)
-     *   medium = 16 → 卡片、输入框、工具卡       (spec `md`)
-     *   large  = 20 → 用户气泡、面板             (spec `lg`)
+     *   xs     = 12 → chip、徽标、小按钮、代码块内联片段     (v2 `xs`, was 8)
+     *   sm     = 16 → 列表行、次要按钮、输入框内层           (v2 `sm`)
+     *   md     = 20 → 工具卡、附件卡、搜索结果行             (v2 `md`)
+     *   lg     = 24 → 用户消息气泡、图片缩略、模块卡片       (v2 `lg`)
+     *   xl     = 28 → 悬浮 composer、主卡片                  (v2 `xl`)
+     *   sheet  = 32 → 全局弹窗卡片（四角同圆）               (v2 `sheet`)
      *   pill   = 999 → 主按钮、chip、状态药丸
-     *
-     * The previous revision used 8/12/16 ("one notch below material"). That read well on a phone
-     * but broke the semantic contract — a card at 12 dp is the spec's *list row* radius, so a
-     * miuix card and a miuix list row were the same shape class. Corrected to the spec ladder.
      */
     val shapes = SkinShapes(
-        small = 12.dp,
-        medium = 16.dp,
-        large = 20.dp,
+        // v1 aliases: point them at the v2 steps by name (§10 raised every step).
+        small = 16.dp,
+        medium = 20.dp,
+        large = 24.dp,
         pill = 999.dp,
+        // v2 six-step scale.
+        xs = 12.dp,
+        sm = 16.dp,
+        md = 20.dp,
+        lg = 24.dp,
+        xl = 28.dp,
+        sheet = 32.dp,
     )
 
-    /** Spec `xs` — 小标签、代码块内联、缩略图. The floor: nothing in this skin goes below 8 dp. */
-    val radiusXs = 8.dp
+    /** v2 `xs` — chip、徽标、代码块内联. The floor: nothing in this skin goes below 12 dp. */
+    val radiusXs = 12.dp
 
     /**
-     * Spec `xl` — 底部 sheet / 命令面板 / 全屏弹层. `SkinShapes` stops at `large`, so the two
-     * steps above it (xl = 28) are skin-private constants rather than a widening of the frozen
-     * C-09 token class.
+     * v2 `xl` — 悬浮 composer / 主卡片. Kept as a skin-private name because the
+     * `ApprovalDialog` sheet historically read it; v2 sheets use [sheetRadius] (32).
      */
-    val sheetRadius = 28.dp
+    val xlRadius = 28.dp
+
+    /**
+     * v2 `sheet` — 全局弹窗卡片，四角同圆 (§9/§10). The v1 sheet read `xl` (28) with flush
+     * top corners; v2 floats the card with 12 dp margins and all four corners at 32.
+     */
+    val sheetRadius = 32.dp
 
     // --- type (spec §四) --------------------------------------------------------
 
@@ -166,6 +212,16 @@ internal object MiuixTokens {
     val dividerThickness = 1.dp
     val cardInsideMargin = PaddingValues(0.dp)
     val listInsideMargin = PaddingValues(horizontal = 12.dp, vertical = 5.dp)
+
+    // --- floating composer (v2 §1/§2) --------------------------------------------
+
+    /** §1: the composer floats with 16 dp clear on every side — never flush to the edge. */
+    val composerMargin = 16.dp
+    /** §2: the send ball is a 48 dp circle *outside* the field, 12 dp from it. */
+    val sendBallSize = 48.dp
+    val sendBallGap = 12.dp
+    /** §五 消息（用户）: 右下角 6dp 气泡尾 — fixed value, not on the radius ladder. */
+    val bubbleTail = 6.dp
 
     /**
      * Desktop density compensation (task book §T3): Miuix is laid out for phones, so at the

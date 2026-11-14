@@ -23,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -44,6 +45,7 @@ import vade.ui.skin.BtnStyle
 import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.NavItem
 import vade.ui.skin.SkinColors
+import vade.ui.skin.SkinGlass
 import vade.ui.skin.SkinMotion
 import vade.ui.skin.SkinShapes
 import vade.ui.skin.SkinTypography
@@ -54,9 +56,12 @@ import vade.ui.skin.SkinTypography
  * Written against Miuix 0.9.4 (`top.yukonga.miuix.kmp`). Design deltas versus `material`
  * (task book §四) that a reviewer should be able to see in a blind test:
  *
- *  - **shape** 12/16/20 dp on the spec's 8/12/16/20/28 ladder (8 dp kept as `radiusXs`,
- *    28 dp for sheets), instead of material's 8/14/22; the user bubble squares off one corner;
- *  - **depth** hairline strokes and flat surface colours, zero elevation everywhere;
+ *  - **shape** v2 six-step ladder — aliases 16/20/24 (=sm/md/lg) on the 12/16/20/24/28/32
+ *    scale (v2 §10), plus skin-private xs 12 and sheet 32; the user bubble squares off one
+ *    corner with a 6 dp tail (v2 §2/§五);
+ *  - **depth** v2 §8 layering, not "zero elevation everywhere" any more: static cards carry
+ *    a hairline + a *very* soft `shadowSoft`; float layers (composer / sheet / bar) carry a
+ *    real `shadowFloat`; the send ball gets an accent **glow**, not a shadow;
  *  - **density** 48 dp rows / 32 dp buttons / 11–13 sp type;
  *  - **buttons** outline-first — only the primary action is filled;
  *  - **motion** 120/160/200 ms (Miuix's own press feedback replaces the ripple).
@@ -76,6 +81,18 @@ class MiuixSkin(
     override val shapes: SkinShapes = MiuixTokens.shapes
     override val typography: SkinTypography = MiuixTokens.typography
     override val motion: SkinMotion = MiuixTokens.motion
+
+    /**
+     * v2 glass tokens (§5). Radii/tints ride on the probe defaults (24dp blur, white@26% /
+     * black@34%); the only per-theme override is the glass hairline — the default
+     * `White@25%` reads on the dark canvas but vanishes on the light one, so light uses a
+     * translucent black stroke instead (same trick as §9's grabber: 亮色用黑 24%).
+     */
+    override val glass: SkinGlass = if (dark) {
+        SkinGlass()
+    } else {
+        SkinGlass(hairlineOnGlass = Color.Black.copy(alpha = 0.20f))
+    }
 
     // --- 1 · Button ----------------------------------------------------------
 
@@ -210,22 +227,30 @@ class MiuixSkin(
     // --- 3 · Card ------------------------------------------------------------
 
     /**
-     * Stroke + flat surface, never a shadow. Miuix's `Card` has **no** stroke parameter and
-     * its default colours paint `surface` == `background` (spike/miuix RESULT.md §五 R5), so
-     * a literal `Card` here would render as an invisible rectangle — the container is
-     * therefore Miuix `Surface(border = …)`, which is the upstream primitive `Card` itself
-     * is built on.
+     * Static card = hairline + `shadowSoft` (v2 §8 row 1): the hairline does the separating,
+     * the shadow is only the *second* layer — `0 1 2 rgba(0,0,0,.06)` light / `0 2 8 …35%`
+     * dark, i.e. barely-there. Never the Material 4 dp elevation stack.
+     *
+     * Miuix's `Card` has **no** stroke parameter and its default colours paint
+     * `surface` == `background` (spike/miuix RESULT.md §五 R5), so a literal `Card` here
+     * would render as an invisible rectangle — the container is therefore Miuix
+     * `Surface(border = …)`, which is the upstream primitive `Card` itself is built on.
      */
     @Composable
     override fun Card(modifier: Modifier, content: @Composable () -> Unit) {
         val c = colors
         MiuixScope(c) {
             Surface(
-                modifier = modifier,
-                shape = RoundedCornerShape(shapes.medium),
+                modifier = modifier.shadow(
+                    elevation = 2.dp,
+                    shape = RoundedCornerShape(shapes.md),
+                    ambientColor = c.shadowSoft,
+                    spotColor = c.shadowSoft,
+                ),
+                shape = RoundedCornerShape(shapes.md),
                 color = c.surface,
                 contentColor = c.onSurface,
-                border = BorderStroke(1.dp, c.outline),
+                border = BorderStroke(1.dp, c.hairline),
                 shadowElevation = 0.dp,
             ) {
                 Column { content() }
@@ -323,10 +348,12 @@ class MiuixSkin(
      * Fixed / Floating / FloatingBlur, all three sharing one **64 dp** item row so the bar
      * cannot "collapse" when the form changes (task book §六 判据 1).
      *
-     * Spec conformance (`ui-visual-language.md` §五 底栏):
-     *  - height 64 dp (was 52 — the compact value was a phone-density guess, but the spec fixes
-     *    the bar height so the three forms stay comparable);
-     *  - `surface` at 92 % + a top hairline;
+     * Spec conformance (`ui-visual-language.md` §五 底栏 + v2 §8/§12):
+     *  - height 64 dp;
+     *  - every form carries a **hairline top edge** and a real `shadowFloat` — v2 §8 row 2
+     *    says a float layer is defined by having a shadow, and the bar is one (v2 §12:
+     *    导航/底栏 = 玻璃层 + 发丝线; the translucent fill is the glass base, honest about
+     *    not being a backdrop blur);
      *  - selected item = icon 20 + label 11, tinted and weighted — **no** rounded selection
      *    block. The old revision drew a 34×24 / 6 dp tinted pill behind the selected glyph,
      *    which is precisely the "Material 浮动 pill 选中块" §五 forbids.
@@ -335,10 +362,6 @@ class MiuixSkin(
      * icon, while C-09's `NavItem` carries a single CJK glyph string. The container is
      * therefore composed from Miuix `Surface` + `Text` (the same "upstream has no
      * equivalent" escape hatch the task book allows).
-     *
-     * `FloatingBlur` is a **translucent hairline capsule, not a real backdrop blur**: `haze`
-     * is not on the verified C0c matrix and the spike never proved a backdrop filter on
-     * wasm (RESULT.md §五 R4). Degrade-and-document, per task book §T3.
      */
     @Composable
     override fun BottomBar(items: List<NavItem>, selected: Int, onSelect: (Int) -> Unit, style: BottomBarStyle) {
@@ -346,12 +369,25 @@ class MiuixSkin(
         val barHeight = MiuixTokens.barHeight
         // 92 % surface per spec; the alpha is what lets a scrolling list read *through* the bar.
         val barColor = c.surface.copy(alpha = 0.92f)
+        // §8 row 2: dark shadows run deeper (the 18 % black of light is invisible on #000000).
+        val floatElevation = if (c.isDark) 16.dp else 12.dp
         when (style) {
             BottomBarStyle.Fixed -> {
                 MiuixScope(c) {
                     Column(Modifier.fillMaxWidth()) {
-                        HorizontalDivider(thickness = 1.dp, color = c.outline)
-                        Box(Modifier.fillMaxWidth().height(barHeight).background(barColor)) {
+                        HorizontalDivider(thickness = 1.dp, color = c.hairline)
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(barHeight)
+                                // Float-layer shadow; the shape is the bar's own rectangle.
+                                .shadow(
+                                    elevation = floatElevation,
+                                    ambientColor = c.shadowFloat,
+                                    spotColor = c.shadowFloat,
+                                )
+                                .background(barColor),
+                        ) {
                             Row(Modifier.fillMaxWidth().fillMaxHeight()) { barItems(items, selected, onSelect) }
                         }
                     }
@@ -362,10 +398,18 @@ class MiuixSkin(
                 MiuixScope(c) {
                     Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
                         Surface(
-                            modifier = Modifier.fillMaxWidth().height(barHeight),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(barHeight)
+                                .shadow(
+                                    elevation = floatElevation,
+                                    shape = RoundedCornerShape(shapes.pill),
+                                    ambientColor = c.shadowFloat,
+                                    spotColor = c.shadowFloat,
+                                ),
                             shape = RoundedCornerShape(shapes.pill),
                             color = barColor,
-                            border = BorderStroke(1.dp, c.outline),
+                            border = BorderStroke(1.dp, c.hairline),
                             shadowElevation = 0.dp,
                         ) {
                             Row(Modifier.fillMaxWidth().fillMaxHeight()) { barItems(items, selected, onSelect) }
@@ -378,12 +422,20 @@ class MiuixSkin(
                 MiuixScope(c) {
                     Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
                         Surface(
-                            modifier = Modifier.fillMaxWidth().height(barHeight),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(barHeight)
+                                .shadow(
+                                    elevation = floatElevation,
+                                    shape = RoundedCornerShape(shapes.pill),
+                                    ambientColor = c.shadowFloat,
+                                    spotColor = c.shadowFloat,
+                                ),
                             shape = RoundedCornerShape(shapes.pill),
                             // 0.78 alpha over the page: readable, obviously translucent, but
                             // honestly not a blur. Do not call it 模糊 in UI copy.
                             color = c.surface.copy(alpha = 0.78f),
-                            border = BorderStroke(1.dp, c.outline.copy(alpha = 0.85f)),
+                            border = BorderStroke(1.dp, c.hairline.copy(alpha = 0.85f)),
                             shadowElevation = 0.dp,
                         ) {
                             Row(Modifier.fillMaxWidth().fillMaxHeight()) { barItems(items, selected, onSelect) }
