@@ -59,7 +59,9 @@ import com.composables.icons.tabler.outline.MessageCircle
 import com.composables.icons.tabler.outline.Palette
 import com.composables.icons.tabler.outline.Paperclip
 import com.composables.icons.tabler.outline.Pin
+import com.composables.icons.tabler.outline.PlayerPlay
 import com.composables.icons.tabler.outline.Refresh
+import com.composables.icons.tabler.outline.Rocket
 import com.composables.icons.tabler.outline.Search
 import com.composables.icons.tabler.outline.Trash
 import com.composables.icons.tabler.outline.User
@@ -171,6 +173,12 @@ object VadeIcons {
 
     /** Create a new group (新建分组). */
     val FolderPlus: ImageVector = Tabler.Outline.FolderPlus
+
+    // --- C-Activity (2026-11-14) · sub-agent state badges (ActivityScreen §子代理) ---
+    /** Sub-agent just spawned — created, its loop has not produced a step yet. */
+    val Spawned: ImageVector = Tabler.Outline.Rocket
+    /** Sub-agent actively running its LLM loop. */
+    val Running: ImageVector = Tabler.Outline.PlayerPlay
 }
 
 /**
