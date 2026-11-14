@@ -3,6 +3,7 @@ package vade.ui.skin.miuix
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
@@ -13,6 +14,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import top.yukonga.miuix.kmp.theme.Colors
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.theme.TextStyles
 import top.yukonga.miuix.kmp.theme.darkColorScheme
 import top.yukonga.miuix.kmp.theme.defaultTextStyles
 import top.yukonga.miuix.kmp.theme.lightColorScheme
@@ -20,6 +22,7 @@ import vade.ui.skin.SkinColors
 import vade.ui.skin.SkinMotion
 import vade.ui.skin.SkinShapes
 import vade.ui.skin.SkinTypography
+import vade.ui.skin.VadeFonts
 
 /**
  * U2 · `miuix` design tokens.
@@ -174,13 +177,67 @@ internal object MiuixTokens {
      * is not a delta the spec permits — 13 sp body copy on a 480 dp phone reads as dense
      * *and* fails the 4.5:1 perceptual check at a glance because the strokes get thin. Corrected
      * to the spec scale; density is now expressed through row height and padding, not type size.
+     *
+     * **The family comes from [VadeFonts.sans], and it is a getter on purpose.** These are
+     * explicit `TextStyle`s (they carry sizes/weights/line-heights of their own), so they do
+     * not inherit `SkinTypography`'s defaults — that was the last hole in the font seam
+     * (`shots/g-font-bundle2/RESULT.md`): under this skin Web drew tofu and fell back to
+     * `fonts.gstatic.com`. Reading the seam per access (instead of capturing
+     * `FontFamily.Default` at object-init time) means an install that lands *after* the
+     * tokens were first touched still wins. On desktop/Android `VadeFonts.sans` **is**
+     * `FontFamily.Default`, i.e. exactly what a null family resolved to before, so nothing
+     * re-flows there.
      */
-    val typography = SkinTypography(
-        title = TextStyle(fontSize = 20.sp, fontWeight = FontWeight.SemiBold, lineHeight = 26.sp),
-        body = TextStyle(fontSize = 15.sp, lineHeight = 23.sp),
-        caption = TextStyle(fontSize = 13.sp, lineHeight = 19.sp),
-        mono = TextStyle(fontSize = 13.sp, fontFamily = FontFamily.Monospace, lineHeight = 20.sp),
-    )
+    val typography: SkinTypography
+        get() = SkinTypography(
+            title = TextStyle(
+                fontSize = 20.sp,
+                fontWeight = FontWeight.SemiBold,
+                lineHeight = 26.sp,
+                fontFamily = VadeFonts.sans,
+            ),
+            body = TextStyle(fontSize = 15.sp, lineHeight = 23.sp, fontFamily = VadeFonts.sans),
+            caption = TextStyle(fontSize = 13.sp, lineHeight = 19.sp, fontFamily = VadeFonts.sans),
+            // mono keeps Monospace: replacing it would break the probe's column alignment
+            // (same rule as `SkinTypography.mono`).
+            mono = TextStyle(fontSize = 13.sp, fontFamily = FontFamily.Monospace, lineHeight = 20.sp),
+        )
+
+    /**
+     * Miuix's own `TextStyles` bag, routed through the same font seam as [typography].
+     *
+     * `MiuixTheme`'s text styles are the **second** family source in this skin, and the one
+     * that actually paints most of the pixels: Miuix's `Text` merges with `textStyles.main`
+     * when the caller passes no style (`Text("仅本次允许", fontSize = 14.sp)` all over
+     * `MiuixParts.kt`), and `Button` with `textStyles.button`. Left alone they hand Skiko
+     * `FontFamily.Default` — tofu on Web. So every slot is re-pointed at [family].
+     *
+     * When [family] is `FontFamily.Default` (desktop, Android) the **untouched**
+     * `defaultTextStyles()` is returned as the same object the skin used before this seam
+     * existed — not a copy with `fontFamily = Default` written into it. That is what makes
+     * "桌面/Android 观感零变化" true by construction rather than by inspection.
+     */
+    fun miuixTextStyles(family: FontFamily = VadeFonts.sans): TextStyles {
+        val base = defaultTextStyles()
+        if (family == FontFamily.Default) return base
+        fun TextStyle.seam() = copy(fontFamily = family)
+        return base.copy(
+            main = base.main.seam(),
+            paragraph = base.paragraph.seam(),
+            body1 = base.body1.seam(),
+            body2 = base.body2.seam(),
+            button = base.button.seam(),
+            footnote1 = base.footnote1.seam(),
+            footnote2 = base.footnote2.seam(),
+            headline1 = base.headline1.seam(),
+            headline2 = base.headline2.seam(),
+            subtitle = base.subtitle.seam(),
+            title1 = base.title1.seam(),
+            title2 = base.title2.seam(),
+            title3 = base.title3.seam(),
+            title4 = base.title4.seam(),
+        )
+    }
 
     /** Spec 极小标签 — 11 sp / 500. Too small for [SkinTypography], which stops at `caption`. */
     val tinySize = 11.sp
@@ -301,7 +358,10 @@ internal fun MiuixScope(colors: SkinColors, content: @Composable () -> Unit) {
     ) {
         MiuixTheme(
             colors = MiuixTokens.miuixColors(colors),
-            textStyles = defaultTextStyles(),
+            // Keyed on the seam generation: an install that lands *after* this subtree was
+            // first composed rebuilds the Miuix text styles too (CMP does not repaint when
+            // glyph bytes merely arrive — see `VadeFonts.generation`).
+            textStyles = remember(VadeFonts.generation) { MiuixTokens.miuixTextStyles() },
             content = content,
         )
     }

@@ -1,0 +1,368 @@
+{
+  "url": "http://127.0.0.1:9173/index.html",
+  "edge": "Microsoft Edge 157.0.4341.46",
+  "python": "3.14.9",
+  "paint": {
+    "first_real_frame_s": 5.43,
+    "samples": [
+      {
+        "t": 3.91,
+        "stddev": 0.0,
+        "colors": 1
+      },
+      {
+        "t": 4.27,
+        "stddev": 0.0,
+        "colors": 1
+      },
+      {
+        "t": 4.62,
+        "stddev": 0.0,
+        "colors": 1
+      },
+      {
+        "t": 5.43,
+        "stddev": 16.57,
+        "colors": 919
+      }
+    ],
+    "cjk_repaint_s": null,
+    "font_first_s": 9.27,
+    "font_last_s": 9.27,
+    "font_count": 1
+  },
+  "timing_mode": "cold-launch（自 Edge 进程启动计时）",
+  "page_dom": {
+    "dpr": 1,
+    "canvases": 0,
+    "offscreen": true,
+    "fontFaces": 0,
+    "bodyChildren": [
+      "DIV"
+    ]
+  },
+  "console": [
+    {
+      "level": "log",
+      "text": "[vade-font] installed 'fonts/vade-sans-sc.woff2' (1012640 B, family Vade Sans SC)"
+    }
+  ],
+  "exceptions": [],
+  "log_entries": [
+    {
+      "level": "error",
+      "source": "network",
+      "text": "Failed to load resource: the server responded with a status of 404 (File not found)",
+      "url": "http://127.0.0.1:9173/favicon.ico"
+    },
+    {
+      "level": "warning",
+      "source": "rendering",
+      "text": "WebGL: INVALID_ENUM: getParameter: invalid parameter name, WEBGL_debug_renderer_info not enabled",
+      "url": "http://127.0.0.1:9173/composeApp.js"
+    },
+    {
+      "level": "warning",
+      "source": "rendering",
+      "text": "WebGL: INVALID_ENUM: getParameter: invalid parameter name, WEBGL_debug_renderer_info not enabled",
+      "url": "http://127.0.0.1:9173/composeApp.js"
+    },
+    {
+      "level": "warning",
+      "source": "rendering",
+      "text": "WebGL: INVALID_ENUM: getParameter: invalid parameter name, WEBGL_debug_renderer_info not enabled",
+      "url": "http://127.0.0.1:9173/composeApp.js"
+    },
+    {
+      "level": "warning",
+      "source": "rendering",
+      "text": "WebGL: INVALID_ENUM: getParameter: invalid parameter name, WEBGL_debug_renderer_info not enabled",
+      "url": "http://127.0.0.1:9173/composeApp.js"
+    },
+    {
+      "level": "warning",
+      "source": "rendering",
+      "text": "WebGL: INVALID_ENUM: getParameter: invalid parameter name, WEBGL_debug_renderer_info not enabled",
+      "url": "http://127.0.0.1:9173/composeApp.js"
+    },
+    {
+      "level": "warning",
+      "source": "rendering",
+      "text": "WebGL: INVALID_ENUM: getParameter: invalid parameter name, WEBGL_debug_renderer_info not enabled",
+      "url": "http://127.0.0.1:9173/composeApp.js"
+    }
+  ],
+  "network_failures": [],
+  "cdp_reconnects": 0,
+  "ax_named_sample": [
+    "RootWebArea: Vade",
+    "button: 搜索",
+    "button: 新建会话",
+    "button: 展开右面板",
+    "button: 会话",
+    "button: 活动",
+    "button: 能力",
+    "button: 我的",
+    "button: R RFC-0004 附件与多模态评审 把 POST /ui/blob 的分片与断点续传写进 §3… g-1 3 天前 置顶",
+    "button: v vade core 构建矩阵升级 AGP 9.5.1 + Gradle 9.6.1 已验证，出 APK 13.5 MB g-2 5 天前",
+    "button: U U1-a 骨架验收 四个一级目的地 + 三态底栏，等真窗口截图 12:40",
+    "button: 皮 皮肤组件 11 个冻结 D93：+MessageBubble / AttachmentChip / ToolCallCard / Inp",
+    "button: 已归档",
+    "button: 已归档",
+    "StaticText: 会话",
+    "StaticText: ≥1200dp · 双栏 + 右面板 · 6 个会话",
+    "StaticText: 会话",
+    "StaticText: 活动",
+    "StaticText: 能力",
+    "StaticText: 我的",
+    "StaticText: U1-a",
+    "StaticText: 假数据 · 未连接 core（U1-a 只做骨架，U1-b 接线）",
+    "StaticText: 置顶",
+    "StaticText: 2",
+    "StaticText: R",
+    "LineBreak: \n",
+    "StaticText: RFC-0004 附件与多模态评审",
+    "LineBreak: \n",
+    "StaticText: 把 POST /ui/blob 的分片与断点续传写进 §3…",
+    "LineBreak: \n",
+    "StaticText: g-1",
+    "LineBreak: \n",
+    "StaticText: 3 天前",
+    "LineBreak: \n",
+    "StaticText: 置顶",
+    "StaticText: v",
+    "LineBreak: \n",
+    "StaticText: vade core 构建矩阵升级",
+    "LineBreak: \n",
+    "StaticText: AGP 9.5.1 + Gradle 9.6.1 已验证，出 APK 13.5 MB",
+    "LineBreak: \n",
+    "StaticText: g-2",
+    "LineBreak: \n",
+    "StaticText: 5 天前",
+    "LineBreak: \n",
+    "StaticText: 置顶",
+    "LineBreak: \n",
+    "StaticText: claude-sonnet",
+    "StaticText: 今天",
+    "StaticText: 2",
+    "StaticText: U",
+    "LineBreak: \n",
+    "StaticText: U1-a 骨架验收",
+    "LineBreak: \n",
+    "StaticText: 四个一级目的地 + 三态底栏，等真窗口截图",
+    "LineBreak: \n",
+    "StaticText: 12:40",
+    "StaticText: 皮",
+    "LineBreak: \n",
+    "StaticText: 皮肤组件 11 个冻结",
+    "LineBreak: \n",
+    "StaticText: D93：+MessageBubble / AttachmentChip / ToolCallCard / InputBar",
+    "LineBreak: \n",
+    "StaticText: 21:05",
+    "StaticText: 昨天",
+    "StaticText: 1",
+    "StaticText: w",
+    "LineBreak: \n",
+    "StaticText: wasm 体积回归",
+    "LineBreak: \n",
+    "StaticText: app.wasm + 主 JS gzip 1.04 MB，留 10% 余量",
+    "LineBreak: \n",
+    "StaticText: 昨天 19:12",
+    "StaticText: 7 天内",
+    "StaticText: 1",
+    "StaticText: A",
+    "LineBreak: \n",
+    "StaticText: AGP 9.5.1 矩阵验证",
+    "LineBreak: \n",
+    "StaticText: 两个开关缺一不可：builtInKotlin + newDsl"
+  ],
+  "steps": [
+    {
+      "key": "cold",
+      "title": "冷启动 → 真画面（1280×800 双栏）",
+      "expected": "非纯色帧 + AX 含档位文本「≥1200dp …」",
+      "actual": "计时基准=cold-launch（自 Edge 进程启动计时） 首帧 stddev=16.57 colors=919 FCP=5739ms 首帧真实渲染≈5.43s 档位=「≥1200dp · 双栏 + 右面板 · 6 个会话」 AX节点=189 <canvas>=0 OffscreenCanvas=True 字体子集=1 个 (9.27s→9.27s) CJK 重绘≈Nones 首帧→就绪帧差异=0.0000 (首帧 68771 B / 就绪帧 68771 B)",
+      "shot": "02-cold-settled.png",
+      "bytes": 68771,
+      "verdict": "PASS",
+      "extra": {
+        "first_frame_shot_bytes": 68771,
+        "paint": {
+          "first_real_frame_s": 5.43,
+          "samples": [
+            {
+              "t": 3.91,
+              "stddev": 0.0,
+              "colors": 1
+            },
+            {
+              "t": 4.27,
+              "stddev": 0.0,
+              "colors": 1
+            },
+            {
+              "t": 4.62,
+              "stddev": 0.0,
+              "colors": 1
+            },
+            {
+              "t": 5.43,
+              "stddev": 16.57,
+              "colors": 919
+            }
+          ],
+          "cjk_repaint_s": null,
+          "font_first_s": 9.27,
+          "font_last_s": 9.27,
+          "font_count": 1
+        }
+      }
+    },
+    {
+      "key": "open",
+      "title": "点会话列表第 1 行 @(222,176)",
+      "expected": "详情打开：AX 出现 textbox + 添加附件，详情区像素变化 >5%",
+      "actual": "textbox=1 添加附件=True detail 变化=0.1763",
+      "shot": "03-open-session.png",
+      "bytes": 138894,
+      "verdict": "PASS",
+      "extra": {}
+    },
+    {
+      "key": "scroll",
+      "title": "详情页滚轮向上 dy=-480，再向下 dy=+480 复位",
+      "expected": "滚动后消息流区变化 >2%、列表区静止 <1%；反向滚回复原帧差异 <2%",
+      "actual": "thread 变化=0.1184 list 变化=0.0000 滚回后 thread 与基线差异=0.0000",
+      "shot": "04-scroll-thread.png",
+      "bytes": 138597,
+      "verdict": "PASS",
+      "extra": {}
+    },
+    {
+      "key": "type",
+      "title": "点输入框 @(700, 750) 键入 'wasm 交互验证 hello'",
+      "expected": "Composer 区域像素变化 >0.05% 且 AX 仍有 textbox",
+      "actual": "composer 变化=0.05375 textbox=2 AX value=['wasm 交互验证 hello']",
+      "shot": "05-typed.png",
+      "bytes": 142362,
+      "verdict": "PASS",
+      "extra": {}
+    },
+    {
+      "key": "send",
+      "title": "Ctrl+Enter 发送（ChatThread.handleComposerKeys）",
+      "expected": "AX 出现所发正文（文字真的进了消息流）",
+      "actual": "AX 含所输入文本=True thread 变化=0.1230",
+      "shot": "06-sent-as-message.png",
+      "bytes": 135249,
+      "verdict": "PASS",
+      "extra": {}
+    },
+    {
+      "key": "back",
+      "title": "按 Esc 返回列表（AppShell.handleShellKeys）",
+      "expected": "AX 不再有 textbox + 列表行仍在；详情区回到占位（与冷启动差异 <2%）",
+      "actual": "textbox=0 详情区与冷启动差异=0.0000 整帧差异=0.0000（会话行预览因新消息更新，属预期）",
+      "shot": "07-back-to-list.png",
+      "bytes": 68771,
+      "verdict": "PASS",
+      "extra": {}
+    },
+    {
+      "key": "resize480",
+      "title": "窗口 1280 → 480（<600dp 断点）",
+      "expected": "AX 档位文本变为「<600dp · 底栏单栏」，视口 480×800",
+      "actual": "size=(480, 800) 档位=「<600dp · 底栏单栏 · 6 个会话」",
+      "shot": "08-narrow-480.png",
+      "bytes": 68457,
+      "verdict": "PASS",
+      "extra": {}
+    },
+    {
+      "key": "narrow_open",
+      "title": "窄屏点第 1 行 @(240,176)",
+      "expected": "全屏推入详情：AX 出现「返回」+ textbox，正文区变化 >10%",
+      "actual": "返回按钮=True textbox=1 body 变化=0.1419",
+      "shot": "09-narrow-detail.png",
+      "bytes": 75658,
+      "verdict": "PASS",
+      "extra": {}
+    },
+    {
+      "key": "narrow_back",
+      "title": "窄屏点顶栏返回按钮 @(44, 36)",
+      "expected": "AX 不再有「返回」，档位回到「<600dp」，帧与窄屏列表差异 <6%",
+      "actual": "返回按钮=False 档位=「<600dp · 底栏单栏 · 6 个会话」 与窄屏列表差异=0.0000",
+      "shot": "10-narrow-back.png",
+      "bytes": 68457,
+      "verdict": "PASS",
+      "extra": {}
+    },
+    {
+      "key": "resize1280",
+      "title": "窗口 480 → 1280 复原",
+      "expected": "AX 档位回到「≥1200dp」，整帧与窄屏前的 1280 列表帧差异 <3%",
+      "actual": "size=(1280, 800) 档位=「≥1200dp · 双栏 + 右面板 · 6 个会话」 与 1280 列表帧差异=0.0059",
+      "shot": "11-restored-1280.png",
+      "bytes": 69789,
+      "verdict": "PASS",
+      "extra": {}
+    },
+    {
+      "key": "skin",
+      "title": "切到 miuix 皮肤（我的 → 皮肤 chip → 会话）",
+      "expected": "节点按名字点到；切完仍渲染、AX 有中文、全程 0 个 gstatic 字体请求",
+      "actual": "我的=[36.0, 255.0] chip=[220.0, 163.0] 会话=[36.0, 45.0] 帧 stddev=17.87 colors=1239 中文 AX 节点=73 外部字体请求=0 AX 样例=['搜索', '新建会话', '展开右面板', '会话', '活动', '能力']",
+      "shot": "13-skin-miuix-sessions.png",
+      "bytes": 70287,
+      "verdict": "PASS",
+      "extra": {
+        "profile_shot": "12-skin-miuix-profile.png",
+        "profile_bytes": 74082,
+        "ax_cjk": [
+          "搜索",
+          "新建会话",
+          "展开右面板",
+          "会话",
+          "活动",
+          "能力",
+          "我的",
+          "R RFC-0004 附件与多模态评审 把 POST /ui/blob 的分片与断点续传写进 §3… g-1 3 天前 置顶",
+          "v vade core 构建矩阵升级 AGP 9.5.1 + Gradle 9.6.1 已验证，出 APK 13.5 MB g-2 5 天前 置顶 claude-sonnet",
+          "U U1-a 骨架验收 四个一级目的地 + 三态底栏，等真窗口截图 12:40",
+          "皮 皮肤组件 11 个冻结 D93：+MessageBubble / AttachmentChip / ToolCallCard / InputBar 21:05",
+          "已归档",
+          "已归档",
+          "会话",
+          "≥1200dp · 双栏 + 右面板 · 6 个会话",
+          "会话",
+          "活动",
+          "能力",
+          "我的",
+          "假数据 · 未连接 core（U1-a 只做骨架，U1-b 接线）",
+          "置顶",
+          "RFC-0004 附件与多模态评审",
+          "把 POST /ui/blob 的分片与断点续传写进 §3…",
+          "3 天前",
+          "置顶",
+          "vade core 构建矩阵升级",
+          "AGP 9.5.1 + Gradle 9.6.1 已验证，出 APK 13.5 MB",
+          "5 天前",
+          "置顶",
+          "今天",
+          "U1-a 骨架验收",
+          "四个一级目的地 + 三态底栏，等真窗口截图",
+          "皮",
+          "皮肤组件 11 个冻结",
+          "昨天",
+          "wasm 体积回归",
+          "app.wasm + 主 JS gzip 1.04 MB，留 10% 余量",
+          "昨天 19:12",
+          "7 天内",
+          "AGP 9.5.1 矩阵验证"
+        ],
+        "external_font_urls": []
+      }
+    }
+  ]
+}
