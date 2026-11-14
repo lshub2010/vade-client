@@ -170,7 +170,15 @@ VADE_SOURCE=real VADE_HOST=127.0.0.1 VADE_PORT=18755 VADE_PAIR_CODE=<配对码> 
 `RealCoreE2ETest`(6) / `RealCoreUiE2ETest`(1) 本轮**跑绿**（未超时）；本棒没有改任何断言、
 没有 skip、没有调超时。
 
-## 8. 没做 / 说清楚的
+## 8. 提交
+
+| sha | 内容 |
+|---|---|
+| `63c4ac4` | 代码 + 测试 + 本文件初版（8 files, +1095/−9） |
+
+---
+
+## 9. 没做 / 说清楚的
 
 1. **像素证据没有**：本棒全部证据是 **semantics 树里的文本断言** + 源码扫描，**没有截图**。
    横幅在 300dp 双栏列里的换行/对比度、红色底是否够显眼，只有真跑一遍（`tools/capture-window.ps1`
