@@ -367,17 +367,48 @@ data class EffectiveModel(
 }
 
 /**
- * `session/model.set`. `modelId = null` CLEARS the override (falls back to global
- * default / priority); the returned [SessionModelSetResult.source] is the source AFTER
- * clearing. Takes effect at the next turn's dequeue, never mid-turn.
+ * `session/model.set`. [modelId] is REQUIRED-with-null on the wire (contract §session/model.set:
+ * `"model_id": "string|null"`; core rpc.py `session_model_set` refuses a MISSING key with
+ * INVALID_ARGUMENT — "model_id is required (null clears the override)"):
+ * [Optional.Null] CLEARS the override (falls back to global default / priority) and
+ * [Optional.Value] sets it; the returned [SessionModelSetResult.source] is the source AFTER
+ * the write. [Optional.Absent] is refused HERE — an omitted key is always a bug, it is
+ * exactly the frame core answers INVALID_ARGUMENT to. Takes effect at the next turn's
+ * dequeue, never mid-turn.
  */
 data class SessionModelSetParams(
     val sessionId: String,
-    val modelId: String?,
+    val modelId: Optional<String>,
 ) {
+    /**
+     * Legacy `String?` overload kept for existing callers (ui/data's ModelActions):
+     * null maps to [Optional.Null] — the clearing frame now carries `"model_id":null`
+     * instead of silently omitting the key (the pre-fix defect).
+     */
+    @Deprecated(
+        message = "model_id is required-with-null on the wire — pass Optional.Null to clear, " +
+            "Optional.of(id) to set. The String? overload cannot express Absent and exists only " +
+            "so existing callers keep compiling.",
+        replaceWith = ReplaceWith(
+            "SessionModelSetParams(sessionId, if (modelId == null) Optional.Null else Optional.of(modelId))",
+        ),
+    )
+    constructor(sessionId: String, modelId: String?) : this(
+        sessionId,
+        if (modelId == null) Optional.Null else Optional.of(modelId),
+    )
+
     fun toJson(): JsonObject = buildJsonObject {
         putStr("session_id", sessionId)
-        putStr("model_id", modelId)
+        when (val m = modelId) {
+            is Optional.Absent -> throw VadeException(
+                VadeErrorCodes.INVALID_ARGUMENT,
+                "params.model_id is required — pass Optional.Null to clear the override " +
+                    "(an omitted key is INVALID_ARGUMENT server-side)",
+            )
+            is Optional.Null -> put("model_id", JsonNull)
+            is Optional.Value -> put("model_id", JsonPrimitive(m.value))
+        }
     }
 }
 

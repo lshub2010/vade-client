@@ -147,11 +147,12 @@ class ModelActionsRealTest {
         val factory = FakeTransportFactory()
         runBlocking {
             val (client, transport, adapter) = connected(factory)
-            // 1) Clear: modelId=null → the protocol DTO omits model_id (putStr skips
-            //    null) — the frame documents that protocol-layer gap verbatim.
+            // 1) Clear: modelId=null → the protocol DTO writes `"model_id":null` — the
+            //    frame that core's `"model_id" not in params` gate accepts (the pre-fix
+            //    frame omitted the key entirely and was INVALID_ARGUMENT server-side).
             val clear = async(Dispatchers.Default) { adapter.setSessionModelAwaiting("s-1", null) }
             waitUntil { transport.record.size >= 1 }
-            assertEquals("""{"session_id":"s-1"}""", requestOf(transport.record[0]).second)
+            assertEquals("""{"session_id":"s-1","model_id":null}""", requestOf(transport.record[0]).second)
             transport.push(
                 responseFrame(idOf(transport.record[0]), """{"model_id":null,"source":"default","effective_at":"next_turn"}"""),
             )

@@ -1,0 +1,173 @@
+{
+ "console": [],
+ "exceptions": [],
+ "log_entries": [
+  {
+   "t_rel": 0.522,
+   "level": "warning",
+   "source": "rendering",
+   "text": "WebGL: INVALID_ENUM: getParameter: invalid parameter name, WEBGL_debug_renderer_info not enabled"
+  },
+  {
+   "t_rel": 0.522,
+   "level": "warning",
+   "source": "rendering",
+   "text": "WebGL: INVALID_ENUM: getParameter: invalid parameter name, WEBGL_debug_renderer_info not enabled"
+  }
+ ],
+ "perf": {
+  "navigation": {
+   "domContentLoadedEventEnd": 251,
+   "loadEventEnd": 251,
+   "responseEnd": 13,
+   "domInteractive": 250
+  },
+  "paint": [
+   {
+    "name": "first-paint",
+    "startTime": 110.71500000357628
+   },
+   {
+    "name": "first-contentful-paint",
+    "startTime": 1055.9249999970198
+   }
+  ],
+  "resources": [
+   {
+    "name": "composeApp.js",
+    "initiatorType": "script",
+    "duration": 22,
+    "size": 531244,
+    "end": 121,
+    "start": 98
+   },
+   {
+    "name": "bfa5198fb2fe683c613a.wasm",
+    "initiatorType": "fetch",
+    "duration": 127,
+    "size": 8640616,
+    "end": 362,
+    "start": 235
+   },
+   {
+    "name": "b2d4e812c14a7c2e6150.wasm",
+    "initiatorType": "fetch",
+    "duration": 135,
+    "size": 4035306,
+    "end": 379,
+    "start": 244
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.117.woff2",
+    "initiatorType": "fetch",
+    "duration": 151,
+    "size": 28164,
+    "end": 1197,
+    "start": 1047
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.118.woff2",
+    "initiatorType": "fetch",
+    "duration": 59,
+    "size": 25020,
+    "end": 1265,
+    "start": 1206
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.116.woff2",
+    "initiatorType": "fetch",
+    "duration": 59,
+    "size": 28420,
+    "end": 1326,
+    "start": 1266
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.115.woff2",
+    "initiatorType": "fetch",
+    "duration": 59,
+    "size": 30268,
+    "end": 1387,
+    "start": 1327
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.114.woff2",
+    "initiatorType": "fetch",
+    "duration": 59,
+    "size": 31012,
+    "end": 1447,
+    "start": 1388
+   },
+   {
+    "name": "rP2up3q65FkAtHfwd-eIS2brbDN6gxP34F9jRRCe4W3gfQ8QA_9Edkw.woff2",
+    "initiatorType": "fetch",
+    "duration": 65,
+    "size": 58008,
+    "end": 1513,
+    "start": 1449
+   },
+   {
+    "name": "I_uyMoGduATTei9eI8daxVHDyfisHr71-vrgfE71.woff2",
+    "initiatorType": "fetch",
+    "duration": 102,
+    "size": 382724,
+    "end": 1617,
+    "start": 1515
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.112.woff2",
+    "initiatorType": "fetch",
+    "duration": 56,
+    "size": 30772,
+    "end": 1676,
+    "start": 1620
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.119.woff2",
+    "initiatorType": "fetch",
+    "duration": 77,
+    "size": 41588,
+    "end": 1754,
+    "start": 1677
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.113.woff2",
+    "initiatorType": "fetch",
+    "duration": 56,
+    "size": 31296,
+    "end": 1811,
+    "start": 1755
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.106.woff2",
+    "initiatorType": "fetch",
+    "duration": 60,
+    "size": 33508,
+    "end": 1872,
+    "start": 1812
+   },
+   {
+    "name": "k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.111.woff2",
+    "initiatorType": "fetch",
+    "duration": 57,
+    "size": 33464,
+    "end": 1930,
+    "start": 1873
+   }
+  ],
+  "canvases": 0,
+  "bodyKids": [
+   "DIV"
+  ],
+  "vadePerf": {
+   "canvasAdded": null,
+   "firstRAF": 405.955,
+   "rafCount": 3,
+   "pageErrors": [],
+   "rejections": []
+  }
+ },
+ "vade_perf": null,
+ "load_event_t_rel": 0.277,
+ "probe_screenshot": "shots/g-wasm/cdp-run2-at-probe.png",
+ "wall_total_s": 12.085
+}
