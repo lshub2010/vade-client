@@ -2,7 +2,9 @@
 
 Worktree `D:/HermesWorkspace/Vade-client-wt/g-nav-visual` · 分支 `tmp/g-nav-visual`
 基线 main @ **`0c3651c`**（`fix(icon): 合并 g-glyph-clear…`）
-截图 commit：**`b35a984`**（42 张）· 本文件与 `w07-*` 两图为第二个提交
+截图 commit：**`b35a984`**（42 张）· 报告 commit：**`d7e8f9f`**（RESULT + `w07-*` 两图）
+
+> 本棒取证期间 main 被别的棒推进了（现为 `d825690`，含 g-activity-wire / g-wasm-rt / g-composer-shape）。本分支仍停在 `0c3651c`，所以 `git diff main` 会同时显示**别人的新增**和本次的 shots，容易被误读。正确的对照基准是 `git diff 0c3651c HEAD` —— 那上面只有 `shots/g-nav-visual/`（46 文件 / +197 行），`composeApp/src` 与 `tools/` **零改动**。
 
 未 push、未合并。只用 `git add` + `git commit`，没有 `--amend` / `rebase` / `reset`。
 **产品代码零改动**：`git status` 全程只有 `?? shots/g-nav-visual/`（`composeApp/src/**` 一字未动，`local.properties` 在 .gitignore 里）。
