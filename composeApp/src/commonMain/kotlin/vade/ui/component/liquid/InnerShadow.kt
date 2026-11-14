@@ -19,11 +19,14 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
@@ -114,6 +117,7 @@ fun Modifier.innerShadow(
         alpha = spec.alpha.coerceIn(0f, 1f),
     )
 }
+
 /**
  * A soft halo drawn **outside** the shape — the float cue for translucent
  * surfaces. `Modifier.shadow` paints an elevation silhouette *under* the shape,
@@ -136,6 +140,17 @@ fun Modifier.innerShadow(
  * then as 「阴影有边框」. Drawn BEFORE the content: solid consumers cover the
  * blur's inner half entirely; translucent glass shows it as a soft depth cue,
  * and the offset's below-edge mass hugs the pill instead of detaching from it.
+ *
+ * @param outsideOnly g-composer-corner: keep the halo strictly outside [shape].
+ *   The blur's *inner* half is drawn under the caller's content, so a translucent
+ *   fill (surfaceGlass is 84 % / 78 % opaque) composites the ink into the fill —
+ *   measured 7/255 of gradient on the composer panel, which reads as 「玻璃底发灰」.
+ *   With this flag the shape is clipped OUT of the halo, so a translucent panel
+ *   keeps exactly the fill its tint says and only the outside gets the shadow
+ *   (the inner half of the gaussian is simply discarded rather than blended).
+ *   Uses a difference clip: Skia and Android ≥ API 26 honour it; on API 24–25 the
+ *   framework ignores the op and the halo degrades to the old (inning) look — no
+ *   hard edges either way.
  */
 fun Modifier.dropHalo(
     shape: Shape,
@@ -143,6 +158,7 @@ fun Modifier.dropHalo(
     color: Color,
     offset: DpOffset = DpOffset(0.dp, 0.dp),
     alpha: Float = 1f,
+    outsideOnly: Boolean = false,
 ): Modifier = this.drawWithContent {
     val strength = alpha.coerceIn(0f, 1f)
     if (strength <= 0.01f || radius <= 0.dp) {
@@ -154,39 +170,45 @@ fun Modifier.dropHalo(
     val dx = offset.x.toPx()
     val dy = offset.y.toPx()
     val outline = shape.createOutline(size, layoutDirection, this)
+    val colorArgb = color.copy(alpha = (strength * HALO_BLUR_INK_FACTOR).coerceAtMost(1f)).toArgb()
 
-    if (outline is Outline.Rounded) {
-        // One gaussian-blurred draw. σ = radius·[HALO_BLUR_SIGMA_FACTOR]; the ink
-        // carries [HALO_BLUR_INK_FACTOR] because the visible below-edge peak is
-        // Φ(offset/σ)·ink < ink — the worst case still lands inside the ≤3 %
-        // (≤8/255) budget. offsetX stays 0 (§8.3: light from straight above).
-        val rr = outline.roundRect
-        val drew = drawBlurredHalo(
-            left = rr.left,
-            top = rr.top,
-            right = rr.right,
-            bottom = rr.bottom,
-            cornerRadius = dilatedCornerRadius(
-                originalRadius = rr.topLeftCornerRadius.x,
-                width = rr.width,
-                height = rr.height,
-                dilation = 0f,
-            ),
-            dx = dx,
-            dy = dy,
-            colorArgb = color.copy(alpha = (strength * HALO_BLUR_INK_FACTOR).coerceAtMost(1f)).toArgb(),
-            blurSigmaPx = radiusPx * HALO_BLUR_SIGMA_FACTOR,
-        )
-        if (drew) {
-            drawContent()
-            return@drawWithContent
+    fun DrawScope.drawHalo() {
+        if (outline is Outline.Rounded) {
+            // One gaussian-blurred draw. σ = radius·[HALO_BLUR_SIGMA_FACTOR]; the ink
+            // carries [HALO_BLUR_INK_FACTOR] because the visible below-edge peak is
+            // Φ(offset/σ)·ink < ink — the worst case still lands inside the ≤3 %
+            // (≤8/255) budget. offsetX stays 0 (§8.3: light from straight above).
+            val rr = outline.roundRect
+            val drew = drawBlurredHalo(
+                left = rr.left,
+                top = rr.top,
+                right = rr.right,
+                bottom = rr.bottom,
+                cornerRadius = dilatedCornerRadius(
+                    originalRadius = rr.topLeftCornerRadius.x,
+                    width = rr.width,
+                    height = rr.height,
+                    dilation = 0f,
+                ),
+                dx = dx,
+                dy = dy,
+                colorArgb = colorArgb,
+                blurSigmaPx = radiusPx * HALO_BLUR_SIGMA_FACTOR,
+            )
+            if (drew) return
+        }
+
+        val layerAlpha = haloLayerAlpha(strength, HALO_FALLBACK_LAYERS)
+        val step = radiusPx / HALO_FALLBACK_LAYERS
+        for (k in HALO_FALLBACK_LAYERS downTo 1) {
+            drawPath(offsetDilatedOutline(outline, dx, dy, step * k), color.copy(alpha = layerAlpha))
         }
     }
 
-    val layerAlpha = haloLayerAlpha(strength, HALO_FALLBACK_LAYERS)
-    val step = radiusPx / HALO_FALLBACK_LAYERS
-    for (k in HALO_FALLBACK_LAYERS downTo 1) {
-        drawPath(offsetDilatedOutline(outline, dx, dy, step * k), color.copy(alpha = layerAlpha))
+    if (outsideOnly) {
+        clipPath(outlineAsPath(outline), ClipOp.Difference) { drawHalo() }
+    } else {
+        drawHalo()
     }
     drawContent()
 }

@@ -1,0 +1,9 @@
+serving D:\HermesWorkspace\Vade-client-wt\g-wasm-rt\composeApp\build\wasm-web at http://127.0.0.1:9173/ (COOP/COEP on, wasm MIME ok)
+02:10:17.209 | 127.0.0.1 | "GET /index.html HTTP/1.1" 200 -
+02:10:17.251 | 127.0.0.1 | "GET /index.html HTTP/1.1" 200 -
+02:10:39.404 | 127.0.0.1 | "GET /index.html HTTP/1.1" 200 -
+02:10:39.469 | 127.0.0.1 | "GET /composeApp.js HTTP/1.1" 200 -
+02:10:39.671 | 127.0.0.1 | "GET /bfa5198fb2fe683c613a.wasm HTTP/1.1" 200 -
+02:10:39.719 | 127.0.0.1 | "GET /0eb77a3ae3fe62e76deb.wasm HTTP/1.1" 200 -
+02:10:39.760 | 127.0.0.1 | code 404, message File not found
+02:10:39.760 | 127.0.0.1 | "GET /favicon.ico HTTP/1.1" 404 -

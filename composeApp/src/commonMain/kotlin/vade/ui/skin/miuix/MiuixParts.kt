@@ -50,6 +50,8 @@ import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.Button
+import vade.ui.component.liquid.VadeShadows
+import vade.ui.component.liquid.layeredShadow
 import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
 import vade.ui.skin.ApprovalRequest
@@ -609,7 +611,6 @@ internal fun MiuixInputBar(
 ) {
     MiuixScope(colors) {
         val fieldShape = RoundedCornerShape(shapes.xl)
-        val floatElevation = if (colors.isDark) 16.dp else 12.dp
         Column(Modifier.fillMaxWidth()) {
             if (attachments != null) {
                 attachments()
@@ -621,14 +622,13 @@ internal fun MiuixInputBar(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        // §8 row 2: the composer is a float layer — shadow first, so it casts
-                        // from the surface bounds instead of being clipped by the glass.
-                        .shadow(
-                            elevation = floatElevation,
-                            shape = fieldShape,
-                            ambientColor = colors.shadowFloat,
-                            spotColor = colors.shadowFloat,
-                        )
+                        // §8 row 2: the composer is a float layer — but the shadow must follow
+                        // the SHAPE, not its bounding rectangle. `Modifier.shadow` receives
+                        // `fieldShape` and still knocks its hole out as an inset rectangle;
+                        // 78 % surfaceGlass shows that rectangle through, leaving four square
+                        // corners where the panel curls (g-composer-corner). layeredShadow
+                        // draws one gaussian halo per layer from the shape's RoundedCornerRect.
+                        .layeredShadow(VadeShadows.float, fieldShape, dark = colors.isDark, outsideOnly = true)
                         .clip(fieldShape)
                         .background(colors.surfaceGlass)
                         // §五 输入框: 1 dp hairline at rest, 2 dp `accent` stroke on focus —

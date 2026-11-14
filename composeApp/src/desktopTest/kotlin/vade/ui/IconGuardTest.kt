@@ -3,76 +3,110 @@ package vade.ui
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertTrue
+import vade.ui.icon.GlyphLiteralScan
 
 /**
- * w2-icons anti-regression guard (docs/visual-language.md §3: icons are vectors — never
- * glyph characters, never CJK-as-icon, never emoji).
+ * w2-icons 防回退守卫（docs/visual-language.md §3：图标必须是矢量 —— 不许字符字形、
+ * 不许汉字当图标、不许 emoji）。
  *
- * Scope of this stick: `shell/` and `skin/` are **excluded** from the scans — two parallel
- * w2 sticks are converting their call sites right now, and scanning them here would fail on
- * code this stick is not allowed to touch. The parent stick widens these scans back to the
- * whole `commonMain` tree when the merged state is in (the regexes below are already
- * correct for that: delete the exclusions, drop the allowlist entry).
+ * 这条守卫**两次失效，两次都还是绿的**，所以现在的写法刻意做了两件事：
+ *  - **扫描域**：整个 `commonMain/kotlin`（当前只有 `vade/ui` 一棵子树），不排除任何子目录。
+ *    第一次失效就是把 `icon|shell|skin` 排除掉了 —— 被排除的目录等于没有保护。
+ *  - **匹配形态**：不再手写「一条正则匹配 `Text("X")`」。字面量由
+ *    [GlyphLiteralScan] 词法扫描摘出（剔注释、按行号定位），再由运行期拼出来的
+ *    `^[<词表>]{1,4}$` 判类，于是 `skin.Button("×")`、
+ *    `glyph = if (..) "▸" else "◂"`、`text = item.glyph ?: "•"`、跨行 `Text(\n "←"\n)`
+ *    一视同仁。匹配器自身有独立自测（`GlyphLiteralScanTest`），把它改弱必红。
+ *
+ * 白名单（[allowed]）只在「本棒无权改、且另一棒正在改该文件」时使用，**必须写理由**；
+ * 条目若对不上任何 offender 会被报成 stale，强制删除（白名单不许永久静默）。
  */
 class IconGuardTest {
 
-    /** Module dir: Gradle runs desktopTest with the composeApp module as working dir. */
-    private fun uiDir() = File("src/commonMain/kotlin/vade/ui")
+    /** 扫描域根：全部 commonMain 源码。 */
+    private fun commonMainDir() = File("src/commonMain/kotlin")
 
-    /** Directories owned by parallel w2 sticks — excluded until the parent's merged scan. */
-    private val excludedDirs = setOf("icon", "shell", "skin")
+    /** Module dir: Gradle runs desktopTest with the composeApp module as working dir. */
+    private fun uiDir() = File(commonMainDir(), "vade/ui")
 
     /**
-     * One deliberate leftover outside the excluded dirs: the search overlay still draws its
-     * trigger with the `⌕` character (search/ was not part of any w2 stick). It is named
-     * here so it cannot silently persist — when the parent pass converts it, delete the
-     * entry and the guard immediately covers `search/` too.
+     * 行内白名单。
+     *
+     * g-glyph-clear：4 处符号存量（`AppShell` 的 `▸`/`◂`/`×`、`FloatingBottomBar` 的 `•`）
+     * 与 4 处汉字图标（`Destination.glyph` 的 `话`/`活`/`能`/`我`）**都已从源码删除**，
+     * 所以符号那条清单是空的。
+     *
+     * 剩下的 6 条全是**单汉字字面量但确实不是图标**的展示页/探针文案：每条写清它渲在
+     * 哪里、为什么不是图标、以及什么时候该复查。删掉文案或行号漂移 → 报 stale → 强制清理。
      */
-    private val allowedLiteralGlyphs = mapOf(
-        "SearchOverlay.kt" to setOf("⌕"),
+    private val allowed: List<GlyphLiteralScan.Allow> = listOf(
+        // miuix 展示页：四种 BtnStyle 的演示按钮下方 11sp 的**样式名缩写**（主/次/危/文），
+        // 不是图标也不是按钮内容——按钮本身的文字是「发送/添加/删除/更多」（多字，不在扫描范围）。
+        GlyphLiteralScan.Allow(
+            "vade/ui/skin/miuix/MiuixShowcase.kt", 208, "主",
+            "演示页按钮下方的样式名缩写（主按钮），11sp 文字标签；g-glyph-clear 已核，不渲染在任何图标槽",
+        ),
+        GlyphLiteralScan.Allow(
+            "vade/ui/skin/miuix/MiuixShowcase.kt", 209, "次",
+            "演示页按钮下方的样式名缩写（次按钮），11sp 文字标签；同上",
+        ),
+        GlyphLiteralScan.Allow(
+            "vade/ui/skin/miuix/MiuixShowcase.kt", 210, "危",
+            "演示页按钮下方的样式名缩写（危险按钮），11sp 文字标签；同上",
+        ),
+        GlyphLiteralScan.Allow(
+            "vade/ui/skin/miuix/MiuixShowcase.kt", 211, "文",
+            "演示页按钮下方的样式名缩写（文字按钮），11sp 文字标签；同上",
+        ),
+        // 同一行那枚 disabled 按钮的说明文字（"禁" = 禁用态）。
+        GlyphLiteralScan.Allow(
+            "vade/ui/skin/miuix/MiuixShowcase.kt", 220, "禁",
+            "禁用态演示按钮的说明文字（禁），11sp 文字标签；g-glyph-clear 已核",
+        ),
+        // 动效探针的假会话行标题：`RealRow("好", meta = "2 分钟前")` 是一行**会话标题**，
+        // 15sp 行首文字（和它上面那句「为什么」同一类），不是图标槽。
+        GlyphLiteralScan.Allow(
+            "vade/ui/demo/MotionProbe.kt", 312, "好",
+            "探针夹具的会话标题（15sp 行首文字，隔壁行是「为什么」），演示用假数据；不是图标槽",
+        ),
     )
-
-    /** The banned single-glyph vocabulary (the shell's old char-icon alphabet, plus × ◂ ▸ ⧗). */
-    private val glyphChars = """[↑↓←→▲▼■□●○◆＋…✕✓▾▸‹⌕✎•×◂▸⧗]"""
-
-    private fun scannedFiles(): List<File> =
-        uiDir().walkTopDown()
-            .filter { it.isFile && it.extension == "kt" }
-            .filter { file ->
-                val relative = file.relativeTo(uiDir()).invariantSeparatorsPath
-                excludedDirs.none { relative.startsWith("$it/") }
-            }
-            .toList()
 
     @Test
     fun noCharacterIconTextLiterals() {
-        // `\b` keeps `UiText(` from matching the bare-`Text(` pattern; the second regex
-        // scans `UiText(` itself, which is exactly how a glyph icon regresses in pages.
-        // The glyph char itself is captured (group 1) so the allowlist can compare it.
-        val bareText = Regex("""\bText\(\s*"($glyphChars)"""")
-        val uiText = Regex("""UiText\(\s*"($glyphChars)"""")
-        val offenders = mutableListOf<String>()
-        for (file in scannedFiles()) {
-            val text = file.readText()
-            bareText.findAll(text).forEach { m ->
-                if (!isAllowed(file, m.groupValues[1])) offenders += "${file.name}: Text(\"${m.groupValues[1]}\")"
-            }
-            uiText.findAll(text).forEach { m ->
-                if (!isAllowed(file, m.groupValues[1])) offenders += "${file.name}: UiText(\"${m.groupValues[1]}\")"
-            }
-        }
+        val root = commonMainDir()
+        assertTrue(root.isDirectory, "commonMain 不在预期位置：${root.absolutePath}")
+        val result = GlyphLiteralScan.scan(root, allowed)
         assertTrue(
-            offenders.isEmpty(),
-            "字符当图标回退：$offenders（图标必须用 vade.ui.icon.VadeIcon + VadeIcons）",
+            result.staleAllows.isEmpty(),
+            "白名单已失效（字面量改掉或行号漂移），必须删掉这些条目：${result.staleAllows}",
+        )
+        assertTrue(
+            result.offenders.isEmpty(),
+            buildString {
+                appendLine("字符/汉字当图标回退（图标必须用 vade.ui.icon.VadeIcons + VadeIcon，docs/visual-language.md §3）：")
+                result.offenders.forEach { appendLine("  " + it.render()) }
+                appendLine("共 ${result.offenders.size} 处。")
+                appendLine("若确是文字标签（展示页说明、按钮文案），在 IconGuardTest.allowed 追加并写理由：")
+                result.offenders.forEach {
+                    appendLine("    GlyphLiteralScan.Allow(\"${it.path}\", ${it.line}, \"${it.glyph}\", \"为什么它不是图标\"),")
+                }
+            },
         )
     }
 
     @Test
     fun businessCodeDoesNotImportTablerDirectly() {
         // The Tabler namespace may only appear inside vade/ui/icon (VadeIcons is the seam).
-        val offenders = scannedFiles()
+        // 扫描域同上面一样是整个 commonMain；这里排除 icon/ 是有意的落点，不是漏扫。
+        val root = commonMainDir()
+        val iconDir = File(uiDir(), "icon")
+        val offenders = root.walkTopDown()
+            .filter { it.isFile && it.extension == "kt" }
+            .filterNot { it.startsWith(iconDir) }
             .filter { it.readText().contains("com.composables.icons.tabler") }
-            .map { it.name }
+            .map { it.relativeTo(root).invariantSeparatorsPath }
+            .sorted()
+            .toList()
         assertTrue(
             offenders.isEmpty(),
             "业务代码不得直接 import Tabler：$offenders（必须经 vade.ui.icon.VadeIcons）",
@@ -105,13 +139,14 @@ class IconGuardTest {
             "目的地图标映射缺失或不符：$missing（Chat/Activity/Grid/Person，FR-8.77 顺序）",
         )
 
-        // The deprecated CJK glyph field is transitional: allowed to linger ONLY with its
-        // @Deprecated marker. When the parent stick deletes the field this test still
-        // passes; re-adding it without the marker fails here.
-        val glyphDecl = Regex("""@Deprecated\([^)]*\)\s*val glyph""")
-        if (text.contains(Regex("""\bval glyph\b""")) && !glyphDecl.containsMatchIn(text)) {
-            assertTrue(false, "Destinations.glyph 若仍存在必须带 @Deprecated（过渡字段，随 shell 合入删除）")
-        }
+        // g-glyph-clear: the legacy CJK glyph field (`话`/`活`/`能`/`我`) is deleted — its last
+        // reader, `shell/NavRail`, draws [icon] now. Pin the deletion: re-adding a `glyph`
+        // field here (with or without @Deprecated) is the exact regression this batch removed.
+        assertTrue(
+            !text.contains(Regex("""\bval glyph\b""")),
+            "Destinations.glyph 必须保持删除——它就是四个导航汉字图标（话/活/能/我）的载体；" +
+                "导航图标只走 icon: ImageVector + VadeIcon",
+        )
     }
 
     @Test
@@ -125,6 +160,9 @@ class IconGuardTest {
         )
     }
 
-    private fun isAllowed(file: File, glyph: String): Boolean =
-        allowedLiteralGlyphs[file.name]?.contains(glyph) == true
+    /**
+     * 白名单本体，供 `GlyphClearTest.wholeTreeScanFindsOnlyTheAllowlistedDemoLabels` 复核
+     * 「全仓 offender 恰好等于白名单那 6 条」时复用同一份——两份清单一定会漂，守卫就又有缝了。
+     */
+    internal fun allowList(): List<GlyphLiteralScan.Allow> = allowed
 }

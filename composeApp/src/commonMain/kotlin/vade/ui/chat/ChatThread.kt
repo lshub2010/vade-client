@@ -47,6 +47,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
@@ -141,6 +143,15 @@ fun ChatThread(
         while (state.tickUploads()) delay(160)
     }
 
+    // B2 · 真源的两个挂载点：先开事件收集（不丢加载期间到达的 delta），再拉历史快照。
+    // 假源的读通道是 null，整段短路（fixtures 就是内容）。`animate` **不参与 key**：
+    // 截图（animate=false）看到的也必须是真内容，而不是永远停在「加载中」。
+    LaunchedEffect(state) {
+        if (!state.isRealSource) return@LaunchedEffect
+        launch { state.collectLiveEvents() }
+        state.loadHistory()
+    }
+
     // Pin the thread to its newest row (FR-8.35: a streaming reply must stay visible).
     //
     // With `reverseScrolling = true` the newest row is already on screen at offset 0 from the
@@ -187,6 +198,7 @@ fun ChatThread(
                 // 消息之间 20dp（视觉规范 §4）。
                 verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
+                ThreadPhaseRow(state)
                 state.items.forEach { item ->
                     when (item) {
                         is ChatItem.Message -> MessageRow(state, item.message)
@@ -226,6 +238,67 @@ fun ChatThread(
         // not decide windowing (same reasoning as the approval card above).
         state.preview?.let { image ->
             ImagePreviewSheet(image, onClose = state::closePreview)
+        }
+    }
+}
+
+// --- 三态行 (B2) --------------------------------------------------------------
+
+/**
+ * B2 · 加载中 / 空 / 失败（可重试）—— **三态各有各的文案与颜色**，不会都渲染成同一张
+ * 空卡：加载中是中性提示、空态是「还没有消息」+ 怎么开始、失败是错误色 + 原因 + 「重试」。
+ * 就绪且有消息时本行不组成任何东西（返回空），因此假源（fixtures 非空）的呈现不变。
+ */
+@Composable
+private fun ThreadPhaseRow(state: ChatState) {
+    val skin = LocalSkin.current
+    val scope = rememberCoroutineScope()
+    when {
+        state.phase == ChatPhase.Loading -> PhaseRow(
+            title = ChatState.LOADING_TEXT,
+            detail = null,
+            fg = skin.colors.onSurfaceVariant,
+        )
+
+        state.phase == ChatPhase.Failed -> PhaseRow(
+            title = ChatState.FAILED_TEXT,
+            detail = state.loadError,
+            fg = skin.colors.error,
+            retry = { scope.launch { state.retryHistory() } },
+        )
+
+        state.items.isEmpty() -> PhaseRow(
+            title = ChatState.EMPTY_TEXT,
+            detail = ChatState.EMPTY_HINT,
+            fg = skin.colors.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun PhaseRow(
+    title: String,
+    detail: String?,
+    fg: Color,
+    retry: (() -> Unit)? = null,
+) {
+    val skin = LocalSkin.current
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        BasicText(text = title, style = skin.typography.body.copy(color = fg))
+        if (detail != null) {
+            BasicText(
+                text = detail,
+                style = skin.typography.caption.copy(color = skin.colors.onSurfaceVariant),
+            )
+        }
+        if (retry != null) {
+            Box(Modifier.clip(RoundedCornerShape(skin.shapes.pill)).clickable(onClick = retry)) {
+                StatusPill(ChatState.RETRY_TEXT, Tone.Accent)
+            }
         }
     }
 }
@@ -676,11 +749,15 @@ private fun RiskBadge(risk: String) {
  *
  * 注意是给内容的 modifier，不是往 GlassSurface 里塞 `fillMaxSize` 的子盒子 —
  * 那会把 wrap-content 的玻璃层撑满整个可用高度。
+ *
+ * **它不是 composer 圆角缺陷的原因**（g-composer-shape 实测纠正）：那条缺陷是
+ * `Modifier.shadow` 在 `.clip` 外层挖出的矩形洞，与本函数无关。但这里仍然要按
+ * [shape] 裁一次——矩形背景铺在圆角容器里会露方角，只是 3/255 的浅染不容易看见。
  */
 @Composable
-private fun Modifier.glassFallback(skin: vade.ui.skin.Skin): Modifier {
+private fun Modifier.glassFallback(skin: vade.ui.skin.Skin, shape: Shape = RectangleShape): Modifier {
     if (LocalGlassHazeState.current != null) return this
-    return background(skin.colors.surfaceGlass.copy(alpha = 0.88f))
+    return background(skin.colors.surfaceGlass.copy(alpha = 0.88f), shape)
 }
 
 /**
@@ -966,7 +1043,7 @@ private fun ImagePreviewSheet(image: ContentPart.Image, onClose: () -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     // blur 未接线时的可读性兜底（见 glassFallback 的 KDoc）。
-                    .glassFallback(skin),
+                    .glassFallback(skin, sheetShape),
             ) {
                 // 白条手柄：36×4dp、2dp 圆角、距卡顶 8dp，只说明"可下拉关闭"。
                 Box(

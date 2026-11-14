@@ -2,7 +2,9 @@ package vade.ui.data
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.runBlocking
+import vade.ui.chat.ChatTranscriptSource
 import vade.ui.chat.InMemoryAttachmentUploader
 import vade.ui.chat.InMemoryTurnGateway
 import vade.ui.chat.PendingAttachment
@@ -19,6 +21,7 @@ import vade.ui.protocol.requestOf
 import vade.ui.protocol.responseFrame
 import vade.ui.protocol.testClient
 import vade.ui.protocol.waitUntil
+import java.io.File
 import java.lang.reflect.Method
 import java.lang.reflect.ParameterizedType
 import java.lang.reflect.Type
@@ -320,6 +323,84 @@ class VadeAdaptersTest {
         assertEquals("notes.txt", body["name"].toString().trim('"'))
         assertEquals("40", body["size"].toString())
         runBlocking { client.close() }
+    }
+
+    // ---- B2 · 聊天读通道（history + events）的装配 -------------------------------
+
+    /**
+     * 未注入读通道时 `transcript()` 必须是 **null**，不是一个空流。
+     *
+     * 空流会让 `ChatState` 以为「接上了，但 core 里真的没消息」——那是对用户的谎；
+     * null 才会让它进失败态并明说「没有读历史的通道」。
+     */
+    @Test
+    fun realAdaptersWithoutATranscriptSaySoInsteadOfFakingAnEmptyOne() {
+        val client = idleClient()
+        val provider: AdapterProvider = RealAdapters(client)
+        assertNull(provider.turns("s-1").transcript())
+        runBlocking { client.close() }
+    }
+
+    /** 注入了就**原样**交出去：同一个实例，不复制、不包装、不降级成 InMemory。 */
+    @Test
+    fun realAdaptersHandOutTheInjectedTranscriptVerbatim() {
+        val client = idleClient()
+        val source = ChatTranscriptSource.of(
+            history = { emptyList() },
+            events = { emptyFlow() },
+        )
+        val provider: AdapterProvider = RealAdapters(client, chatTranscript = source)
+        assertSame(source, provider.turns("s-1").transcript())
+        runBlocking { client.close() }
+    }
+
+    /** history / events 真的被调到（不是接上之后没人用）。 */
+    @Test
+    fun injectedTranscriptIsActuallyDelegatedTo() = runBlocking {
+        val client = idleClient()
+        var askedFor: String? = null
+        var eventsCalls = 0
+        val source = ChatTranscriptSource.of(
+            history = { id -> askedFor = id; emptyList() },
+            events = { eventsCalls++; emptyFlow() },
+        )
+        val transcript = assertNotNull(RealAdapters(client, chatTranscript = source).turns("s-1").transcript())
+        assertEquals(emptyList(), transcript.history("s-42"))
+        assertEquals("s-42", askedFor)
+        transcript.events()
+        assertEquals(1, eventsCalls)
+        client.close()
+    }
+
+    /**
+     * 装配守卫：聊天读通道的 `events` 必须是**原始协议流**（`created.events`），
+     * 不能是 `observeEvents()`。
+     *
+     * 坑在于仓里有**两个** `VadeEvent`：
+     *  - `vade.ui.protocol.VadeEvent` —— 协议事件（`message.appended` / `message.edited` / `turn.*` 全在）；
+     *  - `vade.ui.data.VadeEvent` —— `RealSessionSource.mapEvent` 的**有损投影**，注释原话
+     *    「六种核心事件 → UI 事件；**其余全部丢弃**」。
+     *
+     * 接 `observeEvents()` 会得到一个**永远收不到消息事件**的流：编译通过、历史照常显示、
+     * 测试也绿——但聊天永远不会实时。这正是「接上了但没接对」那一类假接线，
+     * 没有真传输时只能靠源码把**写了哪个表达式**钉住。
+     */
+    @Test
+    fun chatTranscriptIsWiredToTheProtocolStreamNotTheLossyProjection() {
+        val src = File("src/commonMain/kotlin/vade/ui/data/RealSessionSource.kt")
+        assertTrue(src.isFile, "找不到 ${src.absolutePath}")
+        val text = src.readText()
+        val at = text.indexOf("ChatTranscriptSource.of")
+        assertTrue(at > 0, "RealSessionSource 里应有一段 ChatTranscriptSource.of 装配")
+        val slice = text.substring(at, minOf(text.length, at + 400))
+        assertTrue(
+            Regex("""events\s*=\s*\{\s*created\.events\s*\}""").containsMatchIn(slice),
+            "events 必须接 created.events（原始协议流），实际块：\n$slice",
+        )
+        assertFalse(
+            slice.contains("observeEvents"),
+            "不得把 observeEvents() 接给聊天读通道——它是 mapEvent 的有损投影，会丢掉 message.* 事件",
+        )
     }
 
     /** 记录型通道（只有类型是真的，网络是内存——与 `BlobUploaderRealTest` 同款）。 */

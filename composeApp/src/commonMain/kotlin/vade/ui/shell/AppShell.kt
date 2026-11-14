@@ -1,6 +1,7 @@
 package vade.ui.shell
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,14 +15,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
@@ -30,11 +35,16 @@ import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import vade.ui.UiText
+import vade.ui.data.AdapterHost
+import vade.ui.data.AdapterProvider
 import vade.ui.data.FakeSessionSource
+import vade.ui.data.ModuleCatalogProvider
 import vade.ui.data.RawSourceStrings
 import vade.ui.data.SourceConfig
 import vade.ui.data.VadeErrorCategory
@@ -50,9 +60,10 @@ import vade.ui.destinations.settledListStatus
 import vade.ui.glass.GlassScope
 import vade.ui.glass.asGlassSource
 import vade.ui.glass.rememberGlassState
+import vade.ui.icon.ShellGlyphs
+import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
 import vade.ui.search.SearchHost
-import vade.ui.skin.BtnStyle
 import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.NavItem
@@ -210,6 +221,18 @@ internal fun contentBottomInset(
 /** The shell's own dock padding under the floating pill (`barInsets` in [ShellBody]). */
 internal val BOTTOM_BAR_DOCK_PAD = 12.dp
 
+/**
+ * The adapter bundle this shell hands to every screen — `null` whenever the state's source
+ * cannot host one (the fixtures do not implement [AdapterHost], and a connected source clears
+ * its bundle on disconnect), which is exactly the pre-wiring state: screens fall back to their
+ * in-memory seams and every one of their `adapters` defaults stays `null`.
+ *
+ * One place, two callers ([ShellBody] for the pushed detail, [DestinationHost] for the rest):
+ * a per-call `(state.source as? AdapterHost)?.adapters` would drift the moment one of the five
+ * call sites is edited.
+ */
+internal fun adaptersOf(state: UiState): AdapterProvider? = (state.source as? AdapterHost)?.adapters
+
 @Composable
 private fun ShellBody(state: UiState) {
     val skin = LocalSkin.current
@@ -222,6 +245,8 @@ private fun ShellBody(state: UiState) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val metrics = metricsFor(maxWidth)
         val session = state.selectedSession
+        // 接线（g-activate）：真数据源的适配器包从这里往下传；假源不实现 AdapterHost ⇒ null。
+        val adapters = adaptersOf(state)
         val detailOpen = state.dest == Destination.Sessions && session != null && !metrics.twoPane
 
         // v2 bottom bar: compact single-pane only, never while a detail is pushed (D88).
@@ -279,6 +304,7 @@ private fun ShellBody(state: UiState) {
                         preset = state.chatPreset,
                         animate = state.chatPreset == vade.ui.chat.ChatPreset.Live,
                         showTitle = false,
+                        adapters = adapters,
                         contentPadding = PaddingValues(top = TOP_BAR_ZONE),
                     )
                 } else {
@@ -324,10 +350,12 @@ private fun ShellBody(state: UiState) {
                             TopBarButton(VadeIcons.Compose, onClick = { state.newSession() }, contentDescription = "新建会话")
                         }
                         if (metrics.hasRightPanel) {
-                            // w2-icons 遗留：◂/▸ 仍是字符（VadeIcons 里暂无左向 chevron 的
-                            // 既有语义名，本棒不得往 VadeIcons 追加——三批合并的冲突源头）。
+                            // g-glyph-clear: 这处曾是 `glyph = if (open) "▸" else "◂"` —— 源码
+                            // 注释自己写着「w2-icons 遗留」：VadeIcons 里没有侧栏语义名，本棒
+                            // 又不许往那个文件追加。两态矢量因此落在 vade/ui/icon/ShellGlyphs.kt
+                            // （同包，Tabler 命名空间仍只在 icon/ 里）。
                             TopBarButton(
-                                glyph = if (state.panelOpen) "▸" else "◂",
+                                icon = panelToggleIcon(state.panelOpen),
                                 onClick = { state.togglePanel() },
                                 contentDescription = if (state.panelOpen) "收起右面板" else "展开右面板",
                             )
@@ -481,6 +509,33 @@ private fun DestinationHost(
     state: UiState,
     contentInsets: PaddingValues,
 ) {
+    // 接线（g-activate）：与 [ShellBody] 同一处推导，四处屏幕共用这一个值。
+    val adapters = adaptersOf(state)
+    // g-error-retry: one slot per READ (list vs thread), each with its own retry entry.
+    // The list slot only exists while that read is not Ready — otherwise the 假数据 note in
+    // SessionsScreen (fixture-path copy) would be hidden for no reason.
+    val sessionListBanner: (@Composable () -> Unit)? =
+        if (state.sessionsPhase == LoadPhase.Ready && state.sessionsError == null) {
+            null
+        } else {
+            {
+                SessionListLoadBanner(
+                    phase = state.sessionsPhase,
+                    error = state.sessionsError,
+                    onRetry = state::retrySessions,
+                )
+            }
+        }
+    // The thread banner is passed unconditionally: its in-flight state has to stay composed
+    // while a retry runs (it retains the failed classification) — see LoadErrorBanner.kt.
+    val messageThreadBanner: @Composable () -> Unit = {
+        MessageThreadLoadBanner(
+            phase = state.messagesPhase,
+            error = state.messagesError,
+            onRetry = state::retryMessages,
+        )
+    }
+
     when (state.dest) {
         Destination.Sessions -> {
             // g-first-run · P1/P2：列表头横幅按**真实**连接状态画（假源才说「假数据」，
@@ -505,6 +560,7 @@ private fun DestinationHost(
                         onOpen = { state.open(it.id) },
                         modifier = Modifier.width(metrics.listWidth),
                         contentPadding = PaddingValues(top = TOP_BAR_ZONE),
+                        banner = sessionListBanner,
                         status = status,
                     )
                     VerticalRule()
@@ -515,7 +571,9 @@ private fun DestinationHost(
                         preset = state.chatPreset,
                         animate = state.chatPreset == vade.ui.chat.ChatPreset.Live,
                         modifier = Modifier.weight(1f),
+                        adapters = adapters,
                         contentPadding = PaddingValues(top = TOP_BAR_ZONE),
+                        banner = messageThreadBanner,
                     )
                 }
             } else if (state.selectedSessionId != null) {
@@ -525,6 +583,8 @@ private fun DestinationHost(
                     animate = state.chatPreset == vade.ui.chat.ChatPreset.Live,
                     // The pushed-detail top bar above already carries this title.
                     showTitle = false,
+                    adapters = adapters,
+                    banner = messageThreadBanner,
                 )
             } else {
                 SessionsScreen(
@@ -533,13 +593,30 @@ private fun DestinationHost(
                     twoPane = false,
                     onOpen = { state.open(it.id) },
                     contentPadding = contentInsets,
+                    banner = sessionListBanner,
                     status = status,
                 )
             }
         }
 
-        Destination.Activity -> ActivityScreen(contentPadding = contentInsets)
-        Destination.Capabilities -> CapabilitiesScreen(contentPadding = contentInsets)
+        // g-activity-wire 交回的接线：页面是全局的，Shell 进活动页时已清空 selectedSessionId，
+        // 所以候选从分组里摊平；source 非空 → ActivityScreen 自己推出两个窄口（假源 → 未接线）。
+        Destination.Activity -> ActivityScreen(
+            contentPadding = contentInsets,
+            sessions = state.groups().flatMap { it.sessions },
+            source = state.source,
+        )
+        // g-modules-wire：能力页除适配器包外，还要两样东西 ——
+        //  ① 模块清单通道（`ModuleCatalogProvider`，组合根的可选能力；本棒交 null，
+        //     因为 contracts/vade/schema/rpc.json 里没有 ui/modules，见 data/ModuleCatalog.kt）；
+        //  ② `module.status` 的失效边（`observeEvents()`，冻结契约里唯一的模块 topic）。
+        // 两者都不带 vade.ui.protocol 类型上来：清单是 ModuleCatalog 窄口，事件是 data 层 VadeEvent。
+        Destination.Capabilities -> CapabilitiesScreen(
+            contentPadding = contentInsets,
+            adapters = adapters,
+            moduleCatalog = (state.source as? ModuleCatalogProvider)?.moduleCatalog,
+            events = state.source.observeEvents(),
+        )
         Destination.Me -> ProfileScreen(
             skinId = state.skinId,
             barStyle = state.barStyle,
@@ -547,6 +624,7 @@ private fun DestinationHost(
             onSkinChange = state::setSkin,
             onBarChange = state::setBar,
             contentPadding = contentInsets,
+            adapters = adapters,
         )
     }
 }
@@ -563,7 +641,25 @@ private fun RightPanel(onClose: () -> Unit) {
                 UiText("右面板", size = 13, weight = FontWeight.SemiBold)
                 UiText("模块页面宿主（U1-h · 等 C-19）", size = 10, color = skin.colors.onSurfaceVariant)
             }
-            skin.Button("×", onClick = onClose, style = BtnStyle.Text)
+            // g-glyph-clear: 原来是 `skin.Button("×", style = BtnStyle.Text)` —— 文本按钮里
+            // 塞一个乘号当图标。`Skin.Button` 只有 String 签名（C-09 冻结，本棒不能加
+            // ImageVector 重载），所以这里直接画矢量：44dp 触控目标 + 20dp 图标 + 读屏描述。
+            // 视觉上仍是同一个「关掉这一栏」的 X，只是不再是一个字。
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(skin.shapes.sm))
+                    .semantics { contentDescription = "关闭右面板" }
+                    .clickable(onClick = onClose),
+                contentAlignment = Alignment.Center,
+            ) {
+                VadeIcon(
+                    vector = VadeIcons.Close,
+                    contentDescription = null, // the button box above carries the description
+                    size = 20.dp,
+                    tint = skin.colors.onSurfaceVariant,
+                )
+            }
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(skin.colors.hairline))
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -575,7 +671,7 @@ private fun RightPanel(onClose: () -> Unit) {
             )
             Spacer(Modifier.height(4.dp))
             UiText(
-                text = "默认收起；本切片用顶栏 ◂ 按钮开合，⌘\\ 属 U1-g。开合不改变会话滚动位置。",
+                text = "默认收起；本切片用顶栏的侧栏按钮开合，⌘\\ 属 U1-g。开合不改变会话滚动位置。",
                 size = 10,
                 color = skin.colors.onSurfaceVariant,
             )
@@ -587,6 +683,19 @@ private fun RightPanel(onClose: () -> Unit) {
 private fun VerticalRule() {
     Box(Modifier.width(1.dp).fillMaxHeight().background(LocalSkin.current.colors.hairline))
 }
+
+/**
+ * Right-panel toggle icon — **one vector per state**, the two-state contract the `◂` / `▸`
+ * character pair used to carry:
+ *  - panel closed → [ShellGlyphs.PanelExpand]  (点它把面板拉出来)
+ *  - panel open   → [ShellGlyphs.PanelCollapse] (点它收回去)
+ *
+ * Extracted from the call site so a test can pin the pair without standing up a ≥1200 dp
+ * window: `ShellMetrics.hasRightPanel` is false below 1200 dp, which makes the button
+ * unreachable in the default 1024×768 desktop test window.
+ */
+internal fun panelToggleIcon(open: Boolean): ImageVector =
+    if (open) ShellGlyphs.PanelCollapse else ShellGlyphs.PanelExpand
 
 /** Bottom-bar rows: the four destinations, in contract order (FR-8.77). */
 private fun navItems(): List<BottomBarItem> = Destination.entries.map {

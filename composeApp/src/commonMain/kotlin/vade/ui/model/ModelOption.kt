@@ -252,6 +252,11 @@ fun modelRowStyle(colors: SkinColors, selected: Boolean, selectable: Boolean): M
  * FR-8.46 degrade (-32601 / unknown method) and is deliberately a SEPARATE state: an old core
  * has no model surface at all, so showing 「无可用模型」 there would send the reader to a
  * provider setting that does not exist.
+ *
+ * [Loading] and [LoadFailed] are the same discipline applied to `models == null` on the REAL
+ * path: not-asked-yet and the-ask-failed are also *not* "the core has none". Before them a
+ * real picker flashed 「无可用模型」 on every entry, because `ModelActionsReal` starts at
+ * `models = null` and the pull is asynchronous.
  */
 sealed interface ModelPickerContent {
     /** [interactive] = writes allowed (false on the FR-8.46 read-only degrade). */
@@ -259,6 +264,12 @@ sealed interface ModelPickerContent {
 
     /** 「此 core 不支持模型选择」 — models stayed `null`, so there is nothing to draw but the badge. */
     data class ReadOnly(val title: String, val body: String) : ModelPickerContent
+
+    /** 「正在加载模型列表」 — the first `model/list` answer has not arrived yet. */
+    data class Loading(val title: String, val body: String) : ModelPickerContent
+
+    /** 「模型列表加载失败」 — a pull failed and there is no previously pulled list to show. */
+    data class LoadFailed(val title: String, val body: String) : ModelPickerContent
 
     /** 「无可用模型」 — [body] differs between "no provider" and "old core, read-only". */
     data class NoModels(val title: String, val body: String) : ModelPickerContent
@@ -284,12 +295,37 @@ fun modelPickerContent(
      * but refuse clicks, which is the honest form of "you cannot change this here".
      */
     writesEnabled: Boolean = !readOnly,
+    /**
+     * The classified failure of the last pull, when there is one. Only consulted while
+     * [models] is `null` (nothing to draw): with a previously pulled list on screen the rows
+     * stay and the failure rides the card's error line instead of blanking the list.
+     */
+    loadFailure: ModelFailure? = null,
+    /**
+     * `models == null` because a real `model/list` pull has not answered yet — as opposed to
+     * the seam's "this core has no model surface", which stays [NoModels].
+     */
+    awaitingFirstPull: Boolean = false,
 ): ModelPickerContent {
     if (models == null && readOnly) {
         return ModelPickerContent.ReadOnly(
             title = "此 core 不支持模型选择",
             body = "旧版 core 没有 model/list（-32601 / unknown method）——客户端降级为只读。" +
                 "这里显示「列表未知」而不是「没有模型」：core 升级后列表会自动出现（FR-8.46）。",
+        )
+    }
+    if (models == null && awaitingFirstPull) {
+        return ModelPickerContent.Loading(
+            title = "正在加载模型列表",
+            body = "已向 core 请求 model/list，结果还没回来。这段时间不显示「无可用模型」：" +
+                "还没拉到 ≠ 没有模型。",
+        )
+    }
+    if (models == null && loadFailure != null) {
+        return ModelPickerContent.LoadFailed(
+            title = "模型列表加载失败",
+            body = "这次 model/list 没有成功，列表内容未知——失败不等于「没有可用模型」（${loadFailure.category.label}）。" +
+                "卡片上的错误行是 core 的原话；重试后再判断。",
         )
     }
     if (models.isNullOrEmpty()) {

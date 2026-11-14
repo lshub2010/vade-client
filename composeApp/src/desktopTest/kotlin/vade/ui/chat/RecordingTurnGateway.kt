@@ -28,6 +28,9 @@ internal class RecordingTurnGateway(
 
     private val fallback = InMemoryTurnGateway()
 
+    /** 假实现：fixtures 演示路径（与 [InMemoryTurnGateway] 同一形态）。 */
+    override val synthetic: Boolean get() = true
+
     override suspend fun editResubmit(
         sessionId: String,
         messageId: String,

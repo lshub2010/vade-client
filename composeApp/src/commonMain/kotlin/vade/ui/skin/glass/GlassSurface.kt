@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
@@ -56,6 +57,11 @@ val LocalGlassHazeState = staticCompositionLocalOf<HazeState?> { null }
  * Shadow (§8 row 2): float layers carry a real shadow; Compose's elevation shadow is the
  * platform approximation of the §8 spec (`0 16 40 rgba(0,0,0,.55)` dark / `0 12 32 …18%`
  * light), tinted with [SkinColors.shadowFloat] so skins keep it neutral-black per theme.
+ * **Caveat** (g-input-shadow): that primitive punches a *rectangular* hole in its own
+ * silhouette, so a translucent fill painted over it shows a 3/255 rectangle with square
+ * corners. Here the blur layer is opaque, so nothing shows through — but the composer
+ * (`MaterialInputBar`/`MiuixInputBar`) paints `surfaceGlass` directly and had to drop the
+ * shadow for exactly that reason. Do not add one back there.
  * The hairline is [SkinGlass.hairlineOnGlass] — the glass form of `colors.hairline`
  * (§5: deepen it one step on busy backdrops); setting it to `colors.hairline` falls back
  * to the plain token.
@@ -95,7 +101,11 @@ fun GlassSurface(
                     blurredEdgeTreatment(BlurredEdgeTreatment(shape))
                 },
             )
-            .border(1.dp, skin.glass.hairlineOnGlass, shape),
+            .border(1.dp, skin.glass.hairlineOnGlass, shape)
+            // Explicit clip (g-input-shadow): "content never leaves the shape" used to be a
+            // side effect of the haze layer clipping its own draw. Make it a contract — a
+            // translucent child (the blur-less `glassFallback`) must not paint square corners.
+            .clip(shape),
     ) {
         content()
     }

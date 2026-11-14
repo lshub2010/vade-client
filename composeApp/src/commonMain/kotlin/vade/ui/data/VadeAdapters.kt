@@ -1,6 +1,7 @@
 package vade.ui.data
 
 import vade.ui.chat.AttachmentUploader
+import vade.ui.chat.ChatTranscriptSource
 import vade.ui.chat.ChatTurnGateway
 import vade.ui.chat.PendingAttachment
 import vade.ui.meta.SessionMetaActions
@@ -127,13 +128,19 @@ internal class RealAdapters(
     private val blobChannel: BlobHttpChannel? = null,
     /** 附件字节来源（shell 注入；null = 未接线，上传明确拒绝）。 */
     private val blobByteSource: BlobByteSource? = null,
+    /**
+     * B2 · 聊天的**读**通道（历史 + 事件）。`null` = 未接线 —— 聊天页会明说「拿不到历史」
+     * 并可重试，**不回退 fixtures**。组合根（[RealSessionSource]）传 `of(this::messages,
+     * this::observeEvents)`，两个方法引用的签名与 [ChatTranscriptSource.of] 逐字相同。
+     */
+    private val chatTranscript: ChatTranscriptSource? = null,
 ) : AdapterProvider {
 
     private val metaActions: SessionMetaActions by lazy { MetaActionsReal(client) }
 
     private val modelActions: ModelActions by lazy { ModelActionsReal(client) }
 
-    private val turnGateway: ChatTurnGateway by lazy { TurnGatewayReal(client) }
+    private val turnGateway: ChatTurnGateway by lazy { TurnGatewayReal(client, chatTranscript) }
 
     private val pageSource: ModulePageSource by lazy { RealModulePageSource(client) }
 

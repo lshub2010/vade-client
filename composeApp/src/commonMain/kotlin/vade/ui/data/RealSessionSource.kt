@@ -21,6 +21,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import kotlin.concurrent.Volatile
+import vade.ui.chat.ChatTranscriptSource
 import vade.ui.chat.ChatMessage
 import vade.ui.protocol.AttachParams
 import vade.ui.protocol.AttachResult
@@ -74,7 +75,23 @@ import vade.ui.protocol.ContentPart as ProtocolContentPart
 class RealSessionSource(
     private val config: VadeClientConfig,
     transportFactory: VadeTransportFactory? = null,
-) : SessionSource, AdapterHost {
+) : SessionSource, AdapterHost, ModuleCatalogProvider {
+
+    /**
+     * 模块清单通道 —— **本棒明确返回 `null`，这是阻塞，不是遗漏**。
+     *
+     * `ui/modules` 在 core 侧已实现（`{revision, modules:[...]}`），但
+     * `contracts/vade/schema/rpc.json`（submodule `320384a`）里 `grep -c 'ui/modules'` = **0**：
+     * 冻结契约里模块相关的只有 `module.status` 事件。`protocol/VadeClient` 的方法是按
+     * 契约逐个手写的（`VadeMethod` 表），没有 `ui/modules` 就没有 typed 调用；本棒的
+     * 约束又不许改 submodule 指针、不许伪造回包。于是这里如实交 `null`：
+     *
+     *  - 能力页因此保持既有占位（**行为与接线前逐字节相同**），不会出现「加载中」假转圈，
+     *    也不会出现「core 说没有模块」这种我们并不知道的结论；
+     *  - 契约落地后这里只需 `ModulesLoader(WireModuleCatalogSource(...), scope)` 一行，
+     *    屏幕与 `AppShell` 都不用改（它们只认 `ModuleCatalog`）。
+     */
+    override val moduleCatalog: ModuleCatalog? get() = null
 
     /** Convenience production constructor: device-session attach at [host]:[port]. */
     constructor(
@@ -152,7 +169,18 @@ class RealSessionSource(
             _client = created
             // Same lifetime as the client: the adapters ARE the client, just behind the
             // five narrow seams (see AdapterProvider).
-            _adapters = RealAdapters(created)
+            _adapters = RealAdapters(
+                created,
+                // B2 · 读侧：history 是 data 层的读（session/messages.get），
+                // events 必须用**原始协议流**——`SessionSource.observeEvents` 是
+                // `mapEvent` 的有损投影（注释原话「六种核心事件 → UI 事件；其余全部丢弃」），
+                // message.appended / message.edited / turn.* 都在被丢的那部分。
+                // 一个“接上了但永远收不到消息事件”的流会编译通过、测试也绿，那正是要避免的假接线。
+                chatTranscript = ChatTranscriptSource.of(
+                    history = { sessionId -> messages(sessionId) },
+                    events = { created.events },
+                ),
+            )
             val s = scope ?: CoroutineScope(SupervisorJob() + Dispatchers.Default).also { scope = it }
             // Both collectors must be SUBSCRIBED before connect() — client.events is a
             // hot SharedFlow without replay, and late subscribers miss early events
@@ -198,8 +226,13 @@ class RealSessionSource(
      * `next_cursor` (≤ [SESSION_LIST_MAX_PAGES] pages of [SESSION_LIST_PAGE_LIMIT]).
      * Params carry the contract defaults by omission: no `group_id` (all groups), no
      * `archived` (false). Throws [VadeException] when disconnected or refused.
+     *
+     * [includeArchived] 只作用于**本地投影**（[sessionRowToSummary]），请求体一字不改：
+     * 契约的 `params.archived = true` 是「只要归档行」的筛选反转，会让同一个 `sessions()`
+     * 悄悄换掉数据集；「让归档行别被丢掉」是另一件事。所以这里传线上参数的地方仍然是
+     * 那一行注释（`archived` 省略 = 契约默认 false），差异只在投影把不把归档行当谓词。
      */
-    override suspend fun sessions(): List<SessionSummary> {
+    override suspend fun sessions(includeArchived: Boolean): List<SessionSummary> {
         val rows = mutableListOf<JsonObject>()
         var cursor = 0L
         var pages = 0
@@ -222,7 +255,7 @@ class RealSessionSource(
             }
         }
         val now = epochNowMs()
-        return rows.mapNotNull { sessionRowToSummary(it, now) }
+        return rows.mapNotNull { sessionRowToSummary(it, now, includeArchived = includeArchived) }
     }
 
     /**
@@ -324,6 +357,15 @@ class RealSessionSource(
             turnId = event.payload.turnId,
             code = event.payload.code,
             message = event.payload.message,
+        )
+        // g-modules-wire: events.json 唯一的模块 topic。它不改清单，只把「清单可能变了」
+        // 这个信号交给 ModuleCatalog.onEvent（→ 一次 ui/modules 重拉，revision 去掉抖动）。
+        is vade.ui.protocol.ModuleStatus -> ModuleStatusChangedEvent(
+            seq = event.seq,
+            moduleId = event.payload.moduleId,
+            instanceId = event.payload.instanceId,
+            online = event.payload.online,
+            version = event.payload.version,
         )
         else -> null
     }

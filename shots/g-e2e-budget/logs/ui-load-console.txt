@@ -1,0 +1,10 @@
+== 16 CPU burners for 1500s ==
+== ui run 1 ==
+   rc=0 wall=90s
+== ui run 2 ==
+   rc=0 wall=61s
+== ui run 3 ==
+   rc=0 wall=55s
+== ui run 4 ==
+   rc=0 wall=70s
+== done ==

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="RealCoreUiE2ETest[desktop]" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-11-14T17:41:04.402Z" hostname="WIN-SOHFNBA79AT" time="33.481">
+  <properties/>
+  <testcase name="realCoreSessionTitlesRenderInAppAndFixturesStayAway[desktop]" classname="vade.ui.e2e.RealCoreUiE2ETest" time="33.477"/>
+  <system-out><![CDATA[E2E-UI-CORE-READY spawnMs=14995 waitMs=11097 port=64406
+]]></system-out>
+  <system-err><![CDATA[SLF4J(W): No SLF4J providers were found.
+SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+]]></system-err>
+</testsuite>

@@ -1,0 +1,6 @@
+round1 par=1: n=1 wall=9.148s per-proc min=8.34 median=8.34 max=8.34 all_ok=True
+  sample: READY-IMPORTED total=7.166 imports=0.149 installed=True
+round2 par=1: n=1 wall=9.533s per-proc min=8.453 median=8.453 max=8.453 all_ok=True
+  sample: READY-IMPORTED total=7.667 imports=0.151 installed=True
+round3 par=1: n=1 wall=10.685s per-proc min=9.808 median=9.808 max=9.808 all_ok=True
+  sample: READY-IMPORTED total=9.419 imports=0.207 installed=True
