@@ -73,8 +73,8 @@ data class AttachResult(
 ) {
     companion object {
         fun fromJson(o: JsonObject): AttachResult = AttachResult(
-            sessionId = o.str("session_id") ?: "",
-            fromSeq = o.lng("from_seq") ?: 0,
+            sessionId = o.strStrict("session_id") ?: "",
+            fromSeq = o.lngStrict("from_seq") ?: 0,
             snapshot = o.obj("snapshot")?.let { VadeSnapshot.fromJson(it) },
         )
     }
@@ -109,7 +109,7 @@ data class VadeSnapshot(
 
     companion object {
         fun fromJson(o: JsonObject): VadeSnapshot = VadeSnapshot(
-            fromSeq = o.lng("from_seq") ?: 0,
+            fromSeq = o.lngStrict("from_seq") ?: 0,
             session = o.obj("session")?.let { SnapshotSession.fromJson(it) },
             messages = o.el("messages"),
             turns = o.el("turns"),
@@ -117,7 +117,7 @@ data class VadeSnapshot(
             pendingApprovals = o.el("pending_approvals"),
             pendingInputs = o.arr("pending_inputs").orEmpty().mapNotNull { (it as? JsonObject)?.let(TurnInputRequiredPayload::fromJson) },
             tasks = o.el("tasks"),
-            tasksTruncated = o.bool("tasks_truncated"),
+            tasksTruncated = o.boolStrict("tasks_truncated"),
         )
     }
 }
@@ -133,11 +133,11 @@ data class SnapshotSession(
 ) {
     companion object {
         fun fromJson(o: JsonObject): SnapshotSession = SnapshotSession(
-            id = o.str("id"),
-            createdAt = o.lng("created_at"),
-            title = o.str("title"),
-            state = o.str("state"),
-            seqCounter = o.lng("seq_counter"),
+            id = o.strStrict("id"),
+            createdAt = o.lngStrict("created_at"),
+            title = o.strStrict("title"),
+            state = o.strStrict("state"),
+            seqCounter = o.lngStrict("seq_counter"),
             model = o.obj("model")?.let { SnapshotModel.fromJson(it) },
         )
     }
@@ -151,8 +151,8 @@ data class SnapshotModel(
 
     companion object {
         fun fromJson(o: JsonObject): SnapshotModel = SnapshotModel(
-            modelId = o.str("model_id"),
-            source = o.str("source"),
+            modelId = o.strStrict("model_id"),
+            source = o.strStrict("source"),
         )
     }
 }
@@ -165,8 +165,8 @@ data class SnapshotQueue(
 ) {
     companion object {
         fun fromJson(o: JsonObject): SnapshotQueue = SnapshotQueue(
-            running = o.str("running"),
-            runningState = o.str("running_state"),
+            running = o.strStrict("running"),
+            runningState = o.strStrict("running_state"),
             pending = o.arr("pending").orEmpty().mapNotNull { (it as? JsonObject)?.let(QueuePending::fromJson) },
         )
     }
@@ -200,8 +200,8 @@ data class SubmitResult(
 ) {
     companion object {
         fun fromJson(o: JsonObject): SubmitResult = SubmitResult(
-            turnId = o.str("turn_id") ?: "",
-            queuePos = o.int("queue_pos") ?: 0,
+            turnId = o.strStrict("turn_id") ?: "",
+            queuePos = o.intStrict("queue_pos") ?: 0,
         )
     }
 }
@@ -233,7 +233,7 @@ data class QueueCancelParams(
 /** Shared `{ok: true}` result shape. */
 data class OkResult(val ok: Boolean) {
     companion object {
-        fun fromJson(o: JsonObject): OkResult = OkResult(ok = o.bool("ok") ?: false)
+        fun fromJson(o: JsonObject): OkResult = OkResult(ok = o.boolStrict("ok") ?: false)
     }
 }
 
@@ -266,8 +266,8 @@ data class ModelListResult(
 ) {
     companion object {
         fun fromJson(o: JsonObject): ModelListResult = ModelListResult(
-            revision = o.lng("revision") ?: 0,
-            notModified = o.bool("not_modified") ?: false,
+            revision = o.lngStrict("revision") ?: 0,
+            notModified = o.boolStrict("not_modified") ?: false,
             models = o.arr("models")?.mapNotNull { (it as? JsonObject)?.let(ModelEntry::fromJson) }
                 ?: if (o.containsKey("models") && o["models"] is JsonNull) null else emptyList(),
             default = o.obj("default")?.let(DefaultModelInfo::fromJson),
@@ -291,17 +291,17 @@ data class ModelEntry(
 ) {
     companion object {
         fun fromJson(o: JsonObject): ModelEntry = ModelEntry(
-            id = o.str("id") ?: "",
-            provider = o.str("provider"),
-            displayName = o.str("display_name"),
+            id = o.strStrict("id") ?: "",
+            provider = o.strStrict("provider"),
+            displayName = o.strStrict("display_name"),
             inputModalities = o.arr("input_modalities")?.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull },
-            maxImageBytes = o.lng("max_image_bytes"),
-            maxImagePx = o.lng("max_image_px"),
-            maxImagesPerTurn = o.int("max_images_per_turn"),
-            contextWindow = o.lng("context_window"),
-            supportsTools = o.bool("supports_tools"),
-            priority = o.int("priority"),
-            available = o.bool("available"),
+            maxImageBytes = o.lngStrict("max_image_bytes"),
+            maxImagePx = o.lngStrict("max_image_px"),
+            maxImagesPerTurn = o.intStrict("max_images_per_turn"),
+            contextWindow = o.lngStrict("context_window"),
+            supportsTools = o.boolStrict("supports_tools"),
+            priority = o.intStrict("priority"),
+            available = o.boolStrict("available"),
         )
     }
 }
@@ -315,9 +315,9 @@ data class DefaultModelInfo(
 
     companion object {
         fun fromJson(o: JsonObject): DefaultModelInfo = DefaultModelInfo(
-            modelId = o.str("model_id"),
-            source = o.str("source"),
-            resolved = o.bool("resolved"),
+            modelId = o.strStrict("model_id"),
+            source = o.strStrict("source"),
+            resolved = o.boolStrict("resolved"),
         )
     }
 }
@@ -340,12 +340,12 @@ data class SessionModelGetResult(
 
     companion object {
         fun fromJson(o: JsonObject): SessionModelGetResult = SessionModelGetResult(
-            modelId = o.str("model_id"),
-            source = o.str("source"),
-            resolved = o.bool("resolved"),
+            modelId = o.strStrict("model_id"),
+            source = o.strStrict("source"),
+            resolved = o.boolStrict("resolved"),
             effective = o.obj("effective")?.let(EffectiveModel::fromJson),
-            globalDefault = o.str("global_default"),
-            reason = o.str("reason"),
+            globalDefault = o.strStrict("global_default"),
+            reason = o.strStrict("reason"),
         )
     }
 }
@@ -358,10 +358,10 @@ data class EffectiveModel(
 ) {
     companion object {
         fun fromJson(o: JsonObject): EffectiveModel = EffectiveModel(
-            id = o.str("id"),
-            provider = o.str("provider"),
-            model = o.str("model"),
-            available = o.bool("available"),
+            id = o.strStrict("id"),
+            provider = o.strStrict("provider"),
+            model = o.strStrict("model"),
+            available = o.boolStrict("available"),
         )
     }
 }
@@ -421,9 +421,9 @@ data class SessionModelSetResult(
 
     companion object {
         fun fromJson(o: JsonObject): SessionModelSetResult = SessionModelSetResult(
-            modelId = o.str("model_id"),
-            source = o.str("source"),
-            effectiveAt = o.str("effective_at"),
+            modelId = o.strStrict("model_id"),
+            source = o.strStrict("source"),
+            effectiveAt = o.strStrict("effective_at"),
         )
     }
 }
@@ -446,10 +446,10 @@ data class SessionUsageGetResult(
 ) {
     companion object {
         fun fromJson(o: JsonObject): SessionUsageGetResult = SessionUsageGetResult(
-            sessionId = o.str("session_id") ?: "",
+            sessionId = o.strStrict("session_id") ?: "",
             chat = o.obj("chat")?.let(ChatUsage::fromJson),
             aux = o.obj("aux")?.let(AuxUsage::fromJson),
-            totalTokens = o.lng("total_tokens"),
+            totalTokens = o.lngStrict("total_tokens"),
             byModel = o.arr("by_model").orEmpty().mapNotNull { (it as? JsonObject)?.let(ModelUsage::fromJson) },
             day = o.obj("day")?.let(DayUsage::fromJson),
             budget = o.obj("budget")?.let(BudgetUsage::fromJson),
@@ -466,11 +466,11 @@ data class ChatUsage(
 ) {
     companion object {
         fun fromJson(o: JsonObject): ChatUsage = ChatUsage(
-            promptTokens = o.lng("prompt_tokens") ?: 0,
-            completionTokens = o.lng("completion_tokens") ?: 0,
-            totalTokens = o.lng("total_tokens") ?: 0,
-            turns = o.int("turns") ?: 0,
-            partialTurns = o.int("partial_turns") ?: 0,
+            promptTokens = o.lngStrict("prompt_tokens") ?: 0,
+            completionTokens = o.lngStrict("completion_tokens") ?: 0,
+            totalTokens = o.lngStrict("total_tokens") ?: 0,
+            turns = o.intStrict("turns") ?: 0,
+            partialTurns = o.intStrict("partial_turns") ?: 0,
         )
     }
 }
@@ -481,8 +481,8 @@ data class AuxUsage(
 ) {
     companion object {
         fun fromJson(o: JsonObject): AuxUsage = AuxUsage(
-            totalTokens = o.lng("total_tokens") ?: 0,
-            calls = o.int("calls") ?: 0,
+            totalTokens = o.lngStrict("total_tokens") ?: 0,
+            calls = o.intStrict("calls") ?: 0,
         )
     }
 }
@@ -494,9 +494,9 @@ data class ModelUsage(
 ) {
     companion object {
         fun fromJson(o: JsonObject): ModelUsage = ModelUsage(
-            modelId = o.str("model_id"),
-            totalTokens = o.lng("total_tokens") ?: 0,
-            turns = o.int("turns") ?: 0,
+            modelId = o.strStrict("model_id"),
+            totalTokens = o.lngStrict("total_tokens") ?: 0,
+            turns = o.intStrict("turns") ?: 0,
         )
     }
 }
@@ -512,11 +512,11 @@ data class DayUsage(
 
     companion object {
         fun fromJson(o: JsonObject): DayUsage = DayUsage(
-            day = o.str("day"),
-            coreTotalTokens = o.lng("core_total_tokens") ?: 0,
-            coreLimit = o.lng("core_limit") ?: 0,
-            sessionTokens = o.lng("session_tokens") ?: 0,
-            state = o.str("state"),
+            day = o.strStrict("day"),
+            coreTotalTokens = o.lngStrict("core_total_tokens") ?: 0,
+            coreLimit = o.lngStrict("core_limit") ?: 0,
+            sessionTokens = o.lngStrict("session_tokens") ?: 0,
+            state = o.strStrict("state"),
         )
     }
 }
@@ -534,12 +534,12 @@ data class BudgetUsage(
 
     companion object {
         fun fromJson(o: JsonObject): BudgetUsage = BudgetUsage(
-            scope = o.str("scope"),
-            limit = o.lng("limit") ?: 0,
-            used = o.lng("used") ?: 0,
-            ratio = o.dbl("ratio"),
-            state = o.str("state"),
-            enforced = o.bool("enforced"),
+            scope = o.strStrict("scope"),
+            limit = o.lngStrict("limit") ?: 0,
+            used = o.lngStrict("used") ?: 0,
+            ratio = o.numStrict("ratio"),
+            state = o.strStrict("state"),
+            enforced = o.boolStrict("enforced"),
         )
     }
 }
@@ -573,11 +573,11 @@ data class TurnInputResult(
 
     companion object {
         fun fromJson(o: JsonObject): TurnInputResult = TurnInputResult(
-            ok = o.bool("ok") ?: false,
-            turnId = o.str("turn_id") ?: "",
-            status = o.str("status") ?: "",
+            ok = o.boolStrict("ok") ?: false,
+            turnId = o.strStrict("turn_id") ?: "",
+            status = o.strStrict("status") ?: "",
             value = o.el("value")?.let(InputValue::fromJson),
-            duplicate = o.bool("duplicate") ?: false,
+            duplicate = o.boolStrict("duplicate") ?: false,
         )
     }
 }
@@ -604,9 +604,9 @@ data class TurnInputCancelResult(
 
     companion object {
         fun fromJson(o: JsonObject): TurnInputCancelResult = TurnInputCancelResult(
-            ok = o.bool("ok") ?: false,
-            turnId = o.str("turn_id") ?: "",
-            status = o.str("status") ?: "",
+            ok = o.boolStrict("ok") ?: false,
+            turnId = o.strStrict("turn_id") ?: "",
+            status = o.strStrict("status") ?: "",
         )
     }
 }
@@ -634,11 +634,11 @@ data class TurnRegenerateResult(
 ) {
     companion object {
         fun fromJson(o: JsonObject): TurnRegenerateResult = TurnRegenerateResult(
-            turnId = o.str("turn_id") ?: "",
-            rootTurnId = o.str("root_turn_id") ?: "",
-            version = o.int("version") ?: 0,
-            supersedesTurnId = o.str("supersedes_turn_id") ?: "",
-            queuePos = o.int("queue_pos") ?: 0,
+            turnId = o.strStrict("turn_id") ?: "",
+            rootTurnId = o.strStrict("root_turn_id") ?: "",
+            version = o.intStrict("version") ?: 0,
+            supersedesTurnId = o.strStrict("supersedes_turn_id") ?: "",
+            queuePos = o.intStrict("queue_pos") ?: 0,
         )
     }
 }
@@ -669,12 +669,12 @@ data class EditResubmitResult(
 ) {
     companion object {
         fun fromJson(o: JsonObject): EditResubmitResult = EditResubmitResult(
-            turnId = o.str("turn_id") ?: "",
-            messageId = o.str("message_id") ?: "",
-            supersedesTurnId = o.str("supersedes_turn_id") ?: "",
-            rootTurnId = o.str("root_turn_id") ?: "",
-            version = o.int("version") ?: 0,
-            queuePos = o.int("queue_pos") ?: 0,
+            turnId = o.strStrict("turn_id") ?: "",
+            messageId = o.strStrict("message_id") ?: "",
+            supersedesTurnId = o.strStrict("supersedes_turn_id") ?: "",
+            rootTurnId = o.strStrict("root_turn_id") ?: "",
+            version = o.intStrict("version") ?: 0,
+            queuePos = o.intStrict("queue_pos") ?: 0,
         )
     }
 }
@@ -712,8 +712,8 @@ data class TaskListResult(
     companion object {
         fun fromJson(o: JsonObject): TaskListResult = TaskListResult(
             tasks = o.arr("tasks").orEmpty().mapNotNull { (it as? JsonObject)?.let(TaskView::fromJson) },
-            nextCursor = o.str("next_cursor"),
-            runningCount = o.int("running_count") ?: 0,
+            nextCursor = o.strStrict("next_cursor"),
+            runningCount = o.intStrict("running_count") ?: 0,
             limits = o.obj("limits")?.let(TaskLimits::fromJson),
         )
     }
@@ -744,24 +744,24 @@ data class TaskView(
 
     companion object {
         fun fromJson(o: JsonObject): TaskView = TaskView(
-            taskId = o.str("task_id") ?: "",
-            kind = o.str("kind"),
-            state = o.str("state"),
-            sessionId = o.str("session_id"),
-            turnId = o.str("turn_id"),
-            parentId = o.str("parent_id"),
-            depth = o.int("depth"),
-            name = o.str("name"),
-            startedAt = o.lng("started_at"),
-            endedAt = o.lng("ended_at"),
-            retryable = o.bool("retryable"),
-            childSessionId = o.str("child_session_id"),
-            childTurnId = o.str("child_turn_id"),
-            logAvailable = o.bool("log_available"),
-            action = o.str("action"),
-            pct = o.int("pct"),
-            elapsedMs = o.lng("elapsed_ms"),
-            summary = o.str("summary"),
+            taskId = o.strStrict("task_id") ?: "",
+            kind = o.strStrict("kind"),
+            state = o.strStrict("state"),
+            sessionId = o.strStrict("session_id"),
+            turnId = o.strStrict("turn_id"),
+            parentId = o.strStrict("parent_id"),
+            depth = o.intStrict("depth"),
+            name = o.strStrict("name"),
+            startedAt = o.lngStrict("started_at"),
+            endedAt = o.lngStrict("ended_at"),
+            retryable = o.boolStrict("retryable"),
+            childSessionId = o.strStrict("child_session_id"),
+            childTurnId = o.strStrict("child_turn_id"),
+            logAvailable = o.boolStrict("log_available"),
+            action = o.strStrict("action"),
+            pct = o.intStrict("pct"),
+            elapsedMs = o.lngStrict("elapsed_ms"),
+            summary = o.strStrict("summary"),
         )
     }
 }
@@ -772,8 +772,8 @@ data class TaskLimits(
 ) {
     companion object {
         fun fromJson(o: JsonObject): TaskLimits = TaskLimits(
-            maxConcurrent = o.int("max_concurrent") ?: 0,
-            maxDepth = o.int("max_depth") ?: 0,
+            maxConcurrent = o.intStrict("max_concurrent") ?: 0,
+            maxDepth = o.intStrict("max_depth") ?: 0,
         )
     }
 }
@@ -824,10 +824,10 @@ data class TaskLogTailResult(
     companion object {
         fun fromJson(o: JsonObject): TaskLogTailResult = TaskLogTailResult(
             lines = o.arr("lines").orEmpty().mapNotNull { (it as? JsonObject)?.let(LogLine::fromJson) },
-            cursor = o.str("cursor"),
-            eof = o.bool("eof") ?: false,
-            truncated = o.str("truncated"),
-            lost = o.bool("lost") ?: false,
+            cursor = o.strStrict("cursor"),
+            eof = o.boolStrict("eof") ?: false,
+            truncated = o.strStrict("truncated"),
+            lost = o.boolStrict("lost") ?: false,
         )
     }
 }
@@ -840,9 +840,9 @@ data class LogLine(
 ) {
     companion object {
         fun fromJson(o: JsonObject): LogLine = LogLine(
-            ts = o.lng("ts") ?: 0,
-            stream = o.str("stream") ?: "stdout",
-            text = o.str("text") ?: "",
+            ts = o.lngStrict("ts") ?: 0,
+            stream = o.strStrict("stream") ?: "stdout",
+            text = o.strStrict("text") ?: "",
         )
     }
 }
@@ -869,9 +869,9 @@ data class TaskCancelResult(
 
     companion object {
         fun fromJson(o: JsonObject): TaskCancelResult = TaskCancelResult(
-            ok = o.bool("ok") ?: false,
-            state = o.str("state") ?: "",
-            forced = o.bool("forced") ?: false,
+            ok = o.boolStrict("ok") ?: false,
+            state = o.strStrict("state") ?: "",
+            forced = o.boolStrict("forced") ?: false,
         )
     }
 }
@@ -898,9 +898,9 @@ data class SubagentMessageResult(
 
     companion object {
         fun fromJson(o: JsonObject): SubagentMessageResult = SubagentMessageResult(
-            ok = o.bool("ok") ?: false,
-            turnId = o.str("turn_id"),
-            delivery = o.str("delivery"),
+            ok = o.boolStrict("ok") ?: false,
+            turnId = o.strStrict("turn_id"),
+            delivery = o.strStrict("delivery"),
         )
     }
 }
@@ -927,7 +927,7 @@ data class PageGetResult(
     companion object {
         fun fromJson(o: JsonObject): PageGetResult = PageGetResult(
             schema = o.el("schema") ?: JsonNull,
-            sha256 = o.str("sha256") ?: "",
+            sha256 = o.strStrict("sha256") ?: "",
         )
     }
 }
@@ -957,10 +957,10 @@ data class StateGetResult(
 ) {
     companion object {
         fun fromJson(o: JsonObject): StateGetResult = StateGetResult(
-            rev = o.lng("rev") ?: 0,
+            rev = o.lngStrict("rev") ?: 0,
             state = o.obj("state") ?: JsonObject(emptyMap()),
-            fetchedAt = o.lng("fetched_at") ?: 0,
-            unchanged = o.bool("unchanged"),
+            fetchedAt = o.lngStrict("fetched_at") ?: 0,
+            unchanged = o.boolStrict("unchanged"),
         )
     }
 }
@@ -1011,8 +1011,8 @@ data class ToolCallResult(
 
     companion object {
         fun fromJson(o: JsonObject): ToolCallResult = ToolCallResult(
-            callId = o.str("call_id") ?: "",
-            status = o.str("status") ?: "",
+            callId = o.strStrict("call_id") ?: "",
+            status = o.strStrict("status") ?: "",
             approval = o.obj("approval")?.let(ApprovalOffer::fromJson),
             result = o.el("result"),
             error = o.obj("error")?.let(ToolCallError::fromJson),
@@ -1030,12 +1030,12 @@ data class ApprovalOffer(
 ) {
     companion object {
         fun fromJson(o: JsonObject): ApprovalOffer = ApprovalOffer(
-            requestId = o.str("request_id") ?: "",
-            tool = o.str("tool") ?: "",
+            requestId = o.strStrict("request_id") ?: "",
+            tool = o.strStrict("tool") ?: "",
             args = o.el("args") ?: JsonNull,
-            risk = o.str("risk"),
-            expiresAt = o.lng("expires_at"),
-            argsDigest = o.str("args_digest"),
+            risk = o.strStrict("risk"),
+            expiresAt = o.lngStrict("expires_at"),
+            argsDigest = o.strStrict("args_digest"),
         )
     }
 }
@@ -1047,9 +1047,9 @@ data class ToolCallError(
 ) {
     companion object {
         fun fromJson(o: JsonObject): ToolCallError = ToolCallError(
-            code = o.str("code"),
-            message = o.str("message"),
-            retriable = o.bool("retriable"),
+            code = o.strStrict("code"),
+            message = o.strStrict("message"),
+            retriable = o.boolStrict("retriable"),
         )
     }
 }
@@ -1071,15 +1071,15 @@ data class VadeUsage(
 
     companion object {
         fun fromJson(o: JsonObject): VadeUsage = VadeUsage(
-            promptTokens = o.lng("prompt_tokens") ?: 0,
-            completionTokens = o.lng("completion_tokens") ?: 0,
-            totalTokens = o.lng("total_tokens") ?: 0,
-            modelId = o.str("model_id"),
-            provider = o.str("provider"),
-            source = o.str("source"),
-            steps = o.int("steps"),
-            cachedTokens = o.lng("cached_tokens"),
-            reasoningTokens = o.lng("reasoning_tokens"),
+            promptTokens = o.lngStrict("prompt_tokens") ?: 0,
+            completionTokens = o.lngStrict("completion_tokens") ?: 0,
+            totalTokens = o.lngStrict("total_tokens") ?: 0,
+            modelId = o.strStrict("model_id"),
+            provider = o.strStrict("provider"),
+            source = o.strStrict("source"),
+            steps = o.intStrict("steps"),
+            cachedTokens = o.lngStrict("cached_tokens"),
+            reasoningTokens = o.lngStrict("reasoning_tokens"),
         )
     }
 }
@@ -1118,7 +1118,7 @@ data class SubagentListResult(
         fun fromJson(o: JsonObject): SubagentListResult = SubagentListResult(
             runs = o.arr("runs")?.mapNotNull { (it as? JsonObject)?.let(SubagentRunView::fromJson) }
                 ?: throw PayloadDecodeException("result of subagent/list misses required array 'runs'"),
-            nextCursor = o.strOrNull("next_cursor"),
+            nextCursor = o.strStrict("next_cursor"),
         )
     }
 }
@@ -1158,17 +1158,17 @@ data class SubagentRunView(
         fun fromJson(o: JsonObject): SubagentRunView = SubagentRunView(
             runId = o.mustStr("run_id"),
             parentSessionId = o.mustStr("parent_session_id"),
-            parentTurnId = o.strOrNull("parent_turn_id"),
-            childSessionId = o.strOrNull("child_session_id"),
+            parentTurnId = o.strStrict("parent_turn_id"),
+            childSessionId = o.strStrict("child_session_id"),
             label = o.mustStr("label"),
             state = o.mustStr("state"),
             createdAt = o.mustLng("created_at"),
-            finishedAt = o.lng("finished_at"),
-            resultDigest = o.strOrNull("result_digest"),
-            resultChars = o.int("result_chars"),
-            errorCode = o.strOrNull("error_code"),
+            finishedAt = o.lngStrict("finished_at"),
+            resultDigest = o.strStrict("result_digest"),
+            resultChars = o.intStrict("result_chars"),
+            errorCode = o.strStrict("error_code"),
             durationMs = o.mustLng("duration_ms"),
-            resultPreview = o.strOrNull("result_preview"),
+            resultPreview = o.strStrict("result_preview"),
         )
     }
 }
@@ -1226,7 +1226,7 @@ data class SessionListResult(
         fun fromJson(o: JsonObject): SessionListResult = SessionListResult(
             sessions = o.arr("sessions")?.mapNotNull { (it as? JsonObject)?.let(SessionRow::fromJson) }
                 ?: throw PayloadDecodeException("result of session/list misses required array 'sessions'"),
-            nextCursor = o.int("next_cursor"),
+            nextCursor = o.intStrict("next_cursor"),
         )
     }
 }
@@ -1258,12 +1258,12 @@ data class SessionRow(
             sessionId = o.mustStr("session_id"),
             createdAt = o.mustLng("created_at"),
             updatedAt = o.mustLng("updated_at"),
-            title = o.strOrNull("title"),
-            icon = o.strOrNull("icon"),
-            color = o.strOrNull("color"),
-            groupId = o.strOrNull("group_id"),
-            pinnedAt = o.lng("pinned_at"),
-            archivedAt = o.lng("archived_at"),
+            title = o.strStrict("title"),
+            icon = o.strStrict("icon"),
+            color = o.strStrict("color"),
+            groupId = o.strStrict("group_id"),
+            pinnedAt = o.lngStrict("pinned_at"),
+            archivedAt = o.lngStrict("archived_at"),
             unread = o.mustInt("unread"),
             state = o.mustStr("state"),
         )
@@ -1327,7 +1327,7 @@ data class SessionPinResult(
     companion object {
         fun fromJson(o: JsonObject): SessionPinResult = SessionPinResult(
             ok = o.mustBool("ok"),
-            pinnedAt = o.lng("pinned_at"),
+            pinnedAt = o.lngStrict("pinned_at"),
         )
     }
 }
@@ -1356,7 +1356,7 @@ data class SessionArchiveResult(
     companion object {
         fun fromJson(o: JsonObject): SessionArchiveResult = SessionArchiveResult(
             ok = o.mustBool("ok"),
-            archivedAt = o.lng("archived_at"),
+            archivedAt = o.lngStrict("archived_at"),
         )
     }
 }
@@ -1408,8 +1408,8 @@ data class GroupRow(
         fun fromJson(o: JsonObject): GroupRow = GroupRow(
             groupId = o.mustStr("group_id"),
             name = o.mustStr("name"),
-            icon = o.strOrNull("icon"),
-            color = o.strOrNull("color"),
+            icon = o.strStrict("icon"),
+            color = o.strStrict("color"),
             sortOrder = o.mustInt("sort_order"),
             createdAt = o.mustLng("created_at"),
         )
@@ -1578,7 +1578,7 @@ data class SessionGroupAssignResult(
     companion object {
         fun fromJson(o: JsonObject): SessionGroupAssignResult = SessionGroupAssignResult(
             ok = o.mustBool("ok"),
-            groupId = o.strOrNull("group_id"),
+            groupId = o.strStrict("group_id"),
         )
     }
 }

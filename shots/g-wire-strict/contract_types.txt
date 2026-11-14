@@ -1,0 +1,396 @@
+
+
+========== RPC RESULTS ==========
+RPC:ui/attach.session_id	string
+RPC:ui/attach.from_seq	int
+RPC:ui/attach.snapshot	object|null
+RPC:ui/submit.turn_id	string
+RPC:ui/submit.queue_pos	int
+RPC:model/list.revision	int
+RPC:model/list.not_modified	bool
+RPC:model/list.models	[model]|null
+RPC:model/list.default.model_id	string|null
+RPC:model/list.default.source	session|global|priority|none
+RPC:model/list.default.resolved	bool
+RPC:session/model.get.model_id	string|null
+RPC:session/model.get.source	session|global|priority|none
+RPC:session/model.get.resolved	bool
+RPC:session/model.get.effective	object|null
+RPC:session/model.get.global_default	string|null
+RPC:session/model.get.reason	string|null
+RPC:session/model.set.model_id	string|null
+RPC:session/model.set.source	session|global|priority|none
+RPC:session/model.set.effective_at	next_turn
+RPC:session/usage.get.session_id	string
+RPC:session/usage.get.chat.prompt_tokens	int
+RPC:session/usage.get.chat.completion_tokens	int
+RPC:session/usage.get.chat.total_tokens	int
+RPC:session/usage.get.chat.turns	int
+RPC:session/usage.get.chat.partial_turns	int
+RPC:session/usage.get.aux.total_tokens	int
+RPC:session/usage.get.aux.calls	int
+RPC:session/usage.get.total_tokens	int
+RPC:session/usage.get.by_model	<array of [{"model_id": "string|null", "total_tokens": "int", "turns":>
+RPC:session/usage.get.by_model[].model_id	string|null
+RPC:session/usage.get.by_model[].total_tokens	int
+RPC:session/usage.get.by_model[].turns	int
+RPC:session/usage.get.day.day	string (UTC YYYY-MM-DD)
+RPC:session/usage.get.day.core_total_tokens	int
+RPC:session/usage.get.day.core_limit	int
+RPC:session/usage.get.day.session_tokens	int
+RPC:session/usage.get.day.state	off|ok|warn|exceeded
+RPC:session/usage.get.budget.scope	session
+RPC:session/usage.get.budget.limit	int
+RPC:session/usage.get.budget.used	int
+RPC:session/usage.get.budget.ratio	number|null
+RPC:session/usage.get.budget.state	off|ok|warn|exceeded
+RPC:session/usage.get.budget.enforced	bool
+RPC:turn/input.turn_id	string
+RPC:turn/input.status	submitted|timeout|cancelled
+RPC:turn/input.value	same as params.value | null
+RPC:turn/input.duplicate	bool
+RPC:turn/input.cancel.turn_id	string
+RPC:turn/input.cancel.status	cancelled|submitted|timeout
+RPC:turn/regenerate.turn_id	string
+RPC:turn/regenerate.root_turn_id	string
+RPC:turn/regenerate.version	int
+RPC:turn/regenerate.supersedes_turn_id	string
+RPC:turn/regenerate.queue_pos	int
+RPC:message/edit_resubmit.turn_id	string
+RPC:message/edit_resubmit.message_id	string
+RPC:message/edit_resubmit.supersedes_turn_id	string
+RPC:message/edit_resubmit.root_turn_id	string
+RPC:message/edit_resubmit.version	int
+RPC:message/edit_resubmit.queue_pos	int
+RPC:task/list.tasks	TaskView[] (RFC-0007 §5.1 fields + log_available)
+RPC:task/list.next_cursor	string|null
+RPC:task/list.running_count	int
+RPC:task/list.limits.max_concurrent	int
+RPC:task/list.limits.max_depth	int
+RPC:task/log_tail.lines	array of {ts:int, stream:stdout|stderr|core, text:string}
+RPC:task/log_tail.cursor	string|null
+RPC:task/log_tail.eof	bool
+RPC:task/log_tail.truncated	head|line|null
+RPC:task/log_tail.lost	bool
+RPC:task/cancel.state	task.state
+RPC:task/cancel.forced	bool
+RPC:subagent/message.turn_id	string|null
+RPC:subagent/message.delivery	queued|steering
+RPC:subagent/list.runs	SubagentRunView[] (RFC-0012 §4.2 fields + duration_ms + result_preview)
+RPC:subagent/list.next_cursor	string|null
+RPC:subagent/get.run_id	string
+RPC:subagent/get.parent_session_id	string
+RPC:subagent/get.parent_turn_id	string|null
+RPC:subagent/get.child_session_id	string|null
+RPC:subagent/get.label	string
+RPC:subagent/get.state	subagent.state
+RPC:subagent/get.created_at	int (unix ms)
+RPC:subagent/get.finished_at	int|null
+RPC:subagent/get.result_digest	string|null (sha-256 hex of the full result text; never the text)
+RPC:subagent/get.result_chars	int|null
+RPC:subagent/get.error_code	string|null (C-04 name, set when state=failed)
+RPC:subagent/get.result_preview	string|null (<=500 chars, read-time projection)
+RPC:subagent/get.duration_ms	int
+RPC:ui/page.get.schema	object (the page body: inline tree or the ref target)
+RPC:ui/page.get.sha256	string (64 hex)
+RPC:ui/state.get.rev	int (monotonic)
+RPC:ui/state.get.state	object (flat: string|number|bool|null)
+RPC:ui/state.get.fetched_at	int (unix seconds)
+RPC:ui/state.get.unchanged	bool (optional; true when the module's reply was not newer than the cached one, so the cached rev/state are returned)
+RPC:ui/tool.call.call_id	string
+RPC:ui/tool.call.status	approval_required|denied|ok|failed
+RPC:ui/tool.call.approval.request_id	string
+RPC:ui/tool.call.approval.tool	string
+RPC:ui/tool.call.approval.args	object
+RPC:ui/tool.call.approval.risk	low|medium|high
+RPC:ui/tool.call.approval.expires_at	int
+RPC:ui/tool.call.approval.args_digest	string
+RPC:ui/tool.call.result	any (status=ok)
+RPC:ui/tool.call.error.code	C-04 code
+RPC:ui/tool.call.error.message	string
+RPC:ui/tool.call.error.retriable	bool
+RPC:session/list.sessions	<array of [{"session_id": "string", "created_at": "int (unix ms)", "up>
+RPC:session/list.sessions[].session_id	string
+RPC:session/list.sessions[].created_at	int (unix ms)
+RPC:session/list.sessions[].updated_at	int (unix ms; last activity, the FR-8.26 order key)
+RPC:session/list.sessions[].title	string|null
+RPC:session/list.sessions[].icon	string|null (Tabler whitelist name)
+RPC:session/list.sessions[].color	string|null (#RRGGBB)
+RPC:session/list.sessions[].group_id	string|null
+RPC:session/list.sessions[].pinned_at	int|null
+RPC:session/list.sessions[].archived_at	int|null
+RPC:session/list.sessions[].unread	int (0|1)
+RPC:session/list.sessions[].state	open|closed
+RPC:session/list.next_cursor	int|null (null = end of list)
+RPC:session/rename.ok	bool
+RPC:session/rename.session	session_row (same shape as session/list items)
+RPC:session/pin.ok	bool
+RPC:session/pin.pinned_at	int|null (unix ms; null after unpin)
+RPC:session/archive.ok	bool
+RPC:session/archive.archived_at	int|null (unix ms; null after unarchive)
+RPC:session/delete.ok	bool
+RPC:session/group.list.groups	<array of [{"group_id": "string", "name": "string 1..64", "icon": "str>
+RPC:session/group.list.groups[].group_id	string
+RPC:session/group.list.groups[].name	string 1..64
+RPC:session/group.list.groups[].icon	string|null (Tabler whitelist name)
+RPC:session/group.list.groups[].color	string|null (#RRGGBB)
+RPC:session/group.list.groups[].sort_order	int >= 0
+RPC:session/group.list.groups[].created_at	int (unix ms)
+RPC:session/group.list.groups[].session_count	int
+RPC:session/group.create.group	group_row (same shape as session/group.list items minus session_count)
+RPC:session/group.update.group	group_row
+RPC:session/group.delete.ok	bool
+RPC:session/group.delete.unassigned	int (sessions moved back to ungrouped)
+RPC:session/group.assign.ok	bool
+RPC:session/group.assign.group_id	string|null (echo)
+RPC:session/search.results	<array of [{"session_id": "string", "title": "string|null", "updated_a>
+RPC:session/search.results[].session_id	string
+RPC:session/search.results[].title	string|null
+RPC:session/search.results[].updated_at	int (unix ms)
+RPC:session/search.results[].matched_in	title|body
+RPC:session/search.results[].message_id	string|null (set only for body hits)
+RPC:session/search.results[].snippet	string|null (<= 120 code points incl. ellipses; null for title hits)
+RPC:session/search.results[].snippet_offset	int|null (code-point index of the match start in the ORIGINAL content; null for title hits)
+RPC:session/search.results[].archived	bool
+RPC:session/search.total	int (distinct matching sessions; a session counts once even when title and body both match)
+
+
+========== EVENT PAYLOADS ==========
+EV:session.attached.session_id	string
+EV:session.attached.from_seq	int
+EV:session.attached.state	open|closed
+EV:session.attached.snapshot	bool
+EV:session.attached.replay_count	int (only when snapshot=false)
+EV:turn.queued.turn_id	string
+EV:turn.queued.state	turn.state
+EV:turn.queued.client_msg_id	string
+EV:turn.queued.root_turn_id	string (version-chain root)
+EV:turn.queued.version	int >= 1
+EV:turn.queued.parent_turn_id	string|null (the turn this version replaces)
+EV:turn.queued.user_message_id	string (submit|edit: the new message; regenerate: the reused one)
+EV:turn.queued.reason	submit|regenerate|edit_resubmit
+EV:turn.started.turn_id	string
+EV:turn.started.state	turn.state
+EV:turn.started.model_id	string (RFC-0005 append, optional; the id resolved at dequeue)
+EV:turn.started.model_source	session|global|priority (RFC-0005 append, optional; absent when no resolver is wired)
+EV:turn.delta.turn_id	string
+EV:turn.delta.text	string (increment, not cumulative)
+EV:turn.delta.part_index	int >= 0, default 0 (RFC-0006 1.1.0; same value for every delta of one segment)
+EV:turn.delta.kind	text|notice|reasoning|tool_args, default text (v1 core emits text|notice only)
+EV:turn.tool_call.turn_id	string
+EV:turn.tool_call.call_id	string
+EV:turn.tool_call.tool	string (LLM-side name)
+EV:turn.tool_call.args_digest	sha256:hex
+EV:turn.tool_call.args_preview	string, JSON text, <=512 UTF-8 bytes, redacted (RFC-0006 1.1.0)
+EV:turn.tool_call.args_preview_mode	redacted|typed
+EV:turn.tool_call.args_preview_redacted	string[], <=16 dot-paths
+EV:turn.tool_call.args_preview_truncated	bool
+EV:turn.tool_call.started_at	int (unix ms, when core EMITTED this event)
+EV:turn.tool_call.batch_id	bat_[0-9a-f]{16}
+EV:turn.tool_result.turn_id	string
+EV:turn.tool_result.call_id	string
+EV:turn.tool_result.ok	bool
+EV:turn.tool_result.summary	string <=300
+EV:turn.tool_result.code	C-04 name (only when ok=false)
+EV:turn.tool_result.duration_ms	int >= 0, or null when the tool did not actually run
+EV:turn.tool_result.truncated	bool (summary window cut, or full text overflowed to the blob store)
+EV:turn.tool_result.result_ref	msg:<hex>|null (persisted role=tool message id)
+EV:turn.approval_required.turn_id	string
+EV:turn.approval_required.request_id	string
+EV:turn.approval_required.tool	string
+EV:turn.approval_required.args	object (FULL arguments, not a digest)
+EV:turn.approval_required.risk	low|medium|high
+EV:turn.approval_required.expires_at	int (unix ms)
+EV:turn.approval_required.session_id	string (RFC-0007 §7.1: registered late — already on the wire)
+EV:turn.approval_required.task_id	string|null (RFC-0007 §7.1: the task that raised the call; null = main turn)
+EV:turn.approval_required.task_name	string <=80|null (redundant human-readable name, so a UI never shows a bare id)
+EV:turn.approval_required.depth	int (0 = main turn, >0 = subagent level)
+EV:turn.approval_resolved.turn_id	string
+EV:turn.approval_resolved.request_id	string
+EV:turn.approval_resolved.decision	approve|deny
+EV:turn.approval_resolved.by	device_id|admin
+EV:turn.approval_resolved.scope	once|session
+EV:turn.approval_resolved.state	turn.state
+EV:turn.approval_resolved.session_id	string (RFC-0007 §7.1: registered late)
+EV:turn.approval_resolved.task_id	string|null (RFC-0007 §7.1)
+EV:turn.approval_resolved.task_name	string <=80|null (RFC-0007 §7.1)
+EV:turn.approval_resolved.depth	int (RFC-0007 §7.1: 0 = main turn)
+EV:turn.input_required.input_id	string (core-allocated, ULID-shaped; the idempotency key)
+EV:turn.input_required.turn_id	string
+EV:turn.input_required.session_id	string (the seq space this event is broadcast on)
+EV:turn.input_required.state	waiting_input
+EV:turn.input_required.kind	free_text|single_choice|multi_choice|confirm
+EV:turn.input_required.prompt	string 1..500 (model-authored, render as plain text)
+EV:turn.input_required.detail	string<=2000|null
+EV:turn.input_required.schema	object (fixed descriptor per kind; NEVER a form DSL)
+EV:turn.input_required.options	array of {id,label<=120,description<=240|null}; 2..20 for choice kinds, [] otherwise
+EV:turn.input_required.timeout_s	int 5..600
+EV:turn.input_required.expires_at	int (unix ms)
+EV:turn.input_required.default	string|string[]|bool|null (UI prefill ONLY; never applied on timeout)
+EV:turn.input_required.source	object {tool:'ask_user'|'module', module_id:string|null, depth:int}
+EV:turn.input_required.created_at	int (unix ms)
+EV:turn.input_resolved.input_id	string
+EV:turn.input_resolved.turn_id	string
+EV:turn.input_resolved.state	turn.state (the state this resolution restores: running, or interrupted)
+EV:turn.input_resolved.status	submitted|cancelled|timeout
+EV:turn.input_resolved.value	string|string[]|bool|null (non-null iff status=submitted, already validated by core)
+EV:turn.input_resolved.by	device_id|user|system
+EV:turn.input_resolved.reason	user_cancel|turn_interrupted|session_closed|no_ui|superseded|timeout|submitted
+EV:turn.input_resolved.duration_ms	number (monotonic time from request to resolution)
+EV:turn.completed.turn_id	string
+EV:turn.completed.state	turn.state
+EV:turn.completed.usage	object
+EV:turn.completed.stopped_reason	stop|max_steps|no_capability|null
+EV:turn.failed.turn_id	string
+EV:turn.failed.state	turn.state
+EV:turn.failed.code	C-04 name
+EV:turn.failed.message	string <=300
+EV:turn.failed.usage	object (RFC-0005 append, optional)
+EV:turn.failed.data	object|null (RFC-0005 append, optional; e.g. {reason:"model_unavailable"})
+EV:turn.interrupted.turn_id	string
+EV:turn.interrupted.state	turn.state
+EV:turn.interrupted.by	string
+EV:turn.interrupted.usage	object (RFC-0005 append, optional)
+EV:turn.interrupted.partial_message_id	msg:<hex>|null (RFC-0006 1.1.0; the partial=true assistant message)
+EV:turn.interrupted.partial_chars	int (code points already streamed)
+EV:turn.cancelled.turn_id	string
+EV:turn.cancelled.state	turn.state
+EV:turn.cancelled.by	string
+EV:queue.updated.session_id	string
+EV:queue.updated.running	string|null
+EV:queue.updated.running_state	turn.state|null
+EV:queue.updated.pending	<array of [{"turn_id": "string", "state": "turn.state", "client_msg_id>
+EV:queue.updated.pending[].turn_id	string
+EV:queue.updated.pending[].state	turn.state
+EV:queue.updated.pending[].client_msg_id	string|null
+EV:queue.updated.pending[].enqueued_at	int
+EV:module.status.module_id	string
+EV:module.status.instance_id	string
+EV:module.status.online	bool
+EV:module.status.version	string|null
+EV:task.started.task_id	string
+EV:task.started.kind	subagent|job
+EV:task.started.state	task.state (queued|running)
+EV:task.started.session_id	string
+EV:task.started.turn_id	string|null
+EV:task.started.parent_id	string|null (parent TASK id, not a turn id)
+EV:task.started.depth	int >=0
+EV:task.started.name	string <=80
+EV:task.started.started_at	int (unix ms)
+EV:task.started.retryable	bool
+EV:task.started.child_session_id	string|null (FR-8.58 jump target; null for kind=job)
+EV:task.started.child_turn_id	string|null
+EV:task.status.task_id	string
+EV:task.status.kind	subagent|job
+EV:task.status.parent_id	string|null
+EV:task.status.depth	int >=0
+EV:task.status.state	task.state
+EV:task.status.elapsed_ms	int (core-computed; never derive it from the device clock)
+EV:task.status.action	string <=120 (current action, e.g. 'reading docs/design.md')
+EV:task.status.pct	int 0..100
+EV:task.progress.task_id	string
+EV:task.progress.pct	int 0..100
+EV:task.progress.elapsed_ms	int
+EV:task.progress.detail	string (optional one-liner)
+EV:task.finished.task_id	string
+EV:task.finished.kind	subagent|job
+EV:task.finished.parent_id	string|null
+EV:task.finished.depth	int >=0
+EV:task.finished.state	task.state (terminal only)
+EV:task.finished.duration_ms	int
+EV:task.finished.summary	string <=500 (subagent: final assistant text, truncated; job: result summary)
+EV:task.finished.code	C-04 name|null (required when state=failed)
+EV:task.finished.message	string <=300|null
+EV:task.finished.forced	bool (true = the grace period expired and core stopped waiting)
+EV:task.finished.by	user|parent|system
+EV:task.finished.usage	object
+EV:session.turn.session_id	string
+EV:session.turn.turn_id	string
+EV:session.turn.state	turn.state (terminal only)
+EV:session.turn.user_text	string (the user message of that turn, verbatim)
+EV:session.turn.assistant_text	string (the final assistant message of that turn)
+EV:session.turn.tool_calls	<array of [{"tool": "string (LLM-side name)", "args_digest": "sha256:h>
+EV:session.turn.tool_calls[].tool	string (LLM-side name)
+EV:session.turn.tool_calls[].args_digest	sha256:hex
+EV:session.turn.tool_calls[].ok	bool|null (null while the outcome is unknown)
+EV:session.closed.session_id	string
+EV:session.closed.turns_total	int
+EV:session.closed.turns	<array of [{"turn_id": "string", "state": "turn.state", "tool_calls": >
+EV:session.closed.turns[].turn_id	string
+EV:session.closed.turns[].state	turn.state
+EV:session.closed.turns[].tool_calls	<array of [{"tool": "string", "args_digest": "sha256:hex", "ok": "bool>
+EV:session.closed.turns[].tool_calls[].tool	string
+EV:session.closed.turns[].tool_calls[].args_digest	sha256:hex
+EV:session.closed.turns[].tool_calls[].ok	bool|null
+EV:session.closed.turns[].negative	bool
+EV:session.closed.turns[].self_corrected	bool
+EV:session.closed.tail	<array of [{"turn_id": "string", "user_text": "string", "assistant_tex>
+EV:session.closed.tail[].turn_id	string
+EV:session.closed.tail[].user_text	string
+EV:session.closed.tail[].assistant_text	string
+EV:session.closed.closed_at	int (unix ms)
+EV:skill.proposed.name	string
+EV:skill.proposed.origin	string (always 'proposal' for this topic)
+EV:skill.proposed.revision	int (the revision an approval would produce)
+EV:skill.proposed.base_revision	int (revision the proposal was authored against; 0 for create)
+EV:skill.proposed.status	pending
+EV:usage.budget.scope	session|day
+EV:usage.budget.state	warn|exceeded
+EV:usage.budget.used	int >= 0
+EV:usage.budget.limit	int > 0
+EV:usage.budget.ratio	number (used/limit)
+EV:usage.budget.degraded	bool (true only when the turn should have been refused but the ledger is untrustworthy)
+EV:usage.budget.session_id	string|null (null for a core-wide day notification with no session context)
+EV:turn.superseded.turn_id	string (the turn that was replaced)
+EV:turn.superseded.superseded_by	string (the new turn)
+EV:turn.superseded.reason	regenerate|edit_resubmit (fork reserved, never emitted in v1)
+EV:turn.superseded.root_turn_id	string (version-chain root)
+EV:turn.superseded.version	int >= 2 (version of superseded_by)
+EV:message.edited.message_id	string (the replaced user message)
+EV:message.edited.session_id	string
+EV:message.edited.superseded_by_message_id	string (the new user message)
+EV:message.edited.new_turn_id	string
+EV:message.edited.text	string (new text projection, <=32000 code points)
+EV:message.edited.edited_at	int (unix ms)
+EV:session.updated.session_id	string
+EV:session.updated.title	string|null (RFC-0010)
+EV:session.updated.icon	string|null (Tabler whitelist name)
+EV:session.updated.color	string|null (#RRGGBB)
+EV:session.updated.group_id	string|null
+EV:session.updated.pinned_at	int|null (unix ms)
+EV:session.updated.archived_at	int|null (unix ms)
+EV:session.updated.unread	int (0|1)
+EV:session.updated.updated_at	int (unix ms)
+EV:session.updated.by	device_id|admin|system
+EV:session.list_changed.session_id	string (the session that was created or deleted)
+EV:session.list_changed.change	added|removed
+EV:session.list_changed.by	device_id|admin|system
+EV:subagent.spawned.run_id	string (run_<32hex>, RFC-0012 §7.1)
+EV:subagent.spawned.session_id	string (C-06 stream key; on subagent.* it always equals parent_session_id)
+EV:subagent.spawned.parent_session_id	string (the seq space this family broadcasts on)
+EV:subagent.spawned.parent_turn_id	string|null (the parent turn that spawned the run)
+EV:subagent.spawned.child_session_id	string|null (the run's own LLM-loop session; FR-8.58 jump target)
+EV:subagent.spawned.label	string 1..64
+EV:subagent.spawned.at	int (unix ms)
+EV:subagent.status.run_id	string
+EV:subagent.status.session_id	string (= parent_session_id)
+EV:subagent.status.state	subagent.state (spawned|running)
+EV:subagent.status.step	string <=120|null (what the loop is doing now)
+EV:subagent.status.tool_name	string|null (the tool call in flight)
+EV:subagent.status.at	int (unix ms)
+EV:subagent.result.run_id	string
+EV:subagent.result.session_id	string (= parent_session_id)
+EV:subagent.result.state	subagent.state (terminal only: completed|failed|cancelled)
+EV:subagent.result.result_digest	string (sha-256 hex of the FULL result text — NEVER the text itself; sha256("") for cancelled/failed-with-no-partial)
+EV:subagent.result.result_chars	int (length of the full result text)
+EV:subagent.result.error_code	C-04 name|null (core MUST set it when state=failed)
+EV:subagent.result.finished_at	int (unix ms)
+EV:turn.skill_catalog.turn_id	string
+EV:turn.skill_catalog.digest	string (sha256 hex over the catalog entries: name + clipped description + marker, name order)
+EV:turn.skill_catalog.entries	<array of ["string (skill names, name order)"]>
+EV:turn.skill_catalog.empty	boolean (true = the retirement entry: no skills are available this session)
+EV:turn.tool_discovered.turn_id	string
+EV:turn.tool_discovered.tool	string (model-visible name)
+EV:turn.tool_discovered.tool_id	string
+EV:turn.tool_discovered.query_digest	string(12) (sha256 of the search query that surfaced it, empty when a skill's requires_tools enabled it)
+EV:turn.tool_discovered.total_matches	int

@@ -106,28 +106,28 @@ sealed class ContentPart {
             val array = element as? JsonArray ?: return emptyList()
             return array.mapNotNull { part ->
                 val obj = part as? JsonObject ?: return@mapNotNull null
-                when (obj.str("type")) {
-                    "text" -> TextPart(obj.str("text") ?: "")
+                when (obj.strStrict("type")) {
+                    "text" -> TextPart(obj.strStrict("text") ?: "")
                     "image" -> ImagePart(
-                        fileId = obj.str("file_id") ?: "",
-                        mime = obj.str("mime") ?: "",
-                        name = obj.str("name") ?: "",
-                        size = obj.lng("size") ?: 0,
-                        width = obj.int("width") ?: 0,
-                        height = obj.int("height") ?: 0,
-                        sha256 = obj.str("sha256") ?: "",
+                        fileId = obj.strStrict("file_id") ?: "",
+                        mime = obj.strStrict("mime") ?: "",
+                        name = obj.strStrict("name") ?: "",
+                        size = obj.lngStrict("size") ?: 0,
+                        width = obj.intStrict("width") ?: 0,
+                        height = obj.intStrict("height") ?: 0,
+                        sha256 = obj.strStrict("sha256") ?: "",
                     )
                     "file" -> FilePart(
-                        fileId = obj.str("file_id") ?: "",
-                        mime = obj.str("mime") ?: "",
-                        name = obj.str("name") ?: "",
-                        size = obj.lng("size") ?: 0,
+                        fileId = obj.strStrict("file_id") ?: "",
+                        mime = obj.strStrict("mime") ?: "",
+                        name = obj.strStrict("name") ?: "",
+                        size = obj.lngStrict("size") ?: 0,
                     )
                     "audio" -> AudioPart(
-                        fileId = obj.str("file_id") ?: "",
-                        mime = obj.str("mime") ?: "",
-                        name = obj.str("name") ?: "",
-                        size = obj.lng("size") ?: 0,
+                        fileId = obj.strStrict("file_id") ?: "",
+                        mime = obj.strStrict("mime") ?: "",
+                        name = obj.strStrict("name") ?: "",
+                        size = obj.lngStrict("size") ?: 0,
                     )
                     else -> null
                 }
