@@ -1,4 +1,6 @@
 # main (d825690) does not compile its own test sources — NOT caused by this branch.
+# ALREADY FIXED upstream: main @ 98fa211 applies the very same one-line change, so this
+# file is kept only as the record of why the gates had to be run with it applied locally.
 #
 # g-archive-ui (a3288b6) added the default parameter
 #   SessionSource.sessions(includeArchived: Boolean = false)

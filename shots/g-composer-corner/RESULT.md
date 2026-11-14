@@ -175,12 +175,15 @@ content 底下，84 % 玻璃底会把它混进填充 ——
 
 ## 6 · 遗留与交回
 
-1. **`main` 自身测试源码编译不过**（不是本棒引入）：`g-archive-ui` 的
+1. **`main` @ `d825690` 自身测试源码编译不过**（不是本棒引入）：`g-archive-ui` 的
    `SessionSource.sessions(includeArchived: Boolean = false)` 与 `g-error-retry` 的
    `LoadErrorBannerTest.RecordingSource` 覆盖签名对不上，`compileTestKotlinDesktop` 直接失败。
-   `shell/**` 是本棒禁改区，**未提交**该修复；一行补丁留在
-   `evidence/main-build-break.patch`（`git apply` 即可），本棒三目标是在**工作树打了这一行、
-   未提交**的状态下跑的；工作树里也保留着这行未提交改动，`git checkout -- <该文件>` 可丢弃。
+   `shell/**` 是本棒禁改区，**没有提交**该修复：本棒三目标是在**工作树临时打了这一行、
+   未提交**的状态下跑的，跑完已把工作树还原干净（`git status` 干净）。
+   `evidence/main-build-break.patch` 留的是那行补丁的副本。
+   → **后续**：`main` 已经在 `98fa211` 用同一行修掉了（`fix(test): LoadErrorBannerTest.RecordingSource
+   补 includeArchived 形参`），所以合到 `main @ ≥98fa211` 即可编译；单独 checkout 本分支会继承
+   `d825690` 的编译失败。本棒改的 4 个源码文件在 `d825690..4d1353c` 之间**零改动**（已核），无合并冲突。
 2. **未碰设备**：按约束没跑真机/模拟器。上一棒的 device 图已证明同一缺陷在 Android 上存在；
    修后 Android 侧只有「下方阴影 12→34/255」这一条可预期的差异，建议在真机复核一次。
 3. **wasm 只编译、未交互验证**（`compileKotlinWasmJs` 通过）。`dropHalo` 的 Difference clip
