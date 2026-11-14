@@ -56,14 +56,32 @@ interface SessionMetaActions {
 /** 一次动作调用的记录（op + 语义化参数串），[FakeMetaActions.calls] 供测试断言。 */
 data class MetaCall(val op: String, val detail: String)
 
+/** [MetaFieldEdit] 的测试可读文本：`null` 就是真的会写成 JSON null。 */
+private fun MetaFieldEdit<String>.wireText(): String = when (this) {
+    is MetaFieldEdit.Keep -> "keep"
+    is MetaFieldEdit.Clear -> "null"
+    is MetaFieldEdit.Set -> value
+}
+
+/** 把三态意图落到一个旧值上（内存「服务端」的保存语义）。 */
+private fun MetaFieldEdit<String>.appliedTo(current: String?): String? = when (this) {
+    is MetaFieldEdit.Keep -> current
+    is MetaFieldEdit.Clear -> null
+    is MetaFieldEdit.Set -> value
+}
+
+
 /**
  * 内存实现：本轮驱动 UI 与全部测试；也是数据层实现真接口时的行为参照
  * （尤其 [deleteGroup] 的「会话不解散、`groupId` 置 null」语义）。
+ *
+ * 同时实现三态的 [SessionMetaGroupEdit]（图标/颜色的清除 = 显式 null），
+ * 所以用它的 UI/测试也拿得到「清除」能力，与真适配器一致。
  */
 class FakeMetaActions(
     seedSessions: List<MetaSession> = defaultSessions,
     seedGroups: List<MetaGroup> = defaultGroups,
-) : SessionMetaActions {
+) : SessionMetaActions, SessionMetaGroupEdit {
 
     val sessions = MutableStateFlow(seedSessions)
     val groups = MutableStateFlow(seedGroups)
@@ -137,6 +155,34 @@ class FakeMetaActions(
         groups.update { list -> list.filterNot { it.id == groupId } }
         // 服务端语义：删组不删会话，组内会话变未分组。
         sessions.update { list -> list.map { if (it.groupId == groupId) it.copy(groupId = null) else it } }
+    }
+
+    // --- 三态 update（与真适配器同形：Clear 写成 null，Keep 不进 detail） ----------------
+
+    override suspend fun editGroup(
+        groupId: String,
+        name: String?,
+        icon: MetaFieldEdit<String>,
+        color: MetaFieldEdit<String>,
+    ): MetaGroup {
+        val parts = buildList {
+            if (name != null) add("name=$name")
+            if (icon != MetaFieldEdit.Keep) add("icon=${icon.wireText()}")
+            if (color != MetaFieldEdit.Keep) add("color=${color.wireText()}")
+        }
+        record("session/group.update", "$groupId:${parts.joinToString(",")}")
+        var updated: MetaGroup? = null
+        groups.update { list ->
+            list.map {
+                if (it.id != groupId) it
+                else it.copy(
+                    name = name ?: it.name,
+                    iconName = icon.appliedTo(it.iconName),
+                    colorHex = color.appliedTo(it.colorHex),
+                ).also { group -> updated = group }
+            }
+        }
+        return updated ?: error("FakeMetaActions has no group '$groupId'")
     }
 
     companion object {

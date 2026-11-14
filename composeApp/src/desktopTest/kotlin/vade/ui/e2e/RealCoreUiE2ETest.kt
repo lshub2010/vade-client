@@ -1,0 +1,278 @@
+package vade.ui.e2e
+
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.runComposeUiTest
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import vade.ui.App
+import vade.ui.data.RealSessionSource
+import vade.ui.data.RealSessionState
+import vade.ui.shell.UiState
+import vade.ui.protocol.BrowserPairing
+import vade.ui.protocol.VadeClientConfig
+import java.nio.file.Files
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
+import kotlin.test.fail
+
+/**
+ * g-live · THE machine evidence for alpha A1/W4: a **real Python core** (uvicorn +
+ * real SQLite session store) and the **composed app** running against it, end to end.
+ *
+ * Chain under test (every link real):
+ *   launcher spawns core → `{"stage":"ready","port":N,"pair_code":"…"}` on stdout
+ *   → `POST /ui/session` pair-code bootstrap → `__Host-ac_ui` cookie
+ *   → `ws://…/ws` upgrade with the cookie → `session/list` RPC
+ *   → [UiState]'s loader pulls rows → the COMPOSED `App` renders the core's real
+ *   session titles and NOT a single fixture marker.
+ *
+ * The stale desktop comment claimed this flag "changes nothing visible" — this test
+ * is the proof that it does (and that the wire works without any mock transport).
+ *
+ * The core is seeded with two demo sessions by the launcher (see
+ * shots/g-live/core_launcher.py — the same script, standalone for humans); the pair
+ * code printed on stdout stays inside this process and is NEVER logged by assertions.
+ *
+ * No env = no skip: the core failing to boot is a failure, never a green pass.
+ */
+@OptIn(ExperimentalTestApi::class)
+class RealCoreUiE2ETest {
+
+    private var handle: CoreHandle? = null
+
+    @AfterTest
+    fun killLeftoverCore() {
+        handle?.kill()
+        handle = null
+    }
+
+    /** Boot the real core; READY line parsed by [CoreHandle] (port + pair code). */
+    private fun bootCore(): CoreHandle.Ready {
+        val dir = Files.createTempDirectory("vade-g-live-ui-").toFile()
+        val launcher = dir.resolve("g_live_ui_launcher.py")
+        launcher.writeText(
+            LAUNCHER
+                .replace("@CORE_DIR@", RealCoreE2ETest.CORE_PKG_DIR)
+                .replace("@PROTOCOL_DIR@", RealCoreE2ETest.PROTOCOL_PY_DIR),
+        )
+        val created = CoreHandle(
+            python = RealCoreE2ETest.PYTHON,
+            launcher = launcher,
+            dataDir = dir.resolve("data"),
+        )
+        handle = created
+        created.start()
+        return created.awaitReady(timeoutMs = 30_000)
+    }
+
+    /** RealSessionSource over the booted core, pair-code bootstrap, fast backoff. */
+    private fun realSource(ready: CoreHandle.Ready): RealSessionSource =
+        RealSessionSource(
+            VadeClientConfig(
+                host = "127.0.0.1",
+                port = ready.port,
+                browserSession = BrowserPairing(ready.pairCode, clientName = "g-live-w4"),
+                requestTimeoutMs = 15_000,
+                reconnectBaseMs = 200,
+                reconnectCapMs = 1_000,
+                // Keepalive ON (the 10s default): the core closes a browser socket
+                // after 2×heartbeat of silence, and this test idles between the
+                // wire sanity check and the composed UI — a killed socket here
+                // would surface as a Failed banner and a flaky waitUntil.
+            ),
+        )
+
+    @Test
+    fun realCoreSessionTitlesRenderInAppAndFixturesStayAway() {
+        val ready = bootCore()
+        runBlocking {
+            val source = realSource(ready)
+            try {
+                source.connect()
+                withTimeout(20_000) {
+                    source.state.first { it is RealSessionState.Connected }
+                }
+                // The loader path (the same one the composition drives) first,
+                // deterministically and WITH diagnostics on failure.
+                val uiRows = uiStateRows(source)
+                assertTrue(
+                    SEEDED_TITLES.all { it in uiRows.map { row -> row.title } },
+                    "the core must serve the seeded sessions through the loader (got: ${uiRows.map { it.title }})",
+                )
+
+                runComposeUiTest {
+                    setContent { App(source = source) }
+                    waitUntil(timeoutMillis = 45_000) {
+                        onAllNodesWithText(SEEDED_TITLES.first()).fetchSemanticsNodes().isNotEmpty()
+                    }
+                    SEEDED_TITLES.forEach { title ->
+                        onNodeWithText(title).assertExists()
+                    }
+                    // Not a single fixture marker may ride along on the loader path.
+                    FIXTURE_MARKERS.forEach { marker ->
+                        assertTrue(
+                            onAllNodesWithText(marker).fetchSemanticsNodes().isEmpty(),
+                            "fixture marker must be absent in real mode: $marker",
+                        )
+                    }
+                }
+                // The ids the UI pulled are the core-minted ones — none is a fixture id.
+                uiRows.forEach { row ->
+                    assertNotEquals("", row.id)
+                    assertTrue(FIXTURE_IDS.none { it == row.id }, "no fixture id may appear: ${row.id}")
+                }
+            } finally {
+                runCatching { source.disconnect() }
+            }
+        }
+        handle?.kill()
+        assertTrue(handle?.isAlive == false, "core terminated after the test")
+    }
+
+    /**
+     * Drive [UiState] directly (the shell's async read path) and wait until its
+     * loader reports Ready — the non-UI half of the same evidence.
+     */
+    private fun uiStateRows(source: RealSessionSource) =
+        UiState(
+            initialBar = vade.ui.skin.BottomBarStyle.Fixed,
+            initialSkinId = "material",
+            initialDest = vade.ui.destinations.Destination.Sessions,
+            source = source,
+            loaderScope = kotlinx.coroutines.CoroutineScope(
+                kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default,
+            ),
+        ).let { state ->
+            try {
+                val deadline = System.currentTimeMillis() + 20_000
+                while (state.sessionsPhase != vade.ui.shell.LoadPhase.Ready) {
+                    if (System.currentTimeMillis() > deadline) {
+                        fail("UiState loader never reached Ready (phase=${state.sessionsPhase}, error=${state.sessionsError})")
+                    }
+                    Thread.sleep(50)
+                }
+                state.sessionRows
+            } finally {
+                state.dispose()
+            }
+        }
+
+    // ------------------------------------------------------------------ harness
+
+    private companion object {
+        /** Titles the launcher seeds into the real core (identical to core_launcher.py). */
+        val SEEDED_TITLES = listOf("W4 实跑·真核心会话甲", "W4 实跑·真核心会话乙")
+
+        /** Fixture-only strings that must NEVER appear once a real source drives the UI. */
+        val FIXTURE_MARKERS = listOf(
+            "RFC-0004 附件与多模态评审",
+            "vade core 构建矩阵升级",
+            "wasm 体积回归",
+            "AGP 9.5.1 矩阵验证",
+        )
+        val FIXTURE_IDS = listOf("s-rfc0004", "s-matrix", "s-u1a", "s-skin11", "s-wasm", "s-agp")
+
+        /**
+         * Same launcher as `shots/g-live/core_launcher.py` (keep the two in sync):
+         * real core, scripted MockLLM provider (never an external API), two seeded
+         * sessions, one-time browser pair code minted and printed on the READY line.
+         */
+        private val LAUNCHER = """
+            import argparse, asyncio, json, sys, threading, time, traceback
+            from pathlib import Path
+
+            CORE_DIR = r"@CORE_DIR@"
+            PROTOCOL_DIR = r"@PROTOCOL_DIR@"
+            sys.path.insert(0, PROTOCOL_DIR)
+            sys.path.insert(0, CORE_DIR)
+
+            SEED_TITLES = ["W4 实跑·真核心会话甲", "W4 实跑·真核心会话乙"]
+
+            def emit(obj):
+                print(json.dumps(obj, ensure_ascii=False), flush=True)
+
+            def main():
+                ap = argparse.ArgumentParser()
+                ap.add_argument("--data-dir", required=True)
+                ap.add_argument("--port", type=int, default=0)
+                ap.add_argument("--no-seed", action="store_true")
+                args = ap.parse_args()
+                emit({"stage": "boot", "data_dir": args.data_dir})
+
+                import vade.session as session_pkg
+                from vade.llm.base import Delta
+                from vade.llm.mock import MockLLMProvider
+
+                def _build_llm(cfg, **kwargs):
+                    return MockLLMProvider([[
+                        Delta(text="W4 实跑：脚本化 provider 回复。"),
+                        Delta(text=" -- done.", usage={"prompt_tokens": 9, "completion_tokens": 12, "total_tokens": 21}, finish_reason="stop"),
+                    ]])
+
+                session_pkg._build_llm = _build_llm
+
+                import uvicorn
+                from vade import __main__ as vade_main
+                from vade.app import App, install_components, make_rpc_handler
+                from vade.config import load_config
+                from vade.identity.pairing import Purpose
+                from vade.transport.server import CoreApp
+
+                config = load_config(cli={
+                    "core.data_dir": args.data_dir,
+                    "core.listen": "127.0.0.1:" + str(args.port),
+                    "dev.allow_all": True,
+                })
+                app = App(config)
+                asyncio.run(app.startup())
+                installed = install_components(app, strict=False)
+                if "session" not in installed:
+                    raise RuntimeError("session component did not install: " + str(sorted(installed)))
+                if not args.no_seed:
+                    for title in SEED_TITLES:
+                        app.session.create_session(title=title)
+                pair_code = app.pairing.create(Purpose.BROWSER, ttl=600)
+
+                core_app = CoreApp(
+                    config=config,
+                    identity=app.identity,
+                    registry=app.registry,
+                    pairing=app.pairing,
+                    whitelist=app.whitelist,
+                    make_crypto=vade_main.build_module_crypto(app),
+                    on_rpc=make_rpc_handler(app),
+                    policy_mode="allow_all",
+                )
+                server = uvicorn.Server(uvicorn.Config(
+                    core_app, host="127.0.0.1", port=args.port, log_level="warning",
+                    lifespan="off", proxy_headers=False,
+                ))
+                thread_ = threading.Thread(target=server.run, daemon=True)
+                thread_.start()
+                deadline = time.time() + 20
+                while not server.started:
+                    if time.time() > deadline or not thread_.is_alive():
+                        raise RuntimeError("uvicorn did not start within 20s")
+                    time.sleep(0.02)
+                port = server.servers[0].sockets[0].getsockname()[1]
+                emit({"stage": "ready", "port": port, "pair_code": pair_code})
+                while thread_.is_alive():
+                    time.sleep(0.2)
+                return 0
+
+            if __name__ == "__main__":
+                try:
+                    sys.exit(main())
+                except SystemExit:
+                    raise
+                except BaseException:
+                    emit({"stage": "fatal", "error": traceback.format_exc(limit=8)})
+                    sys.exit(1)
+        """.trimIndent()
+    }
+}
