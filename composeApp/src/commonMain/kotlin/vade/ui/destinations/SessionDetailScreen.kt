@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -72,6 +73,15 @@ fun SessionDetailScreen(
      * one-object wiring path.
      */
     modelActions: ModelActions? = null,
+    /**
+     * The shell's floating glass top-bar zone (see `shell/AppShell.kt`), applied as
+     * **content** padding: the thread runs edge-to-edge from the very top of the window so
+     * messages really scroll behind the glass bar (visual language §5 — a blur with nothing
+     * behind it reads as a solid strip, which is exactly the 「看不出有模糊」 complaint).
+     * Container padding would crop the viewport below the bar and no row could ever pass
+     * under it.
+     */
+    contentPadding: PaddingValues = PaddingValues(0.dp),
 ) {
     val skin = LocalSkin.current
     if (session == null) {
@@ -91,24 +101,31 @@ fun SessionDetailScreen(
     val modelState = remember(actions, session.id) { ModelState.forSession(actions, session.id) }
     var modelPickerOpen by remember(session.id) { mutableStateOf(false) }
 
-    Column(modifier.fillMaxSize().background(skin.colors.surface)) {
-        DetailHeader(session, chat, showTitle, modelState, modelPickerOpen) {
-            modelPickerOpen = !modelPickerOpen
-        }
-        if (modelPickerOpen) {
-            ModelPickerCard(
-                state = modelState,
-                title = "会话模型",
-                footerNote = "仅本会话生效，下一轮对话起使用（D101：会话级 > 全局默认 > priority）" +
-                    "· 假数据：未接 core，接真数据只需实现 vade.ui.model.ModelActions",
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-        }
+    // Full-bleed stack: the thread spans the whole window (scrolling under glass bar and
+    // header alike); the header — and the model picker it expands — float *below* the glass
+    // bar zone as the later sibling and stay opaque, so their own content remains readable
+    // while rows slide under them. The header→picker flow stays inside one floating column
+    // exactly as the in-flow version arranged it.
+    Box(modifier.fillMaxSize()) {
         ChatThread(
             state = chat,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.fillMaxSize(),
             animate = animate,
         )
+        Column(Modifier.padding(top = contentPadding.calculateTopPadding())) {
+            DetailHeader(session, chat, showTitle, modelState, modelPickerOpen) {
+                modelPickerOpen = !modelPickerOpen
+            }
+            if (modelPickerOpen) {
+                ModelPickerCard(
+                    state = modelState,
+                    title = "会话模型",
+                    footerNote = "仅本会话生效，下一轮对话起使用（D101：会话级 > 全局默认 > priority）" +
+                        "· 假数据：未接 core，接真数据只需实现 vade.ui.model.ModelActions",
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
+        }
     }
 }
 

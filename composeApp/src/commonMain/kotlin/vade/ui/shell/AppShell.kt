@@ -42,6 +42,7 @@ import vade.ui.destinations.SessionsScreen
 import vade.ui.glass.GlassScope
 import vade.ui.glass.asGlassSource
 import vade.ui.glass.rememberGlassState
+import vade.ui.icon.VadeIcons
 import vade.ui.search.SearchHost
 import vade.ui.skin.BtnStyle
 import vade.ui.skin.BottomBarStyle
@@ -157,16 +158,20 @@ private fun ShellBody(state: UiState) {
 
             Column(Modifier.weight(1f).fillMaxHeight()) {
                 if (detailOpen) {
-                    // Pushed detail: the glass top bar (title + back) floats above; the page
-                    // starts below the bar zone. Its own composer reaches the bottom edge.
-                    Box(Modifier.fillMaxSize().padding(top = TOP_BAR_ZONE)) {
-                        SessionDetailScreen(
-                            session = session,
-                            preset = state.chatPreset,
-                            animate = state.chatPreset == vade.ui.chat.ChatPreset.Live,
-                            showTitle = false,
-                        )
-                    }
+                    // Pushed detail: the glass top bar (title + back) floats above and the
+                    // thread scrolls FULL-BLEED under it — TOP_BAR_ZONE is handed over as
+                    // *content* padding (SessionDetailScreen floats its header below the
+                    // bar zone and lets ChatThread span the window), never as container
+                    // padding: that cropped the viewport below the bar, no row ever passed
+                    // under the glass, and the blur had nothing behind it — the
+                    // 「看不出有模糊」 user complaint.
+                    SessionDetailScreen(
+                        session = session,
+                        preset = state.chatPreset,
+                        animate = state.chatPreset == vade.ui.chat.ChatPreset.Live,
+                        showTitle = false,
+                        contentPadding = PaddingValues(top = TOP_BAR_ZONE),
+                    )
                 } else {
                     DestinationHost(metrics = metrics, state = state, contentInsets = contentInsets)
                 }
@@ -194,7 +199,7 @@ private fun ShellBody(state: UiState) {
                 TopBar(
                     title = session.title,
                     subtitle = "会话详情 · 消息流 / 工具卡为假数据",
-                    leading = { TopBarButton("←", onClick = { state.back() }, contentDescription = "返回") },
+                    leading = { TopBarButton(VadeIcons.Back, onClick = { state.back() }, contentDescription = "返回") },
                 )
             } else {
                 TopBar(
@@ -206,10 +211,12 @@ private fun ShellBody(state: UiState) {
                     actions = {
                         if (state.dest == Destination.Sessions) {
                             // U1-c: phones reach search here; desktop also has ⌘K.
-                            TopBarButton("⌕", onClick = { state.openSearch() }, contentDescription = "搜索")
-                            TopBarButton("✎", onClick = { state.newSession() }, contentDescription = "新建会话")
+                            TopBarButton(VadeIcons.Search, onClick = { state.openSearch() }, contentDescription = "搜索")
+                            TopBarButton(VadeIcons.Compose, onClick = { state.newSession() }, contentDescription = "新建会话")
                         }
                         if (metrics.hasRightPanel) {
+                            // w2-icons 遗留：◂/▸ 仍是字符（VadeIcons 里暂无左向 chevron 的
+                            // 既有语义名，本棒不得往 VadeIcons 追加——三批合并的冲突源头）。
                             TopBarButton(
                                 glyph = if (state.panelOpen) "▸" else "◂",
                                 onClick = { state.togglePanel() },
@@ -265,15 +272,15 @@ private fun DestinationHost(
                         contentPadding = PaddingValues(top = TOP_BAR_ZONE),
                     )
                     VerticalRule()
-                    Box(Modifier.weight(1f).fillMaxHeight()) {
-                        Box(Modifier.fillMaxSize().padding(top = TOP_BAR_ZONE)) {
-                            SessionDetailScreen(
-                                session = state.selectedSession,
-                                preset = state.chatPreset,
-                                animate = state.chatPreset == vade.ui.chat.ChatPreset.Live,
-                            )
-                        }
-                    }
+                    // Two-pane detail: same content-padding contract as the pushed detail —
+                    // the thread scrolls under the glass top bar, not below it.
+                    SessionDetailScreen(
+                        session = state.selectedSession,
+                        preset = state.chatPreset,
+                        animate = state.chatPreset == vade.ui.chat.ChatPreset.Live,
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(top = TOP_BAR_ZONE),
+                    )
                 }
             } else if (state.selectedSessionId != null) {
                 SessionDetailScreen(

@@ -1,5 +1,6 @@
 package vade.ui.shell
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +18,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -33,8 +37,8 @@ import vade.ui.skin.glass.GlassSurface
  * it draws unfiltered (haze never filters node content — probe-verified, do not split
  * layers). It must be composed **outside** the haze backdrop source (see `AppShell`).
  *
- * v2 §3 「图标即按钮」: every action here is a [TopBarButton] glyph with a
- * `contentDescription`, no text labels. Touch target ≥44dp.
+ * v2 §3 「图标即按钮」: every action here is a [TopBarButton] — a vector from
+ * `VadeIcons` with a `contentDescription`, no text labels. Touch target ≥44dp.
  */
 @Composable
 fun TopBar(
@@ -82,9 +86,37 @@ fun TopBar(
 }
 
 /**
- * v2 §3 icon button: glyph only, ≥44dp touch target, described for accessibility.
- * [glyph] reuses the shell's existing single-glyph vocabulary (‹ ✎ ⌕ ✕ ◂ ▸ …) — the real
- * icon pack is U1-g, and a CJK label here would be a text button.
+ * v2 §3 icon button: vector icon, ≥44dp touch target, described for accessibility.
+ * [icon] is a [VadeIcons][vade.ui.icon.VadeIcons] semantic vector (the §3 rule: icons are
+ * vectors, never glyph characters). Drawn with the same `Image` + tint idiom as the
+ * bottom bar (`shell/BottomBar.kt`) — 20dp glyph in the 44dp target (§4 scale).
+ */
+@Composable
+fun TopBarButton(icon: ImageVector, onClick: () -> Unit, contentDescription: String) {
+    val skin = LocalSkin.current
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .clip(RoundedCornerShape(skin.shapes.sm))
+            .semantics { this.contentDescription = contentDescription }
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Image(
+            painter = rememberVectorPainter(icon),
+            contentDescription = null, // the button box above already carries the description
+            modifier = Modifier.size(20.dp),
+            colorFilter = ColorFilter.tint(skin.colors.textOnGlass),
+        )
+    }
+}
+
+/**
+ * Transitional glyph overload — still used by the shell's right-panel toggle (◂/▸; no
+ * left-chevron semantic name exists in `VadeIcons` yet and this stick must not add one)
+ * and by `search/SearchOverlay.kt` (outside this stick's scope). Everything else uses the
+ * [ImageVector] overload above; delete this one when both convert (§3: no character
+ * icons shipped).
  */
 @Composable
 fun TopBarButton(glyph: String, onClick: () -> Unit, contentDescription: String = glyph) {
