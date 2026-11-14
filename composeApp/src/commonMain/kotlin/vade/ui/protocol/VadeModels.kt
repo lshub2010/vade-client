@@ -7,8 +7,9 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 
 /**
- * Wire models for the 33 `ui_to_core` methods (rpc.json §directions.ui_to_core, contract
- * 1.4.0 — RFC-0010/0012/0003 appended the session-management and subagent methods).
+ * Wire models for the 34 `ui_to_core` methods (rpc.json §directions.ui_to_core, contract
+ * 1.5.0 — RFC-0010/0012/0003 appended the session-management and subagent methods,
+ * RFC-0014 appended session/search).
  *
  * Field names are the contract's verbatim (snake_case on the wire). Params classes carry
  * a hand-written [toJson]; result classes a hand-written `fromJson` — every key spelled
@@ -1547,6 +1548,123 @@ data class SessionGroupAssignResult(
         fun fromJson(o: JsonObject): SessionGroupAssignResult = SessionGroupAssignResult(
             ok = o.mustBool("ok"),
             groupId = o.strOrNull("group_id"),
+        )
+    }
+}
+
+// ------------------------- 34. session/search (RFC-0014, contract 1.5.0)
+
+/**
+ * Code-point length of this string (UTF-16 aware), common-safe: `String.codePointCount`
+ * is JVM-only and would compile desktopTest green while breaking the Wasm target. A
+ * high surrogate followed by a low surrogate is ONE code point; a lone surrogate still
+ * counts as one so the loop always advances.
+ */
+internal fun String.vadeCodePointCount(): Int {
+    var units = 0
+    var codePoints = 0
+    while (units < length) {
+        codePoints += 1
+        units += if (this[units].isHighSurrogate() && units + 1 < length && this[units + 1].isLowSurrogate()) 2 else 1
+    }
+    return codePoints
+}
+
+/**
+ * `session/search` (RFC-0014 §4/§5). Scope = session titles + live message bodies
+ * (rows with `superseded_by` excluded, RFC-0006 §6.3); matching is parameterized LIKE,
+ * ASCII case-insensitive / non-ASCII exact. Order (§4.4): title hits before body hits,
+ * then updated_at DESC. Every bounded param is validated HERE — a blank query, a
+ * limit outside 1..100 and a negative offset are INVALID_ARGUMENT before any frame
+ * goes out (a request that cannot possibly succeed must not touch the wire).
+ */
+data class SessionSearchParams(
+    /** 1..200 code points after trimming (required; blank → INVALID_ARGUMENT here). */
+    val query: String,
+    /** 1..100, server default 20. */
+    val limit: Int? = null,
+    /** >= 0, server default 0. */
+    val offset: Int? = null,
+    /** Optional: scope the search to one session (unknown → NOT_FOUND from core). */
+    val sessionId: String? = null,
+) {
+    fun toJson(): JsonObject = buildJsonObject {
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) {
+            throw VadeException(VadeErrorCodes.INVALID_ARGUMENT, "params.query is required and must be non-blank after trimming")
+        }
+        val codePoints = trimmed.vadeCodePointCount()
+        if (codePoints > 200) {
+            throw VadeException(VadeErrorCodes.INVALID_ARGUMENT, "params.query must be <=200 code points after trimming, got $codePoints")
+        }
+        if (limit != null && limit !in 1..100) {
+            throw VadeException(VadeErrorCodes.INVALID_ARGUMENT, "params.limit must be 1..100, got $limit")
+        }
+        if (offset != null && offset < 0) {
+            throw VadeException(VadeErrorCodes.INVALID_ARGUMENT, "params.offset must be >= 0, got $offset")
+        }
+        // The query travels VERBATIM: trimming is the contract's server-side matching
+        // step; this client validates on the trimmed value but never rewrites input.
+        putStr("query", query)
+        putInt("limit", limit)
+        putInt("offset", offset)
+        putStr("session_id", sessionId)
+    }
+}
+
+/**
+ * One hit row (RFC-0014 §5). `snippet`/`snippetOffset` travel VERBATIM from the wire:
+ * the server clips its windows (<= 120 code points incl. ellipses) and computes the
+ * code-point offset into the ORIGINAL content — this client never re-truncates,
+ * re-joins or re-derives either field. `snippetOffset = 0` (match at the very start)
+ * and `null` (title hit / no snippet) are different values; both survive the decode
+ * through [mustLngOrNull] (required-with-null, not a lenient absent=null collapse).
+ */
+data class SessionSearchHit(
+    val sessionId: String,
+    val title: String?,
+    /** unix ms. */
+    val updatedAt: Long,
+    /** `title` (title match) or `body` (live message body match). */
+    val matchedIn: String,
+    /** Set only for body hits. */
+    val messageId: String?,
+    /** Server-clipped window (<=120 code points incl. ellipses); null for title hits. */
+    val snippet: String?,
+    /** Code-point index of the match start in the ORIGINAL content; null for title hits. */
+    val snippetOffset: Long?,
+    val archived: Boolean,
+) {
+    companion object {
+        fun fromJson(o: JsonObject): SessionSearchHit = SessionSearchHit(
+            sessionId = o.mustStr("session_id"),
+            title = o.mustStrOrNull("title"),
+            updatedAt = o.mustLng("updated_at"),
+            matchedIn = o.mustStr("matched_in"),
+            messageId = o.mustStrOrNull("message_id"),
+            snippet = o.mustStrOrNull("snippet"),
+            snippetOffset = o.mustLngOrNull("snippet_offset"),
+            archived = o.mustBool("archived"),
+        )
+    }
+}
+
+data class SessionSearchResult(
+    val results: List<SessionSearchHit>,
+    /**
+     * Distinct matching sessions, as the SERVER counted them — a session counts once
+     * even when title and body both match, so on a limited/offset page total can
+     * exceed results.size. The server's number always wins over a local recount.
+     */
+    val total: Int,
+) {
+    companion object {
+        fun fromJson(o: JsonObject): SessionSearchResult = SessionSearchResult(
+            results = o.mustArr("results").mapIndexed { i, el ->
+                (el as? JsonObject)
+                    ?: throw PayloadDecodeException("result.results[$i] is not an object")
+            }.map(SessionSearchHit::fromJson),
+            total = o.mustInt("total"),
         )
     }
 }

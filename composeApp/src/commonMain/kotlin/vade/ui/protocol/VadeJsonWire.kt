@@ -93,6 +93,14 @@ fun JsonObject.mustStrOrNull(key: String): String? {
         ?: throw PayloadDecodeException("wire object field '$key' is not string|null")
 }
 
+/** required-with-null number: key present (value may be null), a wrong shape is rejected. */
+fun JsonObject.mustLngOrNull(key: String): Long? {
+    val v = mustKey(key)
+    if (v is JsonNull) return null
+    return (v as? JsonPrimitive)?.longOrNull
+        ?: throw PayloadDecodeException("wire object field '$key' is not number|null")
+}
+
 // ------------------------------------------------------------------ tri-state wire value
 //
 // Some contract params have THREE states, not two: key omitted / key present with JSON

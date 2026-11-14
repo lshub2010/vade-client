@@ -101,6 +101,50 @@ internal fun backoffDelayMs(attempt: Int, baseMs: Long, capMs: Long): Long {
 }
 
 /**
+ * THE dispatch table of `directions.ui_to_core` (rpc.json): every typed wrapper routes
+ * through [VadeClient.call] with one of these entries, so this enum is the single source
+ * of truth for which methods this client can actually send. `VadeContractCoverageGuardTest`
+ * walks [entries] against the contract file at runtime and fails on any drift — adding a
+ * method means adding an entry here AND a wrapper; a wrapper cannot exist without one.
+ */
+internal enum class VadeMethod(val wire: String) {
+    UI_ATTACH("ui/attach"),
+    UI_DETACH("ui/detach"),
+    UI_SUBMIT("ui/submit"),
+    UI_INTERRUPT("ui/interrupt"),
+    UI_QUEUE_CANCEL("ui/queue.cancel"),
+    APPROVAL_DECIDE("approval/decide"),
+    MODEL_LIST("model/list"),
+    SESSION_MODEL_GET("session/model.get"),
+    SESSION_MODEL_SET("session/model.set"),
+    SESSION_USAGE_GET("session/usage.get"),
+    TURN_INPUT("turn/input"),
+    TURN_INPUT_CANCEL("turn/input.cancel"),
+    TURN_REGENERATE("turn/regenerate"),
+    MESSAGE_EDIT_RESUBMIT("message/edit_resubmit"),
+    TASK_LIST("task/list"),
+    TASK_LOG_TAIL("task/log_tail"),
+    TASK_CANCEL("task/cancel"),
+    SUBAGENT_MESSAGE("subagent/message"),
+    UI_PAGE_GET("ui/page.get"),
+    UI_STATE_GET("ui/state.get"),
+    UI_TOOL_CALL("ui/tool.call"),
+    SUBAGENT_LIST("subagent/list"),
+    SUBAGENT_GET("subagent/get"),
+    SESSION_LIST("session/list"),
+    SESSION_RENAME("session/rename"),
+    SESSION_PIN("session/pin"),
+    SESSION_ARCHIVE("session/archive"),
+    SESSION_DELETE("session/delete"),
+    SESSION_GROUP_LIST("session/group.list"),
+    SESSION_GROUP_CREATE("session/group.create"),
+    SESSION_GROUP_UPDATE("session/group.update"),
+    SESSION_GROUP_DELETE("session/group.delete"),
+    SESSION_GROUP_ASSIGN("session/group.assign"),
+    SESSION_SEARCH("session/search"),
+}
+
+/**
  * The Vade client protocol layer: JSON-RPC 2.0 over WebSocket (rpc.json §transport/
  * §envelope) with a typed wrapper for every `ui_to_core` method and the full
  * core→UI event stream.
@@ -427,20 +471,20 @@ class VadeClient(
 
     /** One typed round trip: build params JSON → send → match id → decode the result. */
     private suspend fun <R> call(
-        method: String,
+        method: VadeMethod,
         paramsJson: JsonElement,
         timeoutMs: Long = config.requestTimeoutMs,
         decode: (JsonObject) -> R,
     ): R {
-        val result = rpc(method, paramsJson, timeoutMs)
+        val result = rpc(method.wire, paramsJson, timeoutMs)
         val obj = result as? JsonObject
         if (obj == null) {
-            throw VadeException(VadeErrorCodes.PROTOCOL_MISMATCH, "result of $method is not an object: $result")
+            throw VadeException(VadeErrorCodes.PROTOCOL_MISMATCH, "result of ${method.wire} is not an object: $result")
         }
         return try {
             decode(obj)
         } catch (e: PayloadDecodeException) {
-            throw VadeException(VadeErrorCodes.PROTOCOL_MISMATCH, "undecodable result for $method: ${e.message}")
+            throw VadeException(VadeErrorCodes.PROTOCOL_MISMATCH, "undecodable result for ${method.wire}: ${e.message}")
         }
     }
 
@@ -462,7 +506,7 @@ class VadeClient(
     }
 
     private suspend fun attachInternal(params: AttachParams): AttachResult {
-        val result = call(EVENT_ATTACH, params.toJson()) { AttachResult.fromJson(it) }
+        val result = call(VadeMethod.UI_ATTACH, params.toJson()) { AttachResult.fromJson(it) }
         sessionMutex.withLock {
             attachedSessionId = result.sessionId
         }
@@ -476,7 +520,7 @@ class VadeClient(
 
     /** `ui/detach`; clears the tracked session/lastSeq when it matches. */
     suspend fun detach(params: DetachParams): OkResult {
-        val result = call(EVENT_DETACH, params.toJson()) { OkResult.fromJson(it) }
+        val result = call(VadeMethod.UI_DETACH, params.toJson()) { OkResult.fromJson(it) }
         sessionMutex.withLock {
             if (params.sessionId == attachedSessionId) {
                 attachedSessionId = null
@@ -486,7 +530,7 @@ class VadeClient(
         return result
     }
 
-    // ------------------------------------------------------------------ the 33 ui_to_core methods
+    // ------------------------------------------------------------------ the 34 ui_to_core methods
 
     /** `ui/attach` — see [attach] for the last_seq semantics. */
     suspend fun uiAttach(params: AttachParams): AttachResult = attach(params)
@@ -496,89 +540,89 @@ class VadeClient(
 
     /** `ui/submit` — ordered content parts, idempotent by [SubmitParams.clientMsgId]. */
     suspend fun uiSubmit(params: SubmitParams): SubmitResult =
-        call("ui/submit", params.toJson()) { SubmitResult.fromJson(it) }
+        call(VadeMethod.UI_SUBMIT, params.toJson()) { SubmitResult.fromJson(it) }
 
     /** `ui/interrupt` — stops the RUNNING turn. */
     suspend fun uiInterrupt(params: InterruptParams): OkResult =
-        call("ui/interrupt", params.toJson()) { OkResult.fromJson(it) }
+        call(VadeMethod.UI_INTERRUPT, params.toJson()) { OkResult.fromJson(it) }
 
     /** `ui/queue.cancel` — cancels a QUEUED turn. */
     suspend fun uiQueueCancel(params: QueueCancelParams): OkResult =
-        call("ui/queue.cancel", params.toJson()) { OkResult.fromJson(it) }
+        call(VadeMethod.UI_QUEUE_CANCEL, params.toJson()) { OkResult.fromJson(it) }
 
     /** `approval/decide` — browser sessions get APPROVER_INVALID from core by design. */
     suspend fun approvalDecide(params: ApprovalDecideParams): OkResult =
-        call("approval/decide", params.toJson()) { OkResult.fromJson(it) }
+        call(VadeMethod.APPROVAL_DECIDE, params.toJson()) { OkResult.fromJson(it) }
 
     /** `model/list` — `not_modified=true` means keep the cache; models is null then. */
     suspend fun modelList(params: ModelListParams): ModelListResult =
-        call("model/list", params.toJson()) { ModelListResult.fromJson(it) }
+        call(VadeMethod.MODEL_LIST, params.toJson()) { ModelListResult.fromJson(it) }
 
     /** `session/model.get`. */
     suspend fun sessionModelGet(params: SessionModelGetParams): SessionModelGetResult =
-        call("session/model.get", params.toJson()) { SessionModelGetResult.fromJson(it) }
+        call(VadeMethod.SESSION_MODEL_GET, params.toJson()) { SessionModelGetResult.fromJson(it) }
 
     /** `session/model.set` — `modelId=null` clears the override. */
     suspend fun sessionModelSet(params: SessionModelSetParams): SessionModelSetResult =
-        call("session/model.set", params.toJson()) { SessionModelSetResult.fromJson(it) }
+        call(VadeMethod.SESSION_MODEL_SET, params.toJson()) { SessionModelSetResult.fromJson(it) }
 
     /** `session/usage.get`. */
     suspend fun sessionUsageGet(params: SessionUsageGetParams): SessionUsageGetResult =
-        call("session/usage.get", params.toJson()) { SessionUsageGetResult.fromJson(it) }
+        call(VadeMethod.SESSION_USAGE_GET, params.toJson()) { SessionUsageGetResult.fromJson(it) }
 
     /** `turn/input` — idempotent by core-issued input_id (RFC-0008 §7.1). */
     suspend fun turnInput(params: TurnInputParams): TurnInputResult =
-        call("turn/input", params.toJson()) { TurnInputResult.fromJson(it) }
+        call(VadeMethod.TURN_INPUT, params.toJson()) { TurnInputResult.fromJson(it) }
 
     /** `turn/input.cancel` — closes ONE dialog, the turn keeps running. */
     suspend fun turnInputCancel(params: TurnInputCancelParams): TurnInputCancelResult =
-        call("turn/input.cancel", params.toJson()) { TurnInputCancelResult.fromJson(it) }
+        call(VadeMethod.TURN_INPUT_CANCEL, params.toJson()) { TurnInputCancelResult.fromJson(it) }
 
     /** `turn/regenerate` — new turn for the same user message (RFC-0006 §6.2). */
     suspend fun turnRegenerate(params: TurnRegenerateParams): TurnRegenerateResult =
-        call("turn/regenerate", params.toJson()) { TurnRegenerateResult.fromJson(it) }
+        call(VadeMethod.TURN_REGENERATE, params.toJson()) { TurnRegenerateResult.fromJson(it) }
 
     /** `message/edit_resubmit` — appends a NEW user message; only the last one is editable. */
     suspend fun messageEditResubmit(params: EditResubmitParams): EditResubmitResult =
-        call("message/edit_resubmit", params.toJson()) { EditResubmitResult.fromJson(it) }
+        call(VadeMethod.MESSAGE_EDIT_RESUBMIT, params.toJson()) { EditResubmitResult.fromJson(it) }
 
     /** `task/list` — cursor is opaque; no `order` parameter exists on purpose. */
     suspend fun taskList(params: TaskListParams): TaskListResult =
-        call("task/list", params.toJson()) { TaskListResult.fromJson(it) }
+        call(VadeMethod.TASK_LIST, params.toJson()) { TaskListResult.fromJson(it) }
 
     /** `task/log_tail` — bounded long-poll when [TaskLogTailParams.follow]. */
     suspend fun taskLogTail(params: TaskLogTailParams): TaskLogTailResult =
-        call("task/log_tail", params.toJson()) { TaskLogTailResult.fromJson(it) }
+        call(VadeMethod.TASK_LOG_TAIL, params.toJson()) { TaskLogTailResult.fromJson(it) }
 
     /** `task/cancel` — idempotent; a terminal task returns its state again. */
     suspend fun taskCancel(params: TaskCancelParams): TaskCancelResult =
-        call("task/cancel", params.toJson()) { TaskCancelResult.fromJson(it) }
+        call(VadeMethod.TASK_CANCEL, params.toJson()) { TaskCancelResult.fromJson(it) }
 
     /** `subagent/message` — v1 answers UNSUPPORTED unless tasks.subagent_message=true. */
     suspend fun subagentMessage(params: SubagentMessageParams): SubagentMessageResult =
-        call("subagent/message", params.toJson()) { SubagentMessageResult.fromJson(it) }
+        call(VadeMethod.SUBAGENT_MESSAGE, params.toJson()) { SubagentMessageResult.fromJson(it) }
 
     /** `ui/page.get` — a module page body (inline tree or ref target), sha256-pinned. */
     suspend fun uiPageGet(params: PageGetParams): PageGetResult =
-        call("ui/page.get", params.toJson()) { PageGetResult.fromJson(it) }
+        call(VadeMethod.UI_PAGE_GET, params.toJson()) { PageGetResult.fromJson(it) }
 
     /** `ui/state.get` — cached module state; `unchanged=true` when the reply was not newer. */
     suspend fun uiStateGet(params: StateGetParams): StateGetResult =
-        call("ui/state.get", params.toJson()) { StateGetResult.fromJson(it) }
+        call(VadeMethod.UI_STATE_GET, params.toJson()) { StateGetResult.fromJson(it) }
 
     /** `ui/tool.call` — two-stage (validate → approval → redeem) per RFC-0009 §6.2. */
     suspend fun uiToolCall(params: ToolCallParams): ToolCallResult =
-        call("ui/tool.call", params.toJson()) { ToolCallResult.fromJson(it) }
+        call(VadeMethod.UI_TOOL_CALL, params.toJson()) { ToolCallResult.fromJson(it) }
 
     // ------------------------------------------------------------------ RFC-0012 subagents
 
     /** `subagent/list` — the runs table is the pull-truth; events are increments (RFC-0012 §6.1). */
     suspend fun subagentList(params: SubagentListParams): SubagentListResult =
-        call("subagent/list", params.toJson()) { SubagentListResult.fromJson(it) }
+        call(VadeMethod.SUBAGENT_LIST, params.toJson()) { SubagentListResult.fromJson(it) }
 
     /** `subagent/get` — malformed run_id → INVALID_ARGUMENT; unknown → NOT_FOUND (RFC-0012 §6.2). */
     suspend fun subagentGet(params: SubagentGetParams): SubagentRunView =
-        call("subagent/get", params.toJson()) { SubagentRunView.fromJson(it) }
+        call(VadeMethod.SUBAGENT_GET, params.toJson()) { SubagentRunView.fromJson(it) }
 
     // ------------------------------------------------------------------ RFC-0010 sessions
 
@@ -587,43 +631,54 @@ class VadeClient(
      * [SessionListParams.groupId] carries the three-state group filter.
      */
     suspend fun sessionList(params: SessionListParams): SessionListResult =
-        call("session/list", params.toJson()) { SessionListResult.fromJson(it) }
+        call(VadeMethod.SESSION_LIST, params.toJson()) { SessionListResult.fromJson(it) }
 
     /** `session/rename` — metadata only; emits session.updated (RFC-0010). */
     suspend fun sessionRename(params: SessionRenameParams): SessionRenameResult =
-        call("session/rename", params.toJson()) { SessionRenameResult.fromJson(it) }
+        call(VadeMethod.SESSION_RENAME, params.toJson()) { SessionRenameResult.fromJson(it) }
 
     /** `session/pin` — pinned sessions come first in the list order (RFC-0010 §7.4). */
     suspend fun sessionPin(params: SessionPinParams): SessionPinResult =
-        call("session/pin", params.toJson()) { SessionPinResult.fromJson(it) }
+        call(VadeMethod.SESSION_PIN, params.toJson()) { SessionPinResult.fromJson(it) }
 
     /** `session/archive` — orthogonal to the open/closed state (RFC-0010 §10 Q5). */
     suspend fun sessionArchive(params: SessionArchiveParams): SessionArchiveResult =
-        call("session/archive", params.toJson()) { SessionArchiveResult.fromJson(it) }
+        call(VadeMethod.SESSION_ARCHIVE, params.toJson()) { SessionArchiveResult.fromJson(it) }
 
     /** `session/delete` — HARD delete; the double-confirm dialog is the caller's duty (RFC-0010 §8.2). */
     suspend fun sessionDelete(params: SessionDeleteParams): SessionDeleteResult =
-        call("session/delete", params.toJson()) { SessionDeleteResult.fromJson(it) }
+        call(VadeMethod.SESSION_DELETE, params.toJson()) { SessionDeleteResult.fromJson(it) }
 
     /** `session/group.list` — re-pull after your own group mutations; v1 emits no group event. */
     suspend fun sessionGroupList(params: SessionGroupListParams): SessionGroupListResult =
-        call("session/group.list", params.toJson()) { SessionGroupListResult.fromJson(it) }
+        call(VadeMethod.SESSION_GROUP_LIST, params.toJson()) { SessionGroupListResult.fromJson(it) }
 
     /** `session/group.create` — groups are folders, one level, no tree (RFC-0010 §1 #2). */
     suspend fun sessionGroupCreate(params: SessionGroupCreateParams): SessionGroupWriteResult =
-        call("session/group.create", params.toJson()) { SessionGroupWriteResult.fromJson(it) }
+        call(VadeMethod.SESSION_GROUP_CREATE, params.toJson()) { SessionGroupWriteResult.fromJson(it) }
 
     /** `session/group.update` — partial; icon/color null = clear, omitted = keep. */
     suspend fun sessionGroupUpdate(params: SessionGroupUpdateParams): SessionGroupWriteResult =
-        call("session/group.update", params.toJson()) { SessionGroupWriteResult.fromJson(it) }
+        call(VadeMethod.SESSION_GROUP_UPDATE, params.toJson()) { SessionGroupWriteResult.fromJson(it) }
 
     /** `session/group.delete` — deleting a folder never deletes sessions (RFC-0010 §8.1). */
     suspend fun sessionGroupDelete(params: SessionGroupDeleteParams): SessionGroupDeleteResult =
-        call("session/group.delete", params.toJson()) { SessionGroupDeleteResult.fromJson(it) }
+        call(VadeMethod.SESSION_GROUP_DELETE, params.toJson()) { SessionGroupDeleteResult.fromJson(it) }
 
     /** `session/group.assign` — the single membership column; null unassigns (RFC-0010 §5). */
     suspend fun sessionGroupAssign(params: SessionGroupAssignParams): SessionGroupAssignResult =
-        call("session/group.assign", params.toJson()) { SessionGroupAssignResult.fromJson(it) }
+        call(VadeMethod.SESSION_GROUP_ASSIGN, params.toJson()) { SessionGroupAssignResult.fromJson(it) }
+
+    // ------------------------------------------------------------------ RFC-0014 search
+
+    /**
+     * `session/search` (RFC-0014 §4/§5) — session titles + live message bodies.
+     * Client-side validation runs first (blank query / limit 1..100 / offset >= 0 are
+     * refused HERE, before any frame); `snippet` and `snippet_offset` arrive verbatim
+     * from core and are never re-truncated or re-derived client-side.
+     */
+    suspend fun sessionSearch(params: SessionSearchParams): SessionSearchResult =
+        call(VadeMethod.SESSION_SEARCH, params.toJson()) { SessionSearchResult.fromJson(it) }
 
     companion object {
         /** The notification method core sends every UI event with. */
