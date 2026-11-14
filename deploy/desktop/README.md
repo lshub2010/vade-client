@@ -47,6 +47,20 @@ Android SDK** —— jlink 运行时已打进目录内。
 MSI 的产品版本必须是纯数字 `x.y.z`——构建脚本已自动取 `vadeVersion` 去掉
 `-alpha.N` 后缀（`0.1.0-alpha.1` → `0.1.0`），无需手工维护第二个版本号。
 
+**alpha 序列的已知限制（2026-11-14 实测发现，尚未修）**：既然后缀被去掉，
+`0.1.0-alpha.1` / `-alpha.2` / `-alpha.3` 打出来的 MSI **ProductVersion 全是
+`0.1.0`**，Windows Installer 不会把它们互相识别为升级——测试者装第二个 alpha
+时不会被当成新版本，需要先在「应用和功能」里卸载上一个，否则会报“已安装”或
+留下两份。连续分发 alpha 时二选一：
+
+1. 每轮公布时把补丁位往上走（`0.1.1-alpha.1`、`0.1.2-alpha.1`…），ProductVersion
+   自然不同——**推荐**，代价是版本号跳得比实际改动快；
+2. 继续用 app-image（免安装目录）：它没有 ProductVersion 概念，覆盖目录即更新，
+   适合内测期反复替换。
+
+真要做“同一 x.y.z 下多个 alpha 可升级”，需要给 jpackage 加 `--win-upgrade-uuid`
+并让 ProductVersion 单调递增，那等于把 build 号塞进补丁位——等有正式发布通道时再设计。
+
 ## 启动参数
 
 `composeApp/src/desktopMain/kotlin/vade/ui/Main.kt` 支持一组调试旗标
