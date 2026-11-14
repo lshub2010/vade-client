@@ -129,6 +129,7 @@ internal enum class VadeMethod(val wire: String) {
     UI_PAGE_GET("ui/page.get"),
     UI_STATE_GET("ui/state.get"),
     UI_TOOL_CALL("ui/tool.call"),
+    UI_MODULES("ui/modules"),
     SUBAGENT_LIST("subagent/list"),
     SUBAGENT_GET("subagent/get"),
     SESSION_LIST("session/list"),
@@ -607,7 +608,16 @@ class VadeClient(
         call(VadeMethod.UI_PAGE_GET, params.toJson()) { PageGetResult.fromJson(it) }
 
     /** `ui/state.get` — cached module state; `unchanged=true` when the reply was not newer. */
-    suspend fun uiStateGet(params: StateGetParams): StateGetResult =
+        /**
+     * A3 · `ui/modules`（C-05 1.6.0 / RFC-0015）。一次拉回**全量**模块清单与 `revision`。
+     *
+     * 老 core（没有这个方法）答的是 JSON-RPC **-32601**，契约明写「那不是 C-04 错误码」——
+     * 调用方要降级成「空入口块」，不要把 -32601 当故障弹给用户。
+     */
+    suspend fun uiModules(): UiModulesResult =
+        call(VadeMethod.UI_MODULES, buildJsonObject { }) { UiModulesResult.fromJson(it) }
+
+suspend fun uiStateGet(params: StateGetParams): StateGetResult =
         call(VadeMethod.UI_STATE_GET, params.toJson()) { StateGetResult.fromJson(it) }
 
     /** `ui/tool.call` — two-stage (validate → approval → redeem) per RFC-0009 §6.2. */
