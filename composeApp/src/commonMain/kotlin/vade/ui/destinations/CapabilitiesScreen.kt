@@ -16,6 +16,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import vade.ui.UiText
+import vade.ui.data.AdapterProvider
 import vade.ui.module.ModulePageEntry
 import vade.ui.module.ModulePageEntryList
 import vade.ui.module.ModulePageEntryRules
@@ -41,17 +43,32 @@ import vade.ui.skin.LocalSkin
 fun CapabilitiesScreen(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
-    pageSource: ModulePageSource = ModulePageSources.demo(),
+    /**
+     * 显式页面源（形参优先于 [adapters]）。null = 让下一段决定：
+     * [adapters] 的 `modulePages()`，再不行才是内存示例树 [ModulePageSources.demo]。
+     * 默认值从 `demo()` 改成 null 是这次接线的形状（三段回退），调用方传值的写法不变。
+     */
+    pageSource: ModulePageSource? = null,
+    /**
+     * 组合根交下来的适配器包（`data/AdapterProvider`）。默认 null ⇒ 仍用示例树，
+     * 行为与接线前逐字节相同（`AppShell` 这一轮还没接线）。
+     */
+    adapters: AdapterProvider? = null,
 ) {
     val skin = LocalSkin.current
-    val entryIndex = remember(pageSource) { ModulePageEntryRules.build(pageSource.declarations()) }
+    // ⑤ 形参 > adapters.modulePages() > 示例树；适配器查找异常时退回示例树并显示原因。
+    val seam = remember(pageSource, adapters) {
+        resolveCapabilitiesPageSource(pageSource, adapters)
+    }
+    val source = seam.value
+    val entryIndex = remember(source) { ModulePageEntryRules.build(source.declarations()) }
     var openEntry by remember { mutableStateOf<ModulePageEntry?>(null) }
 
     val opened = openEntry
     if (opened != null) {
         ModulePageHost(
             entry = opened,
-            source = pageSource,
+            source = source,
             onBack = { openEntry = null },
             modifier = modifier,
             contentPadding = contentPadding,
@@ -68,6 +85,11 @@ fun CapabilitiesScreen(
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        // 适配器查找失败时先说明白：示例树不是 core 的页面（不静默吞）。
+        seam.degraded?.let { note ->
+            UiText(note, size = 11, color = skin.colors.onSurfaceVariant)
+        }
+
         SectionLabel("模块")
         EmptyStateCard(
             title = "core 未连接",
@@ -99,3 +121,20 @@ fun CapabilitiesScreen(
         Spacer(Modifier.padding(bottom = 8.dp))
     }
 }
+
+/**
+ * ⑤ 能力页的页面源：**形参 > `adapters.modulePages()` > 内存示例树**。
+ *
+ * 三段里最容易写错的是「拿到适配器还用示例树」——那时用户看到的 `下载管理` / `图表`
+ * 是 fixture 编的模块，而 core 可能一个页面都没声明。独立成函数，屏幕与测试跑同一段代码；
+ * 把 `modulePages()` 改回 `ModulePageSources.demo()` 会让
+ * `capabilitiesTakesTheProviderPagesAndDropsTheDemo` 立刻红。
+ */
+internal fun resolveCapabilitiesPageSource(
+    explicit: ModulePageSource?,
+    adapters: AdapterProvider?,
+): ScreenSeam<ModulePageSource> = pickScreenSeam(
+    explicit = explicit,
+    adapters = adapters,
+    lookup = { modulePages() },
+) { ModulePageSources.demo() }

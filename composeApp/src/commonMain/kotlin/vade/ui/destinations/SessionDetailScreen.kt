@@ -28,8 +28,11 @@ import vade.ui.UiText
 import vade.ui.chat.ChatPreset
 import vade.ui.chat.ChatState
 import vade.ui.chat.ChatThread
+import vade.ui.chat.InMemoryAttachmentUploader
+import vade.ui.chat.InMemoryTurnGateway
 import vade.ui.chat.StatusPill
 import vade.ui.chat.Tone
+import vade.ui.data.AdapterProvider
 import vade.ui.data.SessionSummary
 import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
@@ -74,6 +77,15 @@ fun SessionDetailScreen(
      */
     modelActions: ModelActions? = null,
     /**
+     * 组合根交下来的适配器包（`data/AdapterProvider`，见 `VadeAdapters.kt`）。
+     *
+     * **默认 null 是有意的**：`AppShell` 这一轮还没接线（它正被另一棒改），所以四处调用点
+     * 都取默认值 ⇒ 两件东西仍落在内存假实现上，行为与接线前逐字节相同。
+     * 三段回退：[modelActions]（形参）> [adapters] > 内存假实现，见 [pickScreenSeam]；
+     * 适配器查找抛异常时退回假实现并在 header 里显示一行可读原因（不静默吞）。
+     */
+    adapters: AdapterProvider? = null,
+    /**
      * The shell's floating glass top-bar zone (see `shell/AppShell.kt`), applied as
      * **content** padding: the thread runs edge-to-edge from the very top of the window so
      * messages really scroll behind the glass bar (visual language §5 — a blur with nothing
@@ -91,13 +103,16 @@ fun SessionDetailScreen(
         return
     }
 
-    val chat = remember(session.id, preset) { ChatState(session.id, preset = preset) }
-    val actions = modelActions ?: remember(session.id) {
-        // Seed the fixture with the session's fake model so the picker and the header agree.
-        InMemoryModelActions(
-            initialSessionOverrides = session.model?.let { mapOf(session.id to it) }.orEmpty(),
-        )
+    // ④ turns / uploader：两条通道同源（同一个 AdapterProvider），一起换或一起退回内存实现。
+    // 适配器变化时重建（连接建立/断开后旧 client 已 close，通道不能跨连接复用）。
+    val chatSeam = remember(session.id, preset, adapters) {
+        resolveChatState(session.id, preset, adapters)
     }
+    val chat = chatSeam.value
+    val modelSeam = remember(session.id, modelActions, adapters) {
+        resolveSessionModelActions(modelActions, adapters, session.id, session.model)
+    }
+    val actions = modelSeam.value
     val modelState = remember(actions, session.id) { ModelState.forSession(actions, session.id) }
     var modelPickerOpen by remember(session.id) { mutableStateOf(false) }
 
@@ -113,7 +128,14 @@ fun SessionDetailScreen(
             animate = animate,
         )
         Column(Modifier.padding(top = contentPadding.calculateTopPadding())) {
-            DetailHeader(session, chat, showTitle, modelState, modelPickerOpen) {
+            DetailHeader(
+                session = session,
+                chat = chat,
+                showTitle = showTitle,
+                modelState = modelState,
+                pickerOpen = modelPickerOpen,
+                degraded = modelSeam.degraded ?: chatSeam.degraded,
+            ) {
                 modelPickerOpen = !modelPickerOpen
             }
             if (modelPickerOpen) {
@@ -121,7 +143,16 @@ fun SessionDetailScreen(
                     state = modelState,
                     title = "会话模型",
                     footerNote = "仅本会话生效，下一轮对话起使用（D101：会话级 > 全局默认 > priority）" +
-                        "· 假数据：未接 core，接真数据只需实现 vade.ui.model.ModelActions",
+                        (
+                            // 假数据这句话只在**真的**用内存假实现时才成立；接上适配器后
+                            // 模型面来自 core，继续说「未接 core」就是撒谎（§8.5）。
+                            if (adapters == null || modelSeam.degraded != null) {
+                                "· 假数据：未接 core，接真数据只需实现 vade.ui.model.ModelActions"
+                            } else {
+                                "· 模型面来自 core（AdapterProvider），写入走 session/model.set"
+                            }
+                            ) +
+                        modelSeam.degraded?.let { " · $it" }.orEmpty(),
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
             }
@@ -145,6 +176,8 @@ private fun DetailHeader(
     showTitle: Boolean,
     modelState: ModelState,
     pickerOpen: Boolean,
+    /** 非 null = 适配器查找失败、本页已退回内存假实现；直接拼进模型行（不静默吞）。 */
+    degraded: String? = null,
     onToggleModel: () -> Unit,
 ) {
     val skin = LocalSkin.current
@@ -156,6 +189,7 @@ private fun DetailHeader(
         append("模型 ${modelState.currentLabel()}")
         if (showTitle) append(" · 假数据（未接 core）")
         append(" · ${chat.messages.size} 条消息")
+        if (degraded != null) append(" · $degraded")
     }
     Column(Modifier.fillMaxWidth().background(skin.colors.surface)) {
         Row(
@@ -214,4 +248,114 @@ private fun DetailHeader(
         // 1px 发丝线（视觉规范 §1.2）。
         Box(Modifier.fillMaxWidth().height(1.dp).background(skin.colors.hairline))
     }
+}
+
+// --- 适配器三段回退（g-wire-screens） -------------------------------------------------
+//
+// 结构结已由 g-adapter-bundle 解开：`data/AdapterProvider` 在组合根（`RealSessionSource`）
+// 交出六件窄接口，`VadeClient` 一步都不外泄。这里只解决「屏幕怎么用它」：
+//
+//   **形参（显式注入） → adapters → 内存假实现**
+//
+// 三条硬约束决定了下边这两段代码的形状：
+//  1. **形参默认 null**：`AppShell` 这一轮不接线（它正被另一棒改），所以四处调用点都取
+//     默认值 ⇒ 走到内存假实现 ⇒ 行为与接线前逐字节相同；
+//  2. **适配器查找失败不许崩、也不许静默吞**：查找本身是纯函数、正常不会抛，但组合期
+//     抛异常会掀掉整棵树。于是 `catch (Exception)` 退回假实现，并把原因作为**可读文字**
+//     交回屏幕（[ScreenSeam.degraded]）——各屏幕把这段文字渲染在既有的「假数据」旁边，
+//     用户看到的是「已退回内存假数据」，不是把 fixture 当真的用；
+//  3. **不 catch `Throwable`**：`Error`（OOM 等）必须继续上抛，只有可恢复的 `Exception`
+//     才降级。
+
+/** 三段回退的落点：值 + 退化原因（null = 没退化）。 */
+internal data class ScreenSeam<out T>(
+    val value: T,
+    /** 非 null = 适配器查找抛了异常，[value] 是内存假实现；这段文字由屏幕直接渲染。 */
+    val degraded: String? = null,
+)
+
+/** 退化文案的前半句（屏幕直接展示；原因附在括号里）。 */
+internal const val SEAM_FALLBACK_NOTE: String = "适配器不可用，已退回内存假数据"
+
+/**
+ * 三段回退的公共实现：形参 > [adapters] > [fixture]。
+ *
+ * [lookup] 是**适配器包上的**查找（`model(sessionId)` / `modelDefault()` / `modulePages()`…），
+ * 不是形参——形参在 [explicit] 里，且永远优先。
+ */
+internal fun <T : Any> pickScreenSeam(
+    explicit: T?,
+    adapters: AdapterProvider?,
+    lookup: AdapterProvider.() -> T,
+    fixture: () -> T,
+): ScreenSeam<T> {
+    if (explicit != null) return ScreenSeam(explicit)
+    if (adapters == null) return ScreenSeam(fixture())
+    return try {
+        ScreenSeam(lookup(adapters))
+    } catch (error: Exception) {
+        ScreenSeam(fixture(), "$SEAM_FALLBACK_NOTE（${error.message ?: "查找异常"}）")
+    }
+}
+
+/**
+ * ④ 聊天两通道：`turns`（`message/edit_resubmit` + `turn/regenerate`）与 `uploader`
+ * （`/ui/blob*`）**同源**——要么都来自同一个 [AdapterProvider]，要么都退回内存实现。
+ *
+ * 不做「一半真一半假」：真的 turns 配内存 uploader 会让附件消失得毫无理由，反之亦然。
+ * 任一查找抛异常 ⇒ 两条一起退回内存实现并给出退化原因。
+ */
+internal fun resolveChatState(
+    sessionId: String,
+    preset: ChatPreset,
+    adapters: AdapterProvider?,
+): ScreenSeam<ChatState> {
+    if (adapters == null) return ScreenSeam(inMemoryChatState(sessionId, preset))
+    return try {
+        ScreenSeam(
+            ChatState(
+                sessionId,
+                preset = preset,
+                uploader = adapters.uploader(),
+                turns = adapters.turns(sessionId),
+            ),
+        )
+    } catch (error: Exception) {
+        ScreenSeam(
+            inMemoryChatState(sessionId, preset),
+            "$SEAM_FALLBACK_NOTE（${error.message ?: "查找异常"}）",
+        )
+    }
+}
+
+/** 接线前的形态：两个通道都是内存假实现（[ChatState] 的默认值也是它们，这里写明意图）。 */
+private fun inMemoryChatState(sessionId: String, preset: ChatPreset): ChatState = ChatState(
+    sessionId,
+    preset = preset,
+    uploader = InMemoryAttachmentUploader(),
+    turns = InMemoryTurnGateway(),
+)
+
+/**
+ * ① 会话详情的模型 seam：**形参 > `adapters.model(id)` > 内存假实现**。
+ *
+ * [seedModel] 是会话行上的假模型名（`SessionSummary.model`）：只在落回内存假实现时用来播种，
+ * 让 picker 与 header 读同一条覆盖值。走真适配器时那条假播种**一个字段都不碰**。
+ *
+ * 独立成函数（而不是内联在 composable 里）有两个原因：屏幕与测试跑的是**同一段代码**
+ * （变异掉 `model(id)` 这一行，测试必红），并且它是纯粹值映射、可以脱离组合直接断言。
+ */
+internal fun resolveSessionModelActions(
+    explicit: ModelActions?,
+    adapters: AdapterProvider?,
+    sessionId: String,
+    seedModel: String? = null,
+): ScreenSeam<ModelActions> = pickScreenSeam(
+    explicit = explicit,
+    adapters = adapters,
+    lookup = { model(sessionId) },
+) {
+    InMemoryModelActions(
+        initialSessionOverrides = seedModel?.let { mapOf(sessionId to it) }.orEmpty(),
+    )
 }
