@@ -186,7 +186,16 @@ internal class AutoConnectingSessionSource(
     private val host: String,
     private val port: Int,
     private val connectTimeoutMs: Long = AUTO_CONNECT_TIMEOUT_MS,
-) : SessionSource {
+) : SessionSource, ModuleCatalogProvider {
+
+    /**
+     * 模块清单的能力透传：组合根只有这个 shim 与 [RealSessionSource]，两者都要能回答
+     * `as? ModuleCatalogProvider`，否则 `AppShell` 的能力页接线在生产形态下会永远拿到
+     * `null` —— 那是「接线看着在、实际不生效」的那类假接线。今天 [real] 也返回 null
+     * （契约缺 `ui/modules`，见 `RealSessionSource.moduleCatalog` 的 KDoc），但透传本身
+     * 是现在就要对的形状。
+     */
+    override val moduleCatalog: ModuleCatalog? get() = real.moduleCatalog
 
     override suspend fun sessions(includeArchived: Boolean): List<SessionSummary> {
         awaitConnected()

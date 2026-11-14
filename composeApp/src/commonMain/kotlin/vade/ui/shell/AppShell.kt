@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import vade.ui.UiText
 import vade.ui.data.AdapterHost
 import vade.ui.data.AdapterProvider
+import vade.ui.data.ModuleCatalogProvider
 import vade.ui.destinations.ActivityScreen
 import vade.ui.destinations.CapabilitiesScreen
 import vade.ui.destinations.Destination
@@ -470,9 +471,16 @@ private fun DestinationHost(
             sessions = state.groups().flatMap { it.sessions },
             source = state.source,
         )
+        // g-modules-wire：能力页除适配器包外，还要两样东西 ——
+        //  ① 模块清单通道（`ModuleCatalogProvider`，组合根的可选能力；本棒交 null，
+        //     因为 contracts/vade/schema/rpc.json 里没有 ui/modules，见 data/ModuleCatalog.kt）；
+        //  ② `module.status` 的失效边（`observeEvents()`，冻结契约里唯一的模块 topic）。
+        // 两者都不带 vade.ui.protocol 类型上来：清单是 ModuleCatalog 窄口，事件是 data 层 VadeEvent。
         Destination.Capabilities -> CapabilitiesScreen(
             contentPadding = contentInsets,
             adapters = adapters,
+            moduleCatalog = (state.source as? ModuleCatalogProvider)?.moduleCatalog,
+            events = state.source.observeEvents(),
         )
         Destination.Me -> ProfileScreen(
             skinId = state.skinId,

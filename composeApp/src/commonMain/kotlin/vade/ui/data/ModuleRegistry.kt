@@ -242,6 +242,22 @@ class ModuleRegistry {
     /** 全部已登记实例（含只有 `module.status` 的），首次出现顺序。 */
     fun nodes(): List<Node> = snapshot.nodes
 
+    /**
+     * **整表替换**（`ui/modules` 一次拉取的落点，见 `data/ModuleCatalog.kt`）：
+     * [nodes] 成为新快照，顺序原样保留，旧的声明/在线态整体丢弃。
+     *
+     * 为什么是「整表替换」而不是逐个 [declare]：清单拉取是一次**全量快照**，core 已经
+     * 把「现在有哪些模块实例」算完了；按条合并会让已下线的模块残留在表里，而注册表
+     * 没有任何办法知道「这个实例这次不在清单里」是下线还是漏发。整表替换把这个问题
+     * 消掉：清单说了算。
+     *
+     * 与其它写入口一致的单写者 copy-on-write：引用最后一次性换新，读侧永远看到自洽列表。
+     * 传入的列表被复制一份（防御调用方后续修改）。
+     */
+    fun replaceAll(nodes: List<Node>) {
+        snapshot = Snapshot(nodes.toList())
+    }
+
     /** 一个实例；未注册 → null（不抛）。 */
     fun node(moduleId: String, instanceId: String): Node? =
         snapshot.nodes.firstOrNull { it.moduleId == moduleId && it.instanceId == instanceId }

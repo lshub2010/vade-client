@@ -74,7 +74,23 @@ import vade.ui.protocol.ContentPart as ProtocolContentPart
 class RealSessionSource(
     private val config: VadeClientConfig,
     transportFactory: VadeTransportFactory? = null,
-) : SessionSource, AdapterHost {
+) : SessionSource, AdapterHost, ModuleCatalogProvider {
+
+    /**
+     * 模块清单通道 —— **本棒明确返回 `null`，这是阻塞，不是遗漏**。
+     *
+     * `ui/modules` 在 core 侧已实现（`{revision, modules:[...]}`），但
+     * `contracts/vade/schema/rpc.json`（submodule `320384a`）里 `grep -c 'ui/modules'` = **0**：
+     * 冻结契约里模块相关的只有 `module.status` 事件。`protocol/VadeClient` 的方法是按
+     * 契约逐个手写的（`VadeMethod` 表），没有 `ui/modules` 就没有 typed 调用；本棒的
+     * 约束又不许改 submodule 指针、不许伪造回包。于是这里如实交 `null`：
+     *
+     *  - 能力页因此保持既有占位（**行为与接线前逐字节相同**），不会出现「加载中」假转圈，
+     *    也不会出现「core 说没有模块」这种我们并不知道的结论；
+     *  - 契约落地后这里只需 `ModulesLoader(WireModuleCatalogSource(...), scope)` 一行，
+     *    屏幕与 `AppShell` 都不用改（它们只认 `ModuleCatalog`）。
+     */
+    override val moduleCatalog: ModuleCatalog? get() = null
 
     /** Convenience production constructor: device-session attach at [host]:[port]. */
     constructor(
@@ -329,6 +345,15 @@ class RealSessionSource(
             turnId = event.payload.turnId,
             code = event.payload.code,
             message = event.payload.message,
+        )
+        // g-modules-wire: events.json 唯一的模块 topic。它不改清单，只把「清单可能变了」
+        // 这个信号交给 ModuleCatalog.onEvent（→ 一次 ui/modules 重拉，revision 去掉抖动）。
+        is vade.ui.protocol.ModuleStatus -> ModuleStatusChangedEvent(
+            seq = event.seq,
+            moduleId = event.payload.moduleId,
+            instanceId = event.payload.instanceId,
+            online = event.payload.online,
+            version = event.payload.version,
         )
         else -> null
     }
