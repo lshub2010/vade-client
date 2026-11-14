@@ -3,76 +3,77 @@ package vade.ui
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertTrue
+import vade.ui.icon.GlyphLiteralScan
 
 /**
- * w2-icons anti-regression guard (docs/visual-language.md §3: icons are vectors — never
- * glyph characters, never CJK-as-icon, never emoji).
+ * w2-icons 防回退守卫（docs/visual-language.md §3：图标必须是矢量 —— 不许字符字形、
+ * 不许汉字当图标、不许 emoji）。
  *
- * Scope of this stick: `shell/` and `skin/` are **excluded** from the scans — two parallel
- * w2 sticks are converting their call sites right now, and scanning them here would fail on
- * code this stick is not allowed to touch. The parent stick widens these scans back to the
- * whole `commonMain` tree when the merged state is in (the regexes below are already
- * correct for that: delete the exclusions, drop the allowlist entry).
+ * 这条守卫**两次失效，两次都还是绿的**，所以现在的写法刻意做了两件事：
+ *  - **扫描域**：整个 `commonMain/kotlin`（当前只有 `vade/ui` 一棵子树），不排除任何子目录。
+ *    第一次失效就是把 `icon|shell|skin` 排除掉了 —— 被排除的目录等于没有保护。
+ *  - **匹配形态**：不再手写「一条正则匹配 `Text("X")`」。字面量由
+ *    [GlyphLiteralScan] 词法扫描摘出（剔注释、按行号定位），再由运行期拼出来的
+ *    `^[<词表>]{1,4}$` 判类，于是 `skin.Button("×")`、
+ *    `glyph = if (..) "▸" else "◂"`、`text = item.glyph ?: "•"`、跨行 `Text(\n "←"\n)`
+ *    一视同仁。匹配器自身有独立自测（`GlyphLiteralScanTest`），把它改弱必红。
+ *
+ * 白名单（[allowed]）只在「本棒无权改、且另一棒正在改该文件」时使用，**必须写理由**；
+ * 条目若对不上任何 offender 会被报成 stale，强制删除（白名单不许永久静默）。
  */
 class IconGuardTest {
 
-    /** Module dir: Gradle runs desktopTest with the composeApp module as working dir. */
-    private fun uiDir() = File("src/commonMain/kotlin/vade/ui")
+    /** 扫描域根：全部 commonMain 源码。 */
+    private fun commonMainDir() = File("src/commonMain/kotlin")
 
-    /** Directories owned by parallel w2 sticks — excluded until the parent's merged scan. */
-    private val excludedDirs = setOf("icon", "shell", "skin")
+    /** Module dir: Gradle runs desktopTest with the composeApp module as working dir. */
+    private fun uiDir() = File(commonMainDir(), "vade/ui")
 
     /**
-     * One deliberate leftover outside the excluded dirs: the search overlay still draws its
-     * trigger with the `⌕` character (search/ was not part of any w2 stick). It is named
-     * here so it cannot silently persist — when the parent pass converts it, delete the
-     * entry and the guard immediately covers `search/` too.
+     * 行内白名单。当前**为空**。
+     *
+     * 本轮实扫出 4 处，全部在 `shell` 目录（`AppShell.kt` 的 `▸` / `◂` / `×`，
+     * `FloatingBottomBar.kt` 的 `•`），归 g-glass 尾款与 g-float；按母棒规则
+     * 「>3 处不放白名单、留红待处置」处理，清单见 shots/g-icon-guard/RESULT.md。
      */
-    private val allowedLiteralGlyphs = mapOf(
-        "SearchOverlay.kt" to setOf("⌕"),
-    )
-
-    /** The banned single-glyph vocabulary (the shell's old char-icon alphabet, plus × ◂ ▸ ⧗). */
-    private val glyphChars = """[↑↓←→▲▼■□●○◆＋…✕✓▾▸‹⌕✎•×◂▸⧗]"""
-
-    private fun scannedFiles(): List<File> =
-        uiDir().walkTopDown()
-            .filter { it.isFile && it.extension == "kt" }
-            .filter { file ->
-                val relative = file.relativeTo(uiDir()).invariantSeparatorsPath
-                excludedDirs.none { relative.startsWith("$it/") }
-            }
-            .toList()
+    private val allowed: List<GlyphLiteralScan.Allow> = emptyList()
 
     @Test
     fun noCharacterIconTextLiterals() {
-        // `\b` keeps `UiText(` from matching the bare-`Text(` pattern; the second regex
-        // scans `UiText(` itself, which is exactly how a glyph icon regresses in pages.
-        // The glyph char itself is captured (group 1) so the allowlist can compare it.
-        val bareText = Regex("""\bText\(\s*"($glyphChars)"""")
-        val uiText = Regex("""UiText\(\s*"($glyphChars)"""")
-        val offenders = mutableListOf<String>()
-        for (file in scannedFiles()) {
-            val text = file.readText()
-            bareText.findAll(text).forEach { m ->
-                if (!isAllowed(file, m.groupValues[1])) offenders += "${file.name}: Text(\"${m.groupValues[1]}\")"
-            }
-            uiText.findAll(text).forEach { m ->
-                if (!isAllowed(file, m.groupValues[1])) offenders += "${file.name}: UiText(\"${m.groupValues[1]}\")"
-            }
-        }
+        val root = commonMainDir()
+        assertTrue(root.isDirectory, "commonMain 不在预期位置：${root.absolutePath}")
+        val result = GlyphLiteralScan.scan(root, allowed)
         assertTrue(
-            offenders.isEmpty(),
-            "字符当图标回退：$offenders（图标必须用 vade.ui.icon.VadeIcon + VadeIcons）",
+            result.staleAllows.isEmpty(),
+            "白名单已失效（字面量改掉或行号漂移），必须删掉这些条目：${result.staleAllows}",
+        )
+        assertTrue(
+            result.offenders.isEmpty(),
+            buildString {
+                appendLine("字符当图标回退（图标必须用 vade.ui.icon.VadeIcons + VadeIcon，docs/visual-language.md §3）：")
+                result.offenders.forEach { appendLine("  " + it.render()) }
+                appendLine("共 ${result.offenders.size} 处。")
+                appendLine("若确需放行（仅限本棒无权改的文件），在 IconGuardTest.allowed 追加：")
+                result.offenders.forEach {
+                    appendLine("    GlyphLiteralScan.Allow(\"${it.path}\", ${it.line}, \"${it.glyph}\", \"谁在改 / 何时删\"),")
+                }
+            },
         )
     }
 
     @Test
     fun businessCodeDoesNotImportTablerDirectly() {
         // The Tabler namespace may only appear inside vade/ui/icon (VadeIcons is the seam).
-        val offenders = scannedFiles()
+        // 扫描域同上面一样是整个 commonMain；这里排除 icon/ 是有意的落点，不是漏扫。
+        val root = commonMainDir()
+        val iconDir = File(uiDir(), "icon")
+        val offenders = root.walkTopDown()
+            .filter { it.isFile && it.extension == "kt" }
+            .filterNot { it.startsWith(iconDir) }
             .filter { it.readText().contains("com.composables.icons.tabler") }
-            .map { it.name }
+            .map { it.relativeTo(root).invariantSeparatorsPath }
+            .sorted()
+            .toList()
         assertTrue(
             offenders.isEmpty(),
             "业务代码不得直接 import Tabler：$offenders（必须经 vade.ui.icon.VadeIcons）",
@@ -124,7 +125,4 @@ class IconGuardTest {
             "VadeIcons 公开矢量不足 20（当前 $count）——图标词表被删减了",
         )
     }
-
-    private fun isAllowed(file: File, glyph: String): Boolean =
-        allowedLiteralGlyphs[file.name]?.contains(glyph) == true
 }
