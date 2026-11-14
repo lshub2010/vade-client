@@ -198,8 +198,13 @@ class RealSessionSource(
      * `next_cursor` (≤ [SESSION_LIST_MAX_PAGES] pages of [SESSION_LIST_PAGE_LIMIT]).
      * Params carry the contract defaults by omission: no `group_id` (all groups), no
      * `archived` (false). Throws [VadeException] when disconnected or refused.
+     *
+     * [includeArchived] 只作用于**本地投影**（[sessionRowToSummary]），请求体一字不改：
+     * 契约的 `params.archived = true` 是「只要归档行」的筛选反转，会让同一个 `sessions()`
+     * 悄悄换掉数据集；「让归档行别被丢掉」是另一件事。所以这里传线上参数的地方仍然是
+     * 那一行注释（`archived` 省略 = 契约默认 false），差异只在投影把不把归档行当谓词。
      */
-    override suspend fun sessions(): List<SessionSummary> {
+    override suspend fun sessions(includeArchived: Boolean): List<SessionSummary> {
         val rows = mutableListOf<JsonObject>()
         var cursor = 0L
         var pages = 0
@@ -222,7 +227,7 @@ class RealSessionSource(
             }
         }
         val now = epochNowMs()
-        return rows.mapNotNull { sessionRowToSummary(it, now) }
+        return rows.mapNotNull { sessionRowToSummary(it, now, includeArchived = includeArchived) }
     }
 
     /**

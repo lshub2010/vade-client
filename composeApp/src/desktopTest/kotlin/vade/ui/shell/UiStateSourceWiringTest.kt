@@ -119,7 +119,9 @@ class UiStateSourceWiringTest {
         // The recorder lists are plain mutable lists on purpose: the loader runs on the
         // SINGLE test thread (see the class doc), so there is no concurrent writer and
         // no data race to paper over.
-        override suspend fun sessions(): List<SessionSummary> {
+        // g-archive-ui: 接口加了默认形参 `includeArchived`；override 必须带上（Kotlin 的默认值
+        // 只在接口声明处写一次），这里照收不误——脚本源自己决定回什么，不看这个开关。
+        override suspend fun sessions(includeArchived: Boolean): List<SessionSummary> {
             sessionsCalls += sessionsCalls.size + 1
             val answer = sessionsScript.removeFirstOrNull()
                 ?: error("no scripted sessions() answer for call #${sessionsCalls.size}")

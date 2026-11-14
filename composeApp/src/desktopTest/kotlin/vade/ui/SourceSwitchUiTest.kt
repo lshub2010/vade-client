@@ -26,7 +26,7 @@ class SourceSwitchUiTest {
 
     /** A non-fake [SessionSource]: exactly one row with a title no fixture carries. */
     private class OneRowSource : SessionSource {
-        override suspend fun sessions(): List<SessionSummary> = listOf(
+        override suspend fun sessions(includeArchived: Boolean): List<SessionSummary> = listOf(
             SessionSummary(
                 id = "ui-assert-real",
                 title = UI_ASSERT_TITLE,

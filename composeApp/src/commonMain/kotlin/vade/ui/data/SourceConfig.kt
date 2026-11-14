@@ -188,9 +188,9 @@ internal class AutoConnectingSessionSource(
     private val connectTimeoutMs: Long = AUTO_CONNECT_TIMEOUT_MS,
 ) : SessionSource {
 
-    override suspend fun sessions(): List<SessionSummary> {
+    override suspend fun sessions(includeArchived: Boolean): List<SessionSummary> {
         awaitConnected()
-        return real.sessions()
+        return real.sessions(includeArchived)
     }
 
     override suspend fun messages(sessionId: String): List<ChatMessage> {

@@ -1,6 +1,7 @@
 package vade.ui.meta
 
 import vade.ui.data.MetaActionsReal
+import vade.ui.data.SessionSummary
 import vade.ui.protocol.GroupRow
 import vade.ui.protocol.Optional
 import vade.ui.protocol.SessionGroupListParams
@@ -52,6 +53,45 @@ fun SessionMetaState.Companion.forReal(
     actions = MetaActionsReal(client),
     focusSessionId = sessionId,
     groupEdit = MetaGroupEditReal(client),
+)
+
+/**
+ * `data.SessionSummary` → [MetaSession]（g-archive-ui）：本文件 KDoc 承诺的那层投影。
+ *
+ * 为什么需要它：`SessionMetaState` 只认 [MetaSession]，而 `session/list` 的读路径由数据层
+ * 投影成 `SessionSummary`（`RealSessionSource` 的 `sessions()`）。没有这一步，真数据永远
+ * 进不了元数据状态机 —— 行上的 `archived` / `groupId` 也就到不了编辑菜单与分组筛选。
+ *
+ * ## 字段映射（逐字对齐 [MetaSession] 的声明，7/7 全覆盖，不增不减）
+ *
+ * | MetaSession 字段 | 类型 | 默认 | ← SessionSummary | 说明 |
+ * |---|---|---|---|---|
+ * | `id` | `String` | — | `id` | 线上 `session_id`，主键 |
+ * | `title` | `String` | — | `title` | 线上 `title`（缺省已被数据层兜成「（无标题）」） |
+ * | `preview` | `String` | `""` | `preview` | UI 自有；`session/list` 行不带内容，通常为空 |
+ * | `updatedLabel` | `String` | `""` | `updatedLabel` | 派生标签（`relativeLabel`），原样搬 |
+ * | `pinned` | `Boolean` | `false` | `pinned` | 线上 `pinned_at != null` |
+ * | `archived` | `Boolean` | `false` | `archived` | 线上 `archived_at != null` |
+ * | `groupId` | `String?` | `null` | `groupId` | 线上 `group_id` 逐字（null = 未分组） |
+ *
+ * **SessionSummary 有、MetaSession 没有的 5 个字段**（`bucket` / `updatedAt` / `unread` /
+ * `model` / `isDraft`）**在这里被有意丢弃**，不是漏了：MetaSession 的定位是「列表行 +
+ * 编辑菜单所需的最小集合」（见其声明处 KDoc），这 5 个都是列表展示态（分桶、排序键、未读点、
+ * D101 徽标、草稿标记），元数据面板不消费。**不给 MetaSession 加槽位** —— 契约里没有对应
+ * 写方法（`session/list` 只读；`model` 走 `session/model.set` 的另一套模型），加槽位就是
+ * 在编一个不存在的读路径。
+ *
+ * 反向也成立：MetaSession 没有任何字段在 SessionSummary 里找不到来源，所以映射里没有
+ * 「保持默认值凑数」的分支 —— 7 个字段全部逐字搬运。
+ */
+fun SessionSummary.toMetaSession(): MetaSession = MetaSession(
+    id = id,
+    title = title,
+    preview = preview,
+    updatedLabel = updatedLabel,
+    pinned = pinned,
+    archived = archived,
+    groupId = groupId,
 )
 
 /**
