@@ -66,8 +66,10 @@ import vade.ui.skin.LocalSkin
  *    muted 色，不编一个颜色出来。
  *  - 未归档且未分组：**一行都不多**（两个新块都在 `if` 里，不占位、不留空白）。
  *
- * [metaGroups] 的默认空表是刻意的最小侵入：`shell/AppShell.kt` 调本屏时不传，于是线上
- * 先退化成「显示 groupId」；把 `SessionMetaState.groups` 接进来只是给这个形参赋值的一行。
+ * [metaGroups] 的默认空表是刻意的最小侵入：测试与任何新调用点可以只画「裸 id」这一层
+ * （`sessionGroupTag` 规则 3）。**生产调用点两个都必须显式传** —— `shell/AppShell.kt` 的
+ * 宽屏两栏与窄屏单栏各一处，值来自 `metaGroupsOf(state)`（`session/group.list` 经适配器包）。
+ * 只给其中一处赋值是本族缺陷最常见的复发形态（g-meta-groups 之前，行上一直显示裸 `g-1`）。
  *
  * [banner] is the shell's load-failure slot (g-error-retry): the session-list read failing
  * must be visible *here*, above the rows, together with its retry entry. It is a slot and

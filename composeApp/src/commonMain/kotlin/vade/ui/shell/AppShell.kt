@@ -63,6 +63,8 @@ import vade.ui.glass.rememberGlassState
 import vade.ui.icon.ShellGlyphs
 import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
+import vade.ui.meta.MetaGroup
+import vade.ui.meta.SessionMetaState
 import vade.ui.search.SearchHost
 import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.LocalSkin
@@ -232,6 +234,49 @@ internal val BOTTOM_BAR_DOCK_PAD = 12.dp
  * call sites is edited.
  */
 internal fun adaptersOf(state: UiState): AdapterProvider? = (state.source as? AdapterHost)?.adapters
+
+/**
+ * 会话列表行的「组色点 + 组名」要查的组名字表 —— B3 适配器接线的最后一行（g-meta-groups）。
+ *
+ * ## 为什么需要它
+ * `SessionsScreen` 早就接受 `metaGroups` 并且**真的**用它渲染组名（`sessionGroupTag`
+ * 的 KDocs 三条规则都有测试），`SessionRowMapping` 也早就把 `groupId` 投影到了
+ * `SessionSummary` 上 —— 缺的只是组合根那一行赋值。没有它，行上显示的是裸 id（`g-1`）：
+ * 不崩、不空白，所以没人发现「分类」在界面上其实没接通（本仓同类事故已发生七次）。
+ *
+ * ## 数据从哪来
+ * `session/group.list`，经组合根的适配器包（[AdapterProvider.meta]）取得；**不是**
+ * `UiState` 上的字段 —— `UiState` 只管会话行/桶，分组是元数据通道，两者刻意分开。
+ * [adapters] 由调用方从 [adaptersOf] 取好再传进来，而不是在这里重新探一次 `state.source`：
+ * 组合根的推导只有一处（`AppShellAdapterWiringTest` 用正则钉住 `adaptersOf(state)` 恰好
+ * 出现两次），第三个探针就是漂移的开始。
+ * 用 [SessionMetaState.forAdapters] 而不是直接调 `listGroups()`：那是本仓既有的三段回退
+ * 工厂（形参 → 适配器 → 内存假实现），失败分类、`wiringDegradation` 都在里面，这里再抄
+ * 一遍等于造第二个真相。
+ *
+ * ## 什么时候**不**拉表（三条，都是为了不发明组名）
+ *  1. `adapters == null`（假源 / 已断开）：假数据没有分组权威，表留空，行上继续显示裸 id；
+ *  2. `forAdapters` 退化过（`wiringDegradation != null`，即 `adapters.meta()` 抛了）：
+ *     此时它跑在 [vade.ui.meta.FakeMetaActions] 上，`loadGroups()` 会吐出 fixture 的
+ *     「项目/灵感」—— 把假数据当 core 的组名画到真行上，比裸 id 更糟；
+ *  3. 拉取失败：`SessionMetaState` 保留上一次快照（首次为空），行上照样退化成裸 id。
+ *     裸 id 难看，但它是「组名没接上」唯一可见的信号（`sessionGroupTag` 规则 3），
+ *     绝不编一个组名糊过去。失败原因留在 `groupsLoadError` 里，等分组面板挂载后渲染。
+ *
+ * `sessionId` 只作 [AdapterProvider.meta] 的查找参数（真适配器无状态，不看它），因此
+ * 不参与 `remember` 键：组表是全局的，不该随选中会话重新拉一次。
+ */
+@Composable
+internal fun metaGroupsOf(adapters: AdapterProvider?, sessionId: String): List<MetaGroup> {
+    val meta = remember(adapters) {
+        SessionMetaState.forAdapters(adapters, sessionId)
+    }
+    LaunchedEffect(meta) {
+        // 见 KDoc「什么时候不拉表」① ②：二者都没有分组权威。
+        if (adapters != null && meta.wiringDegradation == null) meta.loadGroups()
+    }
+    return meta.groups
+}
 
 @Composable
 private fun ShellBody(state: UiState) {
@@ -511,6 +556,9 @@ private fun DestinationHost(
 ) {
     // 接线（g-activate）：与 [ShellBody] 同一处推导，四处屏幕共用这一个值。
     val adapters = adaptersOf(state)
+    // B3 最后一行（g-meta-groups）：会话行的「组名」表。**两个**列表调用点（宽屏两栏 /
+    // 窄屏单栏）共用这一个值 —— 只给其中一处赋值正是这族缺陷的复发形态。
+    val metaGroups = metaGroupsOf(adapters = adapters, sessionId = state.selectedSessionId.orEmpty())
     // g-error-retry: one slot per READ (list vs thread), each with its own retry entry.
     // The list slot only exists while that read is not Ready — otherwise the 假数据 note in
     // SessionsScreen (fixture-path copy) would be hidden for no reason.
@@ -560,6 +608,7 @@ private fun DestinationHost(
                         onOpen = { state.open(it.id) },
                         modifier = Modifier.width(metrics.listWidth),
                         contentPadding = PaddingValues(top = TOP_BAR_ZONE),
+                        metaGroups = metaGroups,
                         banner = sessionListBanner,
                         status = status,
                     )
@@ -593,6 +642,7 @@ private fun DestinationHost(
                     twoPane = false,
                     onOpen = { state.open(it.id) },
                     contentPadding = contentInsets,
+                    metaGroups = metaGroups,
                     banner = sessionListBanner,
                     status = status,
                 )
