@@ -185,7 +185,15 @@ class ChatState(
      */
     suspend fun collectLiveEvents() {
         val channel = transcript ?: return
-        channel.events().collect { event -> applyLiveEvent(event) }
+        try {
+            channel.events().collect { event -> applyLiveEvent(event) }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            // 事件流断了 ≠ 历史丢了：已投影的行留在原地，写一条可读的状态行而不是让
+            // LaunchedEffect 把异常抛进重组器（那会直接崩页面）。
+            lastNotice = "实时事件流中断：${error.message ?: "通道异常"}"
+        }
     }
 
     /** 投影器的非静默决策（seq 缺口 / 丢弃 / 重复），供测试与调试 UI 读。 */

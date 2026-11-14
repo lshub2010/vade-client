@@ -16,8 +16,8 @@
 | 三态 | `ChatPhase.Loading / Ready / Failed`，三种文案三种颜色，「就绪但空」单独一档（**不是**同一张空卡） |
 | 假源 | `InMemoryTurnGateway`（及两个测试探针）`synthetic = true`：fixtures 9 行 + 「假数据」提示**逐字不变** |
 | `SessionDetailScreen.kt` | **一行未改**（读通道默认从 `turns.transcript()` 取，构造调用不必加参数） |
-| 新测试 | **24 条**（20 状态级 + 4 渲染级），全绿；含 1 次变异自验（20/24 变红） |
-| 门禁 | `desktopTest --rerun` **922 tests / 1 failed / 1 skipped**（唯一红 = `RealCoreUiE2ETest` 已知满负载超时，**单跑绿**）；`assembleDebug` OK（APK 22,190,243 B）；`compileKotlinWasmJs` OK |
+| 新测试 | **25 条**（21 状态级 + 4 渲染级），全绿；含 1 次变异自验（21/25 变红） |
+| 门禁 | `desktopTest --rerun` **923 tests / 1 failed / 1 skipped**（唯一红 = `RealCoreUiE2ETest` 已知满负载超时，**单跑绿**）；`assembleDebug` OK（APK 22,533,289 B）；`compileKotlinWasmJs` OK |
 
 ---
 
@@ -126,7 +126,7 @@ val isRealSource: Boolean = !turns.synthetic || transcript != null
 | `suspend loadHistory(): Boolean` | 拉快照 → `live.seed(rows)` → 用 `live.messages` **重建** `items`（快照行 + 加载期间已到的 live 行，幂等不叠行）；异常 → `Failed` + `loadError` |
 | `suspend retryHistory()` | 失败态重试入口（与页面按钮同一条路径） |
 | `applyLiveEvent(event)` | `= this.applyLive(live, event)`（既有扩展，未另写投影） |
-| `suspend collectLiveEvents()` | 收集 `transcript.events()`，直到协程取消 |
+| `suspend collectLiveEvents()` | 收集 `transcript.events()`，直到协程取消；流断时写一条状态行（`lastNotice`）而不是把异常抛进重组器 |
 | `liveAnomalies` / `liveDuplicates` | 投影器的非静默决策与幂等丢弃计数 |
 | `phase` / `loadError` | 三态与其原因 |
 
@@ -182,11 +182,11 @@ ChatThread(LaunchedEffect(state))            ← 页面自己的生命周期，�
 |---|---|---|
 | `988ff0e` | **874** | 父任务给的基线 |
 | `a846380`（本棒基点） | **898** | `g-archive-ui` 已合入 `main`：+24 |
-| 本棒工作树 | **922** | +24（本棒） |
+| 本棒工作树 | **923** | +25（本棒） |
 
-### 5.2 新增 24 条（`desktopTest`，全绿）
+### 5.2 新增 25 条（`desktopTest`，全绿）
 
-`chat/RealChatSourceTest.kt`（20 条，状态级，无窗口无时钟）
+`chat/RealChatSourceTest.kt`（21 条，状态级，无窗口无时钟）
 
 | # | 测试 | 钉住什么 |
 |---|---|---|
@@ -205,20 +205,21 @@ ChatThread(LaunchedEffect(state))            ← 页面自己的生命周期，�
 | 13 | `anOverflowingGapRecordsAnAnomalyAndNeverThrows` | 缺口 > cap 64 → `PendingOverflow` anomaly，不抛 |
 | 14 | `aFailedTurnProjectsAnErrorRowThroughApplyLive` | `turn.failed` → 错误行 + C-04 code 徽标 + wire message 兜底正文 |
 | 15 | `collectsTheLiveStreamIntoTheThread` | 冷流经 `collectLiveEvents()` 真的落到 `items` |
-| 16 | `realModeSubmitDoesNotFabricateAScriptedReply` | 真源提交只留本地回显，**不**用 `streamScript` 造假回复 |
-| 17 | `fakeSourceKeepsItsFixturesAndTheDemoNotice` | **假源回归**：9 行（6 消息 + 3 工具卡）+ 「假数据」提示 |
-| 18 | `fakeSourceNeverEntersTheLiveLoadingPath` | 假源 `loadHistory()` 直接 false，`items` 不变、`phase` 仍 `Ready` |
-| 19 | `aSyntheticProbeGatewayStillGetsFixtures` | `RecordingTurnGateway` 仍是假源（既有 3 个测试文件不被打脸） |
-| 20 | `realModePresetIsNotApplied` | 真源不套 `ChatPreset.Queue`（草稿/队列/气泡都为空） |
+| 16 | `aDroppedEventStreamReportsItselfInsteadOfCrashingThePage` | 事件流抛异常 → 不抛给调用方、已有历史行不动、`lastNotice` 说明中断 |
+| 17 | `realModeSubmitDoesNotFabricateAScriptedReply` | 真源提交只留本地回显，**不**用 `streamScript` 造假回复 |
+| 18 | `fakeSourceKeepsItsFixturesAndTheDemoNotice` | **假源回归**：9 行（6 消息 + 3 工具卡）+ 「假数据」提示 |
+| 19 | `fakeSourceNeverEntersTheLiveLoadingPath` | 假源 `loadHistory()` 直接 false，`items` 不变、`phase` 仍 `Ready` |
+| 20 | `aSyntheticProbeGatewayStillGetsFixtures` | `RecordingTurnGateway` 仍是假源（既有 3 个测试文件不被打脸） |
+| 21 | `realModePresetIsNotApplied` | 真源不套 `ChatPreset.Queue`（草稿/队列/气泡都为空） |
 
 `chat/RealChatThreadUiTest.kt`（4 条，`runComposeUiTest`，断言**渲染结果**）
 
 | # | 测试 | 钉住什么 |
 |---|---|---|
-| 21 | `loadingIsVisibleAsItsOwnState` | 加载中真的上屏，且语义树里没有任何 fixture 标记 |
-| 22 | `anEmptySnapshotShowsTheEmptyCopyAndNoFixtureMarker` | 空态上屏「还没有消息」+ 副行，没有加载文案、没有 fixture |
-| 23 | `aFailedLoadShowsTheReasonAndARetryThatActuallyReloads` | 失败态显示原因；**点「重试」真的重新加载**并出现真消息 |
-| 24 | `aRealThreadWithOneSnapshotRowRendersExactlyOneMessage` | 真 1 条 → 界面 1 条 + 四个标记全不出现 |
+| 22 | `loadingIsVisibleAsItsOwnState` | 加载中真的上屏，且语义树里没有任何 fixture 标记 |
+| 23 | `anEmptySnapshotShowsTheEmptyCopyAndNoFixtureMarker` | 空态上屏「还没有消息」+ 副行，没有加载文案、没有 fixture |
+| 24 | `aFailedLoadShowsTheReasonAndARetryThatActuallyReloads` | 失败态显示原因；**点「重试」真的重新加载**并出现真消息 |
+| 25 | `aRealThreadWithOneSnapshotRowRendersExactlyOneMessage` | 真 1 条 → 界面 1 条 + 四个标记全不出现 |
 
 ### 5.3 变异自验（诚实证据，不是「我写了测试」）
 
@@ -226,11 +227,20 @@ ChatThread(LaunchedEffect(state))            ← 页面自己的生命周期，�
 
 ```
 :composeApp:desktopTest --tests vade.ui.chat.RealChatSourceTest --tests vade.ui.chat.RealChatThreadUiTest
-→ 24 tests completed, 20 failed
+→ 25 tests completed, 21 failed
 ```
 
-**20 条变红、4 条存活**，存活的正好是 4 条假源回归（#17 #18 #19 + 假源渲染）—— 它们本来就该在
-「强制假源」的变异下活着。这说明新测试咬的是真行为，不是恒真断言。变异已还原（`git diff` 只含 §2–§4 的改动）。
+**21 条变红、4 条存活**：
+
+| 存活 | 为什么该活 |
+|---|---|
+| `fakeSourceKeepsItsFixturesAndTheDemoNotice` | 假源回归 —— 强制假源下它本来就该绿 |
+| `fakeSourceNeverEntersTheLiveLoadingPath` | 同上 |
+| `aSyntheticProbeGatewayStillGetsFixtures` | 同上（探针是假实现） |
+| `aFailedTurnProjectsAnErrorRowThroughApplyLive` | 它钉的是 `applyLive` 的投影机制（`turn.failed` → 错误行），**不依赖**真/假源分界 |
+
+其余 21 条（全部「真源不许 fixtures / 三态 / delta 追加 / seq 缺口」）在变异下一律变红 ——
+说明新测试咬的是真行为，不是恒真断言。变异已还原（`grep "val isRealSource"` 回到原式）。
 
 ---
 
@@ -238,10 +248,10 @@ ChatThread(LaunchedEffect(state))            ← 页面自己的生命周期，�
 
 | 目标 | 命令 | 结果 |
 |---|---|---|
-| desktopTest | `gradle :composeApp:desktopTest --rerun` | **922 tests / 1 failed / 1 skipped** —— 唯一红 `RealCoreUiE2ETest.realCoreSessionTitlesRenderInAppAndFixturesStayAway`（`ComposeTimeoutException: Condition still not satisfied after 45000 ms`，`RealCoreUiE2ETest.kt:110` 的 `waitUntil`） |
-| 单跑该红 | `gradle :composeApp:desktopTest --rerun --tests vade.ui.e2e.RealCoreUiE2ETest` | **BUILD SUCCESSFUL**（51s）—— 满负载超时的既有抖动，与 `g-e2e-budget` 正在修的那条一致；**未改断言、未 skip、未调大超时** |
+| desktopTest | `gradle :composeApp:desktopTest --rerun` | **923 tests / 1 failed / 1 skipped** —— 唯一红 `RealCoreUiE2ETest.realCoreSessionTitlesRenderInAppAndFixturesStayAway`（`ComposeTimeoutException: Condition still not satisfied after 45000 ms`，`RealCoreUiE2ETest.kt:110` 的 `waitUntil`） |
+| 单跑该红 | `gradle :composeApp:desktopTest --rerun --tests vade.ui.e2e.RealCoreUiE2ETest` | **BUILD SUCCESSFUL**（55s）—— 满负载超时的既有抖动，与 `g-e2e-budget` 正在修的那条一致；**未改断言、未 skip、未调大超时** |
 | 1 skipped | `VadeClientSmokeTest` | 既有 env 门（`Assume.assumeTrue(VADE_SMOKE_PORT …)`），非本棒引入 |
-| assembleDebug | `gradle :composeApp:assembleDebug` | **BUILD SUCCESSFUL**，`composeApp-debug.apk` = **22,190,243 B** |
+| assembleDebug | `gradle :composeApp:assembleDebug` | **BUILD SUCCESSFUL**，`composeApp-debug.apk` = **22,533,289 B** |
 | compileKotlinWasmJs | `gradle :composeApp:compileKotlinWasmJs` | **BUILD SUCCESSFUL** |
 
 ---

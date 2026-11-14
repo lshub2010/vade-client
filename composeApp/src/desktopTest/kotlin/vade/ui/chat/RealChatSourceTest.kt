@@ -313,6 +313,21 @@ class RealChatSourceTest {
         assertEquals("流里的字", chat.messages.last().bodyText)
     }
 
+    @Test
+    fun aDroppedEventStreamReportsItselfInsteadOfCrashingThePage() = runBlocking {
+        val channel = FakeTranscript(
+            listOf(message("m-1", "历史还在")),
+            flow = kotlinx.coroutines.flow.flow { throw IllegalStateException("socket 断了") },
+        )
+        val chat = ChatState("s-real", turns = RealGateway(channel))
+        chat.loadHistory()
+
+        chat.collectLiveEvents() // 不许把异常抛进重组器
+
+        assertEquals("历史还在", chat.messages.single().bodyText, "事件流断了不许动已有的历史行")
+        assertContains(assertNotNull(chat.lastNotice), "socket 断了")
+    }
+
     // --- 真源：不许本地造回复 ---------------------------------------------------
 
     @Test
