@@ -139,7 +139,11 @@ class ModuleRegistry {
     fun declare(manifest: JsonObject) {
         val moduleId = manifest.mustStr("module_id")
         val instanceId = manifest.mustStr("instance_id")
-        val displayName = manifest.mustStr("display_name")
+        // C-03 的 `display_name` 是**可选**字段，C-05 `ui/modules` 明写 `string|null`。
+        // 缺/空时回退到 `module_id`：界面必须有个标题，而「用 id 当标题」比「编一个名字」
+        // 或「整份拒绝」都诚实。回退值不落盘到 manifest，只进 [Node.displayName]。
+        val displayName = manifest.strStrict("display_name")?.takeIf { it.isNotBlank() }
+            ?: moduleId
         val version = manifest.strStrict("version")
         val pages = decodePages(manifest)
         if (moduleId.isBlank() || instanceId.isBlank()) {

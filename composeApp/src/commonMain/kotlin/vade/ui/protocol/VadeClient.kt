@@ -617,6 +617,16 @@ class VadeClient(
     suspend fun uiModules(): UiModulesResult =
         call(VadeMethod.UI_MODULES, buildJsonObject { }) { UiModulesResult.fromJson(it) }
 
+    /**
+     * `ui/modules` 的**原始回包**（同一帧，不经过模型）。
+     *
+     * 给 `data/ModuleCatalog` 的窄缝 `ModuleCatalogSource.fetch()` 用：那条缝的口型是
+     * `JsonObject`，而且 `ModuleCatalogWire` 有一套自己的严格解码与 14 条测试。这里再加一层
+     * typed 转换只会让「解码规则」有两个来源。
+     */
+    suspend fun uiModulesRaw(): JsonObject =
+        call(VadeMethod.UI_MODULES, buildJsonObject { }) { it }
+
 suspend fun uiStateGet(params: StateGetParams): StateGetResult =
         call(VadeMethod.UI_STATE_GET, params.toJson()) { StateGetResult.fromJson(it) }
 
