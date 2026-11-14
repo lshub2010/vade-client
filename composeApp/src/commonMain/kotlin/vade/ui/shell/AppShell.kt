@@ -1,6 +1,7 @@
 package vade.ui.shell
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -14,8 +15,20 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import vade.ui.UiText
@@ -25,6 +38,7 @@ import vade.ui.destinations.Destination
 import vade.ui.destinations.ProfileScreen
 import vade.ui.destinations.SessionDetailScreen
 import vade.ui.destinations.SessionsScreen
+import vade.ui.search.SearchHost
 import vade.ui.skin.BtnStyle
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.NavItem
@@ -40,12 +54,33 @@ import vade.ui.skin.NavItem
  *  - `840–1199` rail 72 dp + 300 dp list + detail.
  *  - `≥1200`   the same two panes plus a collapsible right panel (default collapsed).
  *
- * Not here yet: keyboard shortcuts (`⌘N/⌘K/⌘1–4/⌘B/⌘,/⌘\`), IME insets, `⌘B` list
- * collapse, and panel width presets — those are U1-g / U1-h. The panel toggle is a button
- * so the shell is usable (and screenshottable) without a keyboard story.
+ * Not here yet: the remaining FR-8.74 shortcuts (`⌘N/⌘1–4/⌘B/⌘,`), IME insets, `⌘B` list
+ * collapse, and panel width presets — those are U1-g / U1-h. `⌘K` / `Ctrl+K` **is** here:
+ * it belongs to U1-c's search, together with `↑ ↓ Enter Esc` for the palette. The panel
+ * toggle is a button so the shell is usable (and screenshottable) without a keyboard story.
  */
 @Composable
 fun AppShell(state: UiState) {
+    // The whole shortcut story is one root preview handler: it sees keys before any child
+    // (the search field included), so `⌘K` opens the palette even while typing elsewhere.
+    val rootFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { rootFocus.requestFocus() } }
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .onPreviewKeyEvent { event -> handleShellKeys(event, state) }
+            .focusRequester(rootFocus)
+            .focusable(),
+    ) {
+        ShellBody(state)
+        // U1-c: full-screen overlay below 600dp, ⌘K palette above it. No-op while closed.
+        SearchHost(state)
+    }
+}
+
+@Composable
+private fun ShellBody(state: UiState) {
     val skin = LocalSkin.current
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val metrics = metricsFor(maxWidth)
@@ -80,6 +115,8 @@ fun AppShell(state: UiState) {
                         floating = metrics.tier == Tier.Compact,
                         actions = {
                             if (state.dest == Destination.Sessions) {
+                                // U1-c: phones reach search from here; desktop also has ⌘K.
+                                TopBarButton("搜索") { state.openSearch() }
                                 TopBarButton("✎") { state.newSession() }
                             }
                             if (metrics.hasRightPanel) {
@@ -209,4 +246,65 @@ private fun VerticalRule() {
 /** Bottom-bar rows: the four destinations, in contract order (FR-8.77). */
 private fun navItems(): List<NavItem> = Destination.entries.map {
     NavItem(id = it.id, label = it.label, glyph = it.glyph)
+}
+
+/**
+ * U1-c keyboard routing. One handler on the root preview pass, so it wins over whatever
+ * child currently holds focus (the search field included) without stealing ordinary
+ * characters — unhandled keys return `false` and reach the focused field normally.
+ *
+ *  - `⌘K` / `Ctrl+K`: toggle the command palette (desktop shape of search).
+ *  - `↑` / `↓`: move the selection (wraps), `Enter`: open the selected session.
+ *  - `Esc`: close the palette; when it is closed, leave an open session detail (FR-8.72's
+ *    back layering, the part that overlaps U1-c).
+ *
+ * `⌘N`, `⌘1–4`, `⌘B`, `⌘,`, `⌘\` deliberately stay with U1-g: this handler does not touch
+ * them, and they still do nothing.
+ */
+internal fun handleShellKeys(event: KeyEvent, state: UiState): Boolean {
+    if (event.type != KeyEventType.KeyDown) return false
+    val search = state.search
+    val primary = event.isCtrlPressed || event.isMetaPressed
+
+    if (primary && event.key == Key.K) {
+        state.toggleSearch()
+        return true
+    }
+
+    if (!search.open) {
+        if (event.key == Key.Escape && state.selectedSessionId != null) {
+            state.back()
+            return true
+        }
+        return false
+    }
+
+    return when (event.key) {
+        Key.Escape -> {
+            state.closeSearch()
+            true
+        }
+
+        Key.DirectionDown -> {
+            search.moveSelection(1)
+            true
+        }
+
+        Key.DirectionUp -> {
+            search.moveSelection(-1)
+            true
+        }
+
+        Key.Enter, Key.NumPadEnter -> {
+            val hit = search.currentHit()
+            if (hit == null) {
+                false
+            } else {
+                state.openFromSearch(hit)
+                true
+            }
+        }
+
+        else -> false
+    }
 }
