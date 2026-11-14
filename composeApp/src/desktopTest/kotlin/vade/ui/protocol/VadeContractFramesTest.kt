@@ -80,12 +80,20 @@ class VadeContractFramesTest {
         "usage.budget" -> """{"scope":"session","state":"warn","used":90,"limit":100,"ratio":0.9,"degraded":false,"session_id":"s1"}"""
         "turn.superseded" -> """{"turn_id":"t1","superseded_by":"t9","reason":"regenerate","root_turn_id":"t1","version":2}"""
         "message.edited" -> """{"message_id":"m1","session_id":"s1","superseded_by_message_id":"m2","new_turn_id":"t9","text":"改好了","edited_at":7}"""
+        // RFC-0010/0012/0003 appends (contract 1.4.0):
+        "session.updated" -> """{"session_id":"s1","by":"dev1","title":null,"icon":"star","color":null,"group_id":"g1","pinned_at":null,"archived_at":null,"unread":1,"updated_at":77}"""
+        "session.list_changed" -> """{"session_id":"s9","change":"removed","by":"admin"}"""
+        "subagent.spawned" -> """{"run_id":"run_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","session_id":"s1","parent_session_id":"s1","parent_turn_id":null,"child_session_id":"s2","label":"检索","at":42}"""
+        "subagent.status" -> """{"run_id":"run_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","session_id":"s1","state":"running","step":"reading docs","tool_name":"fs.read","at":50}"""
+        "subagent.result" -> """{"run_id":"run_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","session_id":"s1","state":"completed","result_digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","result_chars":4200,"error_code":null,"finished_at":90}"""
+        "turn.skill_catalog" -> """{"turn_id":"t1","digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","entries":["greeter"],"empty":false}"""
+        "turn.tool_discovered" -> """{"turn_id":"t1","tool":"web.search","tool_id":"w1","query_digest":"abc123def456","total_matches":7}"""
         else -> error("no sample payload registered for $type")
     }
 
     @Test
     fun allDeclaredEventTypesParseIntoDistinctSubtypes() {
-        assertEquals(26, VADE_EVENT_TYPES.size, "events.json declares 26 topics (+ the turn.state enum row)")
+        assertEquals(33, VADE_EVENT_TYPES.size, "events.json declares 33 topics (+ the turn.state enum row = 34 keys)")
         val parsed = VADE_EVENT_TYPES.mapNotNull { type ->
             VadeEventParser.parse(
                 type = type,
@@ -94,9 +102,9 @@ class VadeContractFramesTest {
                 payload = json.parseToJsonElement(samplePayload(type)),
             )
         }
-        assertEquals(26, parsed.size, "every declared topic decodes into an event: ${VADE_EVENT_TYPES - parsed.map { it::class.simpleName ?: "" }}")
-        // 26 distinct sealed subtypes, one per topic:
-        assertEquals(26, parsed.map { it::class }.toSet().size)
+        assertEquals(33, parsed.size, "every declared topic decodes into an event: ${VADE_EVENT_TYPES - parsed.map { it::class.simpleName ?: "" }}")
+        // 33 distinct sealed subtypes, one per topic:
+        assertEquals(33, parsed.map { it::class }.toSet().size)
     }
 
     @Test

@@ -15,17 +15,28 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import vade.ui.UiText
 import vade.ui.icon.VadeIcons
+import vade.ui.protocol.SessionUsageGetResult
+import vade.ui.protocol.UsageBudgetPayload
+import vade.ui.protocol.VadeUsage
 import vade.ui.skin.LocalSkin
+import vade.ui.subagent.SubagentPanel
+import vade.ui.subagent.SubagentRunView
+import vade.ui.usage.UsagePanel
 
 /**
- * 活动 (U1-a skeleton), v2 form.
+ * 活动 (C-Activity), D87 blocks + the two real data panels.
  *
- * D87 gives this destination four blocks: running turns, pending approvals (with a
- * badge), recent failures, background tasks / sub-agents. RFC-0007 (sub-agents) and
- * RFC-0008 (`waiting_input`) are still proposals, so per task book §九 nothing here may
- * invent an event stream: every block renders its v2 empty state (centered, 48dp icon,
- * 20sp title, 14sp muted body — [EmptyStateCard]) and says which RFC gates the data
- * (U1-d fills them in). Group cards are `md` + hairline + soft shadow ([GroupCard]).
+ * The three U1-a placeholder blocks (运行中 / 待审批 / 最近失败) stay empty until U1-d
+ * wires turn events — nothing here invents an event stream. The fourth block is now
+ **real**: RFC-0012 landed server-side, so 后台任务·子代理 renders [SubagentPanel], and
+ * the new 用量 section renders [UsagePanel] from the `session/usage.get` /
+ * `turn.completed.usage` / `usage.budget` DTO snapshots.
+ *
+ * **Injection seam**: the four parameters are the DTO snapshots the shell passes in.
+ * Defaults are `null`, meaning "not wired yet" — the panels then render their mandated
+ *「暂无数据」empty states and never fabricate numbers. Reaching real data = the data
+ * layer calling `VadeClient.sessionUsageGet` / `subagent/list` and passing the decoded
+ * DTOs here; zero UI change.
  *
  * [contentPadding] is the shell's floating glass bar zones: passed into the scroll so the
  * page content scrolls behind the glass instead of stopping short of it.
@@ -34,6 +45,14 @@ import vade.ui.skin.LocalSkin
 fun ActivityScreen(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
+    /** `session/usage.get` result snapshot; null = 未接线 → 空态. */
+    usage: SessionUsageGetResult? = null,
+    /** The `usage` object of the most recent `turn.completed` (or failed/interrupted). */
+    lastTurnUsage: VadeUsage? = null,
+    /** The last `usage.budget` event payload (notification, not the authoritative truth). */
+    budgetNotice: UsageBudgetPayload? = null,
+    /** Sub-agent runs (`subagent/get`-shaped snapshots); null = 未接线, empty = 真实为空. */
+    subagentRuns: List<SubagentRunView>? = null,
 ) {
     val skin = LocalSkin.current
     Column(
@@ -65,12 +84,15 @@ fun ActivityScreen(
             body = "失败 turn 与失败工具卡会在这里汇总（U1-d）。",
         )
 
-        SectionLabel("后台任务 · 子代理")
-        EmptyStateCard(
-            icon = VadeIcons.Waiting,
-            title = "等待 RFC-0007",
-            body = "子代理 / 后台任务协议未批准，本切片只留容器与空态，不接假事件流。",
+        SectionLabel("用量")
+        UsagePanel(
+            session = usage,
+            lastTurn = lastTurnUsage,
+            budgetNotice = budgetNotice,
         )
+
+        SectionLabel("后台任务 · 子代理")
+        SubagentPanel(runs = subagentRuns)
         Spacer(Modifier.padding(bottom = 8.dp))
     }
 }
