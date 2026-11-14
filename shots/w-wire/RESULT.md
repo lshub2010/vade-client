@@ -102,13 +102,15 @@ VADE_SOURCE 未设 → FakeSessionSource → loader = null → 全同步 fixture
 
 ## 验证（原始数字）
 
-- desktopTest（本树）: **388 tests / 0 failures / 0 errors / 1 skipped**
+- desktopTest（本树最终 HEAD，含三次 main 合入）: **391 tests / 0 failures / 0 errors
+  / 1 skipped**
   - skipped = `VadeClientSmokeTest`（`VADE_SMOKE_PORT` / `VADE_SMOKE_PAIR_CODE`
     环境门控 `Assume`，main 既有，非本批引入）
   - 其中新增 `UiStateSourceWiringTest`：**20 tests / 0 failures**
-- 基线对照：main@5968e8b 实跑 **368 tests / 0 failures / 0 errors / 1 skipped**
-  → 388 = 368 + 20，既有测试一条未动
-- `:composeApp:compileKotlinWasmJs`（本树）：**BUILD SUCCESSFUL**
+- 基线对照：main@5968e8b 实跑 **368 tests / 0 failures / 0 errors / 1 skipped**；
+  之后 main 落了 c-inset（+3 条 `InsetsGuardTest`）→ 391 = 368 + 3 + 20，既有测试
+  一条未动
+- `:composeApp:compileKotlinWasmJs`（本树最终 HEAD）：**BUILD SUCCESSFUL**
   （commonMain 无 JVM 专有 API：`@Volatile` 显式 `kotlin.concurrent.Volatile`；
   无 `synchronized` / `String.format` / `Math.*` / `System.*` / `java.*`）
 - 构建环境：README 口径——`source D:/Hermes/tools/env/vade-env.sh` +

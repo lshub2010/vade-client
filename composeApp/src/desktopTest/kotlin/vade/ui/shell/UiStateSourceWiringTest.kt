@@ -501,9 +501,11 @@ class UiStateSourceWiringTest {
         val ui = newUi(source = src, scope = newScope())
         try {
             assertEquals(LoadPhase.Loading, ui.sessionsPhase)
-            assertEquals(1, src.sessionsCallCount)
+            waitUntil { src.sessionsCallCount == 1 } // the initial fetch is parked on the gate
             src.emit(TurnCompletedEvent(seq = 1, turnId = "t1", totalTokens = 1L, stoppedReason = null))
             delay(150) // let the collector process the event while the fetch is still gated
+            // Flight stays true until the gate completes, so the event cannot start a
+            // fetch here — however long the collector takes to consume it.
             assertEquals(1, src.sessionsCallCount) // the event must NOT fetch immediately…
             gate.complete(Unit)
             waitUntil { ui.sessionsPhase == LoadPhase.Ready }
@@ -525,6 +527,7 @@ class UiStateSourceWiringTest {
         val ui = newUi(source = src, scope = newScope())
         try {
             assertEquals(LoadPhase.Loading, ui.sessionsPhase)
+            waitUntil { src.sessionsCallCount == 1 } // the initial fetch is parked on the gate
             repeat(4) { i ->
                 src.emit(TurnCompletedEvent(seq = i.toLong() + 1, turnId = "t$i", totalTokens = 1L, stoppedReason = null))
             }
