@@ -406,11 +406,14 @@ class ChatState(
             }
 
             ChatPreset.Composer -> {
-                draft = "第一行：把 132dp 的高度上限再核一遍。\n" +
+                // 多行输入的截图要的是「上膛」的发送球（accent + 辉光 + ↑）；流式中同一
+                // 球位是 ■ 停止键，所以先把夹具遗留的流式回合收尾（正常中断，不报错）。
+                if (isStreaming) stop()
+                updateDraft("第一行：把 132dp 的高度上限再核一遍。\n" +
                     "第二行：⌘Enter 与 Enter 的行为要分开写进注释。\n" +
                     "第三行：附件条最多显示 2 个，其余折叠成计数。\n" +
                     "第四行：停止后必须保留已生成文本。\n" +
-                    "第五行：队列 #1/#2/#3 的编号要随取消前移。"
+                    "第五行：队列 #1/#2/#3 的编号要随取消前移。")
                 attach()
                 attach()
                 // A still frame has no ticker (`animate = false`), so advance the two chips to a

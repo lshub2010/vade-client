@@ -44,6 +44,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -72,9 +73,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import vade.ui.chat.ApprovalOutcome
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.MessageView
 import vade.ui.skin.glass.GlassSurface
+import vade.ui.skin.glass.LocalGlassHazeState
 
 /**
  * U1-b → v2 · 会话详情 — floating composer, out-of-frame send ball, icon-only controls,
@@ -132,19 +135,23 @@ fun ChatThread(
 
     // Pin the thread to its newest row (FR-8.35: a streaming reply must stay visible).
     //
-    // `scrollTo`, not `animateScrollTo`: every streaming tick re-keys this effect, and a
-    // cancelled animation stops wherever it had got to, so the animated version never reaches
-    // the bottom during a live stream and the last row ends up half-cut behind the composer.
-    // `composerHeightPx` is a key on purpose: the overlay reports its height *after* the first
-    // layout pass, and the pin must re-run once the real bottom padding exists.
+    // With `reverseScrolling = true` the newest row is already on screen at offset 0 from the
+    // first frame; this writer only re-asserts it when content/the composer changes (e.g.
+    // after the reader scrolled up). A `snapshotFlow`, not a keyed `LaunchedEffect`: content
+    // length and the composer's animated height change at frame rate, and a keyed effect
+    // **cancels the in-flight scroll on every key change** — the write never lands. Here every
+    // emission completes before the next one is processed, and the write itself is a plain
+    // (non-suspending) `value` assignment so a stalled frame clock can't leave it half-done.
     var composerHeightPx by remember { mutableStateOf(0) }
-    LaunchedEffect(
-        state.items.size,
-        state.messages.lastOrNull()?.bodyText?.length,
-        composerHeightPx,
-    ) {
+    LaunchedEffect(animate) {
         if (!animate) return@LaunchedEffect
-        runCatching { scroll.scrollTo(scroll.maxValue) }
+        snapshotFlow {
+            Triple(
+                state.items.size,
+                state.messages.lastOrNull()?.bodyText?.length ?: 0,
+                composerHeightPx,
+            )
+        }.collect { scroll.scrollTo(0) }
     }
 
     BoxWithConstraints(modifier.fillMaxSize().background(skin.colors.canvas)) {
@@ -153,10 +160,17 @@ fun ChatThread(
 
         // The scroll column runs the *full* height; the composer floats above it and the
         // trailing spacer keeps the newest row clear of it (§1: 高度 + 24dp).
+        //
+        // `reverseScrolling = true` is what makes this a chat log: offset 0 is the content
+        // END, so the newest row is on screen from the **first frame** — no post-launch
+        // frames needed. This matters because the capture harness (and any occluded window)
+        // stops the frame clock a few hundred ms after launch: a "scroll to bottom" effect
+        // that only runs on later frames never lands. The pin below keeps the same contract
+        // (new content wins, FR-8.35) for the frames that do run.
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(scroll)
+                .verticalScroll(scroll, reverseScrolling = true)
                 .padding(start = gutter, end = gutter, top = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -512,6 +526,21 @@ private fun RiskBadge(risk: String) {
 // --- floating composer (v2 §1) ------------------------------------------------
 
 /**
+ * Glass 退化兜底：shell 还没有把 `hazeSource` 注册进共享 [LocalGlassHazeState] 时，
+ * `GlassSurface` 的模糊层是空的，只剩 26/34% 的薄染色 — 背后的会话文字会**整段透过**
+ * composer，完全不可读（§5 的反面判据）。这里给玻璃层**内容**垫一层同色系近实底保住
+ * 可读性；shell 接上真 blur 后 `hasBackdrop` 变 true，兜底自动消失，玻璃语义不变。
+ *
+ * 注意是给内容的 modifier，不是往 GlassSurface 里塞 `fillMaxSize` 的子盒子 —
+ * 那会把 wrap-content 的玻璃层撑满整个可用高度。
+ */
+@Composable
+private fun Modifier.glassFallback(skin: vade.ui.skin.Skin): Modifier {
+    if (LocalGlassHazeState.current != null) return this
+    return background(skin.colors.surfaceGlass.copy(alpha = 0.88f))
+}
+
+/**
  * The independent floating layer: queue strip + glass input + the out-of-frame send ball.
  * Measures itself into [onHeightChanged] so the list can pad by 高度 + 24dp (§1).
  */
@@ -574,6 +603,8 @@ private fun BoxScope.ComposerOverlay(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            // blur 未接线时的可读性兜底（见 glassFallback 的 KDoc）。
+                            .glassFallback(skin)
                             // §7：多行输入高度 200ms 跟随内容，不跳变。
                             .animateContentSize(
                                 animationSpec = tween(durationMillis = 200, easing = skin.motion.easing),
@@ -798,7 +829,12 @@ private fun ImagePreviewSheet(image: ContentPart.Image, onClose: () -> Unit) {
             shape = sheetShape,
             skin = skin,
         ) {
-            Column {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // blur 未接线时的可读性兜底（见 glassFallback 的 KDoc）。
+                    .glassFallback(skin),
+            ) {
                 // 白条手柄：36×4dp、2dp 圆角、距卡顶 8dp，只说明"可下拉关闭"。
                 Box(
                     modifier = Modifier
