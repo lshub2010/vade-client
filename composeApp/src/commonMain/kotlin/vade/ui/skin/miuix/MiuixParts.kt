@@ -39,6 +39,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -58,6 +60,8 @@ import vade.ui.skin.MessageAction
 import vade.ui.skin.MessageView
 import vade.ui.skin.Scope
 import vade.ui.skin.SkinColors
+import vade.ui.skin.SkinMotion
+import vade.ui.skin.SkinOrb
 import vade.ui.skin.SkinShapes
 import vade.ui.skin.SkinTypography
 import vade.ui.skin.ToolCallView
@@ -553,58 +557,45 @@ internal fun MiuixToolCallCard(
 // --- 11 · InputBar -----------------------------------------------------------
 
 /**
- * The v2 **floating composer** (§1/§2):
+ * The v2 **floating composer**'s field (§1) — RFC-0011 narrowed it to the *input area only*:
  *
- *  - an **independent float layer** with 16 dp clear on every side — never a flush,
- *    full-width bar; `xl` (28 dp) corners, glass base (`surfaceGlass` + 1 dp hairline) and a
- *    real `shadowFloat` (§8 row 2: a float layer is defined by its shadow);
- *  - the send control is a **48 dp ball OUTSIDE the field**, 12 dp to its right, vertically
- *    centred (§2) — nothing send-shaped lives inside the box. States: content = `accent`
- *    solid + 12 dp accent glow (§8 row 3); empty = glass + hairline, muted glyph; streaming
- *    = the same ball turns **stop** (■), tinted icon + stroke only, never a red ball;
- *  - press = `scale 0.92` over 180 ms with the one v2 curve (§2/§7);
+ *  - an **independent float layer** — `xl` (28 dp) corners, glass base (`surfaceGlass` +
+ *    1 dp hairline) and a real `shadowFloat` (§8 row 2: a float layer is defined by its
+ *    shadow). The 16 dp clear on every side is **page layout** now (RFC-0011 D5): the page
+ *    composes `[＋] [InputBar] [12 dp] [SendOrb]` in one row, and component-side margins
+ *    would stack into 32 dp / a 28 dp frame-ball gap, breaking §1/§2's numbers;
+ *  - focus is tracked from the field's own InteractionSource, so the 2 dp accent ring
+ *    appears only when the caret is really in it — not a glow, not an underline;
+ *  - the send control is **not here**: v2 §2 made it the separate [MiuixSendOrb]
+ *    (C-09 component 12, RFC-0011) the page places outside the frame;
  *  - `voiceAvailable = false` draws nothing at all (D97) — not a greyed-out mic.
  *
  * The glass is the *degrade* shape for now: `surfaceGlass` tint + hairline + `shadowFloat`.
- * A real backdrop blur (§5) needs the app shell to register a `HazeState` +
- * `Modifier.hazeSource`, which lives in `chat/`/`shell/` — outside this batch's directory.
+ * A real backdrop blur (§5) needs `skin/glass/GlassSurface` wired inside the skin
+ * (RFC-0011 §7.2) — not this batch.
  */
 @Composable
 internal fun MiuixInputBar(
     value: String,
     onValueChange: (String) -> Unit,
     mode: InputMode,
-    onSend: () -> Unit,
-    onStop: () -> Unit,
     attachments: (@Composable () -> Unit)?,
     enabled: Boolean,
     voiceAvailable: Boolean,
-    sendEnabled: Boolean,
     maxLines: Int,
     colors: SkinColors,
     shapes: SkinShapes,
     typography: SkinTypography,
 ) {
-    val streaming = mode == InputMode.Streaming
     MiuixScope(colors) {
         val fieldShape = RoundedCornerShape(shapes.xl)
         val floatElevation = if (colors.isDark) 16.dp else 12.dp
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(
-                    horizontal = MiuixTokens.composerMargin,
-                    vertical = MiuixTokens.composerMargin,
-                ),
-        ) {
+        Column(Modifier.fillMaxWidth()) {
             if (attachments != null) {
                 attachments()
                 Spacer(Modifier.height(8.dp))
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Focus is tracked from the field's own InteractionSource, so the accent ring
-                // appears only when the caret is really in it (the first v1 screenshot had it
-                // always on, which read as an error state).
                 val interaction = remember { MutableInteractionSource() }
                 val focused by interaction.collectIsFocusedAsState()
                 Box(
@@ -651,54 +642,52 @@ internal fun MiuixInputBar(
                         }
                     }
                 }
-                Spacer(Modifier.width(MiuixTokens.sendBallGap))
-                SendBall(
-                    streaming = streaming,
-                    sendEnabled = sendEnabled,
-                    enabled = enabled,
-                    colors = colors,
-                    onSend = onSend,
-                    onStop = onStop,
-                )
             }
         }
     }
 }
 
 /**
- * The §2 send ball: 48 dp, *outside* the field, vertically centred. Glow is a 12 dp radial
- * halo behind the ball (`glowAccent` @ 28 % → transparent, §8 row 3) — a glow, not a shadow;
- * press scales the whole thing (halo included) to 0.92 over 180 ms (§2).
+ * The §2 send ball (RFC-0011 · C-09 component 12): 48 dp, *outside* the field — the page
+ * composes it 12 dp to the right of [MiuixInputBar], vertically centred. Three states from
+ * [mode]: Idle = glass + hairline, muted glyph, still clickable (§2 触发提示);
+ * Composing = `accent` solid, on-accent glyph; Streaming = the same slot turns **stop**,
+ * tinted icon + stroke only, never a red ball. Glow is a 12 dp radial halo behind the ball
+ * (`glowAccent` @ 28 % → transparent, §8 row 3) — a glow, not a shadow; press scales the
+ * whole thing (halo included) by [SkinOrb.pressScale] over [SkinOrb.pressDurationMs] (§2).
  */
 @Composable
-private fun SendBall(
-    streaming: Boolean,
-    sendEnabled: Boolean,
+internal fun MiuixSendOrb(
+    mode: InputMode,
     enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier,
+    orb: SkinOrb,
+    motion: SkinMotion,
     colors: SkinColors,
-    onSend: () -> Unit,
-    onStop: () -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.92f else 1f,
-        animationSpec = tween(durationMillis = 180, easing = MiuixTokens.motion.easing),
-        label = "sendBallPress",
+        targetValue = if (pressed) orb.pressScale else 1f,
+        animationSpec = tween(durationMillis = orb.pressDurationMs, easing = motion.easing),
+        label = "sendOrbPress",
     )
-    // `active` is the accent state: content present (or the page's own canSend signal).
-    val active = !streaming && sendEnabled
-    // §2: an empty ball stays clickable ("触发提示"); only a fully disabled field is inert.
+    val streaming = mode == InputMode.Streaming
+    // `armed` is the accent state: content present (draft text / staged attachments).
+    val armed = mode == InputMode.Composing
+    // §2: an empty ball stays clickable ("触发提示"); only a fully disabled orb is inert,
+    // and the streaming stop always answers (interrupting must never be disabled).
     val clickable = streaming || enabled
-    val haloSize = MiuixTokens.sendBallSize + 24.dp // 12 dp of glow on every side
-    Box(modifier = Modifier.size(haloSize), contentAlignment = Alignment.Center) {
-        if (active) {
+    val haloSize = orb.size + orb.glowRadius * 2 // glowRadius of halo on every side
+    Box(modifier = modifier.size(haloSize), contentAlignment = Alignment.Center) {
+        if (armed) {
             Box(
                 Modifier
                     .size(haloSize)
                     .background(
                         brush = Brush.radialGradient(
-                            // Hold ~full strength up to the ball's rim, fade over the 12 dp ring.
+                            // Hold ~full strength up to the ball's rim, fade over the glow ring.
                             0.64f to colors.glowAccent.copy(alpha = 0.28f),
                             1f to Color.Transparent,
                         ),
@@ -708,7 +697,7 @@ private fun SendBall(
         }
         Box(
             modifier = Modifier
-                .size(MiuixTokens.sendBallSize)
+                .size(orb.size)
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
@@ -722,7 +711,7 @@ private fun SendBall(
                             .background(colors.surfaceGlass)
                             .border(1.5.dp, colors.error, CircleShape)
                         // 有内容：accent 实心 + 辉光（§2）。
-                        active -> Modifier.background(colors.primary)
+                        armed -> Modifier.background(colors.primary)
                         // 空：玻璃 + 1px 发丝线，图标 muted（§2）。
                         else -> Modifier
                             .background(colors.surfaceGlass)
@@ -733,7 +722,8 @@ private fun SendBall(
                     interactionSource = interaction,
                     indication = null,
                     enabled = clickable,
-                ) { if (streaming) onStop() else onSend() },
+                ) { onClick() }
+                .semantics { contentDescription = if (streaming) "停止生成" else "发送消息" },
             contentAlignment = Alignment.Center,
         ) {
             Text(
@@ -742,7 +732,7 @@ private fun SendBall(
                 fontWeight = FontWeight.Bold,
                 color = when {
                     streaming -> colors.error
-                    active -> colors.onPrimary
+                    armed -> colors.onPrimary
                     else -> colors.onSurfaceVariant
                 },
             )

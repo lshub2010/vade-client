@@ -3,7 +3,6 @@ package vade.ui.chat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.MutableTransitionState
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
@@ -12,7 +11,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -26,17 +24,14 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -48,15 +43,12 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -67,7 +59,6 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -85,15 +76,17 @@ import vade.ui.skin.glass.LocalGlassHazeState
  *
  * v2 structure (docs/visual-language.md §1/§2/§3/§4/§9/§10):
  *  - the composer is an **independent floating layer**: gutter 16dp (desktop 24dp), 16dp
- *    above the bottom edge, `xl` 28dp corners, a `GlassSurface` glass base + float shadow;
- *    the list's bottom padding = measured composer height + 24dp, so the newest row is
- *    never covered when pinned to bottom;
- *  - send is a **48dp ball outside the input frame** (12dp gap, vertically centred):
- *    `accent` solid + `glowAccent` 12dp glow when armed, `surfaceGlass` + hairline when
- *    empty, the same slot turns into the ■ stop control while streaming (only the icon and
- *    the ring take `danger` — the ball never turns red); press scales 0.92 over 180ms;
- *  - **no text buttons anywhere** — every control is a drawn glyph (↑ ■ ＋ ✓ ✕ ⏷) inside a
- *    ≥44dp touch target with a full `contentDescription`;
+ *    above the bottom edge, `xl` 28dp corners, glass base + float shadow — all of it drawn
+ *    by `Skin.InputBar` (C-09 component 11) since RFC-0011; this page only owns the row
+ *    layout, the 16/24dp gutter and the list's bottom padding = measured composer height
+ *    + 24dp, so the newest row is never covered when pinned to bottom;
+ *  - send is `Skin.SendOrb` (C-09 component 12, RFC-0011) — the 48dp ball OUTSIDE the
+ *    input frame (12dp gap, vertically centred): accent solid + glow when armed (the page
+ *    derives `mode` from `ChatState.inputMode`), glass + hairline when empty, the same
+ *    slot turns into the ■ stop control while streaming; press scales 0.92 over 180ms —
+ *    every pixel of the ball is the skin's, not this page's;
+ *  - **no text buttons anywhere** — every control is a drawn glyph inside a ≥44dp touch
+ *    target with a full `contentDescription`;
  *  - approvals are **inline timeline cards** (卡头 需要批准 + risk badge / 卡体 args 预览 /
  *    卡尾 ✓ ✕ ⏷), evolving in place 待批准 → 已允许/已拒绝/已超时 without adding a row;
  *    the skin's `ApprovalDialog` stays unused here (module pages / admin keep it);
@@ -541,7 +534,8 @@ private fun Modifier.glassFallback(skin: vade.ui.skin.Skin): Modifier {
 }
 
 /**
- * The independent floating layer: queue strip + glass input + the out-of-frame send ball.
+ * The independent floating layer: queue strip + the skin's InputBar + the out-of-frame
+ * SendOrb (both C-09 components — RFC-0011 removed the page-built composer).
  * Measures itself into [onHeightChanged] so the list can pad by 高度 + 24dp (§1).
  */
 @Composable
@@ -594,180 +588,105 @@ private fun BoxScope.ComposerOverlay(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                GlassSurface(
-                    modifier = Modifier.weight(1f),
-                    // v2 §1：xl = 28dp 圆角，多行同圆角，不做胶囊变形。
-                    shape = RoundedCornerShape(skin.shapes.xl),
-                    skin = skin,
+                // ＋ 附件：v2 §1 把「左侧附件图标」列在框内，但冻结的 InputBar 签名没有
+                // leading 槽位（RFC-0011 §7.1）—— 页面层暂把它放在框外左侧，图标按钮。
+                ChatIconButton(
+                    icon = ChatIcon.Plus,
+                    contentDescription = "添加附件",
+                    onClick = { state.attach() },
+                    tint = skin.colors.onSurfaceVariant,
+                )
+                Spacer(Modifier.width(6.dp))
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        // §7：多行输入高度 200ms 跟随内容，不跳变（页面布局职责）。
+                        .animateContentSize(
+                            animationSpec = tween(durationMillis = 200, easing = skin.motion.easing),
+                        ),
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            // blur 未接线时的可读性兜底（见 glassFallback 的 KDoc）。
-                            .glassFallback(skin)
-                            // §7：多行输入高度 200ms 跟随内容，不跳变。
-                            .animateContentSize(
-                                animationSpec = tween(durationMillis = 200, easing = skin.motion.easing),
-                            )
-                            .padding(start = 4.dp, end = 8.dp, top = 4.dp, bottom = 6.dp),
-                    ) {
-                        // 已暂存附件：玻璃层内、文本域上方（点击开预览 / × 移除）。
-                        if (state.staged.isNotEmpty()) {
-                            Column(
-                                modifier = Modifier.fillMaxWidth().padding(start = 4.dp, bottom = 4.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    state.staged.take(2).forEach { staged ->
-                                        AttachmentRow(
-                                            like = AttachmentLike(
-                                                staged.attachment,
-                                                (staged.part as? ContentPart.Image),
-                                            ),
-                                            onOpen = {
-                                                (staged.part as? ContentPart.Image)?.let(state::openPreview)
-                                            },
-                                            onRemove = { state.removeStaged(staged.attachment.fileId) },
-                                            onRetry = if (staged.attachment.state == vade.ui.skin.AttachmentState.Failed) {
-                                                { state.removeStaged(staged.attachment.fileId); state.attach(staged) }
-                                            } else {
-                                                null
-                                            },
-                                        )
-                                    }
-                                }
-                                if (state.staged.size > 2) {
-                                    BasicText(
-                                        text = "还有 ${state.staged.size - 2} 个附件（单轮上限 ${ChatState.MAX_PER_TURN}）",
-                                        style = skin.typography.caption.copy(color = skin.colors.onSurfaceVariant),
-                                    )
-                                }
-                            }
-                        }
-
-                        Row(verticalAlignment = Alignment.Bottom) {
-                            // ＋ 附件：输入框左侧，图标按钮（§1/§3）。
-                            ChatIconButton(
-                                icon = ChatIcon.Plus,
-                                contentDescription = "添加附件",
-                                onClick = { state.attach() },
-                                tint = skin.colors.onSurfaceVariant,
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    // 六行封顶（每行 ~23dp 行高 + 余量），再高内部滚动。
-                                    .heightIn(min = 44.dp, max = 156.dp),
-                                contentAlignment = Alignment.CenterStart,
-                            ) {
-                                if (state.draft.isEmpty()) {
-                                    BasicText(
-                                        text = state.sendHint,
-                                        style = skin.typography.body.copy(
-                                            fontSize = 15.sp,
-                                            lineHeight = (15 * 1.55f).sp,
-                                            color = skin.colors.onSurfaceVariant,
-                                        ),
-                                        maxLines = 1,
-                                    )
-                                }
-                                BasicTextField(
-                                    value = state.draft,
-                                    onValueChange = state::updateDraft,
-                                    textStyle = skin.typography.body.copy(
-                                        fontSize = 15.sp,
-                                        lineHeight = (15 * 1.55f).sp,
-                                        color = skin.colors.onSurface,
-                                    ),
-                                    cursorBrush = SolidColor(skin.colors.primary),
-                                    maxLines = 6,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            }
-                        }
+                    // 输入区 = C-09 组件 11（RFC-0011 后为纯输入区）：玻璃面板、hairline、
+                    // 浮层阴影、多行封顶都在皮肤里；页面只传语义状态。已暂存附件走
+                    // attachments 槽（面板内、文本域上方）。
+                    val stagedSlot: (@Composable () -> Unit)? = if (state.staged.isNotEmpty()) {
+                        { StagedAttachments(state) }
+                    } else {
+                        null
                     }
+                    skin.InputBar(
+                        value = state.draft,
+                        onValueChange = state::updateDraft,
+                        mode = state.inputMode,
+                        attachments = stagedSlot,
+                        enabled = true,
+                        voiceAvailable = false,
+                        maxLines = 6,
+                    )
                 }
-
-                // 发送球在**框外**：与输入框间距 12dp，独立元素（§2）。
+                // 发送球在**框外**（v2 §2 / RFC-0011）：与输入框间距 12dp、垂直居中的独立
+                // 元素 = C-09 组件 12。三态由 inputMode 驱动；send-or-stop 的 policy 在页面。
                 Spacer(Modifier.width(12.dp))
-                SendBall(state)
+                skin.SendOrb(
+                    mode = state.inputMode,
+                    enabled = true,
+                    onClick = { if (state.isStreaming) state.stop() else state.submit() },
+                )
             }
         }
     }
 }
 
-// --- send ball (v2 §2) ---------------------------------------------------------
-
 /**
- * 48dp 正圆，独立于输入框容器。有内容 = `accent` 实心 + 12dp `glowAccent` 柔光 + 反白 ↑；
- * 空 = `surfaceGlass` + `hairline` + `muted` ↑（仍可点，静默 no-op，提示在占位文案里）；
- * 生成中 = 同一球位变 ■，只染图标与描边为 `danger`，不整球变红。按压缩放 0.92 / 180ms。
+ * 已暂存附件行 —— 传给 `Skin.InputBar` 的 `attachments` 槽（面板内、文本域上方）：
+ * 点击开预览 / ✕ 移除 / 失败 ↻ 重试；超出两个折叠成一行提示（单轮上限 RFC-0004 §6.1）。
  */
 @Composable
-private fun SendBall(state: ChatState) {
-    val skin = LocalSkin.current
-    val streaming = state.isStreaming
-    val armed = state.canSend && !streaming
-
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.92f else 1f,
-        animationSpec = tween(durationMillis = skin.motion.standardMs, easing = skin.motion.easing),
-        label = "sendBallPress",
-    )
-
-    Box(
-        modifier = Modifier
-            .size(48.dp)
-            .graphicsLayer { scaleX = scale; scaleY = scale }
-            .drawBehind {
-                // §8 row 3：辉光不是阴影 — accent 24–28%，向外 12dp 渐隐；只在上膛态画。
-                if (armed) {
-                    val outer = size.minDimension / 2f + 12.dp.toPx()
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            0.62f to skin.colors.glowAccent.copy(alpha = 0.28f),
-                            1f to skin.colors.glowAccent.copy(alpha = 0f),
-                            center = center,
-                            radius = outer,
-                        ),
-                        radius = outer,
-                    )
-                }
-            }
-            .clip(CircleShape)
-            .background(if (armed) skin.colors.primary else skin.colors.surfaceGlass)
-            .border(
-                width = if (streaming) 1.5.dp else 1.dp,
-                color = when {
-                    streaming -> skin.colors.error
-                    armed -> Color.Transparent
-                    else -> skin.colors.hairline
-                },
-                shape = CircleShape,
-            )
-            .clickable(interactionSource = interaction, indication = null) {
-                if (streaming) state.stop() else state.submit()
-            }
-            .semantics { contentDescription = if (streaming) "停止生成" else "发送" },
-        contentAlignment = Alignment.Center,
+private fun StagedAttachments(state: ChatState) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(start = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        ChatIconCanvas(
-            icon = if (streaming) ChatIcon.Stop else ChatIcon.SendUp,
-            tint = when {
-                streaming -> skin.colors.error
-                armed -> skin.colors.onPrimary
-                else -> skin.colors.onSurfaceVariant
-            },
-            box = Modifier.size(20.dp),
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            state.staged.take(2).forEach { staged ->
+                AttachmentRow(
+                    like = AttachmentLike(
+                        staged.attachment,
+                        (staged.part as? ContentPart.Image),
+                    ),
+                    onOpen = {
+                        (staged.part as? ContentPart.Image)?.let(state::openPreview)
+                    },
+                    onRemove = { state.removeStaged(staged.attachment.fileId) },
+                    onRetry = if (staged.attachment.state == vade.ui.skin.AttachmentState.Failed) {
+                        { state.removeStaged(staged.attachment.fileId); state.attach(staged) }
+                    } else {
+                        null
+                    },
+                )
+            }
+        }
+        if (state.staged.size > 2) {
+            BasicText(
+                text = "还有 ${state.staged.size - 2} 个附件（单轮上限 ${ChatState.MAX_PER_TURN}）",
+                style = LocalSkin.current.typography.caption.copy(
+                    color = LocalSkin.current.colors.onSurfaceVariant,
+                ),
+                maxLines = 1,
+            )
+        }
     }
 }
+
+// --- send ball → moved to the skin (RFC-0011) ----------------------------------
+
+// The page-drawn 48dp ball was deleted by RFC-0011: the send/stop ball is C-09 component
+// 12 (`Skin.SendOrb`) now, implemented per skin (`MaterialSendOrb` / `MiuixSendOrb`) and
+// composed OUTSIDE the frame by `ComposerOverlay` above. This page keeps only the policy:
+// what "armed" means (`ChatState.inputMode`) and what a click does (send-or-stop).
 
 // --- keyboard ----------------------------------------------------------------
 

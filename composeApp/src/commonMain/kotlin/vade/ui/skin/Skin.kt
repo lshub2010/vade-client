@@ -16,19 +16,21 @@ import androidx.compose.ui.unit.sp
 /**
  * C-09 · `Skin` — the component-factory contract between business pages and skins.
  *
- * OWNER: U1 (`u1-ui`). FROZEN on delivery of slice U1-a.
+ * OWNER: U1 (`u1-ui`). FROZEN on delivery of slice U1-a; AMENDED by RFC-0011 (2026-11-14).
  *
- * The set is exactly ELEVEN components (AMEND-22 / D93, docs/requirements.md §8.22.4):
+ * The set is exactly TWELVE components (AMEND-22 / D93 froze 1–11; RFC-0011 added 12):
  *
  *   1 Button          2 TextField       3 Card            4 ListItem
  *   5 Switch          6 BottomBar       7 ApprovalDialog  8 MessageBubble
- *   9 AttachmentChip 10 ToolCallCard   11 InputBar
+ *   9 AttachmentChip 10 ToolCallCard   11 InputBar       12 SendOrb
  *
  * Rules that hold after the freeze:
- *  - No 12th component. A genuinely new need is an RFC, not an edit here
- *    (docs/agents/50-U1-ui-skeleton.md §十). The top bar is deliberately NOT a
- *    C-09 member: it is assembled from [Card] + [Button] in `shell/TopBar.kt`.
- *  - Only *additive* changes are allowed: new parameters must carry defaults.
+ *  - No 13th component. A genuinely new need is an RFC, not an edit here
+ *    (docs/agents/50-U1-ui-skeleton.md §十; RFC-0011 is the precedent for how the send
+ *    ball was split out of InputBar). The top bar is deliberately NOT a C-09 member: it
+ *    is assembled from [Card] + [Button] in `shell/TopBar.kt`.
+ *  - Only *additive* changes are allowed: new parameters must carry defaults. Removing
+ *    parameters (as RFC-0011 did to InputBar) is breaking and needs an RFC + version bump.
  *  - Business pages (`vade.ui.destinations`, later `vade.ui.core.*`) may only touch
  *    this interface — never `androidx.compose.material3`, `miuix` or `glass`
  *    (enforced by `MaterialImportGuardTest`).
@@ -61,6 +63,13 @@ interface Skin {
      * glass look still exposes a usable token set to `skin/glass/GlassSurface`.
      */
     val glass: SkinGlass get() = SkinGlass()
+
+    /**
+     * Send-ball metrics (RFC-0011, visual language v2 §2). Default-implemented like
+     * [motion]/[glass] so a skin that predates the orb keeps compiling; the defaults are
+     * the §2 numbers and a skin overrides the whole object, not individual fields.
+     */
+    val orb: SkinOrb get() = SkinOrb()
 
     // --- 1-7: the original frozen set -----------------------------------------
 
@@ -183,28 +192,54 @@ interface Skin {
     )
 
     /**
-     * 11 · InputBar (D88): multi-line growth, send / stop, attachment slot, and
-     * the voice button — which a platform hides entirely when it has no on-device
-     * STT (D97), so [voiceAvailable] false means "do not draw", not "grey it out".
+     * 11 · InputBar (D88, RFC-0011): multi-line growth, attachment slot, and the voice
+     * button — which a platform hides entirely when it has no on-device STT (D97), so
+     * [voiceAvailable] false means "do not draw", not "grey it out".
      *
-     * [sendEnabled] / [maxLines] were added after the C-09 freeze (2026-11-14), both
-     * optional: `sendEnabled = false` renders the send control in its disabled state
-     * (visual language §5 主按钮 disabled: muted 30% fill, no outline) without the page
-     * having to hide it, and [maxLines] caps growth (visual language: six lines, then
-     * the field scrolls internally).
+     * RFC-0011 (2026-11-14) removed the send/stop responsibility from this component —
+     * **breaking change**: `onSend` / `onStop` / `sendEnabled` are gone, and the send
+     * control is the separate [SendOrb] the page places OUTSIDE the frame (visual
+     * language v2 §1/§2). The panel is the float's *shape*: glass base + hairline +
+     * float shadow + `xl` corners; the 16dp/24dp float margins are page layout (§4.4/D5
+     * of RFC-0011) so a page can compose `[＋] [InputBar] [12dp] [SendOrb]` in one row
+     * without margin stacking. [maxLines] caps growth (six lines, then internal scroll).
      */
     @Composable
     fun InputBar(
         value: String,
         onValueChange: (String) -> Unit,
         mode: InputMode,
-        onSend: () -> Unit,
-        onStop: () -> Unit,
         attachments: (@Composable () -> Unit)? = null,
         enabled: Boolean = true,
         voiceAvailable: Boolean = false,
-        sendEnabled: Boolean = enabled,
         maxLines: Int = 6,
+    )
+
+    /**
+     * 12 · SendOrb (RFC-0011, visual language v2 §2): the send/stop ball that lives
+     * **outside** the input frame — a 48dp circle (metrics in [orb]) the page composes
+     * beside [InputBar]. One control, three states, driven by [mode]:
+     *
+     *  - [InputMode.Idle]      → empty: glass + 1dp hairline, muted glyph; still
+     *                            clickable (§2 触发提示 — the page decides what a tap
+     *                            on an empty orb means);
+     *  - [InputMode.Composing] → armed: accent solid + a [SkinOrb.glowRadius] accent
+     *                            glow, on-accent glyph (§2 有内容态);
+     *  - [InputMode.Streaming] → stop: the same ball position turns into ■, and only
+     *                            the glyph + a 1.5dp stroke take the error colour —
+     *                            the ball itself never turns red (§2).
+     *
+     * The page owns policy: it derives [mode] (content present ⇒ Composing) and wires
+     * [onClick] to send-or-stop. The skin owns every pixel: no text inside the ball,
+     * the ball never fuses with the input frame (§2 禁止项), press = [SkinOrb.pressScale]
+     * over [SkinOrb.pressDurationMs] on the one v2 curve.
+     */
+    @Composable
+    fun SendOrb(
+        mode: InputMode,
+        enabled: Boolean = true,
+        onClick: () -> Unit,
+        modifier: Modifier = Modifier,
     )
 }
 
@@ -373,6 +408,26 @@ data class SkinGlass(
      * 加深一档 or 1.5px); the default is a translucent white that reads on dark canvas.
      */
     val hairlineOnGlass: Color = Color.White.copy(alpha = 0.25f),
+)
+
+/**
+ * Send-ball metrics (RFC-0011, visual language v2 §2) — the four numbers the orb is
+ * pinned to. The glow colour itself is [SkinColors.glowAccent] (a glow, never a shadow);
+ * the 12dp gap between frame and ball is page layout (§2), not a token here.
+ */
+@Immutable
+data class SkinOrb(
+    /** §2: 48dp 正圆. */
+    val size: Dp = 48.dp,
+
+    /** §2: the soft accent halo extends this far beyond the ball (glow, not shadow). */
+    val glowRadius: Dp = 12.dp,
+
+    /** §2/§7: press scale — the whole ball (halo included) shrinks to this while pressed. */
+    val pressScale: Float = 0.92f,
+
+    /** Press duration in ms; the curve is [SkinMotion.easing] (the one v2 curve). */
+    val pressDurationMs: Int = 180,
 )
 
 // --- semantic state ----------------------------------------------------------
