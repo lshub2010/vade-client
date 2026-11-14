@@ -182,7 +182,7 @@ paths = ['''(^|/)core/tests/loop/__pycache__/test_args_redaction\..*\.pyc$''']
 
 | 扫描 | 命令 | 数据量 | 结果 |
 |---|---|---|---|
-| client 工作区 | `gitleaks dir .` | 189.09 MB | 0 命中 |
+| client 工作区 | `gitleaks dir .` | 189.63 MB | 0 命中 |
 | client 历史 | `gitleaks git .` | 132 commits / 3.62 MB | 0 命中 |
 | client 历史全 refs | `gitleaks git . --log-opts=--all` | 132 commits / 3.62 MB | 0 命中 |
 | main 工作区 | `gitleaks dir .` | 121.29 MB | 0 命中 |
@@ -236,7 +236,7 @@ paths = ['''(^|/)core/tests/loop/__pycache__/test_args_redaction\..*\.pyc$''']
 
 ## 8. 现在到底是不是 0 命中
 
-- **gitleaks：是 0 命中。** 两仓 × 工作区/历史/全 refs = 6 次扫描，JSON 全 `[]`，退出码全 0。可随时复跑复核。
+- **gitleaks：是 0 命中。** 两仓 × 工作区/历史/全 refs = 6 次扫描，JSON 全 `[]`，退出码全 0。提交完成时又在本仓 HEAD `c42e043` 上复扫了一次工作区（189.63 MB / 4m14s），仍 0 命中，见 `raw/postcommit-Vade-client-workdir.log`。
 - **私钥 grep：不是字面 0 命中。** 客户端 0；主仓工作区 6 条、历史 597 次出现，去重 3 个值。这 6 条已逐条判定为假（PEM 头字符串 / 20 位有序假 AKIA），**没有一条是密钥**。
 - 要把 grep 也做到字面 0，只能改 `core/tests/{loop/test_tool_card_fields.py,loop/test_args_redaction.py,test_skill/test_audit.py,test_skill/test_proposal.py,audit/test_redact.py}` 里的假串（例如改成 `[REDACTED PRIVATE KEY]` 或 `AKIA` 拼接），属于**改测试源码**，本轮硬约束不允许，留给后续单独提交。
 
@@ -273,6 +273,7 @@ bash tools/gitleaks-scan.sh D:/HermesWorkspace/Vade/Vade
 | `raw/grep-Vade-client.log` / `raw/grep-Vade.log` | 私钥 grep 原文（值已掩码，脚本产出） |
 | `raw/grep-worktree-both.log` / `raw/grep-history-both.log` | 同一份 grep 在脚本化之前的分别运行（同结论，留作交叉核对） |
 | `raw/run-client.log` / `raw/run-main.log` | 两次脚本整轮运行的终端输出（含目标 repo 的 sha） |
+| `raw/postcommit-Vade-client-workdir.{json,log}` | 提交后在 HEAD `c42e043` 上复扫工作区的原文（§8 的最终凭证） |
 | `grep_scan.py` | 私钥 grep 脚本（掩码输出） |
 | `tools/gitleaks-scan.sh` | 四扫 + grep 的可复跑入口 |
 
