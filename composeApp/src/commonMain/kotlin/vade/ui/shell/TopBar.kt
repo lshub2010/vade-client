@@ -21,6 +21,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -29,6 +30,12 @@ import androidx.compose.ui.unit.dp
 import vade.ui.UiText
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.glass.GlassSurface
+
+/** The glass capsule's testTag — TopGlassGuardTest fetches it to pin the desktop geometry. */
+internal const val TopBarGlassTag = "vade.shell.topbar.glass"
+
+/** Glass capsule height. Internal so TopGlassGuardTest pins the rendered geometry. */
+internal val TopBarHeight = 56.dp
 
 /**
  * Shell top bar — v2 form (docs/visual-language.md §5, §12「导航/底栏」row):
@@ -39,6 +46,10 @@ import vade.ui.skin.glass.GlassSurface
  *
  * v2 §3 「图标即按钮」: every action here is a [TopBarButton] — a vector from
  * `VadeIcons` with a `contentDescription`, no text labels. Touch target ≥44dp.
+ *
+ * Vertical geometry: the capsule is [TopBarHeight] tall and hangs [TopBarTopGap] below
+ * the window top — the status-bar inset above it is consumed once by androidMain's root
+ * `statusBarsPadding()`, never re-added here (TopGlassGuardTest pins this).
  */
 @Composable
 fun TopBar(
@@ -49,7 +60,10 @@ fun TopBar(
 ) {
     val skin = LocalSkin.current
     GlassSurface(
-        modifier = Modifier.fillMaxWidth().height(56.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(TopBarHeight)
+            .testTag(TopBarGlassTag),
         shape = RoundedCornerShape(skin.shapes.xl),
         skin = skin,
     ) {
