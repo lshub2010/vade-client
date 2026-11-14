@@ -14,11 +14,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import vade.ui.UiText
+import vade.ui.model.InMemoryModelActions
+import vade.ui.model.ModelActions
+import vade.ui.model.ModelPickerCard
+import vade.ui.model.ModelState
 import vade.ui.skin.BtnStyle
 import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.LocalSkin
@@ -29,8 +34,12 @@ import vade.ui.skin.LocalSkin
  * swaps go through `CompositionLocal`, never through a rebuilt Activity/View tree.
  *
  * Group cards are [GroupCard] (`md` + hairline + soft shadow); the 其它 block keeps the
- * disabled `Skin.ListItem` rows, labelled not faked (models / devices / about belong to
- * U1-f and T5b).
+ * disabled `Skin.ListItem` rows, labelled not faked (devices / about belong to U1-f and T5b).
+ *
+ * U1-model · the old disabled 「模型」 placeholder row is retired: the 默认模型 section below
+ * hosts the real picker (global-default layer of D101). Reads/writes go through the injected
+ * [modelActions] seam — unwired (this round), an in-memory fixture implementation keeps it
+ * interactive and labelled; devices / about stay honest placeholders.
  *
  * The 底栏 copy is updated for v2: the shell no longer calls the skin's gradient BottomBar
  * at all — all three forms are real `GlassSurface` glass; the style picks docking vs the
@@ -47,8 +56,16 @@ fun ProfileScreen(
     onBarChange: (BottomBarStyle) -> Unit,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
+    /**
+     * The model seam (RFC-0005): `model/list` / `session/model.get` / `session/model.set`.
+     * Null = use the in-memory fixture (假数据) — see `vade.ui.model.ModelActions` for the
+     * one-object wiring path.
+     */
+    modelActions: ModelActions? = null,
 ) {
     val skin = LocalSkin.current
+    val modelActionsResolved = modelActions ?: remember { InMemoryModelActions() }
+    val modelState = remember(modelActionsResolved) { ModelState.forDefault(modelActionsResolved) }
     Column(
         modifier
             .fillMaxSize()
@@ -91,10 +108,17 @@ fun ProfileScreen(
             }
         }
 
+        SectionLabel("默认模型")
+        ModelPickerCard(
+            state = modelState,
+            title = "默认模型",
+            footerNote = "会话未单独设置模型时使用（D101：会话级 > 全局默认 > priority）" +
+                "· 假数据：未接 core，接真数据只需实现 vade.ui.model.ModelActions",
+        )
+
         SectionLabel("其它")
         GroupCard {
             Column(Modifier.padding(vertical = 4.dp)) {
-                skin.ListItem(title = "模型", subtitle = "会话级 > 全局默认 > manifest.priority（U1-f）", enabled = false)
                 skin.ListItem(title = "设备与通知", subtitle = "设备吊销 FR-8.68（U1-f）", enabled = false)
                 skin.ListItem(title = "管理此 Core", subtitle = "内置 WebView，只加载本地资源（T5b）", enabled = false)
                 skin.ListItem(title = "关于", subtitle = "版本 / 许可 / E2E 标识（U1-f）", enabled = false)

@@ -23,6 +23,7 @@ import com.composables.icons.tabler.outline.Pencil
 import com.composables.icons.tabler.outline.Pin
 import com.composables.icons.tabler.outline.Refresh
 import com.composables.icons.tabler.outline.Search
+import com.composables.icons.tabler.outline.Sparkles
 import com.composables.icons.tabler.outline.Trash
 import com.composables.icons.tabler.outline.User
 import com.composables.icons.tabler.outline.X
@@ -118,4 +119,7 @@ object VadeIcons {
 
     /** Failure / blocked (nothing failed yet). */
     val Failed: ImageVector = Tabler.Outline.Ban
+
+    /** Model surface / picker header (FR-8.46 switcher, RFC-0005) — `Sparkles` verified in the 2.2.1 outline jar. */
+    val Model: ImageVector = Tabler.Outline.Sparkles
 }
