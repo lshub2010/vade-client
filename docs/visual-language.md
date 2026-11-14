@@ -242,16 +242,19 @@
 3. 发送球点击后上浮 + 消息插入
 4. 页面切换（会话列表 ↔ 会话详情）
 
-**参数**
-- 模糊半径随速度映射：`0 → 10dp`（滚动）、`0 → 14dp`（sheet 开合），**上限 14dp**。
-- 只做**垂直方向**为主的方向性模糊（滚动/sheet 是垂直运动）；页面切换可双向。
+**参数（2026-11-14 探针实测校准，覆盖初版）**
+- 滚动：`radius = 6 * clamp((v - 1200) / (6000 - 1200), 0, 1)`，**上限 6dp**（初版写 10dp，实测过重、文字被抹成色块）。
+- sheet 开合：上限 14dp 保留（位移距离大，可承受更大半径）。
+- **必须是方向性的**：`sigmaX = radius × 0.12`、`sigmaY = radius × 0.55`（比值 4.6×）。两轴同 sigma 是"镜头失焦"，不是运动模糊——实测各向同性版本的 `gy/gx = 1.163`，方向性版本 `0.121`，差一个数量级。
+- `sigmaX` 不能取 0：配 `FilterTileMode.CLAMP` 会在图层边界留硬接缝。
 - 速度降到阈值以下后 **120ms 内线性归零**；静止时严格为 0（禁止残留）。
 - 不做时间拖影、不做重影、不做色散；模糊层不改变布局与命中区域。
 
-**实现路径（按平台）**
-- Android 12+（API 31+）：`Modifier.blur(radius, edgeTreatment = Unbounded)`。
-- 桌面 / Wasm / iOS：Skiko `ImageFilter.makeBlur`，通过 `drawIntoCanvas` 自绘一层（expect/actual 封装成 `Modifier.motionBlur(spec)`）。
+**实现路径（按平台，2026-11-14 探针验证）**
+- 桌面 / Wasm：Skiko 路径已实测可用 —— `drawWithContent` + `drawIntoCanvas { it.nativeCanvas }` + `canvas.saveLayer(null, paint)`，`paint.imageFilter = ImageFilter.makeBlur(sigmaX, sigmaY, mode = FilterTileMode.CLAMP)`。**第三参数名是 `mode`，不是 `tileMode`**。封装为 `expect fun Modifier.motionBlur(radiusDp)`。
+- Android 12+（API 31+）：`Modifier.blur(radiusDp.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)`。**无按轴参数 → 只能各向同性**，这是已知平台限制，视觉上会比桌面"更糊一点"，需把 Android 的上限再降 1dp 补偿。
 - Android 11 及以下：**直接降级为无模糊**（不做替代动画），并在设置里不暴露该选项。
+- 性能实测（桌面）：blur on 97.9 fps / off 100.1 fps，帧时间只多 **2.2%**。
 
 **预算与禁令**
 - 同一时刻只有 **1 个**元素在运动模糊；模糊元素不得与 haze 玻璃层叠加（性能）。
