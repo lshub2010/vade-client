@@ -4,8 +4,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import vade.ui.data.FakeSessions
 import vade.ui.chat.ChatPreset
+import vade.ui.data.FakeSessionSource
+import vade.ui.data.FakeSessions
+import vade.ui.data.SessionSource
 import vade.ui.data.SessionGroup
 import vade.ui.data.SessionSummary
 import vade.ui.data.TimeBucket
@@ -28,6 +30,13 @@ class UiState(
     initialSessionId: String? = null,
     /** U1-b: derived-state seed for the detail screen; `Live` is the app default. */
     val chatPreset: ChatPreset = ChatPreset.Live,
+    /**
+     * v2 Wave 0 · state-source injection point. Default keeps the current behaviour
+     * byte-for-byte (fixtures via [FakeSessionSource]); a later batch passes the real
+     * transport-backed source here and the UI pulls from it — no page changes needed
+     * for the seam to exist. Nothing in this slice reads it yet by design (D98).
+     */
+    val source: SessionSource = FakeSessionSource(),
 ) {
     var dest by mutableStateOf(initialDest)
         private set
