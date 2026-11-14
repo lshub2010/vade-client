@@ -228,7 +228,7 @@ private fun ScopeLine(search: SearchState) {
                 .background(skin.colors.primary.copy(alpha = 0.12f))
                 .padding(horizontal = 8.dp, vertical = 3.dp),
         ) {
-            UiText(SearchScope.Cached.label, size = 9, weight = FontWeight.SemiBold, color = skin.colors.primary)
+            UiText(search.scope.label, size = 9, weight = FontWeight.SemiBold, color = skin.colors.primary)
         }
         UiText(
             text = buildString {

@@ -25,7 +25,7 @@
 :composeApp:desktopMainClasses BUILD SUCCESSFUL         → compileKotlinDesktop 真实重编
 ```
 
-- APK：`composeApp-debug.apk` **11,743,538 B**，sha256 `b1a613ab1f42908ade577b38be11c0a995565594c5d855cea6358559b6ffbd65`
+- APK：`composeApp-debug.apk` **11,803,083 B**，sha256 `ebb91620e4ad91dfa52cc2aee40873450d2494d5d3c9b76a86b6c720cdc2519f`（审查应修三条并入后重打）
 - 测试覆盖：索引（AND 多词 / 大小写 / 标题优先 / 无结果 / 空白 / 超长 / 区间合并）、状态（开关保留 query+选中+滚动 / 换词重置 / 三字符阈值 / 结果收缩 clamp）、键路由（用真实 `handleShellKeys`：⌘K、Ctrl+K、裸 K 不吞、Esc、↑↓ 环绕、Enter 进入、无命中不消费）
 
 ## 截图（均在 `shots/u1c/`，逐张开图核过）
@@ -40,6 +40,15 @@
 
 1. **选中行高亮不可辨**（上一棒遗留）：选中行标题整行用 accent，导致行内命中片段与正文同色。改为标题恒用 `onSurface`，选中态靠行底 tint + 字重 + 头像底色区分 —— 修后截图可见 `AGP` 蓝色加粗、其余黑字。
 2. `capture-window.ps1` 增加 `-Search` / `-SearchEmpty`，使无键鼠注入的会话也能截到真实覆盖层。
+
+
+## 审查应修三条（R1 复审后已修）
+
+1. `SearchOverlay.kt` 原硬编码 `SearchScope.Cached.label`，与 `SearchIndex` 注释承诺的「UI 渲染 `result.scope.label`，标签自动翻转」矛盾 → `SearchState` 新增 `scope` 字段（`applyResults` 时取 `result.scope`），覆盖层改读 `search.scope.label`。接上 `session/search` 后标签会自动变，不会继续说"已缓存"。
+2. `MaterialImportGuardTest` 只扫 `destinations`/`shell`，新包 `search/` 不在守卫内 → 扫描列表加 `search`。
+3. 三处文档引用指向不存在/错节的原文（"任务书 §五 U1-c"的引号句、§六 挂状态机与 200 字上限）→ 改成准确出处：FR-8.27 / D98 + `RESULT.md`，并注明"任务书 §五 只点名了切片"。
+
+修后复跑：`desktopTest --rerun` 21 tests 0 failed；`assembleDebug` 48 tasks，APK 见上。
 
 ## 未做 / 已知
 

@@ -4,7 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
-/** The four shapes the overlay can be in (U1-c §六). */
+/** The four shapes the overlay can be in (U1-c 本批定义；见 `ui/shots/u1c/RESULT.md`)。 */
 enum class SearchPhase {
     /** Nothing typed yet. */
     Empty,
@@ -68,6 +68,14 @@ class SearchState {
     var indexedCount by mutableStateOf(0)
         private set
 
+    /**
+     * Where the current rows came from. Single source of truth for the scope label — the
+     * overlay must never hard-code 「范围：已缓存」, otherwise flipping [SessionSearchSource]
+     * to a real `session/search` would leave the label lying.
+     */
+    var scope by mutableStateOf(SearchScope.Cached)
+        private set
+
     /** True once a query has actually been executed (distinguishes "no run" from "0 hits"). */
     var executed by mutableStateOf(false)
         private set
@@ -121,6 +129,7 @@ class SearchState {
     /** Called by the debounced runner; keeps the selection inside the new list. */
     fun applyResults(result: SearchResult) {
         results = result.hits
+        scope = result.scope
         indexedCount = result.indexed
         executed = true
         selected = selected.coerceIn(0, (results.size - 1).coerceAtLeast(0))

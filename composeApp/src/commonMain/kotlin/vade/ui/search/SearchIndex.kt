@@ -6,9 +6,9 @@ import vade.ui.data.SessionSummary
 /**
  * Where a result came from — never implicit (FR-8.27).
  *
- * The scope is rendered on *every* search state (empty input included), because the task
- * book §五 U1-c forbids a silent downgrade: "对本地已缓存的 SessionSummary / FakeSessions
- * 做标题+摘要的本地索引，并在搜索框下方**持续标注**「范围：已缓存」".
+ * The scope is rendered on *every* search state (empty input included): FR-8.27 and D98
+ * forbid a silent downgrade, so the degraded path has to stay visible. The batch-level
+ * wording lives in `ui/shots/u1c/RESULT.md` (the task book §五 only names the slice).
  */
 enum class SearchScope(val label: String, val detail: String) {
     /** Local index over sessions this client already holds. */
@@ -113,7 +113,7 @@ const val SEARCH_RESULT_LIMIT = 50
 /** FR-8.27: 3 characters to trigger. Shorter input gets a hint, not a search. */
 const val SEARCH_MIN_CHARS = 3
 
-/** U1-c §六: over-long input is its own state instead of an unbounded scan. */
+/** U1-c 本批约定: over-long input is its own state instead of an unbounded scan (200 chars, see RESULT.md). */
 const val SEARCH_MAX_CHARS = 200
 
 /** FR-8.27: debounce ≤200 ms. */
