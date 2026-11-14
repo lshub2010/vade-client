@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="SessionMenuTest[desktop]" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:34.873Z" hostname="WIN-SOHFNBA79AT" time="0.01">
+  <properties/>
+  <testcase name="deleteMenuItemOnlyOpensConfirm_neverDeletesDirectly[desktop]" classname="vade.ui.meta.SessionMenuTest" time="0.002"/>
+  <testcase name="moveToGroupIncludesUngroupedNullTarget[desktop]" classname="vade.ui.meta.SessionMenuTest" time="0.002"/>
+  <testcase name="newGroupMenuItemOpensGroupSheetWithWhitelistedDefaults[desktop]" classname="vade.ui.meta.SessionMenuTest" time="0.001"/>
+  <testcase name="pinLabelsAreMutuallyExclusiveAndFollowState[desktop]" classname="vade.ui.meta.SessionMenuTest" time="0.002"/>
+  <testcase name="archiveLabelsToggleTheSameWay[desktop]" classname="vade.ui.meta.SessionMenuTest" time="0.001"/>
+  <testcase name="renameTrimsAndCommitsOnce_blankIsRejectedWithoutCallback[desktop]" classname="vade.ui.meta.SessionMenuTest" time="0.002"/>
+  <testcase name="menuHasExactlyTheSixContractedItemsInOrder[desktop]" classname="vade.ui.meta.SessionMenuTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

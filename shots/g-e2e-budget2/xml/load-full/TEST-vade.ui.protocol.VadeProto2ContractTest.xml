@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="VadeProto2ContractTest[desktop]" tests="46" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:38.457Z" hostname="WIN-SOHFNBA79AT" time="0.102">
+  <properties/>
+  <testcase name="sessionRenameRoundTripDecodesRequiredSessionRow[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.004"/>
+  <testcase name="turnToolDiscoveredEventDecodesToolIdentityAndOptionalKeys[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.0"/>
+  <testcase name="blankRequiredIdsFailWithInvalidArgumentBeforeAnyWireWrite[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.002"/>
+  <testcase name="sessionRenameRejectsBlankTitleWithInvalidArgument[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.0"/>
+  <testcase name="renameResultWithoutSessionObjectThrowsPayloadDecodeException[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.0"/>
+  <testcase name="sessionGroupCreateRejectsBlankOrOverlongName[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.0"/>
+  <testcase name="sessionPinRoundTripCarriesRequiredPinnedFlag[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.003"/>
+  <testcase name="sessionDeleteRoundTripDecodesOk[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.018"/>
+  <testcase name="subagentResultEventDecodesFingerprintNeverText[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.002"/>
+  <testcase name="requiredObjectMissingThroughClientMapsToProtocolMismatch[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.004"/>
+  <testcase name="sessionGroupUpdateRequiresAtLeastOneField[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.0"/>
+  <testcase name="sessionListChangedEventDecodesAddedAndRemoved[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.0"/>
+  <testcase name="sessionListNullGroupIdMeansUngroupedOnly[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.0"/>
+  <testcase name="sessionListValueGroupIdFiltersOneGroup[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.0"/>
+  <testcase name="subagentStatusEventDecodesStateWithStepRefresh[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.0"/>
+  <testcase name="listLimitsRejectOutOfRangeWithInvalidArgument[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.002"/>
+  <testcase name="sessionListResultWithoutSessionsThrowsPayloadDecodeException[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.0"/>
+  <testcase name="sessionUpdatedEventDecodesMetadataEdgeWithExplicitNulls[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.0"/>
+  <testcase name="editResubmitRequiredParamsFailWithInvalidArgument[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.0"/>
+  <testcase name="subagentListRoundTripCarriesStatesFilterAndDecodesRuns[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.008"/>
+  <testcase name="turnSkillCatalogEventDecodesDigestAndEntries[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.0"/>
+  <testcase name="sessionRenameRejectsOverlongTitleWithInvalidArgument[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.0"/>
+  <testcase name="subagentSpawnedEventDecodesRequiredNullKeys[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.0"/>
+  <testcase name="sessionGroupListRoundTripDecodesEntriesWithCounts[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.004"/>
+  <testcase name="invalidArgumentGuardsFireBeforeAnyFrameIsSent[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.001"/>
+  <testcase name="sessionGroupAssignRoundTripNullMovesSessionOutOfGroups[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.003"/>
+  <testcase name="allThirtyFourContractKeysAreAccountedFor[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.0"/>
+  <testcase name="taskLogTailRangeGuardsFailWithInvalidArgument[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.0"/>
+  <testcase name="subagentGetRoundTripDecodesTerminalRunView[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.004"/>
+  <testcase name="groupWriteResultsWithoutGroupObjectThrowPayloadDecodeException[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.0"/>
+  <testcase name="sessionGroupAssignRejectsAbsentGroupId[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.0"/>
+  <testcase name="sessionArchiveRoundTripCarriesRequiredArchivedFlag[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.003"/>
+  <testcase name="subagentSpawnedEventMissingRequiredKeyIsDroppedNotDefaulted[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.0"/>
+  <testcase name="unknownEventStillIgnoredAndLastSeqAdvances[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.02"/>
+  <testcase name="sessionListOmittedGroupIdMeansAllGroups[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.0"/>
+  <testcase name="sessionRowMissingRequiredScalarsThrowsNotZeroValueFallback[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.001"/>
+  <testcase name="subagentListResultWithoutRunsThrowsPayloadDecodeException[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.0"/>
+  <testcase name="sessionPinUnpinDecodesNullPinnedAt[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.003"/>
+  <testcase name="sessionGroupAssignRoundTripValueAssignsGroup[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.003"/>
+  <testcase name="sessionUpdatedEventMissingRequiredByIsDropped[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.0"/>
+  <testcase name="sessionGroupCreateRoundTripDecodesRequiredGroupRow[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.003"/>
+  <testcase name="sessionGroupDeleteRoundTripDecodesUnassignedCount[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.003"/>
+  <testcase name="sessionGroupUpdateRoundTripSendsNullToClearAndOmitsToKeep[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.004"/>
+  <testcase name="sessionListRoundTripPinsTriStateFilterAndDecodesRows[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.005"/>
+  <testcase name="groupDeleteResultMissingUnassignedThrowsPayloadDecodeException[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.0"/>
+  <testcase name="subagentStateEnumPinsFiveFrozenValues[desktop]" classname="vade.ui.protocol.VadeProto2ContractTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

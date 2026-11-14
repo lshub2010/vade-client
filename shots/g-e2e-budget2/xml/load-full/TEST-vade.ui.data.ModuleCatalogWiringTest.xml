@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ModuleCatalogWiringTest[desktop]" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:26.344Z" hostname="WIN-SOHFNBA79AT" time="0.034">
+  <properties/>
+  <testcase name="theWireSourceCarriesAFrameAllTheWayToReady[desktop]" classname="vade.ui.data.ModuleCatalogWiringTest" time="0.005"/>
+  <testcase name="moduleCatalogAppearsOnConnectAndDisappearsOnDisconnect[desktop]" classname="vade.ui.data.ModuleCatalogWiringTest" time="0.026"/>
+  <testcase name="theAutoConnectingShimForwardsTheSameInstance[desktop]" classname="vade.ui.data.ModuleCatalogWiringTest" time="0.003"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

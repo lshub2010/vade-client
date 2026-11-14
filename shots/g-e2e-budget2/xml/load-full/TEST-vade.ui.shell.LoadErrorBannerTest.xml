@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="LoadErrorBannerTest[desktop]" tests="17" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:40.934Z" hostname="WIN-SOHFNBA79AT" time="1.473">
+  <properties/>
+  <testcase name="threadFailureRetriesTheThreadAndLeavesTheListAlone[desktop]" classname="vade.ui.shell.LoadErrorBannerTest" time="0.375"/>
+  <testcase name="retryInFlightKeepsTheBannerUpAndDisablesTheButton[desktop]" classname="vade.ui.shell.LoadErrorBannerTest" time="0.001"/>
+  <testcase name="retryEntryIsKeyboardActivatable[desktop]" classname="vade.ui.shell.LoadErrorBannerTest" time="0.028"/>
+  <testcase name="listFailureRendersTheBannerAndItsRetryReachesTheSource[desktop]" classname="vade.ui.shell.LoadErrorBannerTest" time="0.172"/>
+  <testcase name="theTwoRetriesAreIndependent[desktop]" classname="vade.ui.shell.LoadErrorBannerTest" time="0.418"/>
+  <testcase name="aSecondFailureReplacesTheClassification[desktop]" classname="vade.ui.shell.LoadErrorBannerTest" time="0.0"/>
+  <testcase name="theFixturePathNeverShowsALoadBanner[desktop]" classname="vade.ui.shell.LoadErrorBannerTest" time="0.063"/>
+  <testcase name="successHidesTheBannerCompletely[desktop]" classname="vade.ui.shell.LoadErrorBannerTest" time="0.0"/>
+  <testcase name="retryEntryIsARealClickableButton[desktop]" classname="vade.ui.shell.LoadErrorBannerTest" time="0.022"/>
+  <testcase name="aFailedRetryKeepsTheBannerWithTheNewClassification[desktop]" classname="vade.ui.shell.LoadErrorBannerTest" time="0.12"/>
+  <testcase name="theTwoReadsNeverShareTagsOrDescriptions[desktop]" classname="vade.ui.shell.LoadErrorBannerTest" time="0.0"/>
+  <testcase name="retryEntryIsDisabledAndIgnoresClicksWhileInFlight[desktop]" classname="vade.ui.shell.LoadErrorBannerTest" time="0.025"/>
+  <testcase name="threeClicksDuringARetryIssueExactlyOneExtraFetch[desktop]" classname="vade.ui.shell.LoadErrorBannerTest" time="0.205"/>
+  <testcase name="failedListReadShowsItsClassificationAndAnEnabledRetry[desktop]" classname="vade.ui.shell.LoadErrorBannerTest" time="0.0"/>
+  <testcase name="retryIconIsAVectorNotAGlyphCharacter[desktop]" classname="vade.ui.shell.LoadErrorBannerTest" time="0.02"/>
+  <testcase name="retryOfAStaleRowsListLoadAlsoDisablesTheButton[desktop]" classname="vade.ui.shell.LoadErrorBannerTest" time="0.0"/>
+  <testcase name="retryEntryCarriesANonEmptyAccessibleDescription[desktop]" classname="vade.ui.shell.LoadErrorBannerTest" time="0.022"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

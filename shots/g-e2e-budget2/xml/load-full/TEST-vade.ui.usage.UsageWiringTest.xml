@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="UsageWiringTest[desktop]" tests="12" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:42.908Z" hostname="WIN-SOHFNBA79AT" time="0.001">
+  <properties/>
+  <testcase name="exceededBudgetCarriesTheOverTheCapCopy[desktop]" classname="vade.ui.usage.UsageWiringTest" time="0.0"/>
+  <testcase name="readyStateCarriesTheSameDtoTheProjectionRenders[desktop]" classname="vade.ui.usage.UsageWiringTest" time="0.0"/>
+  <testcase name="warnedBudgetKeepsTheRawStateAndPercent[desktop]" classname="vade.ui.usage.UsageWiringTest" time="0.0"/>
+  <testcase name="byModelRowsAreSortedByTokensDescending[desktop]" classname="vade.ui.usage.UsageWiringTest" time="0.0"/>
+  <testcase name="zeroLimitBudgetReadsNotEnabledNotZeroPercent[desktop]" classname="vade.ui.usage.UsageWiringTest" time="0.0"/>
+  <testcase name="fourBudgetStatesAreAllVisibleAndDistinct[desktop]" classname="vade.ui.usage.UsageWiringTest" time="0.0"/>
+  <testcase name="failedStateTextLeadsWithTheCategoryCodeAndAHint[desktop]" classname="vade.ui.usage.UsageWiringTest" time="0.0"/>
+  <testcase name="totalTokensIsTheServerNumberAndEqualsChatPlusAux[desktop]" classname="vade.ui.usage.UsageWiringTest" time="0.0"/>
+  <testcase name="threeLoadStatesHaveDistinctHonestLabels[desktop]" classname="vade.ui.usage.UsageWiringTest" time="0.0"/>
+  <testcase name="missingTotalTokensIsNotReportedNotZero[desktop]" classname="vade.ui.usage.UsageWiringTest" time="0.0"/>
+  <testcase name="contradictoryServerTotalStaysVisibleAndIsNeverRecomputed[desktop]" classname="vade.ui.usage.UsageWiringTest" time="0.0"/>
+  <testcase name="emptyByModelDoesNotCrashAndKeepsChatData[desktop]" classname="vade.ui.usage.UsageWiringTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

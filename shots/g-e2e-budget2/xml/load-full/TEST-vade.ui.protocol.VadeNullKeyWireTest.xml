@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="VadeNullKeyWireTest[desktop]" tests="20" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:38.426Z" hostname="WIN-SOHFNBA79AT" time="0.028">
+  <properties/>
+  <testcase name="groupAssignValueWritesTheString[desktop]" classname="vade.ui.protocol.VadeNullKeyWireTest" time="0.0"/>
+  <testcase name="sessionListFullFrameWithoutGroupIdIsByteIdenticalToPreFix[desktop]" classname="vade.ui.protocol.VadeNullKeyWireTest" time="0.001"/>
+  <testcase name="groupAssignAbsentIsRefusedBeforeAnyFrame[desktop]" classname="vade.ui.protocol.VadeNullKeyWireTest" time="0.0"/>
+  <testcase name="groupUpdateIconNullClearsWhileColorStaysAbsent[desktop]" classname="vade.ui.protocol.VadeNullKeyWireTest" time="0.0"/>
+  <testcase name="groupUpdateNullAndAbsentFramesMustDiffer[desktop]" classname="vade.ui.protocol.VadeNullKeyWireTest" time="0.001"/>
+  <testcase name="groupUpdateRealClientClearIconFrameCarriesIconNull[desktop]" classname="vade.ui.protocol.VadeNullKeyWireTest" time="0.009"/>
+  <testcase name="sessionListAbsentOmitsTheKeyEntirely[desktop]" classname="vade.ui.protocol.VadeNullKeyWireTest" time="0.0"/>
+  <testcase name="groupAssignPresentNullWritesGroup_idAsJsonNull[desktop]" classname="vade.ui.protocol.VadeNullKeyWireTest" time="0.0"/>
+  <testcase name="sessionListRealClientNullAndAbsentFramesDifferOnTheWire[desktop]" classname="vade.ui.protocol.VadeNullKeyWireTest" time="0.006"/>
+  <testcase name="modelSetPresentNullWritesTheKeyAsJsonNull[desktop]" classname="vade.ui.protocol.VadeNullKeyWireTest" time="0.001"/>
+  <testcase name="modelSetValueWritesTheString[desktop]" classname="vade.ui.protocol.VadeNullKeyWireTest" time="0.0"/>
+  <testcase name="modelSetLegacyStringCtorValueFrameIsByteIdenticalToPreFix[desktop]" classname="vade.ui.protocol.VadeNullKeyWireTest" time="0.0"/>
+  <testcase name="sessionListNullAndAbsentFramesMustDiffer[desktop]" classname="vade.ui.protocol.VadeNullKeyWireTest" time="0.0"/>
+  <testcase name="groupAssignRealClientNullFrameMovesTheSessionOut[desktop]" classname="vade.ui.protocol.VadeNullKeyWireTest" time="0.004"/>
+  <testcase name="modelSetAbsentIsRefusedBeforeAnyFrame[desktop]" classname="vade.ui.protocol.VadeNullKeyWireTest" time="0.001"/>
+  <testcase name="modelSetLegacyStringCtorNullEmitsTheSameClearingFrame[desktop]" classname="vade.ui.protocol.VadeNullKeyWireTest" time="0.0"/>
+  <testcase name="modelSetRealClientClearFrameCarriesModelIdNull[desktop]" classname="vade.ui.protocol.VadeNullKeyWireTest" time="0.004"/>
+  <testcase name="sessionRenameFrameIsByteIdenticalToPreFix[desktop]" classname="vade.ui.protocol.VadeNullKeyWireTest" time="0.0"/>
+  <testcase name="sessionListPresentNullWritesGroup_idAsJsonNull[desktop]" classname="vade.ui.protocol.VadeNullKeyWireTest" time="0.0"/>
+  <testcase name="groupUpdateValueStillWritesTheString[desktop]" classname="vade.ui.protocol.VadeNullKeyWireTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

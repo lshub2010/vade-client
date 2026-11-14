@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="VadeContractCoverageGuardTest[desktop]" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:38.332Z" hostname="WIN-SOHFNBA79AT" time="0.004">
+  <properties/>
+  <testcase name="everyEventsJsonTopicIsHandledByTheClient[desktop]" classname="vade.ui.protocol.VadeContractCoverageGuardTest" time="0.001"/>
+  <testcase name="everyUiToCoreContractMethodHasAClientCodec[desktop]" classname="vade.ui.protocol.VadeContractCoverageGuardTest" time="0.002"/>
+  <testcase name="coverageGuardDiffFlagsExactlyTheMissingMethod[desktop]" classname="vade.ui.protocol.VadeContractCoverageGuardTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

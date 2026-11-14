@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="HaloFalloffTest[desktop]" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:24.431Z" hostname="WIN-SOHFNBA79AT" time="0.011">
+  <properties/>
+  <testcase name="fallbackIsAtLeastTwoLayers[desktop]" classname="vade.ui.component.liquid.HaloFalloffTest" time="0.0"/>
+  <testcase name="darkHaloStaysUnderTheSpecCapAndTheBudget[desktop]" classname="vade.ui.component.liquid.HaloFalloffTest" time="0.007"/>
+  <testcase name="blurBelowEdgePeakStaysInsideTheBudget[desktop]" classname="vade.ui.component.liquid.HaloFalloffTest" time="0.0"/>
+  <testcase name="pillLightPeakStaysInsideTheThreePercentBudget[desktop]" classname="vade.ui.component.liquid.HaloFalloffTest" time="0.001"/>
+  <testcase name="fallbackLayerEdgeStepStaysUnderTwoGrayLevels[desktop]" classname="vade.ui.component.liquid.HaloFalloffTest" time="0.0"/>
+  <testcase name="fallbackPerLayerWidthStaysUnderZeroPointFourDpAtThePillRadius[desktop]" classname="vade.ui.component.liquid.HaloFalloffTest" time="0.0"/>
+  <testcase name="fullCoveragePeaksAtExactlyTheStrengthAndZeroCoverageIsZero[desktop]" classname="vade.ui.component.liquid.HaloFalloffTest" time="0.0"/>
+  <testcase name="adjacentCumulativeStepStaysUnderStrengthOverSix[desktop]" classname="vade.ui.component.liquid.HaloFalloffTest" time="0.0"/>
+  <testcase name="cumulativeFalloffIsMonotonicallyNonIncreasingOutward[desktop]" classname="vade.ui.component.liquid.HaloFalloffTest" time="0.003"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="VadeWireStrictTest[desktop]" tests="22" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:38.589Z" hostname="WIN-SOHFNBA79AT" time="0.026">
+  <properties/>
+  <testcase name="intStrictRejectsFractionalQuotedAndOutOfIntRange[desktop]" classname="vade.ui.protocol.VadeWireStrictTest" time="0.0"/>
+  <testcase name="stringListAcceptsStringsAndTreatsAbsentAsNull[desktop]" classname="vade.ui.protocol.VadeWireStrictTest" time="0.0"/>
+  <testcase name="moduleStatusVersionAsNumberIsMalformedThroughTheParser[desktop]" classname="vade.ui.protocol.VadeWireStrictTest" time="0.0"/>
+  <testcase name="realCoreSessionUpdatedIgnoresUncontractedKeys[desktop]" classname="vade.ui.protocol.VadeWireStrictTest" time="0.002"/>
+  <testcase name="boolStrictRejectsTheStringTrueAndNumbers[desktop]" classname="vade.ui.protocol.VadeWireStrictTest" time="0.0"/>
+  <testcase name="realCoreFramesStillDecode[desktop]" classname="vade.ui.protocol.VadeWireStrictTest" time="0.003"/>
+  <testcase name="intStrictAcceptsInRangeAndNull[desktop]" classname="vade.ui.protocol.VadeWireStrictTest" time="0.0"/>
+  <testcase name="strStrictRejectsNumber[desktop]" classname="vade.ui.protocol.VadeWireStrictTest" time="0.0"/>
+  <testcase name="numStrictAcceptsAnyJsonNumberAndRejectsStrings[desktop]" classname="vade.ui.protocol.VadeWireStrictTest" time="0.001"/>
+  <testcase name="lngStrictRejectsQuotedNumbersAndFractions[desktop]" classname="vade.ui.protocol.VadeWireStrictTest" time="0.0"/>
+  <testcase name="explicitJsonNullIsNeverMalformed[desktop]" classname="vade.ui.protocol.VadeWireStrictTest" time="0.0"/>
+  <testcase name="realCoreSessionListRowsTolerateNullTitle[desktop]" classname="vade.ui.protocol.VadeWireStrictTest" time="0.0"/>
+  <testcase name="stringListRejectsANonStringElement[desktop]" classname="vade.ui.protocol.VadeWireStrictTest" time="0.0"/>
+  <testcase name="strStrictAcceptsStringAndNull[desktop]" classname="vade.ui.protocol.VadeWireStrictTest" time="0.0"/>
+  <testcase name="absentOptionalKeyIsNeverMalformed[desktop]" classname="vade.ui.protocol.VadeWireStrictTest" time="0.0"/>
+  <testcase name="moduleStatusVersionAsStringStillDecodes[desktop]" classname="vade.ui.protocol.VadeWireStrictTest" time="0.0"/>
+  <testcase name="noLooseScalarAccessorRemainsOutsideTheHelperFile[desktop]" classname="vade.ui.protocol.VadeWireStrictTest" time="0.016"/>
+  <testcase name="realCoreUsageCountersSurviveStrictDecoding[desktop]" classname="vade.ui.protocol.VadeWireStrictTest" time="0.0"/>
+  <testcase name="unknownKeysAreIgnoredAtEveryLevel[desktop]" classname="vade.ui.protocol.VadeWireStrictTest" time="0.0"/>
+  <testcase name="boolStrictAcceptsBooleansAndNull[desktop]" classname="vade.ui.protocol.VadeWireStrictTest" time="0.0"/>
+  <testcase name="strStrictRejectsEveryNonStringShape[desktop]" classname="vade.ui.protocol.VadeWireStrictTest" time="0.0"/>
+  <testcase name="lngStrictAcceptsIntegersAndNull[desktop]" classname="vade.ui.protocol.VadeWireStrictTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

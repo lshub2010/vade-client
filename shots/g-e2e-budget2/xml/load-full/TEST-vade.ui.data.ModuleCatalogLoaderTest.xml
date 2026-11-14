@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ModuleCatalogLoaderTest[desktop]" tests="12" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:25.197Z" hostname="WIN-SOHFNBA79AT" time="1.145">
+  <properties/>
+  <testcase name="revisionChangeRebuildsTheRegistry[desktop]" classname="vade.ui.data.ModuleCatalogLoaderTest" time="0.024"/>
+  <testcase name="retryReissuesTheFetchAfterAFailure[desktop]" classname="vade.ui.data.ModuleCatalogLoaderTest" time="0.015"/>
+  <testcase name="disposeStopsEveryFurtherWrite[desktop]" classname="vade.ui.data.ModuleCatalogLoaderTest" time="0.207"/>
+  <testcase name="registryIsOnlyReplacedAfterAFullyDecodedReply[desktop]" classname="vade.ui.data.ModuleCatalogLoaderTest" time="0.074"/>
+  <testcase name="moduleStatusTriggersExactlyOneRepullAndOtherEventsAreIgnored[desktop]" classname="vade.ui.data.ModuleCatalogLoaderTest" time="0.176"/>
+  <testcase name="emptyModulesIsReadyAndNotEmptyAFailure[desktop]" classname="vade.ui.data.ModuleCatalogLoaderTest" time="0.032"/>
+  <testcase name="sameRevisionDoesNotRebuildTheRegistry[desktop]" classname="vade.ui.data.ModuleCatalogLoaderTest" time="0.245"/>
+  <testcase name="firstPullIsLoadingThenReadyWithTheWireContent[desktop]" classname="vade.ui.data.ModuleCatalogLoaderTest" time="0.013"/>
+  <testcase name="undecodableReplyBecomesAFailedStateInsteadOfCrashing[desktop]" classname="vade.ui.data.ModuleCatalogLoaderTest" time="0.001"/>
+  <testcase name="invalidationsDuringAFlightCollapseIntoOneFollowUpPull[desktop]" classname="vade.ui.data.ModuleCatalogLoaderTest" time="0.178"/>
+  <testcase name="failedPullIsObservableWithItsCategoryAndCode[desktop]" classname="vade.ui.data.ModuleCatalogLoaderTest" time="0.002"/>
+  <testcase name="staleReplyFromAnOlderGenerationIsDropped[desktop]" classname="vade.ui.data.ModuleCatalogLoaderTest" time="0.175"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

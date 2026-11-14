@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ComposerInsetsTest[desktop]" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:16.886Z" hostname="WIN-SOHFNBA79AT" time="6.599">
+  <properties/>
+  <testcase name="keyboardOpenAddsNoClearanceAboveTheKeyboard[desktop]" classname="vade.ui.chat.ComposerInsetsTest" time="0.002"/>
+  <testcase name="floatingPillStackExceedsTheShell88dpZoneOnBothNavStyles[desktop]" classname="vade.ui.chat.ComposerInsetsTest" time="0.0"/>
+  <testcase name="zeroInsetsMeansZeroClearanceBottomOnly[desktop]" classname="vade.ui.chat.ComposerInsetsTest" time="0.0"/>
+  <testcase name="desktopWindowActualsReadZeroAndComposerPaddingStays16dp[desktop]" classname="vade.ui.chat.ComposerInsetsTest" time="6.596"/>
+  <testcase name="gesturePillInsetLiftsTheComposerCapsuleByTheInset[desktop]" classname="vade.ui.chat.ComposerInsetsTest" time="0.0"/>
+  <testcase name="imePlusClearanceIsAlwaysTheUnionNeverTheSum[desktop]" classname="vade.ui.chat.ComposerInsetsTest" time="0.0"/>
+  <testcase name="threeButtonNavInsetLiftsTheComposerCapsuleByTheInset[desktop]" classname="vade.ui.chat.ComposerInsetsTest" time="0.0"/>
+  <testcase name="listSpacerTracksComposerHeightSoTheNewestMessageScrollsClear[desktop]" classname="vade.ui.chat.ComposerInsetsTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

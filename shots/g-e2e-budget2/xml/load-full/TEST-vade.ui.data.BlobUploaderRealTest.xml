@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="BlobUploaderRealTest[desktop]" tests="12" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:24.444Z" hostname="WIN-SOHFNBA79AT" time="0.168">
+  <properties/>
+  <testcase name="cancellationMidPartsAbortsAndRethrowsCancellation[desktop]" classname="vade.ui.data.BlobUploaderRealTest" time="0.106"/>
+  <testcase name="sha256MatchesStandardKnownAnswers[desktop]" classname="vade.ui.data.BlobUploaderRealTest" time="0.001"/>
+  <testcase name="sha256AgreesWithJvmMessageDigestOnRandomData[desktop]" classname="vade.ui.data.BlobUploaderRealTest" time="0.009"/>
+  <testcase name="multiChunkUsesServerPartSizeAndProgressIsRealBytes[desktop]" classname="vade.ui.data.BlobUploaderRealTest" time="0.005"/>
+  <testcase name="beginFailureThrowsUploadFailedWithoutAbort[desktop]" classname="vade.ui.data.BlobUploaderRealTest" time="0.018"/>
+  <testcase name="completeFailureAbortsAndThrowsUploadFailed[desktop]" classname="vade.ui.data.BlobUploaderRealTest" time="0.003"/>
+  <testcase name="preflightValidationNeverTouchesChannel[desktop]" classname="vade.ui.data.BlobUploaderRealTest" time="0.005"/>
+  <testcase name="dedupeShortCircuitsWithoutParts[desktop]" classname="vade.ui.data.BlobUploaderRealTest" time="0.004"/>
+  <testcase name="failedUploadLeavesNoResidueForTheNextAttempt[desktop]" classname="vade.ui.data.BlobUploaderRealTest" time="0.003"/>
+  <testcase name="singleChunkUploadSendsBeginPutCompleteWithRealDigest[desktop]" classname="vade.ui.data.BlobUploaderRealTest" time="0.004"/>
+  <testcase name="resumeSkipsConfirmedBytesAndProgressStartsThere[desktop]" classname="vade.ui.data.BlobUploaderRealTest" time="0.003"/>
+  <testcase name="concurrentUploadsOnOneAdapterDoNotInterfere[desktop]" classname="vade.ui.data.BlobUploaderRealTest" time="0.005"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

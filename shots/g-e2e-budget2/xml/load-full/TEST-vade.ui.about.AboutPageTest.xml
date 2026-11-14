@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="AboutPageTest[desktop]" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:16.550Z" hostname="WIN-SOHFNBA79AT" time="0.298">
+  <properties/>
+  <testcase name="buildTimeIsUtcIsoFormat[desktop]" classname="vade.ui.about.AboutPageTest" time="0.001"/>
+  <testcase name="profileAboutRowOpensTheFullSubpage[desktop]" classname="vade.ui.about.AboutPageTest" time="0.254"/>
+  <testcase name="versionConstantIsNonEmptySemverWithAlpha[desktop]" classname="vade.ui.about.AboutPageTest" time="0.001"/>
+  <testcase name="aboutPageRendersVersionBuildTimeAndLicences[desktop]" classname="vade.ui.about.AboutPageTest" time="0.038"/>
+  <testcase name="licenseListHasAtLeastThreeEntries[desktop]" classname="vade.ui.about.AboutPageTest" time="0.0"/>
+  <testcase name="generatedFileCarriesTheSameVersion[desktop]" classname="vade.ui.about.AboutPageTest" time="0.003"/>
+  <testcase name="gradlePropertiesIsTheSingleVersionSource[desktop]" classname="vade.ui.about.AboutPageTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="LiveTranscriptTest[desktop]" tests="23" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:24.010Z" hostname="WIN-SOHFNBA79AT" time="0.045">
+  <properties/>
+  <testcase name="turnSupersededMarksTheOldRowWithoutDeletingIt[desktop]" classname="vade.ui.chat.LiveTranscriptTest" time="0.016"/>
+  <testcase name="replayingTheSameSeqDoesNotAppend[desktop]" classname="vade.ui.chat.LiveTranscriptTest" time="0.001"/>
+  <testcase name="editedReplacesTheRowInPlaceWithoutAddingOne[desktop]" classname="vade.ui.chat.LiveTranscriptTest" time="0.002"/>
+  <testcase name="lastSeqNeverGoesBackwardsAcrossMixedTraffic[desktop]" classname="vade.ui.chat.LiveTranscriptTest" time="0.0"/>
+  <testcase name="duplicateEditSupersededByIsIgnored[desktop]" classname="vade.ui.chat.LiveTranscriptTest" time="0.002"/>
+  <testcase name="outOfOrderDeltasBufferUntilTheGapFills[desktop]" classname="vade.ui.chat.LiveTranscriptTest" time="0.003"/>
+  <testcase name="deltasReplayTheRealE2eWireSentenceAndUsage[desktop]" classname="vade.ui.chat.LiveTranscriptTest" time="0.0"/>
+  <testcase name="interruptPrefersTheWirePartialChars[desktop]" classname="vade.ui.chat.LiveTranscriptTest" time="0.003"/>
+  <testcase name="emptyDeltaIsHarmless[desktop]" classname="vade.ui.chat.LiveTranscriptTest" time="0.0"/>
+  <testcase name="twoDeltasOnOnePartAccumulateInsteadOfOverwriting[desktop]" classname="vade.ui.chat.LiveTranscriptTest" time="0.001"/>
+  <testcase name="twoTurnsRenderInOrderWithSeparateRows[desktop]" classname="vade.ui.chat.LiveTranscriptTest" time="0.0"/>
+  <testcase name="replayingTheWholeSequenceIsIdempotent[desktop]" classname="vade.ui.chat.LiveTranscriptTest" time="0.0"/>
+  <testcase name="failedAfterPartialTextKeepsThePartialText[desktop]" classname="vade.ui.chat.LiveTranscriptTest" time="0.004"/>
+  <testcase name="applyLiveDrivesChatStateItemsFromTheEventStream[desktop]" classname="vade.ui.chat.LiveTranscriptTest" time="0.001"/>
+  <testcase name="coalescedGapJumpsForwardAsSelfContained[desktop]" classname="vade.ui.chat.LiveTranscriptTest" time="0.001"/>
+  <testcase name="anOldSeqReplayIsAnIdempotentDropNotAMutation[desktop]" classname="vade.ui.chat.LiveTranscriptTest" time="0.0"/>
+  <testcase name="unrelatedKnownEventsAreIgnoredCleanly[desktop]" classname="vade.ui.chat.LiveTranscriptTest" time="0.01"/>
+  <testcase name="midStreamFirstEventBootstrapsInsteadOfDeadlocking[desktop]" classname="vade.ui.chat.LiveTranscriptTest" time="0.0"/>
+  <testcase name="interruptKeepsPartialTextAndCountsCodePoints[desktop]" classname="vade.ui.chat.LiveTranscriptTest" time="0.0"/>
+  <testcase name="completedTurnWithNoTextStillFinalizesARow[desktop]" classname="vade.ui.chat.LiveTranscriptTest" time="0.001"/>
+  <testcase name="editedForUnknownRowIsRecordedNotSilent[desktop]" classname="vade.ui.chat.LiveTranscriptTest" time="0.0"/>
+  <testcase name="failedWithoutDeltasProducesAnErrorRowWithTheC04Code[desktop]" classname="vade.ui.chat.LiveTranscriptTest" time="0.0"/>
+  <testcase name="nonTextDeltaKindsNeverJoinTheBody[desktop]" classname="vade.ui.chat.LiveTranscriptTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

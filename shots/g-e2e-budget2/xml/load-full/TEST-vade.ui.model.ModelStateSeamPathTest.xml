@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ModelStateSeamPathTest[desktop]" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:37.254Z" hostname="WIN-SOHFNBA79AT" time="0.109">
+  <properties/>
+  <testcase name="firstFrameBeforeTheAnswerIsLoadingNotNullAnEmptyCore[desktop]" classname="vade.ui.model.ModelStateSeamPathTest" time="0.003"/>
+  <testcase name="seamAdapterKeepsRefreshAsANoOpAndWritesSynchronously[desktop]" classname="vade.ui.model.ModelStateSeamPathTest" time="0.001"/>
+  <testcase name="seamWithoutACatalogStillRendersNoModelsNeverLoading[desktop]" classname="vade.ui.model.ModelStateSeamPathTest" time="0.002"/>
+  <testcase name="failedWriteOnTheRealPathRevertsTheSelectionAndLandsInWriteFailure[desktop]" classname="vade.ui.model.ModelStateSeamPathTest" time="0.044"/>
+  <testcase name="failedPullIsAFailureStateNotNullAnEmptyList[desktop]" classname="vade.ui.model.ModelStateSeamPathTest" time="0.016"/>
+  <testcase name="forDefaultWithTheRealAdapterPullsAndRefusesTheWriteWithoutAFrame[desktop]" classname="vade.ui.model.ModelStateSeamPathTest" time="0.004"/>
+  <testcase name="forSessionWithTheRealAdapterPullsOnConstructionAndRendersTheRows[desktop]" classname="vade.ui.model.ModelStateSeamPathTest" time="0.034"/>
+  <testcase name="seamDefaultScopeStaysWritableAndUsesTheSeamWrite[desktop]" classname="vade.ui.model.ModelStateSeamPathTest" time="0.005"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

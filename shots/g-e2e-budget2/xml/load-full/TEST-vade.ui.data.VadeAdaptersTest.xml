@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="VadeAdaptersTest[desktop]" tests="18" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:30.103Z" hostname="WIN-SOHFNBA79AT" time="0.035">
+  <properties/>
+  <testcase name="chatTranscriptIsWiredToTheProtocolStreamNotTheLossyProjection[desktop]" classname="vade.ui.data.VadeAdaptersTest" time="0.001"/>
+  <testcase name="injectedTranscriptIsActuallyDelegatedTo[desktop]" classname="vade.ui.data.VadeAdaptersTest" time="0.002"/>
+  <testcase name="realSourceIsAnAdapterHostAndIsNullBeforeConnecting[desktop]" classname="vade.ui.data.VadeAdaptersTest" time="0.0"/>
+  <testcase name="differentSessionsShareOneStatelessAdapterPerSeam[desktop]" classname="vade.ui.data.VadeAdaptersTest" time="0.002"/>
+  <testcase name="realAdaptersHandOutTheInjectedTranscriptVerbatim[desktop]" classname="vade.ui.data.VadeAdaptersTest" time="0.001"/>
+  <testcase name="fakeSourceNeverOffersAdapters[desktop]" classname="vade.ui.data.VadeAdaptersTest" time="0.0"/>
+  <testcase name="uploaderUsesTheInjectedChannelForRealBlobExchanges[desktop]" classname="vade.ui.data.VadeAdaptersTest" time="0.01"/>
+  <testcase name="uploaderWithoutAnInjectedChannelRefusesWithUnavailable[desktop]" classname="vade.ui.data.VadeAdaptersTest" time="0.003"/>
+  <testcase name="blankSessionIdIsNotRejectedByTheLookupItself[desktop]" classname="vade.ui.data.VadeAdaptersTest" time="0.001"/>
+  <testcase name="adaptersAreBoundToTheLiveClientAndSendRealFrames[desktop]" classname="vade.ui.data.VadeAdaptersTest" time="0.002"/>
+  <testcase name="blankSessionIdIsRefusedAtTheRpcBoundaryWithZeroFrames[desktop]" classname="vade.ui.data.VadeAdaptersTest" time="0.003"/>
+  <testcase name="repeatedLookupsForTheSameSessionAreTheSameUsableInstance[desktop]" classname="vade.ui.data.VadeAdaptersTest" time="0.001"/>
+  <testcase name="realAdaptersWithoutATranscriptSaySoInsteadOfFakingAnEmptyOne[desktop]" classname="vade.ui.data.VadeAdaptersTest" time="0.001"/>
+  <testcase name="noLookupFallsBackToAFixtureImplementation[desktop]" classname="vade.ui.data.VadeAdaptersTest" time="0.004"/>
+  <testcase name="adapterProviderSurfaceNeverMentionsTheProtocolClient[desktop]" classname="vade.ui.data.VadeAdaptersTest" time="0.001"/>
+  <testcase name="everyLookupHandsOutTheRealAdapterType[desktop]" classname="vade.ui.data.VadeAdaptersTest" time="0.0"/>
+  <testcase name="adaptersAppearWithTheConnectionAndDisappearWithIt[desktop]" classname="vade.ui.data.VadeAdaptersTest" time="0.002"/>
+  <testcase name="bothModelScopesAreServedByOneAdapter[desktop]" classname="vade.ui.data.VadeAdaptersTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

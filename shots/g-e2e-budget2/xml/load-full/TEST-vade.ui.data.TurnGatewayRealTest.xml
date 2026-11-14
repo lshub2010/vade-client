@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="TurnGatewayRealTest[desktop]" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:30.014Z" hostname="WIN-SOHFNBA79AT" time="0.087">
+  <properties/>
+  <testcase name="regenerateRefusesBlankArgsWithoutSending[desktop]" classname="vade.ui.data.TurnGatewayRealTest" time="0.004"/>
+  <testcase name="editResubmitSendsOriginalMessageIdInExactFrame[desktop]" classname="vade.ui.data.TurnGatewayRealTest" time="0.022"/>
+  <testcase name="editResubmitRefusesBlankArgsOrEmptyContentWithoutSending[desktop]" classname="vade.ui.data.TurnGatewayRealTest" time="0.002"/>
+  <testcase name="regenerateSendsExactFrameAndMapsReceipt[desktop]" classname="vade.ui.data.TurnGatewayRealTest" time="0.029"/>
+  <testcase name="concurrentCallsOnOneGatewayDoNotInterfere[desktop]" classname="vade.ui.data.TurnGatewayRealTest" time="0.004"/>
+  <testcase name="editResubmitMapsImageAndFileParts[desktop]" classname="vade.ui.data.TurnGatewayRealTest" time="0.025"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="SearchFlowTest[desktop]" tests="19" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:15.476Z" hostname="WIN-SOHFNBA79AT" time="0.104">
+  <properties/>
+  <testcase name="escapeClosesThePalette[desktop]" classname="vade.ui.SearchFlowTest" time="0.077"/>
+  <testcase name="ctrlKIsTheSameShortcutOnNonAppleKeyboards[desktop]" classname="vade.ui.SearchFlowTest" time="0.001"/>
+  <testcase name="arrowsMoveTheSelectionAndWrap[desktop]" classname="vade.ui.SearchFlowTest" time="0.001"/>
+  <testcase name="reopeningKeepsQuerySelectionAndScroll[desktop]" classname="vade.ui.SearchFlowTest" time="0.001"/>
+  <testcase name="everyTermMustMatchSomewhere[desktop]" classname="vade.ui.SearchFlowTest" time="0.003"/>
+  <testcase name="enterWithNothingSelectedPassesThrough[desktop]" classname="vade.ui.SearchFlowTest" time="0.0"/>
+  <testcase name="overlongQueryIsRefusedBeforeAnyScan[desktop]" classname="vade.ui.SearchFlowTest" time="0.001"/>
+  <testcase name="escapeClosesAnOpenSessionOnlyWhenThePaletteIsClosed[desktop]" classname="vade.ui.SearchFlowTest" time="0.0"/>
+  <testcase name="enterOpensTheSelectedSession[desktop]" classname="vade.ui.SearchFlowTest" time="0.0"/>
+  <testcase name="aChangedQueryStartsFromTheTopButTheSameQueryDoesNot[desktop]" classname="vade.ui.SearchFlowTest" time="0.002"/>
+  <testcase name="titleHitsRankBeforePreviewHits[desktop]" classname="vade.ui.SearchFlowTest" time="0.001"/>
+  <testcase name="phasesFollowTheThreeCharacterTrigger[desktop]" classname="vade.ui.SearchFlowTest" time="0.0"/>
+  <testcase name="keyUpAndUnrelatedKeysAreNotConsumed[desktop]" classname="vade.ui.SearchFlowTest" time="0.001"/>
+  <testcase name="metaKOpensAndTogglesThePalette[desktop]" classname="vade.ui.SearchFlowTest" time="0.0"/>
+  <testcase name="matchingIgnoresCase[desktop]" classname="vade.ui.SearchFlowTest" time="0.002"/>
+  <testcase name="noMatchIsAnAnswerNotAnEmptyScope[desktop]" classname="vade.ui.SearchFlowTest" time="0.002"/>
+  <testcase name="highlightRangesPointAtTheOriginalText[desktop]" classname="vade.ui.SearchFlowTest" time="0.0"/>
+  <testcase name="selectionStaysInsideTheListWhenResultsShrink[desktop]" classname="vade.ui.SearchFlowTest" time="0.002"/>
+  <testcase name="blankQueryScansNothing[desktop]" classname="vade.ui.SearchFlowTest" time="0.009"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

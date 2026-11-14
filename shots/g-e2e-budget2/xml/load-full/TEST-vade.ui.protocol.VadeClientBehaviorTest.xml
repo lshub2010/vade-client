@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="VadeClientBehaviorTest[desktop]" tests="23" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:37.689Z" hostname="WIN-SOHFNBA79AT" time="0.633">
+  <properties/>
+  <testcase name="transportDeathFailsPendingAndReconnects[desktop]" classname="vade.ui.protocol.VadeClientBehaviorTest" time="0.051"/>
+  <testcase name="reconnectReattachCarriesTrackedLastSeq[desktop]" classname="vade.ui.protocol.VadeClientBehaviorTest" time="0.032"/>
+  <testcase name="malformedFramesAreReportedAndNeverKillTheReader[desktop]" classname="vade.ui.protocol.VadeClientBehaviorTest" time="0.006"/>
+  <testcase name="requestTimeoutSurfacesAsTimeoutCodeAndCleansPending[desktop]" classname="vade.ui.protocol.VadeClientBehaviorTest" time="0.098"/>
+  <testcase name="errorResponseMapsToVadeExceptionWithCodeMessageAndFieldPointer[desktop]" classname="vade.ui.protocol.VadeClientBehaviorTest" time="0.002"/>
+  <testcase name="snapshotAttachAdoptsFromSeqAsLastSeq[desktop]" classname="vade.ui.protocol.VadeClientBehaviorTest" time="0.003"/>
+  <testcase name="keepaliveSendsIgnorableNotificationsWhileIdle[desktop]" classname="vade.ui.protocol.VadeClientBehaviorTest" time="0.124"/>
+  <testcase name="coalesceFlagTravelsThroughToTheEvent[desktop]" classname="vade.ui.protocol.VadeClientBehaviorTest" time="0.002"/>
+  <testcase name="methodAndParamsOfEveryCallArePinnedOnTheWire[desktop]" classname="vade.ui.protocol.VadeClientBehaviorTest" time="0.062"/>
+  <testcase name="reconnectBackoffIsExponentialAndCappedAt30s[desktop]" classname="vade.ui.protocol.VadeClientBehaviorTest" time="0.0"/>
+  <testcase name="eventNotificationsArriveAsTypedEventsWithSeq[desktop]" classname="vade.ui.protocol.VadeClientBehaviorTest" time="0.019"/>
+  <testcase name="rpcBeforeConnectThrowsUnavailable[desktop]" classname="vade.ui.protocol.VadeClientBehaviorTest" time="0.001"/>
+  <testcase name="typedResultsDecodeIntoContractFields[desktop]" classname="vade.ui.protocol.VadeClientBehaviorTest" time="0.007"/>
+  <testcase name="detachClearsTrackedSessionAndLastSeq[desktop]" classname="vade.ui.protocol.VadeClientBehaviorTest" time="0.004"/>
+  <testcase name="concurrentRequestsAreMatchedByIdNotByOrder[desktop]" classname="vade.ui.protocol.VadeClientBehaviorTest" time="0.003"/>
+  <testcase name="unknownEventAdvancesLastSeqWithoutEmission[desktop]" classname="vade.ui.protocol.VadeClientBehaviorTest" time="0.035"/>
+  <testcase name="seqGapFiresOnGapCallbackAndStreamContinues[desktop]" classname="vade.ui.protocol.VadeClientBehaviorTest" time="0.003"/>
+  <testcase name="failedConnectAttemptsClimbTheBackoffLadderAndThenRecover[desktop]" classname="vade.ui.protocol.VadeClientBehaviorTest" time="0.051"/>
+  <testcase name="replayEventsAreDeliveredBeforeTheAttachedMarker[desktop]" classname="vade.ui.protocol.VadeClientBehaviorTest" time="0.005"/>
+  <testcase name="duplicateSeqFramesAreDeduped[desktop]" classname="vade.ui.protocol.VadeClientBehaviorTest" time="0.026"/>
+  <testcase name="closeStopsReconnectingAndEveryLaterRpcFails[desktop]" classname="vade.ui.protocol.VadeClientBehaviorTest" time="0.002"/>
+  <testcase name="lateReplyForTimedOutRequestIsIgnoredGracefully[desktop]" classname="vade.ui.protocol.VadeClientBehaviorTest" time="0.092"/>
+  <testcase name="reverseRpcFromCoreIsRefusedWithUnsupported[desktop]" classname="vade.ui.protocol.VadeClientBehaviorTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

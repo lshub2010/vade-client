@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="PageLimitsTest[desktop]" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:37.471Z" hostname="WIN-SOHFNBA79AT" time="0.005">
+  <properties/>
+  <testcase name="nodeCount257IsRejected[desktop]" classname="vade.ui.module.PageLimitsTest" time="0.002"/>
+  <testcase name="nonObjectRootIsRejected[desktop]" classname="vade.ui.module.PageLimitsTest" time="0.0"/>
+  <testcase name="nodeCount256IsAccepted[desktop]" classname="vade.ui.module.PageLimitsTest" time="0.002"/>
+  <testcase name="depthNineIsRejected[desktop]" classname="vade.ui.module.PageLimitsTest" time="0.0"/>
+  <testcase name="children33IsRejected[desktop]" classname="vade.ui.module.PageLimitsTest" time="0.001"/>
+  <testcase name="depthEightIsAccepted[desktop]" classname="vade.ui.module.PageLimitsTest" time="0.0"/>
+  <testcase name="text4096IsAcceptedAnd4097IsRejected[desktop]" classname="vade.ui.module.PageLimitsTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

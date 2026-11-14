@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="EntryRuleTest[desktop]" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:37.456Z" hostname="WIN-SOHFNBA79AT" time="0.01">
+  <properties/>
+  <testcase name="demoSourceReportsOnlineStatusAndUnknownModuleOffline[desktop]" classname="vade.ui.module.EntryRuleTest" time="0.0"/>
+  <testcase name="emptyIndexSignalsCapabilitiesSectionShouldVanish[desktop]" classname="vade.ui.module.EntryRuleTest" time="0.001"/>
+  <testcase name="demoSourceLoadsPagesAndStateForItsOwnDeclarations[desktop]" classname="vade.ui.module.EntryRuleTest" time="0.008"/>
+  <testcase name="demoSourceHasEntryForDeclaredModulesOnly[desktop]" classname="vade.ui.module.EntryRuleTest" time="0.0"/>
+  <testcase name="moduleWithoutPagesHasNoEntry[desktop]" classname="vade.ui.module.EntryRuleTest" time="0.0"/>
+  <testcase name="moduleWithPagesGetsEntryRows[desktop]" classname="vade.ui.module.EntryRuleTest" time="0.0"/>
+  <testcase name="mixedSupportedAndHiddenPagesKeepModuleVisible[desktop]" classname="vade.ui.module.EntryRuleTest" time="0.001"/>
+  <testcase name="versionOneBoundaryIsSupported[desktop]" classname="vade.ui.module.EntryRuleTest" time="0.0"/>
+  <testcase name="versionAboveSupportIsHiddenWithNote[desktop]" classname="vade.ui.module.EntryRuleTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

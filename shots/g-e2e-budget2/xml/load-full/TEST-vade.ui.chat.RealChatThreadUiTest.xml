@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="RealChatThreadUiTest[desktop]" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:24.100Z" hostname="WIN-SOHFNBA79AT" time="0.302">
+  <properties/>
+  <testcase name="anEmptySnapshotShowsTheEmptyCopyAndNoFixtureMarker[desktop]" classname="vade.ui.chat.RealChatThreadUiTest" time="0.075"/>
+  <testcase name="loadingIsVisibleAsItsOwnState[desktop]" classname="vade.ui.chat.RealChatThreadUiTest" time="0.037"/>
+  <testcase name="aRealThreadWithOneSnapshotRowRendersExactlyOneMessage[desktop]" classname="vade.ui.chat.RealChatThreadUiTest" time="0.112"/>
+  <testcase name="aFailedLoadShowsTheReasonAndARetryThatActuallyReloads[desktop]" classname="vade.ui.chat.RealChatThreadUiTest" time="0.078"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ActionArgsTest[desktop]" tests="11" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:37.373Z" hostname="WIN-SOHFNBA79AT" time="0.049">
+  <properties/>
+  <testcase name="literalArgsPassThrough[desktop]" classname="vade.ui.module.ActionArgsTest" time="0.003"/>
+  <testcase name="submitPartsWithNonTextTypeAreRejected[desktop]" classname="vade.ui.module.ActionArgsTest" time="0.012"/>
+  <testcase name="navigateSettingsTargetOutsideFixedEnumIsRejected[desktop]" classname="vade.ui.module.ActionArgsTest" time="0.0"/>
+  <testcase name="argWithNestedObjectSourceIsRejectedAtParse[desktop]" classname="vade.ui.module.ActionArgsTest" time="0.002"/>
+  <testcase name="navigateToUndeclaredPageIsRejected[desktop]" classname="vade.ui.module.ActionArgsTest" time="0.0"/>
+  <testcase name="navigateToDeclaredPageParses[desktop]" classname="vade.ui.module.ActionArgsTest" time="0.005"/>
+  <testcase name="inputAsIntStrictParse[desktop]" classname="vade.ui.module.ActionArgsTest" time="0.015"/>
+  <testcase name="unknownActionKindIsRejected[desktop]" classname="vade.ui.module.ActionArgsTest" time="0.001"/>
+  <testcase name="attachmentChipClickMustBeNavigateOnly[desktop]" classname="vade.ui.module.ActionArgsTest" time="0.002"/>
+  <testcase name="boundArgMissingResolvesToEmptyString[desktop]" classname="vade.ui.module.ActionArgsTest" time="0.003"/>
+  <testcase name="submitTextsResolveLiteralBindAndInput[desktop]" classname="vade.ui.module.ActionArgsTest" time="0.005"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

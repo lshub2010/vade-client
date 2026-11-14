@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="MotionBlurBoxKernelTest[desktop]" tests="12" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:15.379Z" hostname="WIN-SOHFNBA79AT" time="0.042">
+  <properties/>
+  <testcase name="shippedDefaultIsTheBoxKernel[desktop]" classname="vade.ui.MotionBlurBoxKernelTest" time="0.028"/>
+  <testcase name="tapsAreAlwaysOdd[desktop]" classname="vade.ui.MotionBlurBoxKernelTest" time="0.006"/>
+  <testcase name="boxProfileHasAFlatTopAndGaussianProfileIsBellShaped[desktop]" classname="vade.ui.MotionBlurBoxKernelTest" time="0.003"/>
+  <testcase name="tapsGrowMonotonicallyWithRadius[desktop]" classname="vade.ui.MotionBlurBoxKernelTest" time="0.001"/>
+  <testcase name="sixDpAtDensityOneIsThirteenTaps[desktop]" classname="vade.ui.MotionBlurBoxKernelTest" time="0.0"/>
+  <testcase name="zeroAndNonFiniteRadiusDegradeToIdentity[desktop]" classname="vade.ui.MotionBlurBoxKernelTest" time="0.0"/>
+  <testcase name="densityScalesTheSmearLength[desktop]" classname="vade.ui.MotionBlurBoxKernelTest" time="0.0"/>
+  <testcase name="gaussianFallbackConstantsAreStillTheDirectionalPair[desktop]" classname="vade.ui.MotionBlurBoxKernelTest" time="0.0"/>
+  <testcase name="weightsAreUniformNotTapered[desktop]" classname="vade.ui.MotionBlurBoxKernelTest" time="0.001"/>
+  <testcase name="boxIsFlatterThanGaussianAcrossItsWholeSpan[desktop]" classname="vade.ui.MotionBlurBoxKernelTest" time="0.0"/>
+  <testcase name="weightsSumToOneSoBrightnessIsPreserved[desktop]" classname="vade.ui.MotionBlurBoxKernelTest" time="0.001"/>
+  <testcase name="boxAndGaussianDifferByMoreThanAScaleFactor[desktop]" classname="vade.ui.MotionBlurBoxKernelTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

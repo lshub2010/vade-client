@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ScreenAdapterWiringTest[desktop]" tests="20" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:32.269Z" hostname="WIN-SOHFNBA79AT" time="0.638">
+  <properties/>
+  <testcase name="adapterProviderStillHandsOutOnlyTheSixNarrowInterfaces[desktop]" classname="vade.ui.destinations.ScreenAdapterWiringTest" time="0.0"/>
+  <testcase name="explicitModelActionsWinOverTheProviderInSessionDetail[desktop]" classname="vade.ui.destinations.ScreenAdapterWiringTest" time="0.002"/>
+  <testcase name="explicitModelActionsWinOverTheProviderInProfile[desktop]" classname="vade.ui.destinations.ScreenAdapterWiringTest" time="0.0"/>
+  <testcase name="sessionDetailShowsTheDegradationNoteWhenTheAdapterLookupThrows[desktop]" classname="vade.ui.destinations.ScreenAdapterWiringTest" time="0.395"/>
+  <testcase name="profileRendersTheModelProvidedByTheAdapter[desktop]" classname="vade.ui.destinations.ScreenAdapterWiringTest" time="0.041"/>
+  <testcase name="sessionDetailHeaderShowsTheProvidedModelAndTheDegradationNote[desktop]" classname="vade.ui.destinations.ScreenAdapterWiringTest" time="0.139"/>
+  <testcase name="profileWithoutAdaptersFallsBackToTheInMemoryModelFixture[desktop]" classname="vade.ui.destinations.ScreenAdapterWiringTest" time="0.0"/>
+  <testcase name="capabilitiesWithProviderDeclarationsDropsTheDemoEntries[desktop]" classname="vade.ui.destinations.ScreenAdapterWiringTest" time="0.02"/>
+  <testcase name="explicitPageSourceWinsOverTheProviderInCapabilities[desktop]" classname="vade.ui.destinations.ScreenAdapterWiringTest" time="0.001"/>
+  <testcase name="sessionDetailWithoutAdaptersFallsBackToTheInMemoryModelFixture[desktop]" classname="vade.ui.destinations.ScreenAdapterWiringTest" time="0.0"/>
+  <testcase name="chatStateTakesTurnsAndUploaderFromTheSameProvider[desktop]" classname="vade.ui.destinations.ScreenAdapterWiringTest" time="0.003"/>
+  <testcase name="blankSessionIdIsPassedThroughVerbatim[desktop]" classname="vade.ui.destinations.ScreenAdapterWiringTest" time="0.0"/>
+  <testcase name="sessionDetailAsksTheProviderForThisSession[desktop]" classname="vade.ui.destinations.ScreenAdapterWiringTest" time="0.0"/>
+  <testcase name="capabilitiesTakesTheProviderPagesAndDropsTheDemo[desktop]" classname="vade.ui.destinations.ScreenAdapterWiringTest" time="0.0"/>
+  <testcase name="theFourScreensExposeTheAdaptersSeamWithoutProtocolTypes[desktop]" classname="vade.ui.destinations.ScreenAdapterWiringTest" time="0.001"/>
+  <testcase name="chatStateWithoutAdaptersKeepsBothInMemorySeams[desktop]" classname="vade.ui.destinations.ScreenAdapterWiringTest" time="0.003"/>
+  <testcase name="profileAsksForTheGlobalDefaultAndNeverForASession[desktop]" classname="vade.ui.destinations.ScreenAdapterWiringTest" time="0.0"/>
+  <testcase name="capabilitiesWithoutAdaptersKeepsTheDemoPageSource[desktop]" classname="vade.ui.destinations.ScreenAdapterWiringTest" time="0.0"/>
+  <testcase name="throwingProviderDegradesToTheFixtureWithAVisibleReason[desktop]" classname="vade.ui.destinations.ScreenAdapterWiringTest" time="0.002"/>
+  <testcase name="capabilitiesWithoutAdaptersStillShowsTheDemoEntries[desktop]" classname="vade.ui.destinations.ScreenAdapterWiringTest" time="0.031"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

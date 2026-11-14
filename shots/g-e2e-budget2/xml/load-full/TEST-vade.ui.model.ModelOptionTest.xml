@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ModelOptionTest[desktop]" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:34.887Z" hostname="WIN-SOHFNBA79AT" time="0.005">
+  <properties/>
+  <testcase name="imageLimitsFeedOneDataDrivenSummaryLine[desktop]" classname="vade.ui.model.ModelOptionTest" time="0.0"/>
+  <testcase name="contextBadgeLightsUpOnlyOnADeclaredWindow[desktop]" classname="vade.ui.model.ModelOptionTest" time="0.003"/>
+  <testcase name="darkSkinDeepensTheAccentWashPerVisualLanguage[desktop]" classname="vade.ui.model.ModelOptionTest" time="0.001"/>
+  <testcase name="nullFieldsSayDeclaredInsteadOfDisappearing[desktop]" classname="vade.ui.model.ModelOptionTest" time="0.0"/>
+  <testcase name="visionBadgeHasAllThreeStatesFromData[desktop]" classname="vade.ui.model.ModelOptionTest" time="0.0"/>
+  <testcase name="elevenFieldsAllRenderExhaustively[desktop]" classname="vade.ui.model.ModelOptionTest" time="0.001"/>
+  <testcase name="selectedRowTakesTheAccentWashAndTheCheck[desktop]" classname="vade.ui.model.ModelOptionTest" time="0.0"/>
+  <testcase name="unitFormattersStayStableAcrossTargets[desktop]" classname="vade.ui.model.ModelOptionTest" time="0.0"/>
+  <testcase name="toolsBadgeHasAllThreeStatesFromData[desktop]" classname="vade.ui.model.ModelOptionTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

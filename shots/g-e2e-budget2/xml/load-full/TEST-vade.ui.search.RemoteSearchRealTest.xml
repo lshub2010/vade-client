@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="RemoteSearchRealTest[desktop]" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:38.617Z" hostname="WIN-SOHFNBA79AT" time="0.029">
+  <properties/>
+  <testcase name="limitAndOffsetBoundsAreRefusedBeforeAnyFrame[desktop]" classname="vade.ui.search.RemoteSearchRealTest" time="0.007"/>
+  <testcase name="totalIsTheServerCountEvenWhenItDisagreesWithThePage[desktop]" classname="vade.ui.search.RemoteSearchRealTest" time="0.005"/>
+  <testcase name="remoteHitsMapIntoSearchHits[desktop]" classname="vade.ui.search.RemoteSearchRealTest" time="0.003"/>
+  <testcase name="queryTravelsToTheWireUntouched[desktop]" classname="vade.ui.search.RemoteSearchRealTest" time="0.003"/>
+  <testcase name="coreErrorsSurfaceClassifiedAndNeverSwallowed[desktop]" classname="vade.ui.search.RemoteSearchRealTest" time="0.003"/>
+  <testcase name="snippetTravelsVerbatimNeverReclipped[desktop]" classname="vade.ui.search.RemoteSearchRealTest" time="0.004"/>
+  <testcase name="notFoundFromCoreKeepsItsOwnBucket[desktop]" classname="vade.ui.search.RemoteSearchRealTest" time="0.003"/>
+  <testcase name="blankQueryIsRefusedBeforeAnyFrame[desktop]" classname="vade.ui.search.RemoteSearchRealTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

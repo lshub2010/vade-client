@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ComposerShadowShapeTest[desktop]" tests="11" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:23.487Z" hostname="WIN-SOHFNBA79AT" time="0.497">
+  <properties/>
+  <testcase name="composerFillShowsNoRectangularShadowWindow[desktop]" classname="vade.ui.chat.ComposerShadowShapeTest" time="0.199"/>
+  <testcase name="composerFillInsideThePanelIsOneValue[desktop]" classname="vade.ui.chat.ComposerShadowShapeTest" time="0.023"/>
+  <testcase name="miuixComposerFillShowsNoRectangularShadowWindow[desktop]" classname="vade.ui.chat.ComposerShadowShapeTest" time="0.085"/>
+  <testcase name="glassSurfaceMainPathKeepsItsBlurTintAndShadow[desktop]" classname="vade.ui.chat.ComposerShadowShapeTest" time="0.001"/>
+  <testcase name="composerShadowPathUsesNoRectangularElevationKnockout[desktop]" classname="vade.ui.chat.ComposerShadowShapeTest" time="0.002"/>
+  <testcase name="tallPanelKeepsItsRealCornerRadiusAndAlsoHasNoShadowWindow[desktop]" classname="vade.ui.chat.ComposerShadowShapeTest" time="0.063"/>
+  <testcase name="theShadowFollowsACardCorner[desktop]" classname="vade.ui.chat.ComposerShadowShapeTest" time="0.021"/>
+  <testcase name="composerFillInsideThePanelIsOneValueInTheDarkTheme[desktop]" classname="vade.ui.chat.ComposerShadowShapeTest" time="0.034"/>
+  <testcase name="composerCornersMirrorEachOtherAndTheLensCarriesNoFill[desktop]" classname="vade.ui.chat.ComposerShadowShapeTest" time="0.02"/>
+  <testcase name="composerStillCastsAFloatShadowDownwardsOnly[desktop]" classname="vade.ui.chat.ComposerShadowShapeTest" time="0.036"/>
+  <testcase name="theShadowFollowsAPillShape[desktop]" classname="vade.ui.chat.ComposerShadowShapeTest" time="0.012"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

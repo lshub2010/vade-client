@@ -1,0 +1,59 @@
+round1 par=12: n=12 wall=81.457s to-READY min=8.58 median=41.149 max=62.374 ready=12/12
+round1 par=12: n=12 wall=17.41s to-READY min=12.975 median=14.884 max=15.916 ready=12/12
+round1 par=12: n=12 wall=12.063s to-READY min=7.402 median=9.487 max=10.398 ready=12/12
+round1 par=12: n=12 wall=25.331s to-READY min=20.116 median=23.061 max=23.962 ready=12/12
+round1 par=12: n=12 wall=18.275s to-READY min=12.831 median=15.995 max=16.69 ready=12/12
+round1 par=12: n=12 wall=14.674s to-READY min=5.818 median=9.5 max=12.886 ready=12/12
+round1 par=12: n=12 wall=13.405s to-READY min=6.543 median=9.348 max=12.378 ready=12/12
+round1 par=12: n=12 wall=15.417s to-READY min=8.192 median=10.977 max=13.03 ready=12/12
+round1 par=12: n=12 wall=19.069s to-READY min=8.069 median=15.569 max=18.052 ready=12/12
+round1 par=12: n=12 wall=13.354s to-READY min=9.002 median=10.173 max=12.189 ready=12/12
+round1 par=12: n=12 wall=13.995s to-READY min=6.708 median=9.168 max=10.373 ready=12/12
+round1 par=12: n=12 wall=18.55s to-READY min=7.067 median=14.115 max=16.733 ready=12/12
+round1 par=12: n=12 wall=11.411s to-READY min=7.368 median=9.044 max=10.097 ready=12/12
+round1 par=12: n=12 wall=11.409s to-READY min=7.455 median=8.897 max=10.593 ready=12/12
+round1 par=12: n=12 wall=10.285s to-READY min=5.518 median=7.874 max=9.145 ready=12/12
+round1 par=12: n=12 wall=18.491s to-READY min=11.768 median=13.538 max=15.659 ready=12/12
+round1 par=12: n=12 wall=14.557s to-READY min=9.467 median=11.231 max=13.413 ready=12/12
+round1 par=12: n=12 wall=10.506s to-READY min=5.833 median=7.119 max=9.038 ready=12/12
+round1 par=12: n=12 wall=17.888s to-READY min=4.961 median=8.223 max=13.178 ready=12/12
+round1 par=12: n=12 wall=11.096s to-READY min=5.479 median=8.269 max=9.924 ready=12/12
+round1 par=12: n=12 wall=15.697s to-READY min=6.287 median=9.533 max=11.459 ready=12/12
+round1 par=12: n=12 wall=11.947s to-READY min=6.748 median=8.117 max=9.85 ready=12/12
+round1 par=12: n=12 wall=12.23s to-READY min=6.789 median=9.119 max=10.024 ready=12/12
+round1 par=12: n=12 wall=16.352s to-READY min=5.1 median=6.912 max=10.008 ready=12/12
+round1 par=12: n=12 wall=14.366s to-READY min=8.722 median=11.224 max=13.231 ready=12/12
+round1 par=12: n=12 wall=11.265s to-READY min=7.626 median=8.845 max=10.034 ready=12/12
+Traceback (most recent call last):
+  File "D:\HermesWorkspace\Vade-client-wt\g-e2e-budget2\shots\g-e2e-budget\launcher_ready_probe.py", line 81, in <module>
+    run_batch(par, f"round{r+1} par={par}")
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\HermesWorkspace\Vade-client-wt\g-e2e-budget2\shots\g-e2e-budget\launcher_ready_probe.py", line 62, in run_batch
+    p.start()
+    ~~~~~~~^^
+  File "D:\Hermes\tools\python-3.14.9+20261021-win32-x64\Lib\multiprocessing\process.py", line 121, in start
+    self._popen = self._Popen(self)
+                  ~~~~~~~~~~~^^^^^^
+  File "D:\Hermes\tools\python-3.14.9+20261021-win32-x64\Lib\multiprocessing\context.py", line 231, in _Popen
+    return _default_context.get_context().Process._Popen(process_obj)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "D:\Hermes\tools\python-3.14.9+20261021-win32-x64\Lib\multiprocessing\context.py", line 362, in _Popen
+    return Popen(process_obj)
+  File "D:\Hermes\tools\python-3.14.9+20261021-win32-x64\Lib\multiprocessing\popen_spawn_win32.py", line 76, in __init__
+    hp, ht, pid, tid = _winapi.CreateProcess(
+                       ~~~~~~~~~~~~~~~~~~~~~^
+        python_exe, cmd,
+        ^^^^^^^^^^^^^^^^
+        None, None, False, 0, env, None,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        STARTUPINFO(dwFlags=STARTF_FORCEOFFFEEDBACK))
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+PermissionError: [WinError 5] 拒绝访问。
+round1 par=12: n=12 wall=18.071s to-READY min=10.598 median=12.567 max=15.056 ready=12/12
+round1 par=12: n=12 wall=22.786s to-READY min=7.22 median=12.964 max=14.333 ready=12/12
+round1 par=12: n=12 wall=28.792s to-READY min=10.589 median=18.364 max=21.318 ready=12/12
+round1 par=12: n=12 wall=17.84s to-READY min=8.255 median=10.079 max=12.11 ready=12/12
+round1 par=12: n=12 wall=29.17s to-READY min=14.002 median=18.528 max=20.938 ready=12/12
+round1 par=12: n=12 wall=14.295s to-READY min=6.839 median=11.475 max=13.066 ready=12/12
+round1 par=12: n=12 wall=25.268s to-READY min=11.286 median=19.333 max=24.027 ready=12/12
+round1 par=12: n=12 wall=11.904s to-READY min=6.684 median=8.08 max=9.362 ready=12/12

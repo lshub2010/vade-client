@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="MotionBlurMathTest[desktop]" tests="10" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:15.423Z" hostname="WIN-SOHFNBA79AT" time="0.008">
+  <properties/>
+  <testcase name="zeroRadiusIsFreeAndReturnsTheSameModifier[desktop]" classname="vade.ui.MotionBlurMathTest" time="0.005"/>
+  <testcase name="documentedEndpointsMatchTheConstants[desktop]" classname="vade.ui.MotionBlurMathTest" time="0.0"/>
+  <testcase name="radiusIsContinuousAndLinearAboveTheTrigger[desktop]" classname="vade.ui.MotionBlurMathTest" time="0.0"/>
+  <testcase name="radiusGrowsMonotonicallyWithSpeed[desktop]" classname="vade.ui.MotionBlurMathTest" time="0.001"/>
+  <testcase name="negativeVelocityIsTreatedAsSpeed[desktop]" classname="vade.ui.MotionBlurMathTest" time="0.0"/>
+  <testcase name="radiusIsZeroAtAndBelowTheTriggerVelocity[desktop]" classname="vade.ui.MotionBlurMathTest" time="0.0"/>
+  <testcase name="sharedCurveIsTheSameFunctionTheActualUses[desktop]" classname="vade.ui.MotionBlurMathTest" time="0.0"/>
+  <testcase name="blurIsDirectionalWithYAsTheDominantAxis[desktop]" classname="vade.ui.MotionBlurMathTest" time="0.0"/>
+  <testcase name="nonFiniteInputIsSafe[desktop]" classname="vade.ui.MotionBlurMathTest" time="0.001"/>
+  <testcase name="radiusNeverExceedsTheDocumentedCap[desktop]" classname="vade.ui.MotionBlurMathTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="MaterialSkinV2Test[desktop]" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:15.326Z" hostname="WIN-SOHFNBA79AT" time="0.05">
+  <properties/>
+  <testcase name="glassAndShadowLayersAreTranslucentAndTiered[desktop]" classname="vade.ui.MaterialSkinV2Test" time="0.042"/>
+  <testcase name="sixStepRadiusLadder[desktop]" classname="vade.ui.MaterialSkinV2Test" time="0.001"/>
+  <testcase name="materialSourcesStayV2Clean[desktop]" classname="vade.ui.MaterialSkinV2Test" time="0.006"/>
+  <testcase name="paletteIsGraphiteIndigoNotMaterialPurple[desktop]" classname="vade.ui.MaterialSkinV2Test" time="0.0"/>
+  <testcase name="adjacentStepsDifferByAtLeast4dp[desktop]" classname="vade.ui.MaterialSkinV2Test" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

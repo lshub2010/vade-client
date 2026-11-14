@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ListStatusOfTest[desktop]" tests="17" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:40.924Z" hostname="WIN-SOHFNBA79AT" time="0.005">
+  <properties/>
+  <testcase name="remedyFallsBackToTheDocumentedDefaults[desktop]" classname="vade.ui.shell.ListStatusOfTest" time="0.001"/>
+  <testcase name="realReadyIsConnectedSoNoBannerIsDrawn[desktop]" classname="vade.ui.shell.ListStatusOfTest" time="0.0"/>
+  <testcase name="remedyCarriesACopyableCommandWithBothEnvironmentVariables[desktop]" classname="vade.ui.shell.ListStatusOfTest" time="0.0"/>
+  <testcase name="failureWithRowsStillOnScreenStillShowsTheError[desktop]" classname="vade.ui.shell.ListStatusOfTest" time="0.0"/>
+  <testcase name="realFailedWithAHalfPublishedErrorPairIsStillReadable[desktop]" classname="vade.ui.shell.ListStatusOfTest" time="0.0"/>
+  <testcase name="realLoadingNamesTheEndpointFromThisRunsConfiguration[desktop]" classname="vade.ui.shell.ListStatusOfTest" time="0.001"/>
+  <testcase name="aStrayErrorWithAReadyPhaseIsStillAFailure[desktop]" classname="vade.ui.shell.ListStatusOfTest" time="0.0"/>
+  <testcase name="fakeSourceNeverReadsTheEnvironment[desktop]" classname="vade.ui.shell.ListStatusOfTest" time="0.0"/>
+  <testcase name="realFailedCarriesTheClassifiedErrorVerbatim[desktop]" classname="vade.ui.shell.ListStatusOfTest" time="0.0"/>
+  <testcase name="remedyUsesThisRunsEndpointNotTheDefaultOne[desktop]" classname="vade.ui.shell.ListStatusOfTest" time="0.001"/>
+  <testcase name="fakeSourceAlwaysSaysFixtures[desktop]" classname="vade.ui.shell.ListStatusOfTest" time="0.0"/>
+  <testcase name="fatalErrorIsNotReportedAsAConnectionProblem[desktop]" classname="vade.ui.shell.ListStatusOfTest" time="0.0"/>
+  <testcase name="remedyExplainsThatAnAlreadySuppliedCodeMayHaveExpired[desktop]" classname="vade.ui.shell.ListStatusOfTest" time="0.001"/>
+  <testcase name="remedyNamesTheOtherTwoTargetsChannels[desktop]" classname="vade.ui.shell.ListStatusOfTest" time="0.0"/>
+  <testcase name="remedyNeverEchoesThePairCodeItself[desktop]" classname="vade.ui.shell.ListStatusOfTest" time="0.0"/>
+  <testcase name="rowsAlreadyOnScreenSilenceTheBannerEvenWhileThePhaseSaysLoading[desktop]" classname="vade.ui.shell.ListStatusOfTest" time="0.0"/>
+  <testcase name="realLoadingFallsBackToTheDocumentedDefaultsWhenHostAndPortAreMissing[desktop]" classname="vade.ui.shell.ListStatusOfTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

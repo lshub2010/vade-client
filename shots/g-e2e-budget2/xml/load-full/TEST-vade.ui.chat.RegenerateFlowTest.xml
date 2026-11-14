@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="RegenerateFlowTest[desktop]" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:24.403Z" hostname="WIN-SOHFNBA79AT" time="0.012">
+  <properties/>
+  <testcase name="failedRegenerateLeavesTheThreadUntouched[desktop]" classname="vade.ui.chat.RegenerateFlowTest" time="0.003"/>
+  <testcase name="regeneratedTurnCompletesWhileTheOldVersionStaysUntouched[desktop]" classname="vade.ui.chat.RegenerateFlowTest" time="0.005"/>
+  <testcase name="regenerateCallsTheGatewayWithTheTurnId[desktop]" classname="vade.ui.chat.RegenerateFlowTest" time="0.001"/>
+  <testcase name="onlyTheLastAssistantMessageCanRegenerate[desktop]" classname="vade.ui.chat.RegenerateFlowTest" time="0.002"/>
+  <testcase name="oldVersionIsKeptMarkedSupersededAndReplacedByANewStreamingTurn[desktop]" classname="vade.ui.chat.RegenerateFlowTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

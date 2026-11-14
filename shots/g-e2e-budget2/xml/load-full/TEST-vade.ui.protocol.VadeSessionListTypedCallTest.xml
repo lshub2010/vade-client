@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="VadeSessionListTypedCallTest[desktop]" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:38.560Z" hostname="WIN-SOHFNBA79AT" time="0.009">
+  <properties/>
+  <testcase name="sessionListGroupIdAbsentOmitsTheKeyOnTheWire[desktop]" classname="vade.ui.protocol.VadeSessionListTypedCallTest" time="0.0"/>
+  <testcase name="sessionListTypedWrapperSendsARealFrameAndDecodesTypedRows[desktop]" classname="vade.ui.protocol.VadeSessionListTypedCallTest" time="0.003"/>
+  <testcase name="sessionListUndecodableResultIsProtocolMismatchNotRawPassthrough[desktop]" classname="vade.ui.protocol.VadeSessionListTypedCallTest" time="0.004"/>
+  <testcase name="sessionListGroupIdValueWritesTheString[desktop]" classname="vade.ui.protocol.VadeSessionListTypedCallTest" time="0.001"/>
+  <testcase name="sessionListGroupIdNullWritesJsonNull[desktop]" classname="vade.ui.protocol.VadeSessionListTypedCallTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

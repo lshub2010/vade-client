@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="EditResubmitFlowTest[desktop]" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:06:23.986Z" hostname="WIN-SOHFNBA79AT" time="0.015">
+  <properties/>
+  <testcase name="onlyTheLastUserMessageIsEditable[desktop]" classname="vade.ui.chat.EditResubmitFlowTest" time="0.0"/>
+  <testcase name="editedRowWearsTheBadgeWithTheNewTextAndKeepsItsAttachments[desktop]" classname="vade.ui.chat.EditResubmitFlowTest" time="0.005"/>
+  <testcase name="resubmitWhileStreamingQueuesWithTheEditReasonAndSurvivesCancel[desktop]" classname="vade.ui.chat.EditResubmitFlowTest" time="0.001"/>
+  <testcase name="failedResubmitKeepsTheEditorOpenWithTheOriginalIntact[desktop]" classname="vade.ui.chat.EditResubmitFlowTest" time="0.002"/>
+  <testcase name="blankDraftCannotBeResubmitted[desktop]" classname="vade.ui.chat.EditResubmitFlowTest" time="0.001"/>
+  <testcase name="resubmitPassesTheOriginalMessageIdAndDraftContent[desktop]" classname="vade.ui.chat.EditResubmitFlowTest" time="0.001"/>
+  <testcase name="confirmWhenIdleStartsANewStreamingTurn[desktop]" classname="vade.ui.chat.EditResubmitFlowTest" time="0.001"/>
+  <testcase name="editorKeysConfirmWithCtrlEnterAndCancelWithEscape[desktop]" classname="vade.ui.chat.EditResubmitFlowTest" time="0.002"/>
+  <testcase name="cancelEditLeavesTheRowUntouched[desktop]" classname="vade.ui.chat.EditResubmitFlowTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

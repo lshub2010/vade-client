@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ModelRealWiringTest[desktop]" tests="14" skipped="0" failures="0" errors="0" timestamp="2026-11-14T22:07:34.894Z" hostname="WIN-SOHFNBA79AT" time="2.358">
+  <properties/>
+  <testcase name="failedClearRestoresTheOverrideAndShowsWhy[desktop]" classname="vade.ui.model.ModelRealWiringTest" time="0.071"/>
+  <testcase name="failureClassifierMapsCodesToBucketsAndCopy[desktop]" classname="vade.ui.model.ModelRealWiringTest" time="0.001"/>
+  <testcase name="selectSendsModelIdNeverTheDisplayName[desktop]" classname="vade.ui.model.ModelRealWiringTest" time="0.044"/>
+  <testcase name="genuineLoadFailureIsNotDegradedIntoTheReadOnlyBadge[desktop]" classname="vade.ui.model.ModelRealWiringTest" time="2.026"/>
+  <testcase name="failedWriteRollsBackAndSurfacesTheClassifiedError[desktop]" classname="vade.ui.model.ModelRealWiringTest" time="0.036"/>
+  <testcase name="sessionOverrideIsPulledFromSessionModelGet[desktop]" classname="vade.ui.model.ModelRealWiringTest" time="0.032"/>
+  <testcase name="unknownMethodNotFoundDegradesTheSameWay[desktop]" classname="vade.ui.model.ModelRealWiringTest" time="0.002"/>
+  <testcase name="readOnlySessionFailureHasItsOwnCopyAndIsNotFatal[desktop]" classname="vade.ui.model.ModelRealWiringTest" time="0.044"/>
+  <testcase name="clearingOverrideSendsAnExplicitNullModelIdKey[desktop]" classname="vade.ui.model.ModelRealWiringTest" time="0.03"/>
+  <testcase name="refreshFillsRowsInServerOrderFromModelList[desktop]" classname="vade.ui.model.ModelRealWiringTest" time="0.018"/>
+  <testcase name="methodMissing32601ShowsReadOnlyBadgeAndKeepsModelsNull[desktop]" classname="vade.ui.model.ModelRealWiringTest" time="0.003"/>
+  <testcase name="inMemorySeamStillClearsTheOverrideSynchronously[desktop]" classname="vade.ui.model.ModelRealWiringTest" time="0.0"/>
+  <testcase name="aLaterSuccessfulPullRecoversFromTheDegrade[desktop]" classname="vade.ui.model.ModelRealWiringTest" time="0.047"/>
+  <testcase name="defaultScopeWriteIsExplicitlyUnsupportedNeverSilent[desktop]" classname="vade.ui.model.ModelRealWiringTest" time="0.003"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
