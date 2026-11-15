@@ -23,6 +23,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- g-shadow-android probe: no intent filter, explicit component only. exported=true
+             because adb shell (uid 2000) cannot start non-exported activities on this API
+             level — a dev probe on the emulator, never reachable from the launcher. -->
+        <activity android:name=".ShadowProbeActivity" android:exported="true" />
     </application>
 
 </manifest>
