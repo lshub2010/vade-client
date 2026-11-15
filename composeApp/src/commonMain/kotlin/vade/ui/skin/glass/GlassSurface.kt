@@ -7,7 +7,6 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.HazeInput
@@ -16,6 +15,8 @@ import dev.chrisbanes.haze.rememberHazeState
 import dev.chrisbanes.haze.blur.HazeBlurStyle
 import dev.chrisbanes.haze.blur.HazeColorEffect
 import dev.chrisbanes.haze.blur.hazeBlur
+import vade.ui.component.liquid.VadeShadows
+import vade.ui.component.liquid.downwardShelf
 import vade.ui.skin.Skin
 
 /**
@@ -54,14 +55,15 @@ val LocalGlassHazeState = staticCompositionLocalOf<HazeState?> { null }
  *  - The backdrop must be registered on the *same* state this surface reads
  *    ([LocalGlassHazeState]) — otherwise the layer degrades to tint + hairline + shadow.
  *
- * Shadow (§8 row 2): float layers carry a real shadow; Compose's elevation shadow is the
- * platform approximation of the §8 spec (`0 16 40 rgba(0,0,0,.55)` dark / `0 12 32 …18%`
- * light), tinted with [SkinColors.shadowFloat] so skins keep it neutral-black per theme.
- * **Caveat** (g-input-shadow): that primitive punches a *rectangular* hole in its own
- * silhouette, so a translucent fill painted over it shows a 3/255 rectangle with square
- * corners. Here the blur layer is opaque, so nothing shows through — but the composer
- * (`MaterialInputBar`/`MiuixInputBar`) paints `surfaceGlass` directly and had to drop the
- * shadow for exactly that reason. Do not add one back there.
+ * Shadow (§8 row 2): float layers carry a real shadow, drawn by the shared
+ * [vade.ui.component.liquid.downwardShelf] stack — the §8.2 `shadow2` layers as a
+ * downward-only gradient shelf, hugging the real outline (rounded corners included) and
+ * painting nothing above the element. It used to be
+ * `Modifier.shadow(elevation = 16.dp, ambientColor/spotColor = shadowFloat)`, i.e.
+ * Material's symmetric tessellated silhouette: an 11/255 band above the card (D10) plus
+ * a one-pixel step just outside the corners (D6). The ink stays [SkinColors.shadowFloat]
+ * so skins keep it neutral-black per theme; the *geometry* comes from the shared
+ * primitive, so this surface can never drift from the composer.
  * The hairline is [SkinGlass.hairlineOnGlass] — the glass form of `colors.hairline`
  * (§5: deepen it one step on busy backdrops); setting it to `colors.hairline` falls back
  * to the plain token.
@@ -83,11 +85,24 @@ fun GlassSurface(
         modifier
             // §8: a float layer is defined by having a shadow — draw it first so it
             // casts from the surface bounds and is not clipped by the blur layer.
-            .shadow(
-                elevation = 16.dp,
+            //
+            // g-shadow-android: this used to be `Modifier.shadow(elevation = 16.dp, …)`,
+            // Material's *symmetric tessellated* silhouette. On emulator-5554 it painted
+            // a 10.7/255 grey band ABOVE the bar (D10) and stepped 237→249 in one pixel
+            // just outside its rounded corners (D6's 「第二道轮廓」). The shared
+            // [downwardShelf] draws the §8.2 float layers as a downward-only gradient
+            // shelf: nothing above the element (0/255 measured), no corner silhouette,
+            // quantised peak pinned inside the ≤3% budget, and it lands pixels on
+            // Android's hardware canvas — where every clip/blur/mask route measured 0
+            // (shots/g-shadow-real/RESULT.md). The ink stays
+            // [SkinColors.shadowFloat] so each skin keeps its neutral shadow colour; the
+            // *geometry* comes from the shared primitive, so this surface can never drift
+            // from the composer.
+            .downwardShelf(
+                shadow = VadeShadows.float,
                 shape = shape,
-                ambientColor = skin.colors.shadowFloat,
-                spotColor = skin.colors.shadowFloat,
+                color = skin.colors.shadowFloat,
+                dark = skin.colors.isDark,
             )
             .hazeBlur(
                 input = HazeInput.Sources(state = state),
