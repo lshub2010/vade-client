@@ -176,11 +176,32 @@ alpha 阶段的完整清单在 **[主仓 `docs/ALPHA.md` §八](https://github.c
 
 ## 许可
 
-MIT License —— 见 [`LICENSE`](LICENSE)。
+**GNU General Public License v3.0 或更新版本（GPL-3.0-or-later）** —— 完整条款见 [`LICENSE`](LICENSE)。
 
 ```
 Copyright (c) 2026 Vade contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
 ```
+
+### 二次修改与再分发（必须标明原作者）
+
+派生作品**必须**保留本项目的版权声明与作者署名，并按 GPLv3 §5(a) 在显著位置说明：
+
+- 你**修改过**这份代码；
+- **修改的日期**；
+- 原始项目出处：**Vade contributors — https://github.com/lshub2010/vade-client**
+
+换句话说：**你可以改、可以商用、可以再分发，但不能抹掉原作者、不能把改过的版本说成原版、也不能改成闭源。**
+任何再分发的衍生版本同样受 GPL-3.0 约束。
 
 ## 引用
 
@@ -201,27 +222,25 @@ Copyright (c) 2026 Vade contributors
 
 ---
 
-## 第三方许可与致谢
+## 第三方组件与许可
 
-### KernelSU
-底栏的浮动胶囊交互（阻尼拖拽指示器、按压缩放、速度拉伸、橡皮筋、内层阴影）移植自
-[KernelSU](https://github.com/tiann/KernelSU)，Copyright (c) 2023-2026 weishu &
-contributors，以 **Apache License 2.0** 授权。原实现改编自 compose-miuix-ui 示例
-`IosLiquidGlassNavigationBar`（Apache 2.0）。本项目的移植版本保持同一许可
-（`component/liquid/` 与 `shell/` 下相关文件头均带来源声明）。
+本项目站在这些开源组件上。**它们各自的许可与你使用本项目无关，但再分发二进制时必须保留它们的声明**。
+下表由构建脚本里的真实坐标 + 各组件 POM 里声明的许可证核实（2026-11-15），不是凭印象写的。
 
-### Miuix
-毛玻璃、回弹与主题基础组件来自 [Miuix](https://github.com/miuix-kotlin-multiplatform/miuix)
-（`top.yukonga.miuix.kmp`，含 `miuix-ui` 与 `miuix-blur`），**Apache License 2.0**。
+| 组件 | 版本 | 许可 | 用途 / 链接 |
+|---|---|---|---|
+| Compose Multiplatform | 1.12.0 | Apache-2.0 | 三端 UI 运行时 · [JetBrains](https://github.com/JetBrains/compose-multiplatform) |
+| Kotlin / kotlinx（coroutines、serialization） | 2.x / 1.11 | Apache-2.0 | 语言与协程、序列化 |
+| Ktor Client（core / websockets / content-negotiation / cio / okhttp / js） | 3.6.1 | Apache-2.0 | 传输层与 WebSocket · [Ktor](https://ktor.io) |
+| Skiko | 0.150.1 | Apache-2.0 | Compose 的 Skia 绑定 |
+| AndroidX Activity Compose | 1.13.0 | Apache-2.0 | Android 入口 |
+| **Miuix**（miuix-ui / miuix-blur） | 0.9.4 | **Apache-2.0** | 毛玻璃、回弹、主题组件 · [miuix](https://github.com/miuix-kotlin-multiplatform/miuix) |
+| **haze**（haze / haze-blur） | 2.1.0 | **Apache-2.0** | 真高斯背景模糊 · [haze](https://github.com/chrisbanes/haze) |
+| **Tabler Icons**（icons-tabler-cmp / outline / filled） | 2.2.1 | **MIT** | 矢量图标，经 [composeicons](https://github.com/composablehorizons/composeicons) 打包 · 图标集本身 Copyright (c) 2018-2026 Tabler contributors |
+| **KernelSU**（浮动胶囊交互移植） | — | **Apache-2.0** | 阻尼拖拽指示器、按压缩放、速度拉伸、橡皮筋、内层阴影 · Copyright (c) 2023-2026 weishu & contributors · [KernelSU](https://github.com/tiann/KernelSU)（原实现改编自 compose-miuix-ui 的 `IosLiquidGlassNavigationBar`） |
 
-### Tabler Icons
-矢量图标来自 [Tabler Icons](https://tabler.io/icons)，经
-`com.composables:icons-tabler-cmp` 2.2.1（打包：[Composable Horizons composeicons](https://github.com/composablehorizons/composeicons)）接入，
-统一重导出于 `vade.ui.icon.VadeIcons`。
-
-Tabler Icons 以 **MIT License** 发布，版权行：**Copyright (c) 2018-2026 Tabler contributors**
-（[许可原文](https://github.com/tabler/tabler-icons/blob/main/LICENSE)）。
-`shell/`、`skin/` 之外的业务代码不得直接 import `com.composables.icons.tabler.*`。
+> **许可兼容性**：Apache-2.0 与 GPLv3 兼容（Apache-2.0 的专利条款不额外限制 GPLv3），MIT 兼容。
+> 本项目按 GPL-3.0-or-later 分发，上述组件的声明随源码与二进制一同保留。
 
 ### HarmonyOS Sans（待定）
 若后续采用，需在此声明：本软件使用 HarmonyOS Sans 字体（© Huawei Device Co., Ltd.），
