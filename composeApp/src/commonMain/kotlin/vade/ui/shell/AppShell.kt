@@ -401,17 +401,20 @@ private fun ShellBody(state: UiState) {
                 if (state.dest == Destination.Sessions) append(" · ${state.totalSessions} 个会话")
 
             }
+            // 顶栏跟随 **detailVisible**（不是 detailOpen）：手机上详情被抽屉盖住时，顶栏必须回到
+            // 列表 chrome —— 否则顶栏标题与列表里那一行同文案，读屏与测试都会撞成「两个同名节点」，
+            // 用户也会看到「抽屉盖着详情、顶栏却写着详情标题」的错位。
             // 用量副标题（g-topbar-usage）：详情态才持有 loader；草稿没有服务端用量，
             // 也不发注定失败的请求 —— 不显示副标题。
             val usageLine: UsageSubtitleLine = when {
-                !detailOpen || session == null || session.isDraft -> UsageSubtitleLine.None
+                !detailVisible || session == null || session.isDraft -> UsageSubtitleLine.None
                 else -> rememberSessionUsageSubtitleLine(state.source, session.id)
             }
-            val detailLeading: (@Composable () -> Unit)? = if (detailOpen) {
+            val detailLeading: (@Composable () -> Unit)? = if (detailVisible) {
                 { TopBarButton(VadeIcons.Back, onClick = { sessionDetailBack(state, metrics.useRail) }, contentDescription = "返回") }
             } else null
             // 显式类型：if-表达式里的 @Composable lambda 经参数位推断不过（实测），声明处钉住。
-            val listActions: (@Composable RowScope.() -> Unit)? = if (detailOpen) null else {
+            val listActions: (@Composable RowScope.() -> Unit)? = if (detailVisible) null else {
                 {
                     if (state.dest == Destination.Sessions) {
                         // U1-c: phones reach search here; desktop also has ⌘K.
@@ -432,9 +435,9 @@ private fun ShellBody(state: UiState) {
                 }
             }
             TopBar(
-                title = if (detailOpen && session != null) session.title else state.dest.label,
+                title = if (detailVisible && session != null) session.title else state.dest.label,
                 subtitle = when {
-                    !detailOpen -> listSubtitle
+                    !detailVisible -> listSubtitle
                     usageLine is UsageSubtitleLine.Text -> usageLine.text
                     usageLine is UsageSubtitleLine.Retry -> usageLine.label
                     else -> null // 加载中 / 无数据 / 草稿：不显示副标题（绝不编数字）

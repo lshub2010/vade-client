@@ -82,6 +82,14 @@ class SessionMetaOverlay(
      */
     private var lastSynced by mutableStateOf(emptyMap<String, MetaSession>())
 
+    /**
+     * 是否**至少同步过一次**权威行。没同步过时 [projectGroups] 原样返回 ——
+     * 投影的唯一职责是「覆盖乐观值 / 藏掉乐观归档的行」，不是「过滤掉所有我不认识的行」。
+     * 少了这道闸，没接适配器的壳（测试、或首帧还没回包）会投影出一份**空列表**，
+     * 表现得像「一个会话都没有」—— 这是假空态，比显示裸 id 糟得多。
+     */
+    private var hasSynced by mutableStateOf(false)
+
     /** 挂载后拉一次组表（门槛见类 KDoc）。由 [SessionMetaOverlayHost] 的 LaunchedEffect 调。 */
     suspend fun bootstrap() {
         if (allowGroupLoad) meta.loadGroups()
@@ -92,6 +100,7 @@ class SessionMetaOverlay(
      * 变化时调用；幂等。
      */
     fun syncFrom(rows: List<SessionSummary>) {
+        if (rows.isNotEmpty()) hasSynced = true
         val known = meta.sessions.associateBy { it.id }
         val removed = removedIds
         val adopt = mutableListOf<MetaSession>()
@@ -141,12 +150,17 @@ class SessionMetaOverlay(
      * `session/list` 的归档过滤一致）；其余覆盖 title/pinned/groupId，pinned
      * 变化时时间桶按 [bucketFor] 重算（取消置顶不能留在「置顶」桶）。
      */
-    fun projectGroups(groups: List<SessionGroup>): List<SessionGroup> =
-        sessionGroups(groups.flatMap { group -> group.sessions.mapNotNull { project(it) } })
+    fun projectGroups(groups: List<SessionGroup>): List<SessionGroup> {
+        if (!hasSynced) return groups
+        return sessionGroups(groups.flatMap { group -> group.sessions.mapNotNull { project(it) } })
+    }
 
     private fun project(row: SessionSummary): SessionSummary? {
         if (row.isDraft) return row
-        val m = meta.sessions.firstOrNull { it.id == row.id } ?: return null
+        // 墓碑：乐观删除/已确认删除的行必须消失（这一条与「不认识」是两回事）。
+        if (row.id in removedIds) return null
+        // 同步过之后仍不认识 = 同步后才出现的新行：原样画，不许丢。
+        val m = meta.sessions.firstOrNull { it.id == row.id } ?: return row
         if (m.archived && !row.archived) return null
         if (m.title == row.title && m.pinned == row.pinned && m.groupId == row.groupId) return row
         return row.copy(
