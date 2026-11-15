@@ -141,7 +141,12 @@ class ModelStateSeamPathTest {
         transport.push(responseFrame(idOf(transport.record[0]), twoModels))
         waitUntil { transport.record.size >= 2 }
         transport.push(responseFrame(idOf(transport.record[1]), noOverrideJson))
-        waitUntil { state.models != null }
+        // g-flake-ui-timing · 等确定终态，不等中间态：`models` 在 refresh() 的 try 里赋值、
+        // `loadInFlight = false` 在 finally 里——只等 `models != null` 时，断言
+        // 「the answer was handled」正好落在两行之间的观测窗口里（单跑绿、全量红的旧
+        // flake）。两个条件**同一次观测**成立 = finally 已跑完 = refresh 到了终态；
+        // 下面的 assertFalse(loadInFlight) 一字未动。
+        waitUntil { state.models != null && !state.loadInFlight }
 
         assertEquals(listOf("claude-sonnet", "local-qwen"), state.models.orEmpty().map { it.id }, "server order")
         assertTrue(state.loadAttempted)
@@ -217,7 +222,10 @@ class ModelStateSeamPathTest {
         waitUntil { transport.record.size >= start + 1 }
         assertEquals("session/model.set", requestOf(transport.record[start]).first)
         transport.push(errorFrame(idOf(transport.record[start]), "READ_ONLY_SESSION", "session is closed"))
-        waitUntil { state.writeFailure != null }
+        // g-flake-ui-timing · 同一族的观测窗口：`writeFailure` 在 catch 里赋值、
+        // `writePending = false` 在 finally 里。等两者同帧成立（= 写流程已终态）再断，
+        // 下面的 assertFalse(writePending) 一字未动。
+        waitUntil { state.writeFailure != null && !state.writePending }
 
         val shown = assertNotNull(state.writeFailure, "the card's error line reads this — silence was the bug")
         assertTrue(shown.isReadOnlySession)
