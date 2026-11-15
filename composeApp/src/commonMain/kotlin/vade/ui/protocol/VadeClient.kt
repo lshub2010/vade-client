@@ -627,6 +627,33 @@ class VadeClient(
     suspend fun uiModulesRaw(): JsonObject =
         call(VadeMethod.UI_MODULES, buildJsonObject { }) { it }
 
+    /**
+     * `ui/blob.token` 的**能力探测**（RFC-0004 §4.5 / `DRAFT-blob-token.md`：从已认证
+     * ws 会话为原生设备铸一个 600 s 的 blob Bearer —— 附件上传走 `/ui/blob*` 数据面
+     * HTTP 的唯一合法凭据来源）。
+     *
+     * 这个方法**故意不进 [VadeMethod]**：契约（submodule 当前 pin）的 `ui_to_core` 还没有
+     * 它（`DRAFT-blob-token.md` 是提案、未登记），[VadeContractCoverageGuardTest] 会把
+     * enum 与契约逐名对齐，加进去就红 —— 所以它只作为裸帧发出，这是全客户端唯一一条
+     * 不经 [VadeMethod] 的出站 RPC。params 固定 `{}`（`ttl` 省略 = 契约默认 600 s）。
+     *
+     * 探测的三种结局（消费方 `data/BlobUploadCapability`）：
+     *  - 老 core 未注册它 → [VadeException.isMethodMissing]（今天的 core 答
+     *    `NOT_FOUND` + `unknown method 'ui/blob.token'`，实跑钉住）→ 降级「该 core 不支持附件上传」；
+     *  - 回包成功 → `{token, expires_at, max_bytes, endpoints{…}}` 原文（本层不解码；
+     *    HTTP 凭据接线是 shell 的下一步）；
+     *  - 其它失败（TIMEOUT / UNAVAILABLE / …）→ [VadeException] 原样穿透 —— 真故障，
+     *    绝不当「不支持」。
+     */
+    suspend fun blobTokenProbe(): JsonObject {
+        val result = rpc("ui/blob.token", buildJsonObject { }, config.requestTimeoutMs)
+        return result as? JsonObject
+            ?: throw VadeException(
+                VadeErrorCodes.PROTOCOL_MISMATCH,
+                "result of ui/blob.token is not an object: $result",
+            )
+    }
+
 suspend fun uiStateGet(params: StateGetParams): StateGetResult =
         call(VadeMethod.UI_STATE_GET, params.toJson()) { StateGetResult.fromJson(it) }
 

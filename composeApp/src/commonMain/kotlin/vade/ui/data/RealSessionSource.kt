@@ -185,6 +185,10 @@ class RealSessionSource(
                     history = { sessionId -> messages(sessionId) },
                     events = { created.events },
                 ),
+                // 附件上传的能力闸门：`ui/blob.token` 探测（RFC-0004 §4.5，DRAFT-blob-token）。
+                // 今天的 core 未注册该方法 → 上传降级成「该 core 不支持附件上传」的可见提示，
+                // 而不是 UNAVAILABLE 故障 chip；core 实装后同一条闸门放行并交出 token。
+                blobGate = BlobUploadGate { created.blobTokenProbe() },
             )
             // Both collectors must be SUBSCRIBED before connect() — client.events is a
             // hot SharedFlow without replay, and late subscribers miss early events
