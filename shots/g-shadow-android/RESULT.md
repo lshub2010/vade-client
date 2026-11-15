@@ -112,7 +112,9 @@ UI 树 attach 中心 2205 ± 34dp×2.625；x=700，画布 247.3）：
 - ShadowProbeActivity + manifest 探针入口随 docs 提交（仅 adb 显式拉起，无产品路径）。
 - 测量工具：`shots/g-shadow-android/{driver,measure}.py`（stdlib PNG 解码，无 PIL 依赖；
   坐标全部来自 UI 树 / 像素扫描定位，遵守 g-shadow-real 的取样行纪律）。
-- 三目标门禁（android/desktop/wasmJs 编译）在最后一笔之后跑一次，结果见下。
+- 三目标门禁（android/desktop/wasmJs 编译）在最后一笔之后跑一次：
+  `compileDebugKotlinAndroid + compileKotlinDesktop + compileKotlinWasmJs + desktopTest`
+  → **BUILD SUCCESSFUL**（1m18s，21 tasks）。✅
 
 ## 验收判据（父代任务书 + 补充，逐条给前后数字）
 
