@@ -45,7 +45,43 @@ interface ChatTurnGateway {
      * same user message; the old turn is superseded, never deleted).
      */
     suspend fun regenerate(sessionId: String, turnId: String, clientMsgId: String): RegenerateReceipt
+
+    /**
+     * g-chat-send · `ui/submit` — [parts] 按显示顺序（RFC-0004 §6.1），[clientMsgId] 是
+     * 幂等键。回包的 `turn_id` / `queue_pos` 落进回合状态（排队中 #N 用 core 的
+     * queue_pos，不用本地计数）。
+     *
+     * 默认实现是**故意的响亮失败**：真通道忘了实现发送，出网路径缺失比静默丢消息好。
+     */
+    suspend fun submit(
+        sessionId: String,
+        parts: List<ContentPart>,
+        clientMsgId: String,
+    ): SubmitReceipt = throw IllegalStateException(
+        "ChatTurnGateway.submit is not implemented: this gateway cannot send (implement ui/submit " +
+            "or declare an explicit in-memory fake via synthetic = true)",
+    )
+
+    /**
+     * g-chat-send · `ui/interrupt` — 停掉**正在运行**的回合（`turn_id` 见 [submit] 回包或
+     * `turn.started`）。`turn.interrupted` 事件负责上屏；调用方不编本地 stop 语义。
+     *
+     * 默认实现同上：响亮失败，不静默。
+     */
+    suspend fun interrupt(sessionId: String, turnId: String): Unit = throw IllegalStateException(
+        "ChatTurnGateway.interrupt is not implemented: this gateway cannot interrupt (implement " +
+            "ui/interrupt or declare an explicit in-memory fake via synthetic = true)",
+    )
 }
+
+/** Shape of the `ui/submit` result (schema/rpc.json, names as delivered). */
+@Immutable
+data class SubmitReceipt(
+    /** The turn core created for this message — the `ui/interrupt` handle. */
+    val turnId: String,
+    /** core 的排队位（1-based）；`0` = 已立即开始，没有排队。 */
+    val queuePos: Int,
+)
 
 /** Shape of the `message/edit_resubmit` result (schema/rpc.json, names as delivered). */
 @Immutable
@@ -101,4 +137,16 @@ class InMemoryTurnGateway : ChatTurnGateway {
         version = 2,
         supersedesTurnId = turnId,
     )
+
+    /** 假源的 ui/submit 回包：形状与真回包一致，但假源路径**从不调用**它（回归钉住零调用）。 */
+    override suspend fun submit(
+        sessionId: String,
+        parts: List<ContentPart>,
+        clientMsgId: String,
+    ): SubmitReceipt = SubmitReceipt(turnId = "t-$clientMsgId", queuePos = 0)
+
+    /** 假源中断是本地 stop 语义（脚本收尾）：出网空操作。 */
+    override suspend fun interrupt(sessionId: String, turnId: String) {
+        // no-op — the fixture script owns the fake turn lifecycle.
+    }
 }

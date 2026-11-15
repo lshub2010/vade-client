@@ -399,13 +399,16 @@ private fun MessageRow(state: ChatState, message: ChatMessage) {
         }
 
         // 重新生成（v1.1）：只在最后一条助手消息、且已收尾、且空闲时出现（canRegenerate）。
+        // g-chat-send · turn.failed 的行上这就是「重试」：红柄 + 重试文案，点了走
+        // turn/regenerate（旧失败行保留并标旧版本，新回合由事件流上屏）。
         if (message.role == ChatRole.Assistant && state.canRegenerate(message.id)) {
+            val retrying = message.state == MessageState.Failed
             Row(Modifier.padding(top = 2.dp)) {
                 ChatVectorIconButton(
                     vector = VadeIcons.Refresh,
-                    contentDescription = "重新生成这条回复",
+                    contentDescription = if (retrying) "重试这条回复" else "重新生成这条回复",
                     onClick = { scope.launch { state.regenerate(message.id) } },
-                    tint = skin.colors.onSurfaceVariant,
+                    tint = if (retrying) skin.colors.error else skin.colors.onSurfaceVariant,
                 )
             }
         }

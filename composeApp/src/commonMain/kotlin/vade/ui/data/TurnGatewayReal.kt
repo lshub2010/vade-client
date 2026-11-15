@@ -5,8 +5,11 @@ import vade.ui.chat.ChatTurnGateway
 import vade.ui.chat.ContentPart as ChatContentPart
 import vade.ui.chat.EditResubmitReceipt
 import vade.ui.chat.RegenerateReceipt
+import vade.ui.chat.SubmitReceipt
 import vade.ui.protocol.ContentPart as WireContentPart
 import vade.ui.protocol.EditResubmitParams
+import vade.ui.protocol.InterruptParams
+import vade.ui.protocol.SubmitParams
 import vade.ui.protocol.TurnRegenerateParams
 import vade.ui.protocol.VadeClient
 import vade.ui.protocol.VadeErrorCodes
@@ -85,6 +88,37 @@ class TurnGatewayReal(
             supersedesTurnId = result.supersedesTurnId,
             queuePos = result.queuePos,
         )
+    }
+
+    /**
+     * g-chat-send · `ui/submit` — parts 顺序透传（显示顺序，core 不许重排），幂等键
+     * `client_msg_id` 原样上帧。回包逐字段落 [SubmitReceipt]（turn_id / queue_pos）。
+     */
+    override suspend fun submit(
+        sessionId: String,
+        parts: List<ChatContentPart>,
+        clientMsgId: String,
+    ): SubmitReceipt {
+        requireNonBlank(sessionId, "session_id")
+        requireNonBlank(clientMsgId, "client_msg_id")
+        if (parts.isEmpty()) {
+            throw invalidArgument("params.content requires at least one part")
+        }
+        val result = client.uiSubmit(
+            SubmitParams(
+                sessionId = sessionId,
+                clientMsgId = clientMsgId,
+                content = parts.map { it.toWire() },
+            ),
+        )
+        return SubmitReceipt(turnId = result.turnId, queuePos = result.queuePos)
+    }
+
+    /** g-chat-send · `ui/interrupt` — 停掉**正在运行**的回合；参数逐字上帧。 */
+    override suspend fun interrupt(sessionId: String, turnId: String) {
+        requireNonBlank(sessionId, "session_id")
+        requireNonBlank(turnId, "turn_id")
+        client.uiInterrupt(InterruptParams(sessionId = sessionId, turnId = turnId))
     }
 
     /** Chat-layer part union → the wire part union (RFC-0004 §6.1), field-for-field. */

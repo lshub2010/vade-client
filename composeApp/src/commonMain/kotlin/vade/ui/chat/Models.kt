@@ -241,7 +241,9 @@ sealed interface ChatItem {
     }
 }
 
-/** RFC-0006 `turn.queued` — the minimum the badge and the cancel action need. */
+/**
+ * RFC-0006 `turn.queued` — the minimum the badge and the cancel action need.
+ */
 @Immutable
 data class QueuedTurn(
     val messageId: String,
@@ -249,6 +251,11 @@ data class QueuedTurn(
     val text: String,
     /** `submit` | `regenerate` | `edit_resubmit`. */
     val reason: String = "submit",
+    /**
+     * g-chat-send · core 的排队位（`ui/submit` 回包 `queue_pos`，1-based）。`0` = 假源的
+     * 本地条目（badge 落回本地计数）——真源模式下 #N **只**认这个真值，不用本地计数。
+     */
+    val queuePos: Int = 0,
 )
 
 // --- formatting helpers (pure; unit-tested) ----------------------------------
