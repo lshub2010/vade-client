@@ -165,7 +165,7 @@ private fun ReadOnlyChip() {
 
 /** One explanation line (the degrade reason / why a scope cannot be written). */
 @Composable
-private fun NoticeLine(text: String) {
+internal fun NoticeLine(text: String) {
     val skin = LocalSkin.current
     UiText(
         text = text,
@@ -179,7 +179,7 @@ private fun NoticeLine(text: String) {
 
 /** A failed model RPC: 分类 + headline, then core's own words. Never silent. */
 @Composable
-private fun FailureNotice(failure: ModelFailure) {
+internal fun FailureNotice(failure: ModelFailure) {
     val skin = LocalSkin.current
     Column(
         Modifier
@@ -198,7 +198,7 @@ private fun FailureNotice(failure: ModelFailure) {
 
 /** The read-only / 「无可用模型」 body — a real state with an explanation, never a bare list. */
 @Composable
-private fun PickerEmptyState(title: String, body: String) {
+internal fun PickerEmptyState(title: String, body: String) {
     val skin = LocalSkin.current
     Column(
         Modifier
@@ -221,8 +221,11 @@ private fun PickerEmptyState(title: String, body: String) {
     }
 }
 
+// `internal`（原 private，g-model-chip）：行渲染件由 ModelPickerSheet 复用 —— 会话页的
+// 模型选择改成 §9 浮层后，列表/空态/错误行是同一套绘制，不允许两份实现漂移。
+// 卡片本体（ProfileScreen 的设置分区）保持原样。
 @Composable
-private fun PickerRows(state: ModelState, content: ModelPickerContent.Rows) {
+internal fun PickerRows(state: ModelState, content: ModelPickerContent.Rows) {
     Column(
         Modifier
             .fillMaxWidth()

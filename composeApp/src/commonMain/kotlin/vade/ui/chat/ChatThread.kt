@@ -122,6 +122,13 @@ fun ChatThread(
     state: ChatState,
     modifier: Modifier = Modifier,
     animate: Boolean = true,
+    /**
+     * Page-level control rendered inside the composer panel's bottom row through the
+     * additive `Skin.InputBar(leading = …)` slot (g-model-chip): the session model chip
+     * shares the send orb's visual line without adding composer height. Null = the frozen
+     * composer row, byte-for-byte (AppShell callers that pass nothing are untouched).
+     */
+    inputLeading: (@Composable () -> Unit)? = null,
 ) {
     val skin = LocalSkin.current
     val scroll = rememberScrollState()
@@ -233,6 +240,7 @@ fun ChatThread(
             gutter = gutter,
             animate = animate,
             onHeightChanged = { composerHeightPx = it },
+            inputLeading = inputLeading,
         )
 
         // Fullscreen preview is an overlay of the page, not a platform dialog: the skin must
@@ -792,6 +800,8 @@ private fun BoxScope.ComposerOverlay(
     gutter: Dp,
     animate: Boolean,
     onHeightChanged: (Int) -> Unit,
+    /** g-model-chip：经 `Skin.InputBar(leading = …)` 进面板底行的页面控件（模型 chip）。 */
+    inputLeading: (@Composable () -> Unit)? = null,
 ) {
     val skin = LocalSkin.current
     val uploadScope = rememberCoroutineScope()
@@ -902,6 +912,8 @@ private fun BoxScope.ComposerOverlay(
                         enabled = true,
                         voiceAvailable = false,
                         maxLines = 6,
+                        // g-model-chip：composer 底行槽位 —— 模型 chip（页面经此形参传入）。
+                        leading = inputLeading,
                     )
                 }
                 // 发送球在**框外**（v2 §2 / RFC-0011）：与输入框间距 12dp、垂直居中的独立

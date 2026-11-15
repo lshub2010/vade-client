@@ -719,6 +719,9 @@ internal fun MiuixInputBar(
     enabled: Boolean,
     voiceAvailable: Boolean,
     maxLines: Int,
+    // Post-freeze additive slot (see Skin.InputBar KDoc): page-level control sharing the
+    // panel's existing bottom row. null = frozen bottom row, byte-for-byte.
+    leading: (@Composable () -> Unit)?,
     colors: SkinColors,
     shapes: SkinShapes,
     typography: SkinTypography,
@@ -755,6 +758,12 @@ internal fun MiuixInputBar(
                         .padding(horizontal = 14.dp, vertical = 10.dp),
                 ) {
                     Row(verticalAlignment = Alignment.Bottom) {
+                        // `leading` 槽（C-09 追加，见 Skin.InputBar KDoc）：行首、与文本域
+                        // 同一行；null 时整段不组成，冻结布局逐像素不变。
+                        if (leading != null) {
+                            leading()
+                            Spacer(Modifier.width(8.dp))
+                        }
                         if (voiceAvailable) {
                             GlassIconButton(colors, enabled) { }
                             Spacer(Modifier.width(8.dp))

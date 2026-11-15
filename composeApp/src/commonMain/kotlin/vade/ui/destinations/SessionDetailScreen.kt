@@ -1,7 +1,6 @@
 package vade.ui.destinations
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -34,11 +33,10 @@ import vade.ui.chat.StatusPill
 import vade.ui.chat.Tone
 import vade.ui.data.AdapterProvider
 import vade.ui.data.SessionSummary
-import vade.ui.icon.VadeIcon
-import vade.ui.icon.VadeIcons
 import vade.ui.model.InMemoryModelActions
 import vade.ui.model.ModelActions
-import vade.ui.model.ModelPickerCard
+import vade.ui.model.ModelComposerChip
+import vade.ui.model.ModelPickerSheet
 import vade.ui.model.ModelState
 import vade.ui.skin.LocalSkin
 
@@ -53,10 +51,14 @@ import vade.ui.skin.LocalSkin
  * [preset] / [animate] exist for the real-window screenshot loop and for tests; `Live` is what
  * the app uses, and it is the only mode where the stream advances by itself.
  *
- * U1-model · the header's model line is now the session-model switcher entry: tapping it
- * expands a [ModelPickerCard] between header and thread. All model reads/writes go through
- * the injected [modelActions] seam; when the shell has not wired one yet (this round), an
- * in-memory fixture implementation keeps the picker fully interactive and honestly labelled.
+ * U1-model → g-model-chip · the model switcher moved OUT of the page flow: the header model
+ * line is plain information again (what would answer, message count, degraded reason), the
+ * TRIGGER is the [ModelComposerChip] inside the composer's bottom row (same line as the send
+ * orb, via `ChatThread(inputLeading = …)` → `Skin.InputBar(leading = …)`), and tapping it
+ * opens the [ModelPickerSheet] — the §9 floating sheet card — over the whole screen. Nothing
+ * pushes the transcript anymore. All model reads/writes go through the injected [modelActions]
+ * seam; when the shell has not wired one yet (this round), an in-memory fixture implementation
+ * keeps the picker fully interactive and honestly labelled.
  */
 @Composable
 fun SessionDetailScreen(
@@ -123,15 +125,22 @@ fun SessionDetailScreen(
     var modelPickerOpen by remember(session.id) { mutableStateOf(false) }
 
     // Full-bleed stack: the thread spans the whole window (scrolling under glass bar and
-    // header alike); the header — and the model picker it expands — float *below* the glass
-    // bar zone as the later sibling and stay opaque, so their own content remains readable
-    // while rows slide under them. The header→picker flow stays inside one floating column
-    // exactly as the in-flow version arranged it.
+    // header alike); the header floats *below* the glass bar zone as the later sibling and
+    // stays opaque, so its own content remains readable while rows slide under it.
+    // g-model-chip: the model sheet is the TOPMOST sibling — an overlay over everything
+    // (header, thread, composer), never an inline block in the header column.
     Box(modifier.fillMaxSize()) {
         ChatThread(
             state = chat,
             modifier = Modifier.fillMaxSize(),
             animate = animate,
+            inputLeading = {
+                ModelComposerChip(
+                    state = modelState,
+                    expanded = modelPickerOpen,
+                    onClick = { modelPickerOpen = true },
+                )
+            },
         )
         Column(Modifier.padding(top = contentPadding.calculateTopPadding())) {
             DetailHeader(
@@ -139,32 +148,29 @@ fun SessionDetailScreen(
                 chat = chat,
                 showTitle = showTitle,
                 modelState = modelState,
-                pickerOpen = modelPickerOpen,
                 degraded = modelSeam.degraded ?: chatSeam.degraded,
-            ) {
-                modelPickerOpen = !modelPickerOpen
-            }
+            )
             // Load-failure banner sits right under the header, above the thread: the reader
             // sees *why* the thread is empty before the (kept) old messages.
             banner?.invoke()
-            if (modelPickerOpen) {
-                ModelPickerCard(
-                    state = modelState,
-                    title = "会话模型",
-                    footerNote = "仅本会话生效，下一轮对话起使用（D101：会话级 > 全局默认 > priority）" +
-                        (
-                            // 假数据这句话只在**真的**用内存假实现时才成立；接上适配器后
-                            // 模型面来自 core，继续说「未接 core」就是撒谎（§8.5）。
-                            if (adapters == null || modelSeam.degraded != null) {
-                                "· 假数据：未接 core，接真数据只需实现 vade.ui.model.ModelActions"
-                            } else {
-                                "· 模型面来自 core（AdapterProvider），写入走 session/model.set"
-                            }
-                            ) +
-                        modelSeam.degraded?.let { " · $it" }.orEmpty(),
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                )
-            }
+        }
+        if (modelPickerOpen) {
+            ModelPickerSheet(
+                state = modelState,
+                title = "会话模型",
+                onClose = { modelPickerOpen = false },
+                footerNote = "仅本会话生效，下一轮对话起使用（D101：会话级 > 全局默认 > priority）" +
+                    (
+                        // 假数据这句话只在**真的**用内存假实现时才成立；接上适配器后
+                        // 模型面来自 core，继续说「未接 core」就是撒谎（§8.5）。
+                        if (adapters == null || modelSeam.degraded != null) {
+                            "· 假数据：未接 core，接真数据只需实现 vade.ui.model.ModelActions"
+                        } else {
+                            "· 模型面来自 core（AdapterProvider），写入走 session/model.set"
+                        }
+                        ) +
+                    modelSeam.degraded?.let { " · $it" }.orEmpty(),
+            )
         }
     }
 }
@@ -175,8 +181,9 @@ fun SessionDetailScreen(
  * the data is fake. No 「已连接」 badge — U1-b has no socket, and a green dot
  * that means nothing is exactly the kind of lie §8.5 forbids.
  *
- * The model line doubles as the switcher affordance: a full-width tap row (≥44dp including
- * its padding) with a chevron, expanding the picker card below the header.
+ * g-model-chip: the model line is INFORMATION again — the switcher affordance moved into the
+ * composer chip (`ModelComposerChip`), so this row is no longer clickable and carries no
+ * chevron (a tap affordance on a row that no longer toggles anything would be a lie).
  */
 @Composable
 private fun DetailHeader(
@@ -184,10 +191,8 @@ private fun DetailHeader(
     chat: ChatState,
     showTitle: Boolean,
     modelState: ModelState,
-    pickerOpen: Boolean,
     /** 非 null = 适配器查找失败、本页已退回内存假实现；直接拼进模型行（不静默吞）。 */
     degraded: String? = null,
-    onToggleModel: () -> Unit,
 ) {
     val skin = LocalSkin.current
     // With the shell top bar already naming the session, a second 15sp copy of the same
@@ -229,7 +234,6 @@ private fun DetailHeader(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable(onClick = onToggleModel)
                         .padding(vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -239,12 +243,6 @@ private fun DetailHeader(
                         color = skin.colors.onSurfaceVariant,
                         maxLines = 1,
                         modifier = Modifier.weight(1f),
-                    )
-                    VadeIcon(
-                        VadeIcons.ChevronDown,
-                        contentDescription = if (pickerOpen) "收起模型选择" else "更改会话模型",
-                        size = 16.dp,
-                        tint = skin.colors.onSurfaceVariant,
                     )
                 }
             }

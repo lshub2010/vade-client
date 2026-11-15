@@ -2,6 +2,7 @@ package vade.ui.destinations
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
 import kotlinx.serialization.json.JsonObject
@@ -564,7 +565,12 @@ class ScreenAdapterWiringTest {
                 )
             }
         }
-        onNodeWithText(PROBE_MODEL_NAME, substring = true).assertExists()
+        // g-model-chip：会话详情上模型名由 header 行与 composer chip 共同承载 —— 断言「出现」，
+        // 不再断言「唯一」。
+        assertTrue(
+            onAllNodesWithText(PROBE_MODEL_NAME, substring = true).fetchSemanticsNodes().isNotEmpty(),
+            "适配器给出的模型名必须出现在会话详情上",
+        )
         onNodeWithText(SEAM_FALLBACK_NOTE, substring = true).assertDoesNotExist()
     }
 

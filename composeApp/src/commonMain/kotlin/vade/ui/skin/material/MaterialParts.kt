@@ -618,6 +618,9 @@ internal fun MaterialInputBar(
     enabled: Boolean,
     voiceAvailable: Boolean,
     maxLines: Int,
+    // Post-freeze additive slot (see Skin.InputBar KDoc): page-level control sharing the
+    // panel's existing bottom row. null = frozen bottom row, byte-for-byte.
+    leading: (@Composable () -> Unit)?,
     colors: SkinColors,
     shapes: SkinShapes,
     typography: SkinTypography,
@@ -663,6 +666,12 @@ internal fun MaterialInputBar(
             Spacer(Modifier.height(8.dp))
         }
         Row(verticalAlignment = Alignment.Bottom) {
+            // `leading` 槽（C-09 追加，见 Skin.InputBar KDoc）：行首、与文本域同一行；
+            // null 时整段不组成，冻结布局逐像素不变。
+            if (leading != null) {
+                leading()
+                Spacer(Modifier.width(10.dp))
+            }
             // 文本域直接落在玻璃面板上（不再嵌一个内层框 —— §10 同屏圆角 ≤3 种）；
             // 多行最高 maxLines 行后内部滚动。
             Box(
