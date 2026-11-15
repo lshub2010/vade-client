@@ -28,6 +28,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlin.concurrent.Volatile
 import vade.ui.UiText
@@ -394,7 +396,13 @@ class SubagentLoader(
             val next = try {
                 SubagentLoadState.Ready(source.list(sessionId))
             } catch (e: CancellationException) {
-                return@launch // disposed/cancelled: no state write, never a fake failure
+                // A timeout IS a CancellationException subclass — rethrowing it here used to
+                // leave the panel in Loading forever (no Failed, no retry) on a weak network.
+                // Split by the CURRENT job's liveness: our own scope dying → real cancel, no
+                // state write; job alive → the cancellation came from the request → a
+                // retryable failure with the same classification as any other Throwable.
+                currentCoroutineContext().ensureActive()
+                SubagentLoadState.Failed(subagentLoadErrorOf(e))
             } catch (t: Throwable) {
                 SubagentLoadState.Failed(subagentLoadErrorOf(t))
             }

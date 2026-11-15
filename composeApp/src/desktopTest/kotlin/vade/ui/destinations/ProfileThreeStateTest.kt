@@ -21,6 +21,7 @@ import kotlinx.coroutines.runBlocking
 import vade.ui.data.ModelActionsReal
 import vade.ui.protocol.FakeTransport
 import vade.ui.protocol.FakeTransportFactory
+import vade.ui.protocol.TimeoutSendTransportFactory
 import vade.ui.protocol.VadeClient
 import vade.ui.protocol.VadeErrorCodes
 import vade.ui.protocol.errorFrame
@@ -32,6 +33,7 @@ import vade.ui.skin.LocalSkin
 import vade.ui.skin.material.MaterialSkin
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
@@ -252,6 +254,62 @@ class ProfileThreeStateTest {
             onNodeWithText("模型列表加载失败").assertDoesNotExist()
             onNodeWithText("重试拉取模型列表").assertDoesNotExist()
             assertTrue(nonBlankTexts().isNotEmpty(), "不支持态整页不许裸空白")
+        } finally {
+            runBlocking { client.close() }
+        }
+    }
+
+    // ================== 5 · g-model-refresh · 裸超时取消 = 失败脸 + 重试行真的重发（1→2）
+
+    /**
+     * 第一帧 `send` 延迟 250ms 再抛**真** TimeoutCancellationException（Ktor 会话死亡 /
+     * 请求超时到达加载器时是未转换的裸 CE——协议层只转换它自己的 withTimeout）。延迟是
+     * 让失败落在首帧组合**之后**：autoRefresh 拉取在 remember 里起跑，失败若落在首帧
+     * 组合期间，那次写入对首帧不可见也不安排失效（g-first-run 的 §19 形态）——重试行
+     * 会永远缺席，而那是 ProfileScreen 的读法问题（destinations/ 本棒禁改，见报告）。
+     * 旧代码把超时当真取消抛出：失败不记、卡片塌成「无可用模型」假空态。修复后：
+     * 失败脸 + 重试行出现；点一次重试恰好重发一次（`sendAttempts` 1→2），回包后回到数据脸。
+     */
+    @Test
+    fun rawTimeoutCancellationStillShowsTheRetryRowAndReallyReissues() = runComposeUiTest {
+        val factory = TimeoutSendTransportFactory(throwDelayMs = 250)
+        val client = testClient(factory)
+        try {
+            // 先连接：不 connect 的话拉取死在 rpc 的「not connected (state=Idle)」守卫上——
+            // 那是瞬时失败，落在首帧组合期间（§19 对首帧不可见），重试行反而永远缺席。
+            runBlocking {
+                client.connect()
+                assertTrue(client.awaitConnected(), "FakeTransport 握手应立即完成")
+            }
+            setProfile(client)
+            expandModelPicker()
+
+            // 失败脸在卡内；重试行在滚动列里（视口外未组合，语义树上不存在）——
+            // 与既有失败测同一手法：performScrollTo 找到它，证明它存在、可点。
+            awaitText("模型列表加载失败")
+            onNodeWithText("重试拉取模型列表").performScrollTo().assertExists()
+            onNodeWithText("无可用模型").assertDoesNotExist()
+
+            // 点一次重试 = refresh() 真的重发（sendAttempts 1→2；抛过的那次也算一次）。
+            onNodeWithText("重试拉取模型列表").performScrollTo().performClick()
+            waitUntil(timeoutMillis = 10_000) { factory.transport.sendAttempts >= 2 }
+            assertEquals(2, factory.transport.sendAttempts, "点一次重试恰好重发一次")
+
+            // 重发已入队（send #2 落进内层 record）：回它一帧 → 回到数据脸、重试行收起。
+            val transport = factory.transport
+            waitUntil(timeoutMillis = 10_000) { transport.record.isNotEmpty() }
+            transport.push(
+                responseFrame(
+                    idOf(transport.record[0]),
+                    """{"revision":4,"not_modified":false,"models":[""" +
+                        modelEntryJson("claude-sonnet", "Claude Sonnet") +
+                        """],"default":{"model_id":"claude-sonnet","source":"config","resolved":true}}""",
+                ),
+            )
+            awaitText("Claude Sonnet")
+            onNodeWithText("模型列表加载失败").assertDoesNotExist()
+            onNodeWithText("重试拉取模型列表").assertDoesNotExist()
+            assertTrue(nonBlankTexts().isNotEmpty(), "重试恢复后整页不许裸空白")
         } finally {
             runBlocking { client.close() }
         }

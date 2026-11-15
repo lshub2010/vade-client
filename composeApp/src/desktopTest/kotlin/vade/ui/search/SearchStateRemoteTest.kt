@@ -10,6 +10,7 @@ import vade.ui.data.VadeErrorCategory
 import vade.ui.protocol.FakeTransportFactory
 import vade.ui.protocol.VadeErrorCodes
 import vade.ui.protocol.VadeException
+import vade.ui.protocol.harvestedTimeoutCancellationException
 import vade.ui.protocol.idOf
 import vade.ui.protocol.requestOf
 import vade.ui.protocol.responseFrame
@@ -212,6 +213,26 @@ class SearchStateRemoteTest {
         assertEquals(VadeErrorCategory.Retryable, failure.category)
         assertNull(failure.code, "no C-04 code for an off-seam crash")
         assertEquals("boom", failure.message)
+    }
+
+    // ------- g-model-refresh · 超时形取消 = 失败态，绝不静默蒸发（旧行为：既无失败也无在飞标志）
+
+    @Test
+    fun timeoutShapedCancellationIsAFailureStateNeverASilentNoOp() = runBlocking {
+        val fake = ScriptedRemoteSearch()
+        fake.enqueueError(harvestedTimeoutCancellationException())
+        val state = SearchState(fake)
+        state.updateQuery("AGP")
+        state.runRemote("AGP")
+
+        val failure = state.remoteFailure
+        assertNotNull(failure, "超时（裸 CE 形状）必须落 remoteFailure，不许被当成取消吞掉")
+        assertEquals(VadeErrorCategory.Retryable, failure.category, "超时归「可重试」")
+        assertNull(failure.code, "裸 CE 不带 C-04 码")
+        assertTrue(state.results.isEmpty(), "失败的远端 run 不洗成 0 结果")
+        assertFalse(state.executed)
+        assertEquals(SearchScope.CrossSession, state.scope, "失败不得把标签翻成本地档")
+        assertFalse(state.remoteInFlight, "失败的 run 释放在飞标志")
     }
 
     @Test

@@ -10,6 +10,7 @@ import kotlinx.serialization.json.JsonObject
 import vade.ui.protocol.VadeErrorCodes
 import vade.ui.protocol.VadeException
 import vade.ui.protocol.VadeJson
+import vade.ui.protocol.harvestedTimeoutCancellationException
 import vade.ui.protocol.waitUntil
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicInteger
@@ -17,6 +18,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -199,5 +201,23 @@ class ModulePageBodyLoaderTest {
             loader.state,
             "宿主侧已 dispose：迟到回包不许再写状态",
         )
+    }
+
+    // ------- g-model-refresh · 超时形取消 = 失败态，绝不卡死在 Loading（无重试出口）
+
+    @Test
+    fun timeoutShapedCancellationIsAFailedStateNeverAStuckLoading() = runBlocking {
+        val fetcher = ScriptedFetcher()
+        fetcher.step({ throw harvestedTimeoutCancellationException() })
+        val loader = ModulePageBodyLoader(fetcher, scope)
+
+        loader.load(key("echo"), setOf("echo"))
+        assertEquals(ModulePageBodyState.Loading(key("echo")), loader.state, "同步进 Loading")
+        waitUntil { loader.state is ModulePageBodyState.Failed }
+
+        val failed = assertIs<ModulePageBodyState.Failed>(loader.state)
+        assertEquals(key("echo"), failed.key)
+        assertNull(failed.failure.code, "裸 CE 不带 C-04 码")
+        assertTrue(failed.failure.detail.contains("Timed out"), "失败行带传输原话：${failed.failure.detail}")
     }
 }

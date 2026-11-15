@@ -5,6 +5,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import vade.ui.protocol.VadeException
@@ -76,7 +78,10 @@ internal class ModulePageBodyLoader(
                 val schema = fetch.fetchBody(key.moduleId, key.instanceId, key.pageId, declaredPageIds)
                 if (disposed || gen != generation) null else ModulePageBodyState.Ready(key, schema)
             } catch (e: CancellationException) {
-                null // 协程被取消（宿主离开组合）：不写状态，绝不编一个失败
+                // Same split as ModulePageStateLoader: a timeout-shaped cancellation is a real
+                // (retryable) failure, our own scope dying is a real cancel that writes nothing.
+                currentCoroutineContext().ensureActive()
+                ModulePageBodyState.Failed(key, modulePageBodyFailureOf(e))
             } catch (t: Throwable) {
                 if (disposed || gen != generation) null else ModulePageBodyState.Failed(key, modulePageBodyFailureOf(t))
             }

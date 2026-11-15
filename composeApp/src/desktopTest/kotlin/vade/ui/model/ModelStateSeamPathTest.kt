@@ -146,6 +146,7 @@ class ModelStateSeamPathTest {
         // 「the answer was handled」正好落在两行之间的观测窗口里（单跑绿、全量红的旧
         // flake）。两个条件**同一次观测**成立 = finally 已跑完 = refresh 到了终态；
         // 下面的 assertFalse(loadInFlight) 一字未动。
+        // g-model-refresh 也独立踩到同一个窗口（它写成两句顺序 wait，本解更严：一次观测）。
         waitUntil { state.models != null && !state.loadInFlight }
 
         assertEquals(listOf("claude-sonnet", "local-qwen"), state.models.orEmpty().map { it.id }, "server order")

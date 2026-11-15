@@ -5,6 +5,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import kotlin.concurrent.Volatile
@@ -55,7 +57,13 @@ internal class ModulePageStateLoader(
                 val state = fetch.fetchState(key.moduleId, key.instanceId, key.pageId)
                 if (disposed || gen != generation) null else ModulePageStatePhase.Ready(key, state)
             } catch (e: CancellationException) {
-                null // 协程被取消（宿主离开组合）：不写状态，绝不编一个失败
+                // A timeout IS a CancellationException subclass; rethrowing it used to leave
+                // the phase stuck in Loading forever (no Failed, no retry) on a weak network.
+                // Split by the CURRENT job's liveness: our own scope dying (宿主离开组合) →
+                // real cancel, 不写状态，绝不编一个失败；job alive → the cancellation came
+                // from the request → a retryable failure, classified like any other Throwable.
+                currentCoroutineContext().ensureActive()
+                ModulePageStatePhase.Failed(key, modulePageBodyFailureOf(e))
             } catch (t: Throwable) {
                 if (disposed || gen != generation) null else ModulePageStatePhase.Failed(key, modulePageBodyFailureOf(t))
             }
