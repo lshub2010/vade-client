@@ -1,5 +1,12 @@
 package vade.ui.shell
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -67,6 +74,18 @@ internal val TopBarHeight = 56.dp
  * Vertical geometry: the capsule is [TopBarHeight] tall and hangs [TopBarTopGap] below
  * the window top — the status-bar inset above it is consumed once by androidMain's root
  * `statusBarsPadding()`, never re-added here (TopGlassGuardTest pins this).
+ *
+ * g-topbar-usage · 标题对的**纯淡入淡出替换**：[title] + [subtitle] 两行**作为一个整体**
+ * 经 `AnimatedContent` 淡换 —— `fadeIn(tween(200)) togetherWith fadeOut(tween(160))`，
+ * 尺寸变换 `snap`（无动画高度）、`contentAlignment = TopStart` —— 过渡全程**没有位移、
+ * 没有缩放、没有裁剪**，两层文字左沿恒等（`TopBarCrossfadeTest` 推时钟中途采样，
+ * 同时断言两层 alpha 都在 (0,1) 与左沿 x 相等）。切会话、列表⇄详情三种情形走同一段
+ * 过渡 —— 前提是 `AppShell` 只保留**一个** TopBar 调用点（if/else 两个分支是两个组合
+ * 组，分支翻转会销毁 TopBar 内部的过渡状态，淡换就死在了切换的边界上）。
+ *
+ * @param animate `false` = 瞬时替换（无中间态）—— 供测试与无动画场景；
+ *   `true`（默认）= 淡入淡出。
+ * @param onSubtitleClick 副标题可点（g-topbar-usage 失败态的重试入口）；`null` = 不可点。
  */
 @Composable
 fun TopBar(
@@ -74,6 +93,8 @@ fun TopBar(
     subtitle: String? = null,
     leading: (@Composable () -> Unit)? = null,
     actions: (@Composable RowScope.() -> Unit)? = null,
+    animate: Boolean = true,
+    onSubtitleClick: (() -> Unit)? = null,
 ) {
     val skin = LocalSkin.current
     GlassSurface(
@@ -93,26 +114,52 @@ fun TopBar(
                 Spacer(Modifier.width(4.dp))
             }
             Column(Modifier.weight(1f).padding(horizontal = 6.dp)) {
-                UiText(
-                    text = title,
-                    size = 15,
-                    weight = FontWeight.SemiBold,
-                    color = skin.colors.textOnGlass,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (subtitle != null) {
-                    UiText(
-                        text = subtitle,
-                        size = 10,
-                        color = skin.colors.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                if (animate) {
+                    AnimatedContent(
+                        targetState = title to subtitle,
+                        transitionSpec = {
+                            fadeIn(tween(durationMillis = 200)) togetherWith
+                                fadeOut(tween(durationMillis = 160)) using
+                                SizeTransform(clip = false) { _, _ -> snap() }
+                        },
+                        contentAlignment = Alignment.TopStart,
+                        label = "TopBarTitlePair",
+                    ) { (t, s) ->
+                        TopBarTitlePair(title = t, subtitle = s, onSubtitleClick = onSubtitleClick)
+                    }
+                } else {
+                    TopBarTitlePair(title = title, subtitle = subtitle, onSubtitleClick = onSubtitleClick)
                 }
             }
             if (actions != null) actions()
         }
+    }
+}
+
+/**
+ * 顶栏的标题 + 副标题两行（[TopBar] 的内容原语）。副标题缺省时只画标题一行；
+ * [onSubtitleClick] 非 null 时副标题可点（失败态的重试入口，g-topbar-usage）。
+ */
+@Composable
+private fun TopBarTitlePair(title: String, subtitle: String?, onSubtitleClick: (() -> Unit)?) {
+    val skin = LocalSkin.current
+    UiText(
+        text = title,
+        size = 15,
+        weight = FontWeight.SemiBold,
+        color = skin.colors.textOnGlass,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
+    if (subtitle != null) {
+        UiText(
+            text = subtitle,
+            modifier = if (onSubtitleClick != null) Modifier.clickable(onClick = onSubtitleClick) else Modifier,
+            size = 10,
+            color = skin.colors.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

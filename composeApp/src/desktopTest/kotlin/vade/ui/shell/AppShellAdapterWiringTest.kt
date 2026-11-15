@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
@@ -268,9 +269,14 @@ class AppShellAdapterWiringTest {
         runOnIdle { ui.open(sessionId) }
         waitForIdle()
 
-        // Which code path ran: only the pushed-detail branch gives the top bar this subtitle,
-        // so its presence proves `ShellBody`'s own SessionDetailScreen was the one rendered.
-        onNodeWithText(PUSHED_DETAIL_SUBTITLE, substring = true).assertExists()
+        // Which code path ran: only the pushed-detail branch puts the **usage subtitle**
+        // (g-topbar-usage: «量» tokens · «轮» 轮) on the top bar — the list top bar's
+        // subtitle is the tier label (会话 · N 个会话), so a "tokens" node proves that
+        // `ShellBody`'s own SessionDetailScreen was the one rendered. (It used to pin the
+        // stale "会话详情 · 消息流 / 工具卡为假数据" sentence, which the usage batch deleted.)
+        waitUntil(timeoutMillis = 10_000) {
+            onAllNodesWithText("tokens", substring = true).fetchSemanticsNodes().isNotEmpty()
+        }
         // Collapsed picker header prints currentLabel(): the probe name only exists if the
         // pushed detail got the provider.
         onNodeWithText(PROBE_MODEL_NAME, substring = true).assertExists()
@@ -292,9 +298,9 @@ class AppShellAdapterWiringTest {
         runOnIdle { ui.open(sessionId) }
         waitForIdle()
 
-        // Not the pushed branch (that subtitle belongs to `ShellBody` only) ⇒ the detail here
-        // is `DestinationHost`'s two-pane SessionDetailScreen.
-        onNodeWithText(PUSHED_DETAIL_SUBTITLE, substring = true).assertDoesNotExist()
+        // Not the pushed branch: the two-pane detail has NO usage subtitle on any top bar
+        // (the pushed-detail top bar is not composed here ⇒ no "tokens" node anywhere).
+        onAllNodesWithText("tokens", substring = true).assertCountEquals(0)
         onNodeWithText(PROBE_MODEL_NAME, substring = true).assertExists()
         assertEquals(listOf(sessionId), provider.modelIds, "the two-pane detail must ask model(sessionId)")
     }
@@ -446,9 +452,6 @@ class AppShellAdapterWiringTest {
 
         /** The first fake session's title — a string no other screen prints. */
         const val FIXTURE_SESSION_TITLE = "RFC-0004 附件与多模态评审"
-
-        /** Only the pushed-detail branch (ShellBody) sets this top-bar subtitle. */
-        const val PUSHED_DETAIL_SUBTITLE = "会话详情"
 
         /** `ModelFixtures.claudeSonnet.displayName`: what the in-memory seam shows by default. */
         const val FIXTURE_MODEL_NAME = "Claude Sonnet"

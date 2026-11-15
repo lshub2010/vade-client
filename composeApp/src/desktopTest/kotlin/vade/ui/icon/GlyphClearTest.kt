@@ -246,6 +246,9 @@ class GlyphClearTest {
         val actual = result.offenders.map { "${it.path}:${it.line}:${it.glyph}" }.sorted()
         val expected = listOf(
             "vade/ui/demo/MotionProbe.kt:312:好",
+            // g-topbar-usage：用量副标题的量级后缀（万 tokens 的单位词，格式化纯函数的拼装
+            // 参数）——确属文案，IconGuardTest.allowed 已写理由放行。
+            "vade/ui/shell/TopBarUsage.kt:70:万",
             "vade/ui/skin/miuix/MiuixShowcase.kt:208:主",
             "vade/ui/skin/miuix/MiuixShowcase.kt:209:次",
             "vade/ui/skin/miuix/MiuixShowcase.kt:210:危",
