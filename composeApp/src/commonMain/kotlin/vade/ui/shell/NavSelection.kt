@@ -16,13 +16,23 @@
 // selected. `NavSelectionGuardTest` fails the build if a form goes back to hand-rolling
 // its own selected state.
 //
-// Spec (user decision 2026-11-15, verbatim 「统一成「图标外包小圆角块（≈32dp，16% accent）
-// + 文字变色」，三形态一致（近 miuix/KSU，且不是大色块）」):
-//   selected   : ≈32 dp rounded block behind the icon, accent @ 16 %; icon + label accent;
+// Spec (user decisions, verbatim):
+//   2026-11-15 (g-nav-selected):    「统一成「图标外包小圆角块（≈32dp，16% accent）
+//                + 文字变色」，三形态一致（近 miuix/KSU，且不是大色块）」
+//   2026-11-15 (g-nav-selected2):   「两者结合：小圆角块 + 实心图标 + 文字变色」
+//   selected   : ≈32 dp rounded block behind the icon, accent @ 16 %; the icon switches to
+//                its **Tabler filled variant** (`ShellGlyphs.NavFilledVariants` — the one
+//                mapping, keyed by the outline vector); icon + label accent;
 //   unselected : no block (`Color.Transparent`, never a surface fill tied to the bar's own
-//                background), icon + label onSurfaceVariant;
+//                background), the **outline** vector + icon/label onSurfaceVariant;
 //   corner     : the skin's shape token — `shapes.sm` (16 dp in v2), never a literal, so a
 //                skin that widens its shape scale widens the block with it.
+//
+// Variant discipline (no silent mixing): the family switch happens HERE and nowhere else.
+// A selected item whose outline vector has no registered filled variant keeps the outline
+// shape and is tagged as such — the guard test reads the tags and fails on any screen where
+// an icon's family disagrees with its tab's selection state. The four real destinations are
+// all registered, so the fallback is dead code for them (a totality test pins that).
 
 package vade.ui.shell
 
@@ -45,11 +55,30 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import vade.ui.UiText
+import vade.ui.icon.ShellGlyphs
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.SkinShapes
 
 /** Test tag on the selection block — one node per tab, in every form. */
 internal const val NavSelectionBlockTag: String = "vade.nav.selection.block"
+
+/**
+ * Family markers on the icon (g-nav-selected2), each on its own node *inside* the block —
+ * the `Image` itself may already carry the caller's tag (rail's `vade.nav.rail.icon.<id>`)
+ * and one node holds exactly one `TestTag`.
+ *
+ * The tag is derived from the **resolved vector** (`navSelectionVector`), not from the
+ * `selected` flag: "filled" means a mapped `Tabler.Filled` vector was actually substituted.
+ * `NavSelectionGuardTest` asserts that every icon's family agrees with its tab's state —
+ * a selected tab without a registered variant shows up here as an outline-tagged selected
+ * icon, which is exactly the silent mixing this layer must not do.
+ */
+internal const val NavSelectionFilledIconTag: String = "vade.nav.icon.filled"
+internal const val NavSelectionOutlineIconTag: String = "vade.nav.icon.outline"
+
+/** State markers on the label — same chain: tag from `selected`, colour from `navTabColor`. */
+internal const val NavSelectionLabelSelectedTag: String = "vade.nav.label.selected"
+internal const val NavSelectionLabelIdleTag: String = "vade.nav.label.idle"
 
 /** Side of the block behind the icon. 32 dp in all three forms (≈ miuix/KSU, not a colour slab). */
 internal val NavSelectionBlockSize: Dp = 32.dp
@@ -95,7 +124,32 @@ internal fun navTabWeight(selected: Boolean): FontWeight =
     if (selected) FontWeight.SemiBold else FontWeight.Normal
 
 /**
+ * The vector one nav item actually draws (g-nav-selected2): the outline vector as given when
+ * idle; its **registered Tabler filled variant** when selected. Unregistered vectors keep the
+ * outline shape — visible through [navSelectionIconVariantTag], never silently mixed.
+ */
+internal fun navSelectionVector(icon: ImageVector, selected: Boolean): ImageVector =
+    if (selected) ShellGlyphs.navFilledVariantOf(icon) ?: icon else icon
+
+/**
+ * Which family [navSelectionVector] resolved to, as a test tag. Derived from the *resolved
+ * vector* (a mapped substitution happened), not from the `selected` flag — so a selected tab
+ * with no registered variant is tagged outline and the guard's mixing test fails on it.
+ */
+internal fun navSelectionIconVariantTag(icon: ImageVector, selected: Boolean): String =
+    if (navSelectionVector(icon, selected) !== icon) {
+        NavSelectionFilledIconTag
+    } else {
+        NavSelectionOutlineIconTag
+    }
+
+/**
  * Icon slot of one navigation item: the shared 32 dp rounded block + the tinted vector.
+ *
+ * g-nav-selected2: the vector is resolved through [navSelectionVector] — outline when idle,
+ * the mapped Tabler filled variant when selected — and the family tag rides its own node
+ * because [iconModifier] may already carry the caller's tag (rail's `vade.nav.rail.icon.<id>`)
+ * and one node holds exactly one `TestTag`.
  *
  * [iconModifier] carries per-form testing hooks (rail's `vade.nav.rail.icon.<id>` tag);
  * [contentDescription] is the caller's call — the rail labels the item below the icon, so
@@ -113,6 +167,7 @@ internal fun NavSelectionIconSlot(
 ) {
     val skin = LocalSkin.current
     val tint = navTabColor(selected)
+    val vector = navSelectionVector(icon, selected)
     Box(
         modifier = modifier
             .size(NavSelectionBlockSize)
@@ -121,12 +176,16 @@ internal fun NavSelectionIconSlot(
             .testTag(NavSelectionBlockTag),
         contentAlignment = Alignment.Center,
     ) {
-        Image(
-            painter = rememberVectorPainter(icon),
-            contentDescription = contentDescription,
-            modifier = iconModifier.size(NavSelectionIconSize),
-            colorFilter = ColorFilter.tint(tint),
-        )
+        Box(
+            modifier = Modifier.testTag(navSelectionIconVariantTag(icon, selected)),
+        ) {
+            Image(
+                painter = rememberVectorPainter(vector),
+                contentDescription = contentDescription,
+                modifier = iconModifier.size(NavSelectionIconSize),
+                colorFilter = ColorFilter.tint(tint),
+            )
+        }
         badge?.let { b ->
             Box(Modifier.align(Alignment.TopEnd)) { b() }
         }
@@ -135,7 +194,10 @@ internal fun NavSelectionIconSlot(
 
 /**
  * Label of one navigation item. Size stays per-form (rail 10 sp, bars 11 sp — it is
- * geometry, not selection state); colour and weight are the shared rules above.
+ * geometry, not selection state); colour and weight are the shared rules above. g-nav-selected2:
+ * the label also carries a state tag (`vade.nav.label.selected` / `.idle`) so the guard can
+ * pin "the accent-coloured one is exactly the selected tab's label" per form without reading
+ * text styles (which semantics don't expose).
  */
 @Composable
 internal fun NavTabLabel(
@@ -147,7 +209,9 @@ internal fun NavTabLabel(
 ) {
     UiText(
         text = text,
-        modifier = modifier,
+        modifier = modifier.testTag(
+            if (selected) NavSelectionLabelSelectedTag else NavSelectionLabelIdleTag,
+        ),
         size = size,
         weight = navTabWeight(selected),
         color = navTabColor(selected),
