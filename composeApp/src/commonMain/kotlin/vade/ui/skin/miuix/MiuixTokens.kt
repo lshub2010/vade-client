@@ -260,6 +260,16 @@ internal object MiuixTokens {
     /** Spec §二 `warn` #B26A00 (5.0:1 on white), lifted for dark. */
     fun warn(isDark: Boolean) = if (isDark) Color(0xFFE8A33D) else Color(0xFFB26A00)
 
+    /**
+     * 凹陷底（内嵌代码块 / 参数井）——— *the* one sunken value of this skin.
+     *
+     * Light: the warm grey `surfaceVariant` (#F2F1EF). Dark: `surfaceVariant` is pure #000000
+     * here, i.e. already the deepest step Miuix dark uses, so no separate literal is invented.
+     * Named as a function (not a `val`) because it reads the *semantic* colours — a skin that
+     * changed `surfaceVariant` must not leave a stale sunken behind.
+     */
+    fun sunken(colors: SkinColors): Color = if (colors.isDark) Color(0xFF000000) else colors.surfaceVariant
+
     // --- component metrics ------------------------------------------------------
 
     /** Compact list row (material's is 56 dp). Task book §四: 48 dp. */

@@ -80,6 +80,30 @@ import vade.ui.skin.ToolCardState
  * stay on the v2 six-step ladder (xs 12 / sm 16 / md 20 / lg 24 / xl 28 / sheet 32).
  */
 
+// --- slot consumption (C-09 contract, not a style call) ----------------------
+
+/**
+ * Consumes a C-09 **slot** — in exactly one place, so no component can quietly forget it.
+ *
+ * `MessageBubble.body` (rich text) and `ToolCallCard.meta` (duration / batch / error-code rows)
+ * were added to the frozen contract *after* the freeze, and both mean the same thing: the page
+ * owns the content, the skin owns the frame. A skin may pick its own padding, line height,
+ * corner radius and colour for the slot — it may **not** drop it, because the data then simply
+ * is not on screen under that skin (measured A/B on one session: shots 26/33 `material` vs
+ * 27/32 `miuix` in `shots/g-visual-audit2/RESULT.md` · D3/D4). Two skins are allowed to look
+ * different; they are not allowed to disagree about what the message contains.
+ *
+ * [fallback] is what the component drew before the slot existed, byte for byte, so passing
+ * `null` keeps the frozen rendering.
+ */
+@Composable
+private fun SlottedOrFallback(
+    slot: (@Composable () -> Unit)?,
+    fallback: @Composable () -> Unit,
+) {
+    if (slot != null) slot() else fallback()
+}
+
 // --- 7 · ApprovalDialog ------------------------------------------------------
 
 /**
@@ -175,7 +199,7 @@ internal fun MiuixApprovalDialog(
                             .fillMaxWidth()
                             .heightIn(min = 96.dp, max = 240.dp)
                             .clip(RoundedCornerShape(shapes.small))
-                            .background(if (colors.isDark) Color(0xFF000000) else colors.surfaceVariant)
+                            .background(MiuixTokens.sunken(colors))
                             .padding(10.dp),
                     ) {
                         Text(
@@ -262,6 +286,14 @@ private fun RiskTag(risk: String, colors: SkinColors) {
  *
  * The old revision gave the assistant a `Surface` + hairline at the `md` radius, i.e. it drew
  * the user's container around the assistant's prose — a spec violation, not a taste call.
+ *
+ * **The `body` slot is consumed in all three roles** (C-09 contract, added after the freeze):
+ * the page hands in its markdown renderer and the bubble draws *that* inside its own frame.
+ * The frame stays miuix's (padding 14/10 in the user bubble, the 11 sp pill for system, no
+ * container for the assistant) — but the rich text must go through `body()`. The previous
+ * revision took the parameter and rendered `Text(message.text)` anyway, so `**原图未保留**`,
+ * `` `UP-TO-DATE` `` and ```kotlin fences reached the screen as literal asterisks on this skin
+ * and only on this skin (`shots/g-visual-audit2` · D3, A/B 26/33 vs 27/32).
  */
 @Composable
 internal fun MiuixMessageBubble(
@@ -292,24 +324,31 @@ internal fun MiuixMessageBubble(
                 role == BubbleRole.Assistant -> Column(
                     Modifier.widthIn(max = maxWidth).padding(vertical = 2.dp),
                 ) {
-                    Text(
-                        text = message.text,
-                        style = typography.body,
-                        color = if (message.isError) colors.error else colors.onSurface,
-                    )
+                    SlottedOrFallback(body) {
+                        Text(
+                            text = message.text,
+                            style = typography.body,
+                            color = if (message.isError) colors.error else colors.onSurface,
+                        )
+                    }
                 }
 
                 // --- system: centred caption pill ------------------------------------
-                system -> Text(
-                    text = message.text,
-                    fontSize = 11.sp,
-                    color = colors.onSurfaceVariant,
-                    modifier = Modifier
+                system -> Box(
+                    Modifier
                         .widthIn(max = maxWidth)
                         .clip(RoundedCornerShape(shapes.pill))
                         .background(colors.surfaceVariant)
                         .padding(horizontal = 10.dp, vertical = 4.dp),
-                )
+                ) {
+                    SlottedOrFallback(body) {
+                        Text(
+                            text = message.text,
+                            fontSize = 11.sp,
+                            color = colors.onSurfaceVariant,
+                        )
+                    }
+                }
 
                 // --- user: the only real bubble --------------------------------------
                 else -> Surface(
@@ -328,11 +367,13 @@ internal fun MiuixMessageBubble(
                     shadowElevation = 0.dp,
                 ) {
                     Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                        Text(
-                            text = message.text,
-                            style = typography.body,
-                            color = if (message.isError) colors.error else colors.onSurface,
-                        )
+                        SlottedOrFallback(body) {
+                            Text(
+                                text = message.text,
+                                style = typography.body,
+                                color = if (message.isError) colors.error else colors.onSurface,
+                            )
+                        }
                     }
                 }
             }
@@ -473,6 +514,12 @@ internal fun MiuixAttachmentChip(
  * `PendingApproval` show the redacted args plus the result. Hierarchy comes from a 3 dp
  * leading accent bar rather than a filled header, which is what makes it read as a tool log
  * instead of another card. Static-card layering: hairline + `shadowSoft` (v2 §8 row 1).
+ *
+ * Both frozen slots are consumed: [call] args/result render as labelled `ARGS` / `RESULT`
+ * wells (the v2 code-block shape, on this skin's tokens), and [meta] — the duration / batch /
+ * error-code / started-at rows the frozen `ToolCallView` has no field for — is drawn whenever
+ * the page passes it. The *page* decides to pass `null` while collapsed (`ChatThread.ToolRow`);
+ * the skin never drops content it was handed.
  */
 @Composable
 internal fun MiuixToolCallCard(
@@ -548,31 +595,93 @@ internal fun MiuixToolCallCard(
                         verticalArrangement = Arrangement.spacedBy(3.dp),
                     ) {
                         Text("参数", fontSize = MiuixTokens.tinySize, color = colors.onSurfaceVariant)
-                        Box(
-                            Modifier.fillMaxWidth().heightIn(max = 140.dp)
-                                .clip(RoundedCornerShape(shapes.small))
-                                .background(if (colors.isDark) Color(0xFF000000) else colors.surfaceVariant)
-                                .padding(8.dp),
-                        ) {
-                            Text(
-                                text = call.args,
-                                style = typography.mono,
-                                color = colors.onSurface,
-                                modifier = Modifier.verticalScroll(rememberScrollState()),
-                            )
-                        }
+                        MiuixCodeBlock(
+                            text = call.args,
+                            label = "ARGS",
+                            colors = colors,
+                            typography = typography,
+                        )
                         if (call.result != null) {
                             Text("结果", fontSize = MiuixTokens.tinySize, color = colors.onSurfaceVariant)
-                            Text(
+                            MiuixCodeBlock(
                                 text = call.result,
-                                style = typography.mono,
-                                color = if (call.isError) colors.error else colors.onSurface,
+                                label = "RESULT",
+                                colors = colors,
+                                typography = typography,
+                                ink = if (call.isError) colors.error else colors.onSurface,
                             )
                         }
                     }
                 }
+                // meta 槽（C-09）：耗时 / 批次 / 错误码 / 发起时间。**必须消费** —— 页面在折叠时
+                // 传 null（`ChatThread.ToolRow`），展开时把这四行交进来；皮肤只负责「有就画」，
+                // 与 material 同构。曾经整个形参被丢掉，四行在 miuix 下凭空消失
+                // （`shots/g-visual-audit2` · D4）。
+                if (meta != null) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 12.dp, end = 12.dp, bottom = 10.dp),
+                    ) { meta() }
+                }
             }
         }
+    }
+}
+
+/**
+ * The card's inline code well (`ARGS` / `RESULT`) — the miuix counterpart of `material`'s
+ * `CodeBlock` (v2 §五/§10: sunken base + xs-step corners + a small label row).
+ *
+ * Same *job*, this skin's tokens: the base is [MiuixTokens.sunken] (light = the warm grey
+ * `surfaceVariant`, dark = the pure black Miuix dark already uses), corners are
+ * [MiuixTokens.radiusXs] (the ladder's "代码块" step), and the label row is separated by a
+ * 1 dp `hairline` instead of material's translucent white overlay. The label is drawn in the
+ * mono family so `ARGS` / `RESULT` read as a code kind, not as prose.
+ *
+ * Body height is capped and scrolls inside the well (140 dp header→body, same ceiling the
+ * inline 参数 well used) so a long redacted argument list can never push the meta rows out of
+ * the card.
+ */
+@Composable
+private fun MiuixCodeBlock(
+    text: String,
+    label: String,
+    colors: SkinColors,
+    typography: SkinTypography,
+    ink: Color = colors.onSurface,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(MiuixTokens.radiusXs))
+            .background(MiuixTokens.sunken(colors)),
+    ) {
+        Text(
+            text = label,
+            fontFamily = typography.mono.fontFamily,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = MiuixTokens.tinySize,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 4.dp),
+        )
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(MiuixTokens.dividerThickness)
+                .background(colors.hairline),
+        )
+        Text(
+            text = text,
+            style = typography.mono,
+            color = ink,
+            modifier = Modifier
+                .heightIn(max = 140.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+        )
     }
 }
 
