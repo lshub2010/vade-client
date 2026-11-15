@@ -15,6 +15,7 @@ import vade.ui.protocol.SessionModelSetParams
 import vade.ui.protocol.VadeClient
 import vade.ui.protocol.VadeErrorCodes
 import vade.ui.protocol.VadeException
+import vade.ui.protocol.isMethodMissing
 
 /**
  * The real [ModelActions] (RFC-0005 / D101): `model/list` fills [models], `session/model.get`
@@ -107,9 +108,15 @@ class ModelActionsReal(
     }
 
     /**
-     * `model/list` pull. On success stores the entries (server order, never re-sorted),
-     * the global default, and clears [readOnly]. On method-missing applies the FR-8.46
-     * degradation; every other error propagates with its C-04 code intact.
+     * 方法缺失判定**已收编**到协议层的统一实现
+     * [vade.ui.protocol.isMethodMissing]（`protocol/VadeMethodMissing.kt`）：它同时识别
+     * `-32601`（契约注记承诺的形态）与 `NOT_FOUND` + message 含 `unknown method`
+     * （本仓 core 今天的真实形态，`session/rpc.py` dispatch），并对 NOT_FOUND 但
+     * message 不同（unknown session / unknown group / blob not found）的**真资源缺失**
+     * 返回 false —— 那不是「方法不存在」，绝不能降级选择器。
+     *
+     * 历史注记：本类曾自带一份私有判定（`startsWith("unknown method")`）；g-capability-detect
+     * 起它与 `ModuleCatalog` / `BlobUploadCapability` 共用同一份，规则只有一处实现。
      */
     suspend fun refreshModels() {
         try {
@@ -139,7 +146,6 @@ class ModelActionsReal(
             throw e
         }
     }
-
     /** `session/model.get` pull for one session's explicit override (null = follows default). */
     suspend fun refreshSessionOverride(sessionId: String) {
         if (sessionId.isBlank()) {
@@ -185,20 +191,5 @@ class ModelActionsReal(
                 "params.model_id must be null (clear) or a non-blank model_id, got: \"$modelId\"",
             )
         }
-    }
-
-    /**
-     * Method-missing detection. `-32601` is what the contract notes promise; the shipped
-     * core answers `NOT_FOUND` with `unknown method '…'` (rpc.json's -32601 note vs
-     * `session/rpc.py` dispatch). A NOT_FOUND with a DIFFERENT message (unknown session,
-     * unknown group) is a genuine NOT_FOUND and must NOT degrade the picker.
-     */
-    private fun VadeException.isMethodMissing(): Boolean =
-        code == METHOD_NOT_FOUND_CODE ||
-            (code == VadeErrorCodes.NOT_FOUND && message.orEmpty().startsWith("unknown method"))
-
-    private companion object {
-        /** The JSON-RPC reserved code for an unregistered method, carried verbatim as a name. */
-        const val METHOD_NOT_FOUND_CODE = "-32601"
     }
 }

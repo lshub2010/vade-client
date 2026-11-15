@@ -11,7 +11,9 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import vade.ui.module.ModuleDeclaration
 import vade.ui.protocol.PayloadDecodeException
+import vade.ui.protocol.VadeException
 import vade.ui.protocol.boolStrict
+import vade.ui.protocol.isMethodMissing
 import vade.ui.protocol.lngStrict
 import vade.ui.protocol.mustArr
 import vade.ui.protocol.mustStr
@@ -134,31 +136,50 @@ data class ModuleLoadError(
     val code: String?,
     /** 传输层原话，跟在分类标签之后。 */
     val detail: String,
+    /**
+     * **能力缺失降级**（不是故障）：core 未注册 `ui/modules`（统一判定
+     * [vade.ui.protocol.VadeException.isMethodMissing] 命中）时由
+     * [moduleCapabilityMissingError] 置 true。此时 [label] / [hint] / [retryLabel]
+     * 全部换成「不支持」语义的文案 —— 用户看到的是「该 core 不支持模块页面」，
+     * 而不是一张故障横幅；core 升级之前重试没有意义。
+     */
+    val capabilityMissing: Boolean = false,
 ) {
-    /** 分类文案 + code + 详情 —— 一行，永远带分类词。 */
+    /** 分类文案 + code + 详情 —— 一行，永远带分类词；能力缺失时改说「不支持」。 */
     val label: String
-        get() = if (code.isNullOrBlank()) "${category.label}：$detail" else "${category.label}（$code）：$detail"
-
-    /** 重试按钮承诺的事。 */
-    val retryLabel: String
-        get() = when (category) {
-            VadeErrorCategory.Retryable -> "重试"
-            VadeErrorCategory.NeedsReconnect -> "重连后重试"
-            VadeErrorCategory.NeedsUserAction -> "修正后重试"
-            VadeErrorCategory.Fatal -> "重试（通常无效）"
+        get() = when {
+            capabilityMissing -> "该 core 不支持模块页面：$detail"
+            else -> if (code.isNullOrBlank()) "${category.label}：$detail" else "${category.label}（$code）：$detail"
         }
 
     /** 为什么失败、用户能做什么 —— 不是裸的堆栈。 */
     val hint: String
-        get() = when (category) {
-            VadeErrorCategory.Retryable ->
-                "请求超时或服务繁忙；重试会重新拉取 ui/modules，已显示的模块不会残留半份。"
-            VadeErrorCategory.NeedsReconnect ->
-                "连接已断开或会话视图已失效；请恢复连接（重连 / 重新 attach）后再重试。"
-            VadeErrorCategory.NeedsUserAction ->
-                "参数或权限被拒绝；请按提示修正后再试（同一请求原样重试通常无效）。"
-            VadeErrorCategory.Fatal ->
-                "客户端与服务端版本或安全状态不一致；更新客户端或重新配对后才能恢复。"
+        get() = when {
+            capabilityMissing ->
+                "core 版本过旧，没有 ui/modules 方法（能力缺失，不是网络或服务故障）；" +
+                    "升级 core 后模块卡片自动出现。"
+            else -> when (category) {
+                VadeErrorCategory.Retryable ->
+                    "请求超时或服务繁忙；重试会重新拉取 ui/modules，已显示的模块不会残留半份。"
+                VadeErrorCategory.NeedsReconnect ->
+                    "连接已断开或会话视图已失效；请恢复连接（重连 / 重新 attach）后再重试。"
+                VadeErrorCategory.NeedsUserAction ->
+                    "参数或权限被拒绝；请按提示修正后再试（同一请求原样重试通常无效）。"
+                VadeErrorCategory.Fatal ->
+                    "客户端与服务端版本或安全状态不一致；更新客户端或重新配对后才能恢复。"
+            }
+        }
+
+    /** 重试按钮承诺的事；能力缺失时诚实说明「等 core 升级」。 */
+    val retryLabel: String
+        get() = when {
+            capabilityMissing -> "core 升级后重试"
+            else -> when (category) {
+                VadeErrorCategory.Retryable -> "重试"
+                VadeErrorCategory.NeedsReconnect -> "重连后重试"
+                VadeErrorCategory.NeedsUserAction -> "修正后重试"
+                VadeErrorCategory.Fatal -> "重试（通常无效）"
+            }
         }
 }
 
@@ -166,6 +187,19 @@ internal fun moduleLoadErrorOf(t: Throwable): ModuleLoadError = ModuleLoadError(
     category = loadErrorCategoryOf(t),
     code = loadErrorCodeOf(t),
     detail = t.message ?: t::class.simpleName ?: "unknown error",
+)
+
+/**
+ * 「core 没有这个方法」的**能力缺失**错误：[ModuleLoadError.capabilityMissing] = true，
+ * 三段文案全部说「不支持」。[detail] 保留 core 的原话（`unknown method 'ui/modules'`），
+ * 让「凭什么说不支持」可以核对；[category] 落 Fatal（重试解决不了），但三段 getter 在
+ * capabilityMissing 分支下根本不读它。
+ */
+internal fun moduleCapabilityMissingError(t: VadeException): ModuleLoadError = ModuleLoadError(
+    category = VadeErrorCategory.Fatal,
+    code = t.code,
+    detail = t.message.orEmpty().ifBlank { t.code },
+    capabilityMissing = true,
 )
 
 /** 只有这些状态下的重试按钮才有意义（Loading 时没有失败的请求可重发）。 */
@@ -306,6 +340,20 @@ internal class ModulesLoader(
 
     override val state: ModuleCatalogState get() = stateRef
 
+    /**
+     * 最近一次**成功**拉取的声明集合；`null` = 从未成功过（含「不支持」降级之后）。
+     *
+     * 「不支持」时这里**保持 `null`** —— 绝不 fabricate 一个空列表（那是「有但零条」，
+     * 与 [ModuleCatalogState.Ready.isEmpty] 的「core 明说 0 个」是两个世界）。测试钉住
+     * 这一条：能力缺失降级后 `assertNull(declarations)`。
+     */
+    val declarations: List<ModuleDeclaration>?
+        get() = if (snapshotLoaded) registry.declarations() else null
+
+    /** [declarations] 是否诞生过一次；只有 [applyReply] 的成功路径会置 true。 */
+    @Volatile
+    private var snapshotLoaded = false
+
     /** 尝试代数：只有最新一代的回包能写状态（晚到的旧回包静默丢弃）。 */
     @Volatile
     private var generation = 0L
@@ -371,7 +419,16 @@ internal class ModulesLoader(
             } catch (e: CancellationException) {
                 null // 协程被取消（dispose / 作用域结束）：不写状态，绝不编一个失败
             } catch (t: Throwable) {
-                if (disposed || gen != generation) null else ModuleCatalogState.Failed(moduleLoadErrorOf(t))
+                if (disposed || gen != generation) {
+                    null
+                } else if (t is VadeException && t.isMethodMissing()) {
+                    // 能力缺失降级（不是故障）：core 没注册 ui/modules → 「该 core 不支持
+                    // 模块页面」。注册表一个字节不动，成功快照不诞生（declarations 保持
+                    // null —— 绝不用空列表冒充「有但零条」）。
+                    ModuleCatalogState.Failed(moduleCapabilityMissingError(t))
+                } else {
+                    ModuleCatalogState.Failed(moduleLoadErrorOf(t))
+                }
             }
             inFlight = false
             if (disposed || gen != generation || next == null) return@launch
@@ -393,6 +450,7 @@ internal class ModulesLoader(
         val nodes = ModuleCatalogWire.nodes(result)
         registry.replaceAll(nodes)
         lastRevision = revision
+        snapshotLoaded = true
         return ModuleCatalogState.Ready(revision, registry.declarations())
     }
 }

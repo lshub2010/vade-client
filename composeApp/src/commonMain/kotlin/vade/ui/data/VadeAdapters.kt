@@ -134,6 +134,13 @@ internal class RealAdapters(
      * this::observeEvents)`，两个方法引用的签名与 [ChatTranscriptSource.of] 逐字相同。
      */
     private val chatTranscript: ChatTranscriptSource? = null,
+    /**
+     * 附件上传的**能力闸门**（`ui/blob.token` 探测，见 `BlobUploadCapability.kt`）。
+     * `null` = 不设闸（测试直构通道机制用例时用）；组合根传
+     * `BlobUploadGate { client.blobTokenProbe() }` —— 今天的 core 未注册该方法，
+     * 闸门会把上传降级成「该 core 不支持附件上传」而不是 UNAVAILABLE 故障。
+     */
+    private val blobGate: BlobUploadGate? = null,
 ) : AdapterProvider {
 
     private val metaActions: SessionMetaActions by lazy { MetaActionsReal(client) }
@@ -145,10 +152,12 @@ internal class RealAdapters(
     private val pageSource: ModulePageSource by lazy { RealModulePageSource(client) }
 
     private val blobUploader: AttachmentUploader by lazy {
-        BlobUploaderReal(
+        val real = BlobUploaderReal(
             channel = blobChannel ?: UnwiredBlobChannel,
             byteSource = blobByteSource ?: UnwiredBlobByteSource,
         )
+        // 闸门在真通道**外面**：探测「方法不存在」→ 直接明说不支持，字节通道一次都不碰。
+        if (blobGate == null) real else CapabilityGatedUploader(blobGate, real)
     }
 
     override fun meta(sessionId: String): SessionMetaActions = metaActions

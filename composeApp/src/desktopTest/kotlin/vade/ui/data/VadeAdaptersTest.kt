@@ -206,7 +206,10 @@ class VadeAdaptersTest {
             val provider = assertNotNull(source.adapters, "连接后必须交出真适配器包")
             assertIs<MetaActionsReal>(provider.meta("s-1"))
             assertIs<ModelActionsReal>(provider.model("s-1"))
-            assertIs<BlobUploaderReal>(provider.uploader())
+            // 组合根带了能力闸门（ui/blob.token 探测）：上传器是闸门包装，
+            // 闸门内的真通道必须仍是 BlobUploaderReal —— 见 BlobUploadCapabilityTest。
+            val gated = assertIs<CapabilityGatedUploader>(provider.uploader())
+            assertIs<BlobUploaderReal>(gated.realUploader)
             assertIs<RealModulePageSource>(provider.modulePages())
             source.disconnect()
             assertNull(source.adapters, "断开后适配器必须清空（client 已 close，不可重启）")
