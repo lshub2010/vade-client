@@ -28,11 +28,28 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import vade.ui.UiText
+import vade.ui.component.liquid.GlassBand
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.glass.GlassSurface
+import vade.ui.skin.glass.LocalGlassHazeState
 
 /** The glass capsule's testTag — TopGlassGuardTest fetches it to pin the desktop geometry. */
 internal const val TopBarGlassTag = "vade.shell.topbar.glass"
+
+/**
+ * 顶栏**带**的 testTag（g-topbar-band）—— 垫在浮卡背后、覆盖整条 `TOP_BAR_ZONE` 的那层玻璃。
+ * 守卫测试用它量「带子是否真的把卡片上下那 8dp 空隙也盖住了」。
+ */
+internal const val TopBarBandTag = "vade.shell.topbar.band"
+
+/**
+ * 带子的染色浓度 = 卡片染色的这个倍数。
+ *
+ * 不取 1.0：同浓度会让卡片和带子变成同一块料，浮卡的轮廓（描边 + 阴影）就消失了——
+ * 用户要的是「浮卡外圈加同色遮罩」，不是「整条带变成一个色块」。也不取更小的值：带子
+ * 还是要压住卡外那两条空隙里字形的高频，模糊是主力、染色只是把它拉到与卡内同一个色温。
+ */
+internal const val TopBarBandTintScale = 0.6f
 
 /** Glass capsule height. Internal so TopGlassGuardTest pins the rendered geometry. */
 internal val TopBarHeight = 56.dp
@@ -97,6 +114,33 @@ fun TopBar(
             if (actions != null) actions()
         }
     }
+}
+
+/**
+ * 顶栏带的玻璃（g-topbar-band）：垫在浮卡**背后**、覆盖整条顶栏区的一层无内容玻璃。
+ *
+ * 位置与尺寸不在这里决定 —— 调用方（`AppShell` 里那一处）把它铺满
+ * `TOP_BAR_ZONE × 内容列宽`，本函数只负责「同色系 + 同一模糊半径」这两条材质语义：
+ *
+ *  - 颜色取卡片用的同一个 `Skin.glass` 染色（`tintLight` / `tintDark`），再按
+ *    [TopBarBandTintScale] 减淡 —— 同色系、不同浓度，浮卡才还看得出是浮卡；
+ *  - 模糊半径取 `Skin.glass.blurRadiusDp`，与卡片逐点相同：两条空隙与卡内的模糊强度
+ *    一致，接缝处不会出现「带内糊、卡内更糊」的落差（验收 1 就是量这个）。
+ *
+ * 不画描边、不画阴影、不加圆角（见 [GlassBand] 的三条理由）。没有 `GlassScope` 的环境
+ * （孤立预览、不注册 backdrop 的单测）退化为「只有染色」——那时它是一条极淡的同色带，
+ * 不会崩，也不会凭空造出一条模糊。
+ */
+@Composable
+fun TopBarBand(modifier: Modifier = Modifier) {
+    val skin = LocalSkin.current
+    val tint = if (skin.colors.isDark) skin.glass.tintDark else skin.glass.tintLight
+    GlassBand(
+        modifier = modifier.testTag(TopBarBandTag),
+        hazeState = LocalGlassHazeState.current,
+        tint = tint.copy(alpha = tint.alpha * TopBarBandTintScale),
+        blurRadiusDp = skin.glass.blurRadiusDp,
+    )
 }
 
 /**
