@@ -68,8 +68,11 @@ class ThemeModeTest {
     @Test
     fun appWiresThemeResolutionIntoTheSkinRememberKey() {
         val src = File("src/commonMain/kotlin/vade/ui/App.kt").readText()
+        // g-route-transition 之后 App.kt 用 import 的短形式（ThemeController.currentDark()），
+        // 守卫意图是「remember key 里必须有 currentDark()」——FQN 与短形式都算接上（G5 批修）。
+        val wired = Regex("remember\\(state\\.skinId,\\s*(vade\\.ui\\.skin\\.)?ThemeController\\.currentDark\\(\\)")
         assertTrue(
-            src.contains("remember(state.skinId, vade.ui.skin.ThemeController.currentDark())"),
+            wired.containsMatchIn(src),
             "App.kt 的 skin remember 必须带 ThemeController.currentDark() 作 key——" +
                 "主题变化才走「换 LocalSkin 的值」而不是别的重建路径",
         )

@@ -198,13 +198,13 @@ class BackDispatchTest {
         val state = uiState()
         state.openSearch() // 既有语义也会认 Esc —— 但栈必须先拿到它
 
-        assertTrue(handleShellKeys(keyDown(Key.Escape), state, d), "Esc 被返回栈消费")
+        assertTrue(handleShellKeys(keyDown(Key.Escape), state, backDispatcher = d), "Esc 被返回栈消费")
         assertEquals(1, topmostClosed)
         assertTrue(state.search.open, "栈优先：既有的「Esc 关搜索」分支不得抢先（这里只有假层，搜索没人关）")
 
         d.pop(top)
         // 栈空 → dispatch() = false → 回落既有语义（此时只开着搜索）：关搜索。
-        assertTrue(handleShellKeys(keyDown(Key.Escape), state, d), "栈空后 Esc 走既有语义")
+        assertTrue(handleShellKeys(keyDown(Key.Escape), state, backDispatcher = d), "栈空后 Esc 走既有语义")
         assertFalse(state.search.open)
     }
 
@@ -212,7 +212,7 @@ class BackDispatchTest {
     fun emptyStackEscStillFallsThroughToNotOurs() {
         val d = BackDispatcher()
         val state = uiState()
-        assertFalse(handleShellKeys(keyDown(Key.Escape), state, d), "无浮层无会话：Esc 不是我们的")
+        assertFalse(handleShellKeys(keyDown(Key.Escape), state, backDispatcher = d), "无浮层无会话：Esc 不是我们的")
         assertFalse(state.search.open)
         assertEquals(null, state.selectedSessionId)
     }
