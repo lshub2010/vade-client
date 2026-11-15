@@ -64,8 +64,8 @@ import vade.ui.glass.rememberGlassState
 import vade.ui.icon.ShellGlyphs
 import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
-import vade.ui.meta.MetaGroup
-import vade.ui.meta.SessionMetaState
+import vade.ui.meta.SessionMetaOverlayHost
+import vade.ui.meta.rememberSessionMetaOverlay
 import vade.ui.search.SearchHost
 import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.LocalSkin
@@ -246,53 +246,13 @@ internal val BOTTOM_BAR_DOCK_PAD = 12.dp
  */
 internal fun adaptersOf(state: UiState): AdapterProvider? = (state.source as? AdapterHost)?.adapters
 
-/**
- * 会话列表行的「组色点 + 组名」要查的组名字表 —— B3 适配器接线的最后一行（g-meta-groups）。
- *
- * ## 为什么需要它
- * `SessionsScreen` 早就接受 `metaGroups` 并且**真的**用它渲染组名（`sessionGroupTag`
- * 的 KDocs 三条规则都有测试），`SessionRowMapping` 也早就把 `groupId` 投影到了
- * `SessionSummary` 上 —— 缺的只是组合根那一行赋值。没有它，行上显示的是裸 id（`g-1`）：
- * 不崩、不空白，所以没人发现「分类」在界面上其实没接通（本仓同类事故已发生七次）。
- *
- * ## 数据从哪来
- * `session/group.list`，经组合根的适配器包（[AdapterProvider.meta]）取得；**不是**
- * `UiState` 上的字段 —— `UiState` 只管会话行/桶，分组是元数据通道，两者刻意分开。
- * [adapters] 由调用方从 [adaptersOf] 取好再传进来，而不是在这里重新探一次 `state.source`：
- * 组合根的推导只有一处（`AppShellAdapterWiringTest` 用正则钉住 `adaptersOf(state)` 恰好
- * 出现两次），第三个探针就是漂移的开始。
- * 用 [SessionMetaState.forAdapters] 而不是直接调 `listGroups()`：那是本仓既有的三段回退
- * 工厂（形参 → 适配器 → 内存假实现），失败分类、`wiringDegradation` 都在里面，这里再抄
- * 一遍等于造第二个真相。
- *
- * ## 什么时候**不**拉表（三条：两条是为了不发明组名，一条是假源根本不需要）
- *  1. `adapters == null`（假源 / 未连接）：屏上**每一行**都是 fixture 会话，组表就是
- *     fixture 自己的（`SessionMetaState.forAdapters(null)` 的初始值 = `FakeMetaActions`
- *     种子：`g-1` 项目 / `g-2` 灵感）；不向 core 发请求，也不在台账里留一条假 RPC。
- *     行与组名同源（都假），所以这不是「发明组名」，而是不再把内部 id `g-1` 塞给用户（D5）；
- *  2. `forAdapters` 退化过（`wiringDegradation != null`，即 `adapters.meta()` 抛了）：
- *     此时它跑在 [vade.ui.meta.FakeMetaActions] 上，`loadGroups()` 会吐出 fixture 的
- *     「项目/灵感」—— 把假数据当 core 的组名画到真行上，比裸 id 更糟；
- *  3. 拉取失败：`SessionMetaState` 保留上一次快照（首次为空），行上照样退化成裸 id。
- *     裸 id 难看，但它是「组名没接上」唯一可见的信号（`sessionGroupTag` 规则 3），
- *     绝不编一个组名糊过去。失败原因留在 `groupsLoadError` 里，等分组面板挂载后渲染。
- *
- * `sessionId` 只作 [AdapterProvider.meta] 的查找参数（真适配器无状态，不看它），因此
- * 不参与 `remember` 键：组表是全局的，不该随选中会话重新拉一次。
+/*
+ * B2（s-meta-host）：原 `metaGroupsOf`（g-meta-groups 的组名表 + 三条「什么时候不拉表」
+ * 规则）已整体平移到 `meta/SessionMetaOverlay.kt` 的 `rememberSessionMetaOverlay` ——
+ * 同一个状态机现在还喂长按菜单与分组管理，不再有两份组表各自漂移的口子。
+ * `adaptersOf(state)` 仍然只有 ShellBody / DestinationHost 两处推导（AppShellAdapterWiringTest
+ * 用正则钉住）。
  */
-@Composable
-internal fun metaGroupsOf(adapters: AdapterProvider?, sessionId: String): List<MetaGroup> {
-    val meta = remember(adapters) {
-        SessionMetaState.forAdapters(adapters, sessionId)
-    }
-    LaunchedEffect(meta) {
-        // 见 KDoc「什么时候不拉表」① ②：有适配器且没退化才去问 core。
-        // 假源（adapters == null）不发这条请求 —— 它的组表在 `forAdapters(null)` 里已经是
-        // `FakeMetaActions` 的种子（同源），再 loadGroups() 只是给自己发一条回声。
-        if (adapters != null && meta.wiringDegradation == null) meta.loadGroups()
-    }
-    return meta.groups
-}
 
 @Composable
 private fun ShellBody(state: UiState) {
@@ -613,9 +573,14 @@ private fun DestinationHost(
 ) {
     // 接线（g-activate）：与 [ShellBody] 同一处推导，四处屏幕共用这一个值。
     val adapters = adaptersOf(state)
-    // B3 最后一行（g-meta-groups）：会话行的「组名」表。**两个**列表调用点（宽屏两栏 /
-    // 窄屏单栏）共用这一个值 —— 只给其中一处赋值正是这族缺陷的复发形态。
-    val metaGroups = metaGroupsOf(adapters = adapters, sessionId = state.selectedSessionId.orEmpty())
+    // B2（s-meta-host）：一个元数据宿主喂两处 —— 会话行上的「组名」（g-meta-groups）
+    // 与行**长按**菜单 / 分组管理（本棒挂载）。构造与「什么时候不拉表」的规则在
+    // meta/SessionMetaOverlay.kt；动作成功后经 `retrySessions` 重拉权威列表收敛。
+    val metaOverlay = rememberSessionMetaOverlay(
+        adapters = adapters,
+        sessionId = state.selectedSessionId.orEmpty(),
+        onRefreshList = state::retrySessions,
+    )
     // g-error-retry: one slot per READ (list vs thread), each with its own retry entry.
     // The list slot only exists while that read is not Ready — otherwise the 假数据 note in
     // SessionsScreen (fixture-path copy) would be hidden for no reason.
@@ -656,19 +621,30 @@ private fun DestinationHost(
                     hasRows = state.sessionRows.isNotEmpty(),
                 )
             }
+            // B2（s-meta-host）：权威分组 + 元数据投影 —— 状态机的乐观值（标题/置顶/归档/
+            // 归属）覆盖在权威行上，失败由状态机回滚、投影跟着回原位；成功后 retrySessions 收敛。
+            val authoritativeGroups = state.groups()
+            val visibleGroups = metaOverlay.projectGroups(authoritativeGroups)
+            val authoritativeRows = authoritativeGroups.flatMap { it.sessions }
             if (metrics.twoPane) {
                 Row(Modifier.fillMaxSize()) {
-                    SessionsScreen(
-                        groups = state.groups(),
-                        selectedId = state.selectedSessionId,
-                        twoPane = true,
-                        onOpen = { state.open(it.id) },
-                        modifier = Modifier.width(metrics.listWidth),
-                        contentPadding = PaddingValues(top = TOP_BAR_ZONE),
-                        metaGroups = metaGroups,
-                        banner = sessionListBanner,
-                        status = status,
-                    )
+                    // 列表 pane 包一层 Box：悬浮面（菜单/弹层/横条）的 Popup 锚定在**列表**这一侧，
+                    // 不飘到详情 pane 上去。
+                    Box(Modifier.width(metrics.listWidth)) {
+                        SessionsScreen(
+                            groups = visibleGroups,
+                            selectedId = state.selectedSessionId,
+                            twoPane = true,
+                            onOpen = { state.open(it.id) },
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(top = TOP_BAR_ZONE),
+                            metaGroups = metaOverlay.meta.groups,
+                            onLongPress = { metaOverlay.openSessionMenu(it) },
+                            banner = sessionListBanner,
+                            status = status,
+                        )
+                        SessionMetaOverlayHost(overlay = metaOverlay, rows = authoritativeRows)
+                    }
                     VerticalRule()
                     // Two-pane detail: same content-padding contract as the pushed detail —
                     // the thread scrolls under the glass top bar, not below it.
@@ -693,16 +669,20 @@ private fun DestinationHost(
                     banner = messageThreadBanner,
                 )
             } else {
-                SessionsScreen(
-                    groups = state.groups(),
-                    selectedId = null,
-                    twoPane = false,
-                    onOpen = { state.open(it.id) },
-                    contentPadding = contentInsets,
-                    metaGroups = metaGroups,
-                    banner = sessionListBanner,
-                    status = status,
-                )
+                Box(Modifier.fillMaxSize()) {
+                    SessionsScreen(
+                        groups = visibleGroups,
+                        selectedId = null,
+                        twoPane = false,
+                        onOpen = { state.open(it.id) },
+                        contentPadding = contentInsets,
+                        metaGroups = metaOverlay.meta.groups,
+                        onLongPress = { metaOverlay.openSessionMenu(it) },
+                        banner = sessionListBanner,
+                        status = status,
+                    )
+                    SessionMetaOverlayHost(overlay = metaOverlay, rows = authoritativeRows)
+                }
             }
         }
 

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -26,7 +27,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
@@ -44,6 +53,9 @@ import vade.ui.skin.LocalSkin
  * w-c-meta 弹层：全部按视觉语言 §9「悬浮卡片」做 —— 12dp 四周边距、32dp 四角同圆、
  * 玻璃浮层阴影（[VadeShadows.float]）+ 1px 发丝线 + 顶部 grabber 白条；点遮罩关闭。
  * 不用 Material Dialog、不贴边、不满宽；图标一律矢量（§3）。
+ *
+ * 键盘/无障碍（B2 s-meta-host）：focusable Popup 抓住焦点，**Esc 关闭弹层**
+ * （与点遮罩同一条 onClose 路径，绝不悄悄丢草稿之外的副作用）。
  */
 
 /** §9 卡片骨架：grabber → 标题行（图标 + 标题 + 关闭）→ 内容。 */
@@ -56,6 +68,7 @@ private fun MetaSheetScaffold(
 ) {
     val skin = LocalSkin.current
     val shape = RoundedCornerShape(skin.shapes.sheet) // 32dp：全局弹窗档
+    val sheetFocus = remember { FocusRequester() }
     Popup(
         alignment = Alignment.Center,
         onDismissRequest = onClose,
@@ -69,6 +82,17 @@ private fun MetaSheetScaffold(
                 .clip(shape)
                 .background(skin.colors.surface)
                 .border(1.dp, skin.colors.hairline, shape)
+                .focusRequester(sheetFocus)
+                .focusable()
+                .onPreviewKeyEvent { event ->
+                    // Esc 关闭弹层：与 onDismissRequest 同一条 onClose 路。
+                    if (event.type == KeyEventType.KeyUp && event.key == Key.Escape) {
+                        onClose()
+                        true
+                    } else {
+                        false
+                    }
+                }
                 .padding(horizontal = 20.dp, vertical = 16.dp),
         ) {
             // grabber：36×4dp、距顶 8dp，唯一职责是"可下拉关闭"的暗示（§9）。
@@ -101,6 +125,8 @@ private fun MetaSheetScaffold(
             Spacer(Modifier.height(8.dp))
             content()
         }
+        // 弹层卡自己抓焦点：Esc 立即可用；点进输入框后焦点移走，Esc 走祖先预览链仍然生效。
+        LaunchedEffect(Unit) { runCatching { sheetFocus.requestFocus() } }
     }
 }
 
@@ -178,12 +204,20 @@ internal fun DeleteConfirmSheet(
     }
 }
 
-/** 移动到分组：未分组 + 全部分组，选中组带勾。 */
+/**
+ * 移动到分组：未分组 + 全部分组，选中组带勾。
+ *
+ * 分组管理入口（B2 任务 2）：表单里每一组行尾有一个「编辑分组」按钮，
+ * 表单末尾有一行「新建分组」—— 重命名/改图标/改颜色/删除（删组不删会话）
+ * 都从 [GroupEditorSheet] 走，不必离开这张表。编辑会**替换**当前弹层
+ * （editor 互斥），提交或取消后回到列表（再从菜单进「移动到分组」即可）。
+ */
 @Composable
 internal fun MoveToGroupSheet(
     editor: MetaEditor.MoveToGroup,
     groups: List<MetaGroup>,
     onPick: (String?) -> Unit,
+    onEditGroup: (String?) -> Unit,
     onClose: () -> Unit,
 ) {
     val skin = LocalSkin.current
@@ -202,8 +236,18 @@ internal fun MoveToGroupSheet(
                 colorHex = group.colorHex,
                 selected = editor.session.groupId == group.id,
                 onClick = { onPick(group.id) },
+                onEdit = { onEditGroup(group.id) },
             )
         }
+        // 新建分组：分组管理的另一半入口（与菜单里的「新建分组」同一落点）。
+        GroupOptionRow(
+            label = MetaCopy.MENU_NEW_GROUP,
+            iconName = null,
+            colorHex = null,
+            selected = false,
+            onClick = { onEditGroup(null) },
+            leadingOverride = VadeIcons.FolderPlus,
+        )
         // 移动失败：会话留在原分组，表单不关，原因可见（分类文案来自 MetaActionError）。
         if (editor.error != null) {
             Spacer(Modifier.height(6.dp))
@@ -219,6 +263,10 @@ private fun GroupOptionRow(
     colorHex: String?,
     selected: Boolean,
     onClick: () -> Unit,
+    /** 行尾「编辑分组」入口；null = 不显示（未分组行与新建行没有编辑对象）。 */
+    onEdit: (() -> Unit)? = null,
+    /** 行首图标的覆写（「新建分组」行不是查表图标，直接给 FolderPlus）。 */
+    leadingOverride: ImageVector? = null,
 ) {
     val skin = LocalSkin.current
     val accent = colorHex?.let { MetaColors.parse(it) } ?: skin.colors.onSurfaceVariant
@@ -239,7 +287,7 @@ private fun GroupOptionRow(
             contentAlignment = Alignment.Center,
         ) {
             VadeIcon(
-                vector = iconName?.let { MetaIcons[it] } ?: VadeIcons.Empty,
+                vector = leadingOverride ?: (iconName?.let { MetaIcons[it] } ?: VadeIcons.Empty),
                 contentDescription = null,
                 size = 16.dp,
                 tint = accent,
@@ -249,6 +297,19 @@ private fun GroupOptionRow(
         UiText(text = label, size = 14, modifier = Modifier.weight(1f))
         if (selected) {
             VadeIcon(VadeIcons.Check, contentDescription = "当前分组", size = 16.dp, tint = skin.colors.primary)
+        }
+        // 分组管理入口：纯矢量图标 + 44dp 触摸区（§3.4）。
+        if (onEdit != null) {
+            Box(
+                Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(skin.shapes.xs))
+                    .focusable()
+                    .clickable(onClick = onEdit),
+                contentAlignment = Alignment.Center,
+            ) {
+                VadeIcon(VadeIcons.Compose, contentDescription = "编辑分组「$label」", size = 16.dp, tint = skin.colors.onSurfaceVariant)
+            }
         }
     }
 }

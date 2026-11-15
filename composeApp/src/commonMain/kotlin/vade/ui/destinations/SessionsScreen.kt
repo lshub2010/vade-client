@@ -1,7 +1,9 @@
 package vade.ui.destinations
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -90,6 +92,11 @@ fun SessionsScreen(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
     metaGroups: List<MetaGroup> = emptyList(),
+    /**
+     * 行**长按**回调（B2 s-meta-host）：非 null 才有菜单入口 —— 默认 no-op 与
+     * 既有调用点/测试逐字节兼容。菜单本体在 `meta/SessionMetaOverlay.kt`。
+     */
+    onLongPress: (SessionSummary) -> Unit = {},
     /** Shell-owned failure banner (see `shell/LoadErrorBanner.kt`); null = nothing to say. */
     banner: (@Composable () -> Unit)? = null,
     /**
@@ -174,6 +181,7 @@ fun SessionsScreen(
                     } else {
                         Modifier
                     },
+                    onLongPress = { onLongPress(session) },
                 )
             }
         }
@@ -181,6 +189,7 @@ fun SessionsScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SessionRow(
     session: SessionSummary,
@@ -188,6 +197,7 @@ private fun SessionRow(
     onClick: () -> Unit,
     groupTag: SessionGroupTag?,
     modifier: Modifier = Modifier,
+    onLongPress: () -> Unit = {},
 ) {
     val skin = LocalSkin.current
     Row(
@@ -209,7 +219,9 @@ private fun SessionRow(
                     Color.Transparent
                 },
             )
-            .clickable(onClick = onClick),
+            // B2（s-meta-host）：长按 = 同一手势的第二个动作（combinedClickable），
+            // onClick 语义/涟漪/选中态全部保持原样 —— 这是本文件唯一的渲染改动。
+            .combinedClickable(onClick = onClick, onLongClick = onLongPress),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // 组色点槽位：固定宽度让「有组/无组」行的标题起点对齐；点 8dp、查不到合法色时
