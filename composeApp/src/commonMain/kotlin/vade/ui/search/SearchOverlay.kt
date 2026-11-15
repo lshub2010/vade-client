@@ -50,6 +50,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import vade.ui.UiText
 import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
+import vade.ui.shell.BackLayer
 import vade.ui.shell.TopBarButton
 import vade.ui.shell.UiState
 import vade.ui.skin.LocalSkin
@@ -87,6 +88,11 @@ import vade.ui.skin.glass.GlassSurface
 fun SearchHost(state: UiState) {
     val search = state.search
     if (!search.open) return
+
+    // g-back-handler: the overlay owns a back layer while it exists — system back (and
+    // desktop Esc, routed through the stack first) closes the overlay, never the app.
+    // Leaving composition (open → false) pops the layer automatically.
+    BackLayer(enabled = true, onBack = state::closeSearch)
 
     val sessions = state.cachedSessions()
 

@@ -104,6 +104,8 @@ fun AppShell(state: UiState) {
     // (the search field included), so `⌘K` opens the palette even while typing elsewhere.
     val rootFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { rootFocus.requestFocus() } }
+    // g-back-handler: Esc routes through the back stack first (topmost overlay closes).
+    val backDispatcher = LocalBackDispatcher.current
 
     // v2 §5: one shared HazeState per window — backdrop and all glass layers sample it.
     val glass = rememberGlassState()
@@ -111,7 +113,7 @@ fun AppShell(state: UiState) {
         Box(
             Modifier
                 .fillMaxSize()
-                .onPreviewKeyEvent { event -> handleShellKeys(event, state) }
+                .onPreviewKeyEvent { event -> handleShellKeys(event, state, backDispatcher) }
                 .focusRequester(rootFocus)
                 .focusable(),
         ) {
@@ -797,13 +799,25 @@ private fun navItems(): List<BottomBarItem> = Destination.entries.map {
  * `⌘N`, `⌘1–4`, `⌘B`, `⌘,`, `⌘\` deliberately stay with U1-g: this handler does not touch
  * them, and they still do nothing.
  */
-internal fun handleShellKeys(event: KeyEvent, state: UiState): Boolean {
+internal fun handleShellKeys(
+    event: KeyEvent,
+    state: UiState,
+    backDispatcher: BackDispatcher? = null,
+): Boolean {
     if (event.type != KeyEventType.KeyDown) return false
     val search = state.search
     val primary = event.isCtrlPressed || event.isMetaPressed
 
     if (primary && event.key == Key.K) {
         state.toggleSearch()
+        return true
+    }
+
+    // g-back-handler: Esc is the desktop shape of "back" — give the back stack first
+    // claim. The topmost overlay (search / attachment preview / …) closes; when the
+    // stack is empty (dispatch() == false) the legacy semantics below stay untouched
+    // (close the palette / leave the session detail / not ours).
+    if (event.key == Key.Escape && backDispatcher?.dispatch() == true) {
         return true
     }
 
