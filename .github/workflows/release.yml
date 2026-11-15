@@ -45,15 +45,34 @@ jobs:
         with:
           gradle-version: "9.6.1"
 
-      - name: 安装 Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: 写 local.properties
+      - name: 准备 Android SDK（用 runner 预装，只补缺失组件）
         shell: pwsh
         run: |
           $sdk = $env:ANDROID_HOME
           if (-not $sdk) { $sdk = $env:ANDROID_SDK_ROOT }
-          "sdk.dir=$($sdk -replace '\\','/')" | Out-File -Encoding ascii -NoNewline local.properties
+          if (-not $sdk) { $sdk = "C:\Android\android-sdk" }
+          if (-not (Test-Path $sdk)) { throw "找不到 Android SDK：$sdk" }
+          "ANDROID_HOME=$sdk"     | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "ANDROID_SDK_ROOT=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+          $sm = Get-ChildItem "$sdk\cmdline-tools" -Recurse -Filter sdkmanager.bat -ErrorAction SilentlyContinue |
+                Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $sm) { throw "找不到 sdkmanager（cmdline-tools 缺失）：$sdk\cmdline-tools" }
+          Write-Host "sdk=$sdk"
+          Write-Host "sdkmanager=$($sm.FullName)"
+
+          # 非交互接受许可
+          (1..30 | ForEach-Object { "y" }) | & $sm.FullName --sdk_root=$sdk --licenses 2>&1 | Out-Null
+          # compileSdk 37 需要的两个组件（本机实测包名）
+          & $sm.FullName --sdk_root=$sdk --install "platforms;android-37.0" "build-tools;37.0.0" 2>&1 |
+            Select-Object -Last 5
+          Write-Host "platforms:"; Get-ChildItem "$sdk\platforms" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
+          Write-Host "build-tools:"; Get-ChildItem "$sdk\build-tools" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
+
+      - name: 写 local.properties
+        shell: pwsh
+        run: |
+          "sdk.dir=$($env:ANDROID_HOME -replace '\\','/')" | Out-File -Encoding ascii -NoNewline local.properties
           Get-Content local.properties
 
       - name: 读取版本号
@@ -69,7 +88,7 @@ jobs:
           "appver=$appver" >> $env:GITHUB_OUTPUT
           Write-Host "version=$v appver=$appver"
 
-      - name: 服务端无关的全量测试（不阻断发布）
+      - name: 客户端全量测试（不阻断发布）
         continue-on-error: true
         run: gradle :composeApp:desktopTest --rerun --console=plain
 
