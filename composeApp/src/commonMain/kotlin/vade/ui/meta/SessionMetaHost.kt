@@ -214,6 +214,9 @@ fun SessionMetaHost(
             editor = editor,
             groups = state.groups,
             onPick = { groupId -> scope.launch { state.moveToGroup(groupId) } },
+            onEditGroup = { groupId ->
+                if (groupId == null) state.openNewGroupSheet() else state.openGroupEditor(groupId)
+            },
             onClose = { state.closeEditor() },
         )
         is MetaEditor.GroupSheet -> GroupEditorSheet(
@@ -319,9 +322,12 @@ private fun MetaSessionRow(
  * 失败横条（g-meta-wire）：一行分类后的可展示错误 + 44dp 关闭按钮。
  * 只渲染 `SessionMetaState.actionError`（最近一条），不累积 —— 用户读完可关掉，
  * 关掉不等于问题已修（重试入口在各自弹层/失败卡里）。
+ *
+ * `internal`（B2 s-meta-host）：挂载面 `SessionMetaOverlayHost` 复用同一张横条，
+ * 不另造一个样式分叉。
  */
 @Composable
-private fun MetaErrorBanner(text: String, onDismiss: () -> Unit) {
+internal fun MetaErrorBanner(text: String, onDismiss: () -> Unit) {
     val skin = LocalSkin.current
     val shape = RoundedCornerShape(skin.shapes.sm)
     Row(

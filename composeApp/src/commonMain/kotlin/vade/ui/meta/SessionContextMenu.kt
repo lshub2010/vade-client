@@ -3,6 +3,7 @@ package vade.ui.meta
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,10 +15,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -40,8 +51,13 @@ import vade.ui.skin.LocalSkin
  *  - 卡片：`lg`(24dp) 圆角 + surface + 发丝线 + [VadeShadows.float]；
  *  - 行高 ≥44dp（§3.4 触摸区）。
  *
+ * 键盘/无障碍（B2 s-meta-host）：focusable 的 Popup 抓住焦点，**Esc 关闭菜单**
+ * （[onPreviewKeyEvent] 挂在卡片根上）；每行 [focusable]，Tab 可走、Enter/Space
+ * 触发 —— 长按菜单不只有触屏一条路。系统返回键尚未接管（g-back-handler 未合入，
+ * 待接一行：宿主 `BackHandler { state.closeSessionMenu() }`）。
+ *
  * 本组合项渲染在**会话行内部**（[Popup] 以行右上角为锚），由 [SessionMetaHost]
- * 在 `state.menuFor == session.id` 时挂载。
+ * 与挂载面 `SessionMetaOverlayHost` 在 `state.menuFor == session.id` 时挂载。
  */
 @Composable
 internal fun SessionContextMenu(
@@ -52,6 +68,9 @@ internal fun SessionContextMenu(
     val skin = LocalSkin.current
     val density = LocalDensity.current
     val session = state.sessions.firstOrNull { it.id == sessionId } ?: return
+    // 键盘可达（B2）：菜单卡片自己抓焦点 —— Esc/Tab/Enter 都有确定的路，不依赖
+    // 系统 Popup 的初始焦点落点。
+    val menuFocus = remember { FocusRequester() }
     Popup(
         alignment = Alignment.TopEnd,
         offset = IntOffset(x = with(density) { 0.dp.roundToPx() }, y = with(density) { 48.dp.roundToPx() }),
@@ -66,6 +85,17 @@ internal fun SessionContextMenu(
                 .clip(shape)
                 .background(skin.colors.surface)
                 .border(1.dp, skin.colors.hairline, shape)
+                .focusRequester(menuFocus)
+                .focusable()
+                .onPreviewKeyEvent { event ->
+                    // Esc 关闭：focusable Popup 抓住焦点后按键先到卡片根。
+                    if (event.type == KeyEventType.KeyUp && event.key == Key.Escape) {
+                        state.closeSessionMenu()
+                        true
+                    } else {
+                        false
+                    }
+                }
                 .padding(vertical = 6.dp),
         ) {
             state.menuItems().forEach { item ->
@@ -80,6 +110,7 @@ internal fun SessionContextMenu(
                 )
             }
         }
+        LaunchedEffect(Unit) { runCatching { menuFocus.requestFocus() } }
     }
 }
 
@@ -106,6 +137,18 @@ private fun MenuRow(
         Modifier
             .heightIn(min = 44.dp) // §3.4：触摸区 ≥44dp
             .fillMaxWidth()
+            // 键盘可达（B2）：Tab 聚焦后 Enter/Space 触发，与点击同一条路。
+            .focusable()
+            .onKeyEvent { event ->
+                if (event.type == KeyEventType.KeyUp &&
+                    (event.key == Key.Enter || event.key == Key.Spacebar)
+                ) {
+                    onClick()
+                    true
+                } else {
+                    false
+                }
+            }
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,

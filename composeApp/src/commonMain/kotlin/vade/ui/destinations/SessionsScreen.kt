@@ -1,7 +1,9 @@
 package vade.ui.destinations
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -89,6 +91,11 @@ fun SessionsScreen(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
     metaGroups: List<MetaGroup> = emptyList(),
+    /**
+     * 行**长按**回调（B2 s-meta-host）：非 null 才有菜单入口 —— 默认 no-op 与
+     * 既有调用点/测试逐字节兼容。菜单本体在 `meta/SessionMetaOverlay.kt`。
+     */
+    onLongPress: (SessionSummary) -> Unit = {},
     /** Shell-owned failure banner (see `shell/LoadErrorBanner.kt`); null = nothing to say. */
     banner: (@Composable () -> Unit)? = null,
     /**
@@ -150,6 +157,7 @@ fun SessionsScreen(
                     selected = session.id == selectedId && twoPane,
                     onClick = { onOpen(session) },
                     groupTag = sessionGroupTag(session.groupId, metaGroups),
+                    onLongPress = { onLongPress(session) },
                 )
             }
         }
@@ -157,12 +165,14 @@ fun SessionsScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SessionRow(
     session: SessionSummary,
     selected: Boolean,
     onClick: () -> Unit,
     groupTag: SessionGroupTag?,
+    onLongPress: () -> Unit = {},
 ) {
     val skin = LocalSkin.current
     val accentSoft = skin.colors.primary.copy(alpha = if (skin.colors.isDark) 0.14f else 0.08f)
@@ -187,7 +197,9 @@ private fun SessionRow(
                     drawRect(size = Size(ACCENT_BAR_WIDTH.toPx(), size.height), color = skin.colors.primary)
                 }
             }
-            .clickable(onClick = onClick),
+            // B2（s-meta-host）：长按 = 同一手势的第二个动作（combinedClickable），
+            // onClick 语义/涟漪/选中态全部保持原样 —— 这是本文件唯一的渲染改动。
+            .combinedClickable(onClick = onClick, onLongClick = onLongPress),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // 左条由上面的 drawBehind 画在行自己的高度里，不占布局宽度（所以这里直接 16dp：
