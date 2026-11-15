@@ -503,6 +503,7 @@ class MaterialSkin(
         colors = colors,
         shapes = shapes,
         typography = typography,
+        motion = motion,
     )
 
     /** 12 · SendOrb（RFC-0011）：框外 48dp 球，三态由 mode 驱动。 */

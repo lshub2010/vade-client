@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
@@ -624,6 +625,7 @@ internal fun MaterialInputBar(
     colors: SkinColors,
     shapes: SkinShapes,
     typography: SkinTypography,
+    motion: SkinMotion,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
@@ -661,53 +663,63 @@ internal fun MaterialInputBar(
             )
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
-        if (attachments != null) {
-            attachments()
-            Spacer(Modifier.height(8.dp))
-        }
-        Row(verticalAlignment = Alignment.Bottom) {
-            // `leading` 槽（C-09 追加，见 Skin.InputBar KDoc）：行首、与文本域同一行；
-            // null 时整段不组成，冻结布局逐像素不变。
-            if (leading != null) {
-                leading()
-                Spacer(Modifier.width(10.dp))
+        // g-shadow-android：§7 的多行高度跟随（200ms glide）必须画在**内容**上，不能画在
+        // 页面包装上 —— 页面原来的 animateContentSize 包装自带裁剪层（rest 态也在），
+        // 会把面板下沿之外的整条下行阴影裁成 0 像素（probe-v3: shelf-acs 实测全平）。
+        // 动画节点收进胶囊**里面**：胶囊与其阴影在裁剪层之外，阴影跟着动画后的下沿走。
+        Column(
+            modifier = Modifier.animateContentSize(
+                animationSpec = tween(durationMillis = 200, easing = motion.easing),
+            ),
+        ) {
+            if (attachments != null) {
+                attachments()
+                Spacer(Modifier.height(8.dp))
             }
-            // 文本域直接落在玻璃面板上（不再嵌一个内层框 —— §10 同屏圆角 ≤3 种）；
-            // 多行最高 maxLines 行后内部滚动。
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = 44.dp, max = (maxLines * 22 + 24).dp)
-                    .alpha(if (enabled) 1f else 0.5f),
-                contentAlignment = Alignment.CenterStart,
-            ) {
-                if (value.isEmpty()) {
-                    Text("输入消息…", style = typography.body, color = colors.onSurfaceVariant)
+            Row(verticalAlignment = Alignment.Bottom) {
+                // `leading` 槽（C-09 追加，见 Skin.InputBar KDoc）：行首、与文本域同一行；
+                // null 时整段不组成，冻结布局逐像素不变。
+                if (leading != null) {
+                    leading()
+                    Spacer(Modifier.width(10.dp))
                 }
-                BasicTextField(
-                    value = value,
-                    onValueChange = onValueChange,
-                    enabled = enabled,
-                    maxLines = maxLines,
-                    interactionSource = interaction,
-                    textStyle = typography.body.copy(color = colors.onSurface),
-                    cursorBrush = SolidColor(colors.primary),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            // D97: 无端侧 STT 时不画麦克风（不是画一个禁用的）。
-            if (voiceAvailable) {
-                Spacer(Modifier.width(10.dp))
+                // 文本域直接落在玻璃面板上（不再嵌一个内层框 —— §10 同屏圆角 ≤3 种）；
+                // 多行最高 maxLines 行后内部滚动。
                 Box(
-                    Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(colors.surfaceVariant)
-                        .clickable { },
-                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 44.dp, max = (maxLines * 22 + 24).dp)
+                        .alpha(if (enabled) 1f else 0.5f),
+                    contentAlignment = Alignment.CenterStart,
                 ) {
-                    // D97 的语音按钮：真麦克风矢量（w-g-icons 起，`◍` 字符占位退场）。
-                    VadeIcon(VadeIcons.Mic, contentDescription = "语音输入", size = 16.dp, tint = colors.onSurfaceVariant)
+                    if (value.isEmpty()) {
+                        Text("输入消息…", style = typography.body, color = colors.onSurfaceVariant)
+                    }
+                    BasicTextField(
+                        value = value,
+                        onValueChange = onValueChange,
+                        enabled = enabled,
+                        maxLines = maxLines,
+                        interactionSource = interaction,
+                        textStyle = typography.body.copy(color = colors.onSurface),
+                        cursorBrush = SolidColor(colors.primary),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                // D97: 无端侧 STT 时不画麦克风（不是画一个禁用的）。
+                if (voiceAvailable) {
+                    Spacer(Modifier.width(10.dp))
+                    Box(
+                        Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(colors.surfaceVariant)
+                            .clickable { },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        // D97 的语音按钮：真麦克风矢量（w-g-icons 起，`◍` 字符占位退场）。
+                        VadeIcon(VadeIcons.Mic, contentDescription = "语音输入", size = 16.dp, tint = colors.onSurfaceVariant)
+                    }
                 }
             }
         }

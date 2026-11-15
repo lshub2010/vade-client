@@ -1,7 +1,6 @@
 package vade.ui.chat
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -892,11 +891,7 @@ private fun BoxScope.ComposerOverlay(
                 Spacer(Modifier.width(6.dp))
                 Box(
                     modifier = Modifier
-                        .weight(1f)
-                        // §7：多行输入高度 200ms 跟随内容，不跳变（页面布局职责）。
-                        .animateContentSize(
-                            animationSpec = tween(durationMillis = 200, easing = skin.motion.easing),
-                        ),
+                        .weight(1f),
                 ) {
                     // 输入区 = C-09 组件 11（RFC-0011 后为纯输入区）：玻璃面板、hairline、
                     // 浮层阴影、多行封顶都在皮肤里；页面只传语义状态。已暂存附件走
