@@ -47,7 +47,7 @@
 
 私钥 grep（模式逐字按任务书：`BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY`）：
 
-- 主仓 worktree：工作区 **6** 条 / 全历史 **1159** 条（原始输出 `grep-privkey-workdir.raw.gz` / `grep-privkey-history.raw.gz`，字节级保真；工作区 6 条 = 4 条测试夹具 PEM 头片段 + 2 条文档中「BEGIN PRIVATE KEY」字样提及；全历史 1159 条 = 同一批夹具/文档行在各 commit 的重复出现，`rev-list --all` 全 refs 口径）。
+- 主仓 worktree：工作区 **6** 条 / 全历史 **1159** 条（原始输出 `grep-privkey-workdir.raw.gz` / `grep-privkey-history.raw.gz`，字节级保真；工作区 6 条 = 4 条测试夹具 PEM 头片段 + 2 条文档中 PEM 私钥头字样提及；全历史 1159 条 = 同一批夹具/文档行在各 commit 的重复出现，`rev-list --all` 全 refs 口径）。
 - 客户端仓：工作区 **0** / 全历史 **0**。
 
 客户端仓（vade-client）：

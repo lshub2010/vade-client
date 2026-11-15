@@ -49,7 +49,7 @@ useDefault = true
 
 # ---------------------------------------------------------------------------
 # 1) JDK 自带 security 属性文件里的密码套件参数列表
-#    命中文本形如 "jdk.tls.keyLimits=AES/GCM/NoPadding KeyUpdate 2^37"。
+#    命中文本形如 "jdk.tls.keyLimits=<AES套件参数> KeyUpdate 2^37"。
 #    这是 JDK 的 TLS key update 阈值声明，不是任何形式的凭据；
 #    该文件会被构建流程复制到 composeApp/build/... 下，行内容不变。
 #    只放行 keyLimits 这两种 JDK 属性名，其余行照扫。
@@ -78,7 +78,7 @@ regexes = [
 
 # ---------------------------------------------------------------------------
 # 3) cryptography wheel 自带的 hpke.pyi 类型存根
-#    命中文本形如 "private_key: x25519.X25519PrivateKey | ec.EllipticCurvePrivateKey"。
+#    命中文本形如 "private_key: <PEP484类型联合：X25519 / EC 的 PrivateKey>"。
 #    这是 PEP 484 类型注解（联合类型），没有字面量密钥值。
 #    用行特征锁死,不按 .venv/ 目录豁免。
 # ---------------------------------------------------------------------------
@@ -148,7 +148,7 @@ paths = ['''(^|/)core/tests/loop/__pycache__/test_args_redaction\..*\.pyc$''']
 |---|---|---|---|
 | 1 | JDK `java.security` 的 `jdk.tls.keyLimits=` / `jdk.quic.tls.keyLimits=` 行 | 仅行级正则，不限路径 | 值是密码套件参数（`AES/GCM/NoPadding KeyUpdate 2^37`），JDK 自带的 key-update 阈值声明 |
 | 2 | `docs/QUICKSTART.md` 的 `Sec-WebSocket-Key` | 路径锚定该单个 .md + 行级正则 | RFC 6455 §4.1 规定的每连接随机 nonce，服务端只回显做握手校验，无授权能力 |
-| 3 | `cryptography` 的 `hpke.pyi` 里 `private_key: x25519.X25519PrivateKey` | 仅行级正则（类型注解形态） | PEP 484 类型注解，冒号后是类型名不是字面量 |
+| 3 | `cryptography` 的 `hpke.pyi` 里 `private_key: <PEP484类型联合>` | 仅行级正则（类型注解形态） | PEP 484 类型注解，冒号后是类型名不是字面量 |
 | 4 | `core/tests/admin/test_passwords.py` 的 `log_in(..., password="...")` | 路径锚定单文件 + 行级正则 | 断言错误口令返回 401 的夹具 |
 | 5 | `core/tests/input/test_audit.py` 的 `SECRET = "sk-..."` | 路径锚定单文件 + 行首常量声明 | redaction 金丝雀：测试断言该值**不得**出现在日志/审计行里 |
 | 6 | `core/tests/loop/test_args_redaction.py` 的 `Authorization: Bearer` / `AWS_ACCESS_KEY_ID=` | 路径锚定单文件 + 两行级正则 | 整个文件测的就是「命令行/env 里的 secret 会被打码」，这两个值是被测对象 |

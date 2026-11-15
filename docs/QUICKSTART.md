@@ -201,7 +201,7 @@ $ curl -s http://127.0.0.1:8010/healthz
 {"ok": true, "version": "0.1.0", "policy_mode": "allow_all"}
 
 $ curl -s -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" \
-    -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" -H "Sec-WebSocket-Version: 13" \
+    -H "Sec-WebSocket-Key: <16字节随机数的base64占位>" -H "Sec-WebSocket-Version: 13" \
     --max-time 5 http://127.0.0.1:8010/ws
 HTTP/1.1 101 Switching Protocols
 Server: uvicorn
