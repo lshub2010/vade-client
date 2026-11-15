@@ -2,6 +2,7 @@ package vade.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import vade.ui.destinations.Destination
 import vade.ui.chat.ChatPreset
@@ -42,7 +43,13 @@ fun App(
     source: SessionSource = FakeSessionSource(),
 ) {
     Skins.installBuiltIns()
-    val state = remember {
+    // g-pair-first-run：`remember` 以 [source] 为 key —— 首次运行引导卡配对成功后，
+    // 入口处（`sessionSourceFromEnvironment()`）的源构造会重读运行期配对桥并交出**带上
+    // 配对的新源**，UiState 因此随源重建、loader 重新拉列表（真数据上屏）。桥默认空 =
+    // 源永远不变 = 这一行与旧 `remember {}` 行为逐字节相同。
+    // DisposableEffect：随源重建时把旧 UiState 的 loader/连接停掉 —— 没配上对的旧源
+    // 否则会在后台无限重试。
+    val state = remember(source) {
         UiState(
             initialBar = initialBar,
             initialSkinId = initialSkinId,
@@ -58,6 +65,9 @@ fun App(
                 created.updateSearchQuery(initialSearchQuery)
             }
         }
+    }
+    DisposableEffect(source) {
+        onDispose { state.dispose() }
     }
     val skin = remember(state.skinId) { SkinRegistry.get(state.skinId) }
 
