@@ -785,10 +785,15 @@ private fun RiskBadge(risk: String) {
 // --- floating composer (v2 §1) ------------------------------------------------
 
 /**
- * Glass 退化兜底：shell 还没有把 `hazeSource` 注册进共享 [LocalGlassHazeState] 时，
- * `GlassSurface` 的模糊层是空的，只剩 26/34% 的薄染色 — 背后的会话文字会**整段透过**
- * composer，完全不可读（§5 的反面判据）。这里给玻璃层**内容**垫一层同色系近实底保住
- * 可读性；shell 接上真 blur 后 `hasBackdrop` 变 true，兜底自动消失，玻璃语义不变。
+ * Glass 退化兜底：shell 还没有把 `hazeSource` 注册进 [LocalGlassHazeState] 时，
+ * `GlassSurface` 的模糊层是空的，只剩薄染色 — 背后的内容会**整段透过**，完全不可读
+ * （§5 的反面判据）。这里给玻璃层**内容**垫一层底色保住可读性；shell 接上真 blur 后
+ * `hasBackdrop` 变 true，兜底自动消失，玻璃语义不变。
+ *
+ * 底色取 [SkinColors.previewCardBase]（G5，2026-11-15）：预览卡的用户验收是「背后的
+ * 正文读不出来」——亮色维持既有 `surfaceGlass`@88% 半透明观感，暗色 token 是**全实底**
+ * 的 surface 色调，底座本身隔绝背后内容。AttachmentPreviewContrastTest 用纯色对照层
+ * 钉住这两个方向的像素行为。
  *
  * 注意是给内容的 modifier，不是往 GlassSurface 里塞 `fillMaxSize` 的子盒子 —
  * 那会把 wrap-content 的玻璃层撑满整个可用高度。
@@ -800,7 +805,7 @@ private fun RiskBadge(risk: String) {
 @Composable
 private fun Modifier.glassFallback(skin: vade.ui.skin.Skin, shape: Shape = RectangleShape): Modifier {
     if (LocalGlassHazeState.current != null) return this
-    return background(skin.colors.surfaceGlass.copy(alpha = 0.88f), shape)
+    return background(skin.colors.previewCardBase, shape)
 }
 
 /**
@@ -1047,9 +1052,11 @@ internal fun handleComposerKeys(
 // --- §9 floating image-preview sheet ------------------------------------------
 
 /**
- * 附件预览 = §9 悬浮卡片，不是贴边全屏：遮罩 rgba(0,0,0,.24)（玻璃层退化 = 染色，背后仍隐约
- * 可见），卡片四周 12dp 空隙、`sheet` 32dp 同圆角、玻璃底 + 浮层阴影 + 发丝线，顶部中央
- * 36×4dp 白条手柄（亮色 黑 24% / 暗色 白 70%），关闭是 ✕ 图标。同一时刻只有这一个弹层。
+ * 附件预览 = §9 悬浮卡片，不是贴边全屏：遮罩取 [SkinColors.previewScrim]（亮色 24% 黑，
+ * 暗色 ≥48% —— G5：24% 黑在暗画布上不可感知），卡片四周 12dp 空隙、`sheet` 32dp 同圆角、
+ * 玻璃底（退化时垫 [SkinColors.previewCardBase]，暗色为全实底）+ 浮层阴影 + 发丝线，
+ * 顶部中央 36×4dp 白条手柄（亮色 黑 24% / 暗色 白 70%），关闭是 ✕ 图标。
+ * 同一时刻只有这一个弹层。
  */
 @Composable
 private fun ImagePreviewSheet(image: ContentPart.Image, onClose: () -> Unit) {
@@ -1058,7 +1065,8 @@ private fun ImagePreviewSheet(image: ContentPart.Image, onClose: () -> Unit) {
     val grabber = if (skin.colors.isDark) Color.White.copy(alpha = 0.70f) else Color.Black.copy(alpha = 0.24f)
 
     Box(Modifier.fillMaxSize()) {
-        // 遮罩：玻璃层（矩形）叠 24% 黑 — 点遮罩关闭；不用纯黑 60%（§9）。
+        // 遮罩：玻璃层（矩形）叠黑 — 点遮罩关闭；透明度取 [SkinColors.previewScrim]
+        // （G5：亮色 24% 维持现状，暗色 ≥48% 否则在暗画布上不可感知）。不用纯黑 60%（§9）。
         GlassSurface(
             modifier = Modifier
                 .fillMaxSize()
@@ -1070,7 +1078,7 @@ private fun ImagePreviewSheet(image: ContentPart.Image, onClose: () -> Unit) {
             shape = RoundedCornerShape(0.dp),
             skin = skin,
         ) {
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.24f)))
+            Box(Modifier.fillMaxSize().background(skin.colors.previewScrim))
         }
 
         GlassSurface(

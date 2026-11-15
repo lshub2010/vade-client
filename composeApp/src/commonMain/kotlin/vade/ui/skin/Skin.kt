@@ -307,6 +307,27 @@ data class SkinColors(
 
     /** Foreground text drawn directly on a glass layer. */
     val textOnGlass: Color = onSurface,
+
+    // --- G5 · attachment preview overlay (2026-11-15) -----------------------------
+    // The preview sheet composites over the thread content; both tokens below must keep
+    // the backdrop TEXT from reading through the card. Defaults preserve the shipped
+    // light behaviour byte-for-byte (the light look is screenshot-baselined); dark skins
+    // override with an opaque card base and a ≥48% scrim (24% black is invisible on the
+    // #0E0E10 canvas).
+
+    /**
+     * Full-screen scrim behind the attachment preview sheet (§9). Light ships 24% black;
+     * dark needs ≥48% or the dimming cannot be perceived against the dark canvas.
+     */
+    val previewScrim: Color = Color.Black.copy(alpha = 0.24f),
+
+    /**
+     * Readability floor the preview card paints when the blur is not wired (the sheet's
+     * `glassFallback` layer). Light keeps the shipped `surfaceGlass`@88% composite; dark
+     * skins must override with an **opaque** surface tone — the audit measured backdrop
+     * body text reading through the translucent base line-for-line (G5).
+     */
+    val previewCardBase: Color = surfaceGlass.copy(alpha = 0.88f),
 )
 
 @Immutable

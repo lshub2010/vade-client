@@ -112,6 +112,11 @@ internal object MiuixTokens {
         shadowFloat = Color.Black.copy(alpha = 0.55f),
         glowAccent = Color(0xFF5B8DEF),
         textOnGlass = Color(0xFFF2F2F7),
+        // --- G5 · 附件预览浮层（2026-11-15）----------------------------------------
+        // 暗色下预览卡底座不透明（Miuix 暗色 surface #1C1C1E 全实底），遮罩 ≥48%。
+        // 亮色不动（默认 = surfaceGlass@88% / 黑 24%，与既有亮色观感逐字节一致）。
+        previewCardBase = Color(0xFF1C1C1E),
+        previewScrim = Color.Black.copy(alpha = 0.56f),
     )
 
     fun colors(dark: Boolean): SkinColors = if (dark) darkColors else lightColors

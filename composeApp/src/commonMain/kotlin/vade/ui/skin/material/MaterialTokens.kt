@@ -89,6 +89,13 @@ internal object MaterialTokens {
         shadowFloat = Color(0xE6000000),
         glowAccent = Color(0xFF8B8BF0),
         textOnGlass = Color(0xFFEDEDF0),
+        // --- G5 · 附件预览浮层（2026-11-15）----------------------------------------
+        // 预览卡底座在暗色下必须**不透明**：退化底 #1C1C1F@78% 让背后的正文（红字工具卡、
+        // 审批卡）整行透过可读（审计 f25 实测）。改用 §2 卡片色 #161618 全实底 —— 底座本身
+        // 隔绝背后内容，玻璃语义（发丝线 + 浮层阴影）不变。
+        previewCardBase = Color(0xFF161618),
+        // 遮罩 ≥48%（§9 亮色 24% 黑在 #0E0E10 画布上不可感知）。亮色不动（默认 24%）。
+        previewScrim = Color.Black.copy(alpha = 0.56f),
     )
 
     fun colors(dark: Boolean): SkinColors = if (dark) darkColors else lightColors
