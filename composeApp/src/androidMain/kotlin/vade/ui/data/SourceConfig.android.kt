@@ -16,11 +16,14 @@ object AndroidSourceEnv {
 }
 
 /**
- * Android actual of the raw-source channel: intent extras FIRST
- * (`vade.source=real`, `vade.host`, `vade.port`, `vade.pair_code` — e.g.
- * `adb shell am start ... --es vade.source real --es vade.host 10.0.0.5 --es
- * vade.port 18744`), the same env vars as desktop as the fallback. Per-key
- * precedence is [mergeRawStrings]; parsing stays in the shared [SourceConfig].
+ * Android actual of the raw-source channel: intent extras FIRST — with the BARE keys
+ * (`source=real`, `host`, `port`, `pair_code` — e.g.
+ * `adb shell am start ... --es source real --es host 10.0.0.5 --es port 18744`),
+ * the same env vars as desktop as the fallback. Per-key precedence is
+ * [mergeRawStrings]; parsing stays in the shared [SourceConfig]. The keys come from
+ * [SourceKeys] — the ONE table the wasm query grammar and the user-facing copy also
+ * derive from (g-rescue-text: a hand-written `vade.`-prefixed copy used to drift
+ * from exactly these reads).
  */
 actual fun rawSourceStrings(): RawSourceStrings {
     val extras = AndroidSourceEnv.intentExtras as? Bundle
