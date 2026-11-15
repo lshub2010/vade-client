@@ -29,8 +29,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import vade.ui.UiText
+import vade.ui.data.RawSourceStrings
 import vade.ui.data.SessionGroup
 import vade.ui.data.SessionSummary
+import vade.ui.data.rawSourceStrings
 import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
 import vade.ui.meta.MetaColors
@@ -97,12 +99,23 @@ fun SessionsScreen(
      * （`AppShell`）必须显式传真实状态。
      */
     status: ListStatus = ListStatus.Fixtures,
+    /**
+     * g-pair-first-run：首次运行引导卡的原始配置通道。默认 = 平台真实通道（生产逐字节
+     * 不变 —— 引导卡的可见性判定在卡内做，`AppShell` 的两处调用点一行未动）；测试注入。
+     */
+    pairingRaw: () -> RawSourceStrings = ::rawSourceStrings,
 ) {
     val skin = LocalSkin.current
     LazyColumn(
         modifier = modifier.fillMaxSize().background(skin.colors.canvas),
         contentPadding = contentPadding,
     ) {
+        // g-pair-first-run：首次运行引导卡（真源且缺配对码时）。**只加这一块** —— 现有
+        // 的 load-error-banner / list-status 两块横幅逻辑一行未动。卡不可见时一个节点都
+        // 不组合，不占行高。
+        item(key = "first-run-pairing") {
+            FirstRunPairingCard(raw = pairingRaw)
+        }
         if (banner != null) {
             item(key = "load-error-banner") { banner() }
         }
