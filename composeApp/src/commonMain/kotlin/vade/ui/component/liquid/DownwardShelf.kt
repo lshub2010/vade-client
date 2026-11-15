@@ -196,9 +196,27 @@ fun Modifier.downwardShelf(
     dark: Boolean = false,
     inkScale: Float = SHELF_INK_SCALE,
     trimToBudget: Boolean = true,
+): Modifier = downwardShelfRaw(
+    shadow = if (dark) shadow.forDark() else shadow,
+    shape = shape,
+    color = color,
+    inkScale = inkScale,
+    trimToBudget = trimToBudget,
+)
+
+/**
+ * The shelf itself, for callers that already theme-adjusted [shadow] (e.g.
+ * [layeredShadow]'s `outsideOnly` branch, which shares the token machinery). Same
+ * drawing contract as [downwardShelf] otherwise.
+ */
+internal fun Modifier.downwardShelfRaw(
+    shadow: LayeredShadow,
+    shape: Shape,
+    color: Color,
+    inkScale: Float = SHELF_INK_SCALE,
+    trimToBudget: Boolean = true,
 ): Modifier = this.drawWithContent {
-    val effective = if (dark) shadow.forDark() else shadow
-    if (effective.layers.isEmpty()) {
+    if (shadow.layers.isEmpty()) {
         drawContent()
         return@drawWithContent
     }
@@ -207,7 +225,7 @@ fun Modifier.downwardShelf(
         is Outline.Rounded -> outline.roundRect.topLeftCornerRadius.x
         else -> 0f
     }
-    val bands = shelfBands(effective.layers, radius, 1.dp.toPx(), inkScale, dark, trimToBudget)
+    val bands = shelfBands(shadow.layers, radius, 1.dp.toPx(), inkScale, dark = false, trimToBudget = trimToBudget)
     if (shelfPeakBelow(bands) * 255f < 1f) {
         // Below one gray level: nothing visible to draw (the g-shadow-real quantisation rule).
         drawContent()

@@ -1,5 +1,6 @@
 package vade.ui.skin.miuix
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -722,6 +723,7 @@ internal fun MiuixInputBar(
     colors: SkinColors,
     shapes: SkinShapes,
     typography: SkinTypography,
+    motion: SkinMotion,
 ) {
     MiuixScope(colors) {
         val fieldShape = RoundedCornerShape(shapes.xl)
@@ -753,13 +755,24 @@ internal fun MiuixInputBar(
                             shape = fieldShape,
                         )
                         .padding(horizontal = 14.dp, vertical = 10.dp),
-                ) {
-                    Row(verticalAlignment = Alignment.Bottom) {
+                        ) {
+                        Row(verticalAlignment = Alignment.Bottom) {
                         if (voiceAvailable) {
                             GlassIconButton(colors, enabled) { }
                             Spacer(Modifier.width(8.dp))
                         }
-                        Box(Modifier.weight(1f).heightIn(min = 32.dp)) {
+                        // g-shadow-android：多行高度跟随（200ms glide）画在文本域上 —— 动画
+                        // 节点在胶囊**里面**，胶囊（和它的下行阴影）在裁剪层之外。页面原来
+                        // 的 animateContentSize 包装自带裁剪层，会把下沿之外的阴影裁成
+                        // 0 像素（probe-v3: shelf-acs 实测全平）。
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .heightIn(min = 32.dp)
+                                .animateContentSize(
+                                    animationSpec = tween(durationMillis = 200, easing = motion.easing),
+                                ),
+                        ) {
                             if (value.isEmpty()) {
                                 Text("输入消息…", style = typography.body, color = colors.onSurfaceVariant)
                             }

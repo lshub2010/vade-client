@@ -134,6 +134,20 @@ object VadeShadows {
  *   translucent consumer then keeps its own tint instead of compositing 5–7/255 of
  *   shadow ink into its fill. The composer sets this — its `surfaceGlass` is 84 %
  *   opaque, and the blended-in ink used to read as 「玻璃底发灰」.
+ *
+ *   **g-shadow-android:** "strictly outside" is now drawn as the downward-only gradient
+ *   shelf ([downwardShelfRaw]) — one vertical alpha gradient per §8.2 layer in a rounded
+ *   path that lives strictly *below* the element's bottom edge, quantised-peak-trimmed
+ *   into the ≤3 % budget. It used to clip each gaussian out of the shape with
+ *   `clipPath(clipOp = Difference)`, which measured **0 pixels** on Android's hardware
+ *   canvas — every clip/blur/mask route there paints nothing (g-shadow-real: Compose
+ *   clipPath, clip+saveLayer, native clipPath DIFFERENCE, native saveLayer+CLEAR all
+ *   0 px; the 40-layer fallback quantises to 0). The shelf needs no clip, no blur, no
+ *   offscreen layer, and it keeps the contract this flag exists for: the glass fill is
+ *   untouched (nothing is painted inside or above the shape — measured 0.00/255 above
+ *   and 0 inside on the probe), so a translucent panel keeps exactly the tint its token
+ *   says. It also lands on the §8.3-correct side: the old gaussian's upper tail leaked
+ *   ink above the composer, the shelf paints nothing there.
  */
 fun Modifier.layeredShadow(
     shadow: LayeredShadow,
@@ -143,6 +157,13 @@ fun Modifier.layeredShadow(
     outsideOnly: Boolean = false,
 ): Modifier {
     val effective = if (dark) shadow.forDark() else shadow
+    if (outsideOnly) {
+        return downwardShelfRaw(
+            shadow = effective,
+            shape = shape,
+            color = color,
+        )
+    }
     var chain: Modifier = this
     for (layer in effective.layers) {
         chain = chain.dropHalo(
@@ -151,7 +172,7 @@ fun Modifier.layeredShadow(
             color = color,
             offset = DpOffset(x = 0.dp, y = layer.offsetY),
             alpha = layer.alpha,
-            outsideOnly = outsideOnly,
+            outsideOnly = false,
         )
     }
     return chain
