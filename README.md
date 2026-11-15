@@ -152,7 +152,7 @@ gradle :composeApp:desktopTest --rerun     # 全量测试（~1500 条）
 
 ## 已知限制
 
-alpha 阶段的完整清单在 **[主仓 `docs/ALPHA.md` §八](https://github.com/lshub2010/Vade/blob/dev_gingshan/docs/ALPHA.md)**（每条都写了「用户会看到什么 / 怎么绕」）。最常被问到的三条：
+alpha 阶段的完整清单在 **[主仓 `docs/ALPHA.md` §八](https://github.com/lshub2010/Vade/blob/main/docs/ALPHA.md)**（每条都写了「用户会看到什么 / 怎么绕」）。最常被问到的三条：
 
 1. **Web 端首次配对不可用**——浏览器读不到 `Set-Cookie`，请在桌面 / 手机完成首次配对。
 2. **会话中段没有连接状态指示**——断线会自动重连（指数退避，上限 30 s），但界面只在列表首次加载时显示连接态。
@@ -170,7 +170,7 @@ alpha 阶段的完整清单在 **[主仓 `docs/ALPHA.md` §八](https://github.c
 | 构建环境与版本矩阵 | [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md) |
 | 视觉规范（圆角 / 阴影 / 模糊 / token） | [`docs/visual-language.md`](docs/visual-language.md) |
 | 协议契约原文（rpc / events / schema） | [`contracts/vade`](contracts/vade)（submodule） |
-| alpha 台账与已知缺陷 | [主仓 `docs/ALPHA.md`](https://github.com/lshub2010/Vade/blob/dev_gingshan/docs/ALPHA.md) |
+| alpha 台账与已知缺陷 | [主仓 `docs/ALPHA.md`](https://github.com/lshub2010/Vade/blob/main/docs/ALPHA.md) |
 
 ---
 
