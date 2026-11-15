@@ -17,7 +17,6 @@ import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.SkinRegistry
 import vade.ui.skin.Skins
-import vade.ui.skin.ThemeController
 
 /**
  * Composition root, shared by all three targets.
@@ -79,7 +78,7 @@ fun App(
     // g-dark-follow: 主题变化只换 LocalSkin 的值，不重建整棵树；`currentDark()` 必须在
     // 组合期同步读出当 key（皮肤工厂读的是同一个 plain var，晚一帧就会拿旧值建皮肤）。
     val skin =
-        remember(state.skinId, ThemeController.currentDark()) { SkinRegistry.get(state.skinId) }
+        remember(state.skinId, vade.ui.skin.ThemeController.currentDark()) { SkinRegistry.get(state.skinId) }
 
     CompositionLocalProvider(
         LocalSkin provides skin,
