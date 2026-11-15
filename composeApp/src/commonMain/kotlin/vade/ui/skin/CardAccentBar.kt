@@ -14,18 +14,23 @@ import kotlin.math.sqrt
 /**
  * 卡片左侧的强调色竖条（工具卡 / 审批卡）。
  *
- * 用户原话：「那个工具和审批前那个高亮强调色竖条，上方要跟着圆角稍微弯一点然后变细消失。」
- * 它**不是**一块等宽矩形（`Box(width = 3.dp)` 那种），四件事一起成立：
+ * 用户原话（两次，第一次被我们做反了）：
+ *  1. 「那个工具和审批前那个高亮强调色竖条，上方要跟着圆角稍微弯一点然后变细消失。」
+ *  2. 「你这个条的缩小是不是做反掉了，**是弯折的地方缩小**。」
  *
- *  1. **顶端沿圆角弧线走**：竖条从上边的切点 `(r, 0)` 起步，沿这段四分之一圆弧
- *     （弧长 = 圆角半径，轨迹 r × π/2）滑到左边的切点 `(0, r)`，再从 `y = r` 起沿直边向下。
- *     弧线段里内沿按**法向**（朝圆心）内缩，所以这一段是**等厚的 3dp 圆环带**，不是一根发丝。
- *     直角切进去的话顶端会在圆角里露出一块方角，正是要修掉的那个观感；
- *  2. **宽度从 [MaxWidth] 收到 0**：过 `y = r` 之后两条边（外沿 = 卡片左轮廓、内沿 = 外沿 +
- *     厚度）分别收拢成一条可变宽度的闭合路径，**是「变细」不是「变淡」**——全程 alpha = 1，
- *     颜色始终是状态色本身，任何垂直 alpha 渐隐都是错的（那是拿透明度假装变细）；
- *  3. **在 [FadeEndFraction] × 卡片高度处收成尖**（规格 60–70%，取中值 65%），不走到底边；
- *  4. 圆角半径**由调用方的 shape token 传入**（`shapes.md` 等），不写死。
+ * 所以几何是：**直边段满宽，越靠近圆角越细，最后在弧里收成 0**。
+ * 早前一版做成了「弧段满宽、往下收到 65% 处收尖」——那是把渐变方向搞反了：
+ * 屏幕上看到的是「上半截粗、下半截细、半腰突然断掉」，像画错了而不是像设计。
+ *
+ * 现在四件事一起成立：
+ *
+ *  1. **底端**：满宽 [MaxWidth]，一直画到卡片下沿；下沿的圆角由调用方的 `.clip(shape)`
+ *     自然收边，不在这里另做处理；
+ *  2. **直边段**（`y ≥ r`）：恒定满宽。任何沿 y 的 alpha 渐变都是错的——那是拿透明度
+ *     假装变细，中段颜色会被底色稀释；
+ *  3. **弯折处收细**（`0 ≤ y ≤ r`）：厚度从顶端切点的 **0** 线性长到 `y = r` 处的满宽，
+ *     内沿走同心弧（半径 `r - 厚度`），于是弧段是一条**由细到粗的实心带**，在顶端自然消失；
+ *  4. **圆角半径由调用方的 shape token 传入**（`shapes.md` 等），不写死。
  *
  * 纯 Compose graphics：`drawWithContent` + `Path`，三端（Android / Desktop / Wasm）同一份代码，
  * 没有任何平台分支。绘制在内容之后、并落在调用方 `.clip(shape)` 之内，所以不会溢出圆角。
@@ -34,9 +39,6 @@ object CardAccentBar {
 
     /** 竖条最大宽度 —— 视觉规范 §5 的那 3dp。 */
     val MaxWidth: Dp = 3.dp
-
-    /** 消失点占卡片高度的比例：规格 60–70%，取 0.65。 */
-    const val FadeEndFraction: Float = 0.65f
 
     /**
      * 顶端沿弧线走的横向内缩量（px）：`y < radius` 时是圆弧相对卡片左边界的 x 偏移，
@@ -53,25 +55,23 @@ object CardAccentBar {
     }
 
     /**
-     * [yPx] 处的厚度（px）：圆角段（`y ≤ radius`）保持满宽 [maxWidthPx]（那一段是沿弧的等厚
-     * 圆环带），从 `y = radius` 起线性收到 0，收完点 = 高度 × [fadeEndFraction]。
+     * [yPx] 处的厚度（px）。
      *
-     * 线性是为了「变细」这件事本身可判：厚度是 y 的单调减函数，和透明度无关。
+     * - `y ≥ radius`：满宽（直边段与下半张卡）；
+     * - `0 < y < radius`：`maxWidth × y / radius`，**单调递增**——越靠近顶端越细，顶端为 0。
+     *
+     * 厚度是 y 的单调函数且与透明度无关，所以「变细」这件事本身可判。
      */
     fun widthAt(
         yPx: Float,
-        heightPx: Float,
         radiusPx: Float,
         maxWidthPx: Float,
-        fadeEndFraction: Float = FadeEndFraction,
     ): Float {
-        if (heightPx <= 0f || maxWidthPx <= 0f) return 0f
-        val fadeEnd = heightPx * fadeEndFraction
-        if (fadeEnd <= 0f || yPx >= fadeEnd) return 0f
-        if (yPx <= radiusPx) return maxWidthPx
-        val span = fadeEnd - radiusPx
-        if (span <= 0f) return 0f
-        return maxWidthPx * (1f - (yPx - radiusPx) / span)
+        if (maxWidthPx <= 0f) return 0f
+        if (radiusPx <= 0f) return maxWidthPx
+        if (yPx <= 0f) return 0f
+        if (yPx >= radiusPx) return maxWidthPx
+        return maxWidthPx * (yPx / radiusPx)
     }
 }
 
@@ -93,7 +93,6 @@ object CardAccentBar {
 fun Modifier.cardAccentBar(
     color: Color,
     cornerRadius: Dp,
-    fadeEndFraction: Float = CardAccentBar.FadeEndFraction,
 ): Modifier = drawWithContent {
     drawContent()
 
@@ -102,35 +101,41 @@ fun Modifier.cardAccentBar(
     if (widthPx <= 0f || heightPx <= 0f) return@drawWithContent
 
     val maxWidthPx = CardAccentBar.MaxWidth.toPx().coerceAtMost(widthPx)
-    val fadeEndPx = heightPx * fadeEndFraction
-    if (fadeEndPx <= 0f) return@drawWithContent
+    if (maxWidthPx <= 0f) return@drawWithContent
 
-    // 半径来自 token；卡片比 2R 还矮时按半高夹住（圆角矩形在短边上本来就是这么夹的），
-    // 再夹到消失点以内，避免「弧还没走完宽度就先归零」的退化路径。
+    // 半径来自 token；卡片比 2R 还矮时按半高夹住（圆角矩形在短边上本来就是这么夹的）。
     val radiusPx = cornerRadius.toPx()
         .coerceIn(0f, minOf(widthPx, heightPx) / 2f)
-        .coerceAtMost(fadeEndPx)
+
+    // 半径退化成 0（圆角 0 的卡片）时就是一根等宽直条，别走弧段公式。
+    if (radiusPx <= 0f) {
+        drawRect(
+            color = color,
+            topLeft = androidx.compose.ui.geometry.Offset(0f, 0f),
+            size = androidx.compose.ui.geometry.Size(maxWidthPx, heightPx),
+        )
+        return@drawWithContent
+    }
 
     fun thicknessAt(y: Float): Float =
-        CardAccentBar.widthAt(y, heightPx, radiusPx, maxWidthPx, fadeEndFraction)
+        CardAccentBar.widthAt(y, radiusPx, maxWidthPx)
 
     val path = Path()
     val steps = 24
 
-    // 外边：上边切点 (r, 0) → 四分之一圆弧 → 左边切点 (0, r) → 沿直边下到收尖点。
+    // 外边：上边切点 (r, 0) → 四分之一圆弧 → 左边切点 (0, r) → 沿左边缘一路下到卡片底边。
     // 参数 t ∈ [0, π/2]：圆心 (r, r)、半径 r，点 = (r - r·sin t, r - r·cos t)。
     path.moveTo(radiusPx, 0f)
     for (i in 1..steps) {
         val t = (PI / 2 * i / steps).toFloat()
         path.lineTo(radiusPx - radiusPx * sin(t), radiusPx - radiusPx * cos(t))
     }
-    if (fadeEndPx > radiusPx) path.lineTo(0f, fadeEndPx)
+    path.lineTo(0f, heightPx)
 
-    // 内边：从收尖点原路返回。圆角段按法向内缩（同心圆，半径 r - 厚度），
-    // 直边段就是 x = 厚度 —— 两条边在 (厚度(r), r) 处接上，宽度一路收到 0 收成尖。
-    if (fadeEndPx > radiusPx) {
-        path.lineTo(thicknessAt(radiusPx), radiusPx)
-    }
+    // 内边：底边右移一个满宽，沿 x = maxWidth 上行到 y = r，再沿同心弧回到顶端切点。
+    // 弧段内半径 = r - 厚度(y)，而厚度在弧段里从 0 长到满宽 ⇒ 弧带由细到粗。
+    path.lineTo(maxWidthPx, heightPx)
+    path.lineTo(maxWidthPx, radiusPx)
     for (i in steps downTo 0) {
         val t = (PI / 2 * i / steps).toFloat()
         val outerY = radiusPx - radiusPx * cos(t)

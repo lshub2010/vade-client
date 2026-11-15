@@ -44,9 +44,10 @@ import vade.ui.skin.miuix.MiuixTokens
  *     `*BarTopRidesTheCornerArc` 量的是竖条左沿相对直边段的 x：圆角段必须明显更靠内，
  *     内缩量必须落在半径 r 的圆弧公式上，`y = 1.2r` 时必须回到 0，
  *     并且弧段是一条**等厚 3dp 的实心带**（不是一根发丝）；
- *  2. **宽度 3dp → 0 是「变细」**，不是「变淡」—— `*BarNarrowsStrictlyToNothing`
- *     从圆角出口起按 2px 取横截面，要求 ≥6 个采样严格递减、最后收成 0；
- *  3. **在卡片高度 60–70% 处消失**，不走到底边 —— `*BarVanishesAroundSixtyFivePercent`；
+ *  2. **变细发生在弯折处，不是半腰**（用户第二次原话：「是弯折的地方缩小」）——
+ *     `*BarTapersIntoTheCorner`：弧段内法向厚度从顶端的 0 单调长到 `y = r` 处的满宽，
+ *     `y = 1.2r` 之后是**恒定满宽**；反过来说明「上半截粗、往下变细、半腰断掉」；
+ *  3. **一路画到卡片下沿**（下沿圆角由 `.clip(shape)` 收边）—— `*BarRunsToTheBottom`；
  *  4. **中段 100% 不透明、就是状态色** —— `*BarMiddleIsThe*ColourAtFullOpacity`
  *     拿竖条中心像素的 RGB 与 token 逐通道比（alpha 渐隐会让它变浅），再与顶端像素比
  *     「同色，不随 y 降低」。
@@ -310,88 +311,126 @@ class CardAccentBarTest {
         return shotOf(skin, skin.colors.warning)
     }
 
-    // ---- 规格 2 · 宽度严格单调递减到 0（「变细」不是「变淡」） -------------------
+    // ---- 规格 2 · 变细发生在弯折处；直边段恒定满宽 ------------------------------
+
+    /** 弧段里一行的横向长度要按法向投影回厚度（弧带的横截面被拉长了）。 */
+    private fun arcThicknessAt(shot: BarShot, y: Int): Float {
+        val r = shot.radiusPx
+        val dy = (r - y).coerceIn(0f, r)
+        val sint = sqrt((r * r - dy * dy).coerceAtLeast(0f)) / r
+        return shot.barWidth(y) * sint
+    }
 
     /**
-     * 竖条是**竖**的：它的「宽度」就是某一行的横截面宽度，所以采样必须在竖条已经竖直的那一段
-     * （`y > 圆角半径`）——圆角段切线接近水平，那里的一行横截面切的是弧带的侧面，
-     * 长出来的是投影而不是厚度（圆角段的证据由 [assertTopRidesTheArc] 用内缩量 + 法向厚度给）。
-     *
-     * 从圆角出口往下按 2px 步长取，遇到第一个 0 收尾：要求 ≥6 个采样、严格递减、最后是 0。
+     * 用户原话：「是弯折的地方缩小」。三件事必须同时成立：
+     *  ① 弧段内法向厚度**单调递增**（顶端最细，0.5r 处约为满宽的一半）；
+     *  ② `y ≥ 1.2r` 的直边段**恒定满宽**，一直到接近底边；
+     *  ③ 反例方向：上一版那种「上半截满宽、往下收窄、半腰断掉」会让 ② 直接红。
      */
-    private fun assertNarrowsStrictlyToNothing(shot: BarShot, who: String) {
-        val from = (shot.radiusPx + 1f).toInt().coerceAtMost(shot.height - 1)
-        val rows = (from until shot.height step 2).toList()
-        val widths = rows.map { shot.barWidth(it) }
-        val firstZero = widths.indexOfFirst { it == 0f }
-        val trace = "采样: " + rows.zip(widths).joinToString(" · ") { (y, w) -> "y=$y→${"%.2f".format(w)}px" }
+    private fun assertTapersIntoTheCorner(shot: BarShot, who: String) {
+        val r = shot.radiusPx
+        val maxW = shot.maxWidthPx
+        val quarters = listOf(0.25f, 0.5f, 0.75f).map { f ->
+            val y = (r * f).toInt().coerceIn(1, shot.height - 2)
+            Triple(f, y, arcThicknessAt(shot, y))
+        }
+        val trace = "弧段: " + quarters.joinToString(" · ") { (f, y, th) ->
+            "${"%.2f".format(f)}r(y=$y)=${"%.2f".format(th)}px"
+        } + " · 满宽=${"%.1f".format(maxW)}px"
 
-        assertTrue(
-            firstZero >= 6,
-            "$who 圆角出口到收尖之间只有 ${if (firstZero < 0) "?" else firstZero} 个非零采样（要求 ≥6），" +
-                "竖条太短或根本没在「变细」。$trace",
-        )
-        assertTrue(
-            widths.first() >= shot.maxWidthPx * 0.75f,
-            "$who 圆角出口处只有 ${"%.2f".format(widths.first())}px 宽" +
-                "（3dp 应 ≈${"%.1f".format(shot.maxWidthPx)}px）——「最大 3dp」这一条不成立。$trace",
-        )
-        for (i in 1 until firstZero) {
+        for (i in 1 until quarters.size) {
             assertTrue(
-                widths[i] < widths[i - 1],
-                "$who 第 ${i + 1} 个采样没有变细：${"%.2f".format(widths[i - 1])}px → " +
-                    "${"%.2f".format(widths[i])}px。等宽直条会让这一串全部相等。$trace",
+                quarters[i].third > quarters[i - 1].third,
+                "$who 弧段厚度没有向圆角方向变细：${"%.2f".format(quarters[i - 1].third)}px → " +
+                    "${"%.2f".format(quarters[i].third)}px。等厚弧带会让这两个值相等。$trace",
             )
         }
-        assertEquals(0f, widths[firstZero], "$who 收尖之后必须真的是 0。$trace")
-    }
-
-    @Test
-    fun materialBarNarrowsStrictlyToNothing() = runComposeUiTest {
-        assertNarrowsStrictlyToNothing(toolCardShot(MaterialSkin(), ToolCardState.Collapsed), "material 工具卡")
-    }
-
-    @Test
-    fun miuixBarNarrowsStrictlyToNothing() = runComposeUiTest {
-        assertNarrowsStrictlyToNothing(toolCardShot(MiuixSkin(), ToolCardState.Collapsed), "miuix 工具卡")
-    }
-
-    @Test
-    fun approvalCardBarNarrowsStrictlyToNothing() = runComposeUiTest {
-        assertNarrowsStrictlyToNothing(approvalCardShot(MaterialSkin()), "审批卡")
-    }
-
-    // ---- 规格 3 · 在卡片高度 60–70% 处消失（不走到底边） ------------------------
-
-    private fun assertVanishesAroundSixtyFivePercent(shot: BarShot, who: String) {
-        val last = shot.lastBarRow()
-        assertTrue(last >= 0, "$who 完全找不到竖条：整张卡片一个强调色像素都没有")
-        val fraction = last.toFloat() / shot.height.toFloat()
+        val half = quarters.first { it.first == 0.5f }.third
         assertTrue(
-            fraction in 0.55f..0.75f,
-            "$who 竖条的最后一个非零采样在第 $last/${shot.height}px = " +
-                "${"%.3f".format(fraction)} 处，落在规格 60–70%（判定域 0.55–0.75）之外。" +
-                "等于 1.0 就是「一路拉到底边」的老样子。",
+            half in maxW * 0.30f..maxW * 0.70f,
+            "$who 在 0.5r 处的法向厚度是 ${"%.2f".format(half)}px，应约为满宽的一半" +
+                "（${"%.1f".format(maxW * 0.5f)}px）—— 这条把「弧段等厚、到下面才收」的实现挡在外面。$trace",
         )
-        // 消失之后必须真的没有，不能是「又冒出来一截」。
-        for (y in last + 1 until shot.height) {
-            assertEquals(0f, shot.barWidth(y), "$who 在 y=$y（消失点之后）又画出了竖条")
+        val nearTop = arcThicknessAt(shot, (r * 0.15f).toInt().coerceAtLeast(1))
+        assertTrue(
+            nearTop < maxW * 0.55f,
+            "$who 在 0.15r 处就已经 ${"%.2f".format(nearTop)}px 厚（满宽 ${"%.1f".format(maxW)}px）——" +
+                "竖条在弯折处没有收细。$trace",
+        )
+
+        // 底部采样必须停在下沿圆角**开始之前**：圆角会把贴左边缘的竖条裁掉
+        // （三张卡实测都在距底 ~21–25px 处结束，正好是 shapes.md(20dp) 的弧）。
+        // 把它算成「竖条变细」是判据的错，不是绘制的错。
+        val beforeBottomCorner = (shot.height - r - 3f).toInt()
+        val straightRows = listOf(
+            (r * 1.2f).toInt(),
+            (shot.height * 0.5f).toInt(),
+            beforeBottomCorner,
+        ).map { it.coerceIn((r + 2f).toInt(), shot.height - 2) }
+        straightRows.forEach { y ->
+            val w = shot.barWidth(y)
+            assertTrue(
+                w in maxW * 0.85f..maxW * 1.15f,
+                "$who 直边段 y=$y 的宽度是 ${"%.2f".format(w)}px，不是满宽 ${"%.1f".format(maxW)}px" +
+                    "—— 直边段变细就是上一版那个「做反了」的几何。",
+            )
         }
     }
 
     @Test
-    fun materialBarVanishesAroundSixtyFivePercent() = runComposeUiTest {
-        assertVanishesAroundSixtyFivePercent(toolCardShot(MaterialSkin(), ToolCardState.Collapsed), "material 工具卡")
+    fun materialBarTapersIntoTheCorner() = runComposeUiTest {
+        assertTapersIntoTheCorner(toolCardShot(MaterialSkin(), ToolCardState.Collapsed), "material 工具卡")
     }
 
     @Test
-    fun miuixBarVanishesAroundSixtyFivePercent() = runComposeUiTest {
-        assertVanishesAroundSixtyFivePercent(toolCardShot(MiuixSkin(), ToolCardState.Collapsed), "miuix 工具卡")
+    fun miuixBarTapersIntoTheCorner() = runComposeUiTest {
+        assertTapersIntoTheCorner(toolCardShot(MiuixSkin(), ToolCardState.Collapsed), "miuix 工具卡")
     }
 
     @Test
-    fun approvalCardBarVanishesAroundSixtyFivePercent() = runComposeUiTest {
-        assertVanishesAroundSixtyFivePercent(approvalCardShot(MaterialSkin()), "审批卡")
+    fun approvalCardBarTapersIntoTheCorner() = runComposeUiTest {
+        assertTapersIntoTheCorner(approvalCardShot(MaterialSkin()), "审批卡")
+    }
+
+    // ---- 规格 3 · 一路画到卡片下沿（不再在半腰断掉） ----------------------------
+
+    /**
+     * 竖条**一路满宽画到下沿圆角开始处**——它当然进不了下沿那 20dp 弧里：
+     * 贴左边缘的条会被圆角自身裁掉（三张卡实测都在距底 ~21–25px 处结束）。
+     * 所以这里判的是「在那之前不许变细、不许断口」，而不是「必须活到最后一个像素」。
+     */
+    private fun assertRunsToTheBottom(shot: BarShot, who: String) {
+        val r = shot.radiusPx
+        val last = shot.lastBarRow()
+        assertTrue(last >= 0, "$who 完全找不到竖条")
+        val cornerStarts = shot.height - r
+        assertTrue(
+            last >= cornerStarts - 2f,
+            "$who 竖条在 y=$last/${shot.height}px 就没了，而下沿圆角要到 y=" +
+                "${"%.0f".format(cornerStarts)} 才开始 —— 也就是说它在直边段就断掉了。" +
+                "上一版在 65% 处收尖，正是用户说的「做反了」。",
+        )
+        for (y in (shot.height * 0.5f).toInt() until (cornerStarts - 2f).toInt()) {
+            assertTrue(
+                shot.barWidth(y) > 0f,
+                "$who 在 y=$y 出现断口（竖条中途消失又出现）",
+            )
+        }
+    }
+
+    @Test
+    fun materialBarRunsToTheBottom() = runComposeUiTest {
+        assertRunsToTheBottom(toolCardShot(MaterialSkin(), ToolCardState.Collapsed), "material 工具卡")
+    }
+
+    @Test
+    fun miuixBarRunsToTheBottom() = runComposeUiTest {
+        assertRunsToTheBottom(toolCardShot(MiuixSkin(), ToolCardState.Collapsed), "miuix 工具卡")
+    }
+
+    @Test
+    fun approvalCardBarRunsToTheBottom() = runComposeUiTest {
+        assertRunsToTheBottom(approvalCardShot(MaterialSkin()), "审批卡")
     }
 
     // ---- 规格 1 · 顶端沿圆角弧线走，弧长 = 圆角半径 -----------------------------
@@ -426,18 +465,17 @@ class CardAccentBarTest {
             "$who 在 y=$halfRadiusRow（0.5r）的竖条左沿是 x=${"%.1f".format(measured)}，" +
                 "圆弧公式给 ${"%.1f".format(expected)}（r=${"%.1f".format(r)}px）——顶端不是沿圆角弧走的",
         )
-        // 圆角段必须是一条**实心 3dp 带**，不是一根发丝：把该行的横向长度按法向投影回厚度
-        // （弧带的行面积 = 横向长度，厚度 = 长度 × 弦长/r），要求仍是 3dp。
-        val chord = sqrt(r * r - (r - halfRadiusRow) * (r - halfRadiusRow))
-        val thickness = shot.barWidth(halfRadiusRow) * chord / r
+        // 弧段内的厚度变化归 `*BarTapersIntoTheCorner` 管（弯折处收细是那一组的主判据，
+        // 这里若再断言「弧段是等厚 3dp 带」就会和用户第二次的裁定直接冲突）。
+        // 这一组只守「弧线走完就回到左边直边，并且恢复满宽」。
+        val pastArcRow = minOf((r * 1.2f).toInt(), shot.height - 2)
+        val straightThickness = shot.barWidth(pastArcRow)
         assertTrue(
-            thickness in shot.maxWidthPx * 0.75f..shot.maxWidthPx * 1.25f,
-            "$who 在 y=$halfRadiusRow（0.5r）的竖条法向厚度是 ${"%.2f".format(thickness)}px，" +
-                "不是 3dp（≈${"%.1f".format(shot.maxWidthPx)}px）—— 顶端被画成了一根沿圆角的发丝，" +
-                "而不是等厚的状态条",
+            straightThickness in shot.maxWidthPx * 0.85f..shot.maxWidthPx * 1.15f,
+            "$who 在 y=$pastArcRow（1.2r）的竖条宽度是 ${"%.2f".format(straightThickness)}px，" +
+                "不是满宽 ${"%.1f".format(shot.maxWidthPx)}px —— 弧线走完之后必须在直边上恢复满宽",
         )
         // 弧长 = 半径：过了 y = r 必须回到左边直边（x = 0），不许继续斜着走。
-        val pastArcRow = minOf((r * 1.2f).toInt(), shot.height - 2)
         assertTrue(
             shot.barInset(pastArcRow) <= 1.5f,
             "$who 在 y=$pastArcRow（1.2r）竖条左沿还在 x=${"%.1f".format(shot.barInset(pastArcRow))}，" +
@@ -463,9 +501,11 @@ class CardAccentBarTest {
     // ---- 规格 4 · 中段 100% 不透明，且就是状态色 --------------------------------
 
     private fun assertMiddleIsOpaqueStatusColour(shot: BarShot, expected: Color, who: String) {
-        val topRow = (shot.height * 0.068f).toInt()
-        val midRow = (shot.height * 0.35f).toInt()
-        val top = assertNotNull(shot.barCentreColour(topRow), "$who 顶端没有竖条")
+        // 取样点必须在**直边段**：弧段里竖条是渐细的（弯折处收细），顶端的像素本来就
+        // 是与底色混合的抗锯齿，拿它当「颜色基准」会把「变细」误判成「变淡」。
+        val topRow = (shot.radiusPx * 1.3f).toInt().coerceAtMost(shot.height - 4)
+        val midRow = (shot.height * 0.5f).toInt()
+        val top = assertNotNull(shot.barCentreColour(topRow), "$who 直边段起点（y=$topRow）没有竖条")
         val mid = assertNotNull(shot.barCentreColour(midRow), "$who 中段（y=$midRow）没有竖条")
 
         // 中段像素必须就是 token 本身：alpha 渐隐会把白底混进来，每个通道都会变浅。
@@ -474,9 +514,9 @@ class CardAccentBarTest {
         assertEquals(expected.green, mid.green, 0.004f, "$who 中段竖条的绿通道被稀释了：$mid ≠ $expected")
         assertEquals(expected.blue, mid.blue, 0.004f, "$who 中段竖条的蓝通道被稀释了：$mid ≠ $expected")
         // 与顶端同色：颜色不随 y 变化（不许用垂直 alpha 渐变假装变细）。
-        assertEquals(top.red, mid.red, 0.004f, "$who 顶端与中段红色不同：$top → $mid")
-        assertEquals(top.green, mid.green, 0.004f, "$who 顶端与中段绿色不同：$top → $mid")
-        assertEquals(top.blue, mid.blue, 0.004f, "$who 顶端与中段蓝色不同：$top → $mid")
+        assertEquals(top.red, mid.red, 0.004f, "$who 直边段首尾红色不同：$top → $mid")
+        assertEquals(top.green, mid.green, 0.004f, "$who 直边段首尾绿色不同：$top → $mid")
+        assertEquals(top.blue, mid.blue, 0.004f, "$who 直边段首尾蓝色不同：$top → $mid")
     }
 
     @Test
