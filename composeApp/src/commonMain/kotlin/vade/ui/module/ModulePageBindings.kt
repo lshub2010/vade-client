@@ -186,6 +186,81 @@ object PageFormatter {
     }
 }
 
+/**
+ * 这棵**已解析**的页面树里，有没有会引用 `page.state.*` 的绑定（g-module-state 的发帧判据）。
+ *
+ * 扫描面 = 绑定在声明式树里的全部出现位置：节点 `visible` / 组件 `enabled`、props 的
+ * [PropValue.Bound]（含 `tabs.selected`）、`list` 与 `Switch` 的 `data_ref`、动作参数里
+ * `{"bind": …}` 对象（§6.4 顶层与数组两层，嵌套对象解析期已拒）、`ui/submit` 的
+ * [SubmitText.Bound]。**只有根为 `page.state` 的绑定才需要 `ui/state.get`**：
+ * `module.status.*` 走清单快照、`item.*` 走列表项、字面量什么都不需要——echo 那种
+ * 纯文本页在本判据下得 `false`，一帧都不发，也不画任何「状态不可用」。
+ *
+ * 判据故意偏保守（动作参数里的 `bind` 也算）：多发的代价是一帧只读请求，漏发的代价是
+ * 点击动作时绑定值静默落空串——后者不可接受。
+ */
+fun referencesPageState(root: PageNode): Boolean = when (root) {
+    is PageNode.Column -> root.visible.bindsPageState() || root.children.any { referencesPageState(it) }
+    is PageNode.Row -> root.visible.bindsPageState() || root.children.any { referencesPageState(it) }
+    is PageNode.Tabs ->
+        root.visible.bindsPageState() ||
+            root.selected.bindsPageStateProp() ||
+            root.tabs.any { referencesPageState(it.child) }
+    is PageNode.ListBlock ->
+        root.visible.bindsPageState() ||
+            root.dataRef.rootKind() == BindRoot.PageState ||
+            referencesPageState(root.template)
+    is PageNode.TextLeaf ->
+        root.visible.bindsPageState() || root.content.bindsPageStateProp()
+    is PageNode.ComponentNode ->
+        root.visible.bindsPageState() ||
+            root.dataRef?.rootKind() == BindRoot.PageState ||
+            root.props.bindsPageState() ||
+            root.events.values.any { it.bindsPageState() }
+}
+
+private fun PageVisibility?.bindsPageState(): Boolean =
+    this is PageVisibility.Bound && binding.rootKind() == BindRoot.PageState
+
+private fun PropValue?.bindsPageStateProp(): Boolean =
+    this is PropValue.Bound && binding.rootKind() == BindRoot.PageState
+
+/** 7 个白名单组件的 props 逐字段扫（封闭集，新增组件在这里编译期强制补齐）。 */
+private fun ComponentProps.bindsPageState(): Boolean = when (this) {
+    is ComponentProps.Button -> text.bindsPageStateProp() || enabled.bindsPageState()
+    is ComponentProps.TextField -> label.bindsPageStateProp() || placeholder.bindsPageStateProp()
+    is ComponentProps.Card -> title.bindsPageStateProp() || subtitle.bindsPageStateProp()
+    is ComponentProps.ListItem ->
+        title.bindsPageStateProp() || subtitle.bindsPageStateProp() || trailingText.bindsPageStateProp()
+    is ComponentProps.Switch -> label.bindsPageStateProp() || enabled.bindsPageState()
+    is ComponentProps.ToolCallCard ->
+        tool.bindsPageStateProp() || argsPreview.bindsPageStateProp() || resultSummary.bindsPageStateProp()
+    is ComponentProps.AttachmentChip ->
+        fileId.bindsPageStateProp() || mime.bindsPageStateProp() || name.bindsPageStateProp()
+}
+
+private fun PageAction.bindsPageState(): Boolean = when (this) {
+    is PageAction.Navigate -> false
+    is PageAction.ToolCall -> argsBindPageState(args)
+    is PageAction.UiSubmit -> parts.any { part ->
+        (part.text as? SubmitText.Bound)?.binding?.rootKind() == BindRoot.PageState
+    }
+}
+
+/** 动作参数里的 `{"bind": "page.state…"}`：§6.4 只允许顶层对象与数组两层出现 bind。 */
+private fun argsBindPageState(args: JsonObject): Boolean = args.values.any { value ->
+    when (value) {
+        is JsonObject -> value.bindObjectIsPageState()
+        is JsonArray -> value.any { (it as? JsonObject)?.bindObjectIsPageState() == true }
+        else -> false
+    }
+}
+
+private fun JsonObject.bindObjectIsPageState(): Boolean {
+    val bind = (this["bind"] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull ?: return false
+    return PageBinding.parse(bind)?.rootKind() == BindRoot.PageState
+}
+
 /** `$input` 严格整数（§5.3：`^[0-9]{1,9}$`，失败 → 动作不发出）。 */
 val STRICT_INT = Regex("^[0-9]{1,9}$")
 

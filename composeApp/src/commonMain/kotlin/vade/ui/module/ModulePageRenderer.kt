@@ -191,7 +191,7 @@ private fun ModulePageCard(shape: RoundedCornerShape, content: @Composable () ->
  * 第 4 次替换栈顶）；其余 navigate 目标与 `tools/call` / `ui/submit` 通过回调交给
  * 接线方。
  *
- * ## 页面体：同步缓存 vs 异步取回（g-modulepage-wire）
+ * ## 页面体：同步缓存 vs 异步取回（g-modulepage-wire）；页面状态：绑定页一帧（g-module-state）
  *
  * 过去本宿主只有同步值语义：`source.loadPage(...)` 命中就渲染，没命中就画
  * 「页面不可用」——而 `ui/page.get` 是挂起调用，`commonMain` 里没人发它，于是**每一页**
@@ -202,6 +202,14 @@ private fun ModulePageCard(shape: RoundedCornerShape, content: @Composable () ->
  * `ui/page.get`，由 [ModulePageBodyLoader] 收成 `Loading → Ready/Failed`。
  * 没传（示例树、假数据源、既有测试）时行为与接线前**逐字节相同**：只读
  * [ModulePageSource.loadPage] 的缓存。
+ *
+ * 页面状态走同一条纪律（g-module-state）：[pageFetch] 若也是 [ModulePageStateFetcher]
+ * （真实现就是），宿主在**解析过的树里真的存在 `page.state.*` 绑定**（
+ * [referencesPageState] 判据）时发**一帧** `ui/state.get`——静态页（echo 三行文字）
+ * 零帧、也不画任何「状态不可用」；绑定页失败画可见的降级横幅 + 重试，不把绑定字段
+ * 默默画成空；`module.status`/声明快照变化把已取状态标记为过期，下一次重组补一帧
+ * （不自动轮询）。`ModulePageStateLoader` 与 [ModulePageBodyLoader] 共用同一套
+ * generation 守卫与三态形状。
  *
  * 「不能每帧都发」的保证在两处：请求由 `LaunchedEffect(key, attempt)` 触发（键变化才发，
  * 不是重组就发），以及 loader 里的 generation 守卫（切页后旧回包直接丢弃）。
@@ -246,6 +254,14 @@ fun ModulePageHost(
     val bodies = remember(pageFetch) { pageFetch?.let { ModulePageBodyLoader(it, bodyScope) } }
     DisposableEffect(bodies) { onDispose { bodies?.dispose() } }
 
+    // 页面状态（g-module-state）：同一个异步后备若也是 [ModulePageStateFetcher]（真实现
+    // `RealModulePageSource` 就是），绑定页才真发 `ui/state.get`；没实现（示例树/既有假源）
+    // 时只读 [ModulePageSource.loadState] 的同步缓存，行为与接线前逐字节相同。
+    val stateLoader = remember(pageFetch) {
+        (pageFetch as? ModulePageStateFetcher)?.let { ModulePageStateLoader(it, bodyScope) }
+    }
+    DisposableEffect(stateLoader) { onDispose { stateLoader?.dispose() } }
+
     // 每次进入页面 / 每次点重试 = 一代；key 变化（换页）也是新一代。
     var attempt by remember(current.moduleId, current.pageId) { mutableIntStateOf(0) }
     val key = ModulePageKey(current.moduleId, current.instanceId, current.pageId)
@@ -261,9 +277,44 @@ fun ModulePageHost(
         bodies == null -> cached
         else -> (bodyState as? ModulePageBodyState.Ready)?.schema
     }
-    val state = remember(current.pageId, refresh) { source.loadState(current.moduleId, current.instanceId, current.pageId) }
     val parseResult = remember(raw, declaredPages) {
         raw?.let { ModulePageParser.parse(it, declaredPages) }
+    }
+
+    // 发帧判据（g-module-state）：**解析过的**树里真的存在 page.state.* 绑定才需要状态帧。
+    // module.status.* / item.* / 字面量都不算——echo 那种纯文本页得 false，一帧不发，
+    // 也不画任何「状态不可用」。
+    val needsState = (parseResult as? ParseResult.Ok)?.root?.let { referencesPageState(it) } == true
+
+    // 页面状态：真 RPC 路只认本帧 loader 的结果（Loading/失败时如实为空，绝不拿旧缓存
+    // 冒充）；同步路（示例树/假源）保留 loadState 缓存读。
+    val statePhase = stateLoader?.phase?.takeIf { it.key == key }
+    val state = when (stateLoader) {
+        null -> remember(current.pageId, refresh) { source.loadState(current.moduleId, current.instanceId, current.pageId) }
+        else -> (statePhase as? ModulePageStatePhase.Ready)?.state
+    }
+
+    // 绑定页发一帧 ui/state.get 的节奏（与页面体同一套，不是每帧重组都发）：
+    //  ① 进入页面 / 点重试（key 或 attempt 变化）且正文解析出状态引用 → 一帧；
+    //  ② `module.status`/声明快照变化把已取状态标记为过期（stateStale，见下）→ 补一帧；
+    //  phase 的 Loading→Ready 迁移**不在键里**——回包到达不重触发，天然无重发循环。
+    LaunchedEffect(stateLoader, key, attempt, needsState) {
+        if (stateLoader == null || !needsState) return@LaunchedEffect
+        stateLoader.load(key)
+    }
+
+    // `module.status` 失效联动（g-module-state）：状态是在哪个模块快照（在线态/版本/页面
+    // 声明）下取的记成「章」；快照变了（重新上线 / 版本变化 / 清单 revision 变化）就把已取
+    // 状态标记为可能过期，在下一次重组（任意交互都会带来重组）里补一帧。不自动轮询——
+    // 触发是 module.status 这个失效边本身，每次变化至多补一帧。
+    val moduleSnapshot = source.declarations().firstOrNull { it.moduleId == current.moduleId }
+    val stateStamp = remember(statePhase) { moduleSnapshot }
+    val stateStale = statePhase != null && stateStamp != moduleSnapshot
+    LaunchedEffect(stateLoader, key, stateStale, status.online) {
+        if (stateLoader == null || !stateStale) return@LaunchedEffect
+        if (!status.online) return@LaunchedEffect // 模块离线时补帧必然失败，等重新上线这代重组再发
+        if (statePhase is ModulePageStatePhase.Loading) return@LaunchedEffect // 在飞不重发
+        stateLoader.load(key)
     }
 
     // 重试 = 重发一帧页面体（异步路）+ 重读同步缓存（示例树路）；两条路都走同一颗按钮。
@@ -272,6 +323,30 @@ fun ModulePageHost(
         attempt += 1
     }
 
+    // 顶部横幅（一处决定，BannerRow 只管画）：离线 > 状态（**仅绑定页**） > 需要会话。
+    // 静态页（needsState=false）永远拿不到状态行——echo 那种纯文本页不再出现
+    // 「模块状态不可用」；绑定页则把 ui/state.get 的三态如实画出来（§5.4）。
+    val stateBanner = when {
+        needsState && stateLoader != null -> when (statePhase) {
+            null -> null // 正文刚解析出绑定、effect 还没跑：还不知道能不能取到，不画
+            is ModulePageStatePhase.Loading -> ModulePageBanner("正在取回模块状态…", retryable = false)
+            is ModulePageStatePhase.Failed ->
+                ModulePageBanner("模块状态不可用——${statePhase.failure.label}，可重试", retryable = true)
+            is ModulePageStatePhase.Ready ->
+                if (stateStale) ModulePageBanner("模块状态已更新——重试获取最新状态", retryable = true) else null
+        }
+        needsState && state == null ->
+            // 同步路（示例树/假源，无状态后备）：保留接线前的语义——绑定页状态缺失才提示。
+            ModulePageBanner("模块状态不可用——绑定值显示为空，可重试", retryable = true)
+        else -> null
+    }
+    val banner = when {
+        !status.online -> ModulePageBanner("模块离线——显示最后一次成功渲染的结构，动作已禁用", retryable = true)
+        stateBanner != null -> stateBanner
+        current.requiresSession && !hasActiveSession ->
+            ModulePageBanner("需要先打开会话——此页面的提交动作已禁用", retryable = false)
+        else -> null
+    }
     val env = PageEnv(
         state = state,
         moduleOnline = status.online,
@@ -331,7 +406,7 @@ fun ModulePageHost(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         HostHeader(stack, onBack = { if (stack.size > 1) stack.removeAt(stack.lastIndex) else onBack() })
-        BannerRow(current, status, state, hasActiveSession, onRetry = retry)
+        BannerRow(status, banner, onRetry = retry)
         when {
             // 异步路的三态：失败 → 带 C-04 名的可重试卡；还没结果 → 「正在取回」卡。
             bodies != null && bodyState is ModulePageBodyState.Failed -> UnavailableCard(
@@ -390,22 +465,22 @@ private fun HostHeader(stack: SnapshotStateList<ModulePageEntry>, onBack: () -> 
     }
 }
 
-/** 三种顶部横幅（§5.4 / §7.4 / §4.2）：离线、状态不可用（可重试）、需要会话。 */
+/** 顶部横幅的一行决定：文案 + 是否带重试。决定在宿主算好，本类型只承载结果。 */
+private data class ModulePageBanner(val message: String, val retryable: Boolean)
+
+/**
+ * 顶部横幅（§5.4 / §7.4 / §4.2）：离线、状态不可用（可重试）、需要会话。
+ * 优先级与文案都由宿主算好（离线 > 状态 > 会话），本函数只管画：图标按在线态，
+ * 重试按钮按 [ModulePageBanner.retryable]。
+ */
 @Composable
 private fun BannerRow(
-    entry: ModulePageEntry,
     status: ModuleStatus,
-    state: kotlinx.serialization.json.JsonObject?,
-    hasActiveSession: Boolean,
+    banner: ModulePageBanner?,
     onRetry: () -> Unit,
 ) {
+    if (banner == null) return
     val skin = LocalSkin.current
-    val message = when {
-        !status.online -> "模块离线——显示最后一次成功渲染的结构，动作已禁用"
-        state == null -> "模块状态不可用——绑定值显示为空，可重试"
-        entry.requiresSession && !hasActiveSession -> "需要先打开会话——此页面的提交动作已禁用"
-        else -> null
-    } ?: return
     Row(
         Modifier
             .fillMaxWidth()
@@ -421,8 +496,8 @@ private fun BannerRow(
             tint = skin.colors.onSurfaceVariant,
         )
         Spacer(Modifier.size(8.dp))
-        UiText(message, size = 13, color = skin.colors.onSurfaceVariant, modifier = Modifier.weight(1f))
-        if (!status.online || state == null) {
+        UiText(banner.message, size = 13, color = skin.colors.onSurfaceVariant, modifier = Modifier.weight(1f))
+        if (banner.retryable) {
             Box(
                 Modifier
                     .size(32.dp)

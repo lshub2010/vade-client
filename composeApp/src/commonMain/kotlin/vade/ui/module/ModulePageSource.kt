@@ -78,6 +78,22 @@ fun interface ModulePageBodyFetcher {
     ): JsonObject
 }
 
+/**
+ * 页面状态的**异步后备**：一次 `ui/state.get` 往返（g-module-state）。
+ *
+ * 与 [ModulePageBodyFetcher] 同一条纪律：宿主在「页面里真的存在 `page.state.*` 绑定」
+ * （[referencesPageState] 判据）时才发**一帧**——静态页（echo 三行文字）零帧；进入页面 /
+ * 点重试 / `module.status` 失效后各至多一帧，不由每帧重组触发。实现方只管发包与缓存，
+ * 一页一次的节奏由调用方保证。
+ *
+ * 成功返回 `ui/state.get` 的 `result.state` 原文；**空对象也是合法状态**（模块可以合法地
+ * 没有状态，core 照实回 `{}`），与「取不到」（抛 [vade.ui.protocol.VadeException]，C-04 名
+ * 原样随行）是两个信号，不混用。
+ */
+fun interface ModulePageStateFetcher {
+    suspend fun fetchState(moduleId: String, instanceId: String, pageId: String): JsonObject
+}
+
 data class ModuleDeclaration(
     val moduleId: String,
     val instanceId: String,
