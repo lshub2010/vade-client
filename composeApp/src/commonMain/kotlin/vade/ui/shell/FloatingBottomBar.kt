@@ -21,7 +21,6 @@ package vade.ui.shell
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.EaseOut
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
@@ -35,17 +34,12 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -57,26 +51,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
@@ -84,19 +71,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
-import androidx.compose.ui.text.font.FontWeight
-import vade.ui.UiText
 import vade.ui.component.liquid.GlassBackdrop
-import vade.ui.component.liquid.LiquidHighlight
 import vade.ui.component.liquid.LiquidRefraction
-import vade.ui.component.liquid.captureGlassBackdrop
 import vade.ui.component.liquid.dropHalo
 import vade.ui.component.liquid.glassSurface
-import vade.ui.component.liquid.rememberCombinedSurfaceBackdrop
-import vade.ui.component.liquid.rememberGlassBackdrop
 import vade.ui.component.liquid.rememberPillHighlight
-import vade.ui.component.liquid.innerShadow
-import vade.ui.component.liquid.InnerShadow
 import vade.ui.icon.VadeIcons
 import vade.ui.skin.LocalSkin
 import kotlinx.coroutines.launch
@@ -158,18 +137,21 @@ internal fun blurPillContainer(dark: Boolean): Color =
  *    caller applies the outer margins (start/end 28 dp, bottom `8 dp + inset`
  *    or 28 dp — see [BottomBarForm]);
  *  - press scales the pill to 78/56 ≈ 1.39×;
- *  - the indicator stretches with drag velocity: `scaleX /= 1 - (v·0.75)`,
- *    `scaleY *= 1 - (v·0.25)`, both clamped to ±0.2;
  *  - inner shadow radius rides the press progress (8 dp · progress);
  *  - the pill body blurs (4 dp) + vibrancy + edge lens (24/24 dp) over the
  *    content backdrop, with a BloomStroke edge highlight at 0.75 alpha;
- *  - the indicator lens grows with the press (10/14 dp · progress, depth
- *    effect, chromatic aberration 0.5) and dims the surface tint as it fills;
  *  - 4 dp rubber band: the whole pill row shifts while dragging past the ends.
  *
+ * g-nav-selected: KernelSU's own *moving indicator* (a full-tab-width lens that stretches
+ * with velocity, grows on press and dims the tint as it fills) is **not** ported any more.
+ * It was the floating form's *selected state*, and the user decision of 2026-11-15 makes all
+ * three forms express selection the same way — a ≈32 dp accent-16 % block behind the icon,
+ * rendered by `NavSelection.kt`. The capsule the pill draws is the *container* (blur, tint,
+ * hairline, halo) and is unchanged. Drag-to-select still works: the drag animates the finger
+ * position and commits the index on release; only the sliding lens is gone.
+ *
  * With [isBlurEnabled] false the same geometry renders as a solid
- * [androidx.compose.ui.graphics.Shape] capsule with an accent selection pill —
- * the `Floating` (no-blur) form.
+ * [androidx.compose.ui.graphics.Shape] capsule — the `Floating` (no-blur) form.
  */
 @Composable
 internal fun FloatingBottomBar(
@@ -183,8 +165,6 @@ internal fun FloatingBottomBar(
 ) {
     val skin = LocalSkin.current
     val pillShape: Shape = remember { CircleShape }
-    val accentColor = skin.colors.primary
-    val tabContentColor = skin.colors.onSurface
     // Blurred: §5 tint budget (26 % light / 34 % dark) over the real backdrop. No-blur: the
     // capsule has no blur to hide behind, so it is composited opaque — otherwise the list
     // scrolls straight through the labels (g-nav-fix ③; see [noBlurPillContainer]).
@@ -198,11 +178,6 @@ internal fun FloatingBottomBar(
     val animationScope = rememberCoroutineScope()
 
     val contentBackdrop = remember(backdrop) { backdrop.asSurfaceBackdrop() }
-    val tabsBackdrop = rememberGlassBackdrop()
-    val combinedBackdrop = rememberCombinedSurfaceBackdrop(
-        content = contentBackdrop,
-        extra = tabsBackdrop.asSurfaceBackdrop(),
-    )
 
     var tabWidthPx by remember { mutableFloatStateOf(0f) }
     var totalWidthPx by remember { mutableFloatStateOf(0f) }
@@ -361,151 +336,7 @@ internal fun FloatingBottomBar(
                     selected = index == selectedIndex,
                     onClick = { activateTab(index) },
                     item = item,
-                    contentColor = tabContentColor,
-                    selectedContentColor = accentColor,
                 )
-            }
-        }
-
-        if (isBlurEnabled) {
-            // Hidden accent-tinted copy of the tabs: recorded into `tabsBackdrop`
-            // (alpha-0 on screen, full colour in the capture), so the indicator's
-            // lens refracts accent versions of the icons under the finger.
-            CompositionLocalProvider(
-                LocalFloatingBottomBarTabScale provides {
-                    lerp(1f, 1.2f, dampedDragAnimation.pressProgress)
-                },
-            ) {
-                Row(
-                    Modifier
-                        .clearAndSetSemantics {}
-                        .alpha(0f)
-                        .captureGlassBackdrop(tabsBackdrop)
-                        .graphicsLayer { translationX = panelOffset }
-                        .glassSurface(
-                            backdrop = contentBackdrop,
-                            shape = { pillShape },
-                            blurRadiusDp = 24f,
-                            vibrancy = true,
-                            refraction = { LiquidRefraction(refractionHeight = 24.dp, refractionAmount = 24.dp) },
-                            onDrawSurface = { drawRect(containerColor) },
-                        )
-                        .height(56.dp)
-                        .padding(horizontal = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    items.forEachIndexed { index, item ->
-                        FloatingBottomBarItem(
-                            selected = index == selectedIndex,
-                            onClick = {},
-                            item = item,
-                            contentColor = accentColor,
-                            selectedContentColor = accentColor,
-                        )
-                    }
-                }
-            }
-        }
-
-        if (tabWidthPx > 0f) {
-            val tabWidthDp = with(density) { tabWidthPx.toDp() }
-            if (isBlurEnabled) {
-                // Glass indicator: refracts the combined backdrop, scales with
-                // press, stretches with velocity, dims its tint as it fills.
-                Box(
-                    Modifier
-                        .padding(horizontal = 4.dp)
-                        .graphicsLayer {
-                            val progressOffset = dampedDragAnimation.value * tabWidthPx
-                            translationX = if (isLtr) progressOffset + panelOffset else -progressOffset + panelOffset
-                        }
-                        .glassSurface(
-                            backdrop = combinedBackdrop,
-                            shape = { pillShape },
-                            refraction = {
-                                val progress = dampedDragAnimation.pressProgress
-                                LiquidRefraction(
-                                    refractionHeight = (10f * progress).dp,
-                                    refractionAmount = (14f * progress).dp,
-                                    depthEffect = true,
-                                    chromaticAberration = 0.5f,
-                                )
-                            },
-                            highlight = {
-                                if (dampedDragAnimation.pressProgress > 0.01f) {
-                                    pillHighlight.withAlpha(dampedDragAnimation.pressProgress)
-                                } else {
-                                    null
-                                }
-                            },
-                            layerBlock = {
-                                scaleX = dampedDragAnimation.scaleX
-                                scaleY = dampedDragAnimation.scaleY
-                                val velocity = dampedDragAnimation.velocity / 10f
-                                scaleX /= 1f - (velocity * 0.75f).coerceIn(-0.2f, 0.2f)
-                                scaleY *= 1f - (velocity * 0.25f).coerceIn(-0.2f, 0.2f)
-                            },
-                            onDrawSurface = {
-                                val progress = dampedDragAnimation.pressProgress
-                                // Accent wash, not black: a 10 % black wash over blurred
-                                // content reads as a grey smear (the zoomed phone-light
-                                // shot). Selection is carried by the accent, per §8.
-                                drawRect(
-                                    color = accentColor.copy(alpha = if (dark) 0.20f else 0.12f),
-                                    alpha = 1f - progress * 0.5f,
-                                )
-                                drawRect(accentColor.copy(alpha = 0.04f * progress))
-                            },
-                        )
-                        .innerShadow(shape = pillShape) {
-                            InnerShadow(
-                                radius = 8.dp * dampedDragAnimation.pressProgress,
-                                color = Color.Black.copy(alpha = 0.15f),
-                                alpha = dampedDragAnimation.pressProgress,
-                            )
-                        }
-                        .height(56.dp)
-                        .width(tabWidthDp)
-                )
-            } else {
-                // No-blur form: solid accent pill; the content row shifts under it
-                // so the selected tab renders in the accent colour.
-                Box(
-                    Modifier
-                        .padding(horizontal = 4.dp)
-                        .graphicsLayer {
-                            val progressOffset = dampedDragAnimation.value * tabWidthPx
-                            translationX = if (isLtr) progressOffset + panelOffset else -progressOffset + panelOffset
-                        }
-                        .clip(pillShape)
-                        .background(accentColor.copy(alpha = 0.15f), pillShape)
-                        .height(56.dp)
-                        .width(tabWidthDp),
-                    contentAlignment = Alignment.CenterStart,
-                ) {
-                    Row(
-                        Modifier
-                            .clearAndSetSemantics {}
-                            .wrapContentWidth(align = Alignment.Start, unbounded = true)
-                            .requiredWidth(with(density) { (totalWidthPx - 8.dp.toPx()).toDp() })
-                            .height(56.dp)
-                            .graphicsLayer {
-                                val progressOffset = dampedDragAnimation.value * tabWidthPx
-                                translationX = if (isLtr) -progressOffset else progressOffset
-                            },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        items.forEachIndexed { index, item ->
-                            FloatingBottomBarItem(
-                                selected = index == selectedIndex,
-                                onClick = {},
-                                item = item,
-                                contentColor = accentColor,
-                                selectedContentColor = accentColor,
-                            )
-                        }
-                    }
-                }
             }
         }
     }
@@ -528,11 +359,8 @@ internal fun RowScope.FloatingBottomBarItem(
     selected: Boolean,
     onClick: () -> Unit,
     item: BottomBarItem,
-    contentColor: Color,
-    selectedContentColor: Color,
 ) {
     val scale = LocalFloatingBottomBarTabScale.current
-    val tint = if (selected) selectedContentColor else contentColor
     Column(
         Modifier
             .defaultMinSize(minWidth = 76.dp)
@@ -564,37 +392,18 @@ internal fun RowScope.FloatingBottomBarItem(
         verticalArrangement = Arrangement.spacedBy(1.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(contentAlignment = Alignment.TopEnd) {
-            // g-glyph-clear: this slot used to fall through to `item.glyph ?: "•"` — a bullet
-            // character standing in for an icon. The `?:` kept the branch alive long after
-            // every caller stopped feeding `glyph`, and no render test ever hit it because the
-            // four real items always pass an icon. Resolution order matches `GlassNavBar`:
-            // explicit icon → id lookup → neutral Circle. Never a character.
-            val icon = bottomBarIcon(item)
-            Image(
-                painter = rememberVectorPainter(icon),
-                contentDescription = item.label,
-                modifier = Modifier.size(20.dp),
-                colorFilter = ColorFilter.tint(tint),
-            )
-            if (item.badge != null) {
-                Box(
-                    Modifier
-                        .size(13.dp)
-                        .clip(CircleShape)
-                        .background(selectedContentColor),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    UiText(item.badge, size = 8, color = contentColor)
-                }
-            }
-        }
-        UiText(
-            text = item.label,
-            size = 11,
-            maxLines = 1,
-            color = tint,
-            weight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+        // g-nav-selected: same shared block + tint + label as the rail and the docked bar.
+        // The pill's own lavender "selection capsule" (full tab width, ≈56 dp tall) is gone —
+        // it was a *selected state*, not the container, and it made the floating form the one
+        // form whose highlight was a colour slab. Icons resolve through [bottomBarIcon]:
+        // explicit icon → id lookup → neutral Circle, never a character.
+        val badge = item.badge
+        NavSelectionIconSlot(
+            icon = bottomBarIcon(item),
+            contentDescription = item.label,
+            selected = selected,
+            badge = if (badge == null) null else { { NavBadge(badge) } },
         )
+        NavTabLabel(text = item.label, selected = selected, size = 11, maxLines = 1)
     }
 }

@@ -3,7 +3,6 @@ package vade.ui.icon
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -186,8 +185,6 @@ class GlyphClearTest {
                         selected = false,
                         onClick = {},
                         item = BottomBarItem(id = "sessions", label = "会话"),
-                        contentColor = Color.Gray,
-                        selectedContentColor = Color.Blue,
                     )
                 }
             }
@@ -209,8 +206,6 @@ class GlyphClearTest {
                         selected = true,
                         onClick = {},
                         item = BottomBarItem(id = "no-such-destination", label = "未知"),
-                        contentColor = Color.Gray,
-                        selectedContentColor = Color.Blue,
                     )
                 }
             }

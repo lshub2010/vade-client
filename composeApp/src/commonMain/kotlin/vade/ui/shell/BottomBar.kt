@@ -12,7 +12,6 @@
 
 package vade.ui.shell
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -28,33 +27,20 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import vade.ui.UiText
 import vade.ui.component.liquid.GlassBackdrop
 import vade.ui.component.liquid.glassSurface
-import vade.ui.icon.VadeIcons
 import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.LocalSkin
 
@@ -206,8 +192,6 @@ private fun RowScope.FixedBottomBarItem(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    val skin = LocalSkin.current
-    val tint = if (selected) skin.colors.primary else skin.colors.onSurfaceVariant
     Column(
         modifier = Modifier
             .weight(1f)
@@ -228,30 +212,17 @@ private fun RowScope.FixedBottomBarItem(
             }
             .clickable(onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+        verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
     ) {
-        Box(contentAlignment = Alignment.TopEnd) {
-            // w-g-icons：图标槽只出矢量——icon 缺省落中性 Circle，绝不回退 "•" 字符（v2 §3）。
-            Image(
-                painter = rememberVectorPainter(item.icon ?: VadeIcons.Circle),
-                contentDescription = item.label,
-                modifier = Modifier.size(20.dp),
-                colorFilter = ColorFilter.tint(tint),
-            )
-            if (item.badge != null) {
-                Box(
-                    Modifier
-                        .size(13.dp)
-                        .background(skin.colors.error, CircleShape),
-                    contentAlignment = Alignment.Center,
-                ) { UiText(item.badge, size = 8, color = skin.colors.onError) }
-            }
-        }
-        UiText(
-            text = item.label,
-            size = 11,
-            weight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-            color = tint,
+        // g-nav-selected: the block + tint + label colour all come from `NavSelection.kt`.
+        // This form used to have *no* block at all while the other two had one.
+        val badge = item.badge
+        NavSelectionIconSlot(
+            icon = bottomBarIcon(item),
+            contentDescription = item.label,
+            selected = selected,
+            badge = if (badge == null) null else { { NavBadge(badge) } },
         )
+        NavTabLabel(text = item.label, selected = selected, size = 11, maxLines = 1)
     }
 }
