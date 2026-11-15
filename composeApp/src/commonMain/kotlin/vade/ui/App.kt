@@ -9,6 +9,9 @@ import vade.ui.chat.ChatPreset
 import vade.ui.data.FakeSessionSource
 import vade.ui.data.SessionSource
 import vade.ui.shell.AppShell
+import vade.ui.shell.BackDispatcher
+import vade.ui.shell.BackHost
+import vade.ui.shell.LocalBackDispatcher
 import vade.ui.shell.UiState
 import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.LocalSkin
@@ -70,8 +73,15 @@ fun App(
         onDispose { state.dispose() }
     }
     val skin = remember(state.skinId) { SkinRegistry.get(state.skinId) }
+    // g-back-handler: the extensible back stack lives at the composition root — one
+    // provider for every overlay (search / preview / drawer / model picker to come).
+    val backDispatcher = remember { BackDispatcher() }
 
-    CompositionLocalProvider(LocalSkin provides skin) {
+    CompositionLocalProvider(
+        LocalSkin provides skin,
+        LocalBackDispatcher provides backDispatcher,
+    ) {
+        BackHost(backDispatcher) // system-back bridge; stack empty ⇒ not intercepting
         AppShell(state)
     }
 }

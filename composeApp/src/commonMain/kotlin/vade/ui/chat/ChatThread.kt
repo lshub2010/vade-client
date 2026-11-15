@@ -78,6 +78,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import vade.ui.chat.ApprovalOutcome
 import vade.ui.icon.VadeIcons
+import vade.ui.shell.BackLayer
 import vade.ui.skin.AttachmentState
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.MessageView
@@ -238,6 +239,10 @@ fun ChatThread(
         // Fullscreen preview is an overlay of the page, not a platform dialog: the skin must
         // not decide windowing (same reasoning as the approval card above).
         state.preview?.let { image ->
+            // g-back-handler: the preview owns a back layer while it exists — system back
+            // (and desktop Esc, routed through the stack first) closes the preview, never
+            // the app. Leaving composition (preview → null) pops the layer automatically.
+            BackLayer(enabled = true, onBack = state::closePreview)
             ImagePreviewSheet(image, onClose = state::closePreview)
         }
     }
