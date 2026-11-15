@@ -168,3 +168,20 @@
 3. G4（键名统一）——自救卡/PLAYBOOK/代码三处对齐，否则真核演示永远翻车
 4. G3（零会话空态卡）——按 §12 空态 spec 补一张卡
 5. G5/S2（暗色玻璃 tint/遮罩单独调档）——c-dark 表补两行「浮层专用暗色值」
+
+---
+
+## 父代复核（2026-11-15，合入后补记）
+
+**G2「真核下模块清单永远『正在拉取』」= 假阳性，撤销该缺陷。**
+
+原因：本审计的 worktree 建自 `bbfdf2f`，而模块接线的合并（`tmp/g-modulepage-wire` → `22c06e4`）当时只在本地 `main`、尚未推远端，
+所以本棒看到的树里确实没有首次拉取的触发点。这不是审计的错——是父代「合并后没有立刻推」造成的取证环境偏差（同一坑当晚第二次）。
+
+复核证据（在合并后的当前树上）：
+- `composeApp/src/commonMain/kotlin/vade/ui/destinations/CapabilitiesScreen.kt:141` 有 `moduleCatalog?.ensureLoaded()`，幂等旗标长在 loader 上；
+- 真 core + 真 echo 模块 + 真 WS 的端到端用例 `vade.ui.e2e.RealCoreModulePageE2ETest` **1 test / 0 failures**（`--rerun`，串行重跑，2m39s）；
+- 该用例的断言链是「进入能力页 → 入口自己出现 → 点开 → `ui/page.get` 回 4 个节点 → 三行中文逐行在树」。
+
+**其余 5 条缺陷（G1/G3/G4/G5/G6）与 7 条可疑全部保留，已按优先级派人修**：
+G1 → `tmp/g-back-handler`；G4 → `tmp/g-rescue-text`；灭色入口（暗色无入口）→ `tmp/g-dark-follow`；G3 并入 `tmp/g-state-coverage`；G5 待下一批。
