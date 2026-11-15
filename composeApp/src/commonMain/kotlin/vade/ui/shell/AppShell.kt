@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -391,40 +392,57 @@ private fun ShellBody(state: UiState) {
                     top = TopBarTopGap,
                 ),
         ) {
-            if (detailVisible) {
-                TopBar(
-                    title = session.title,
-                    subtitle = "会话详情 · 消息流 / 工具卡为假数据",
-                    // g-route-transition：手机抽屉上返回 = 滑出列表（详情保留）；rail 单栏/双栏仍退出详情。
-                    leading = { TopBarButton(VadeIcons.Back, onClick = { sessionDetailBack(state, metrics.useRail) }, contentDescription = "返回") },
-                )
-            } else {
-                TopBar(
-                    title = state.dest.label,
-                    subtitle = buildString {
-                        append(metrics.tier.label)
-                        if (state.dest == Destination.Sessions) append(" · ${state.totalSessions} 个会话")
-                    },
-                    actions = {
-                        if (state.dest == Destination.Sessions) {
-                            // U1-c: phones reach search here; desktop also has ⌘K.
-                            TopBarButton(VadeIcons.Search, onClick = { state.openSearch() }, contentDescription = "搜索")
-                            TopBarButton(VadeIcons.Compose, onClick = { state.newSession() }, contentDescription = "新建会话")
-                        }
-                        if (metrics.hasRightPanel) {
-                            // g-glyph-clear: 这处曾是 `glyph = if (open) "▸" else "◂"` —— 源码
-                            // 注释自己写着「w2-icons 遗留」：VadeIcons 里没有侧栏语义名，本棒
-                            // 又不许往那个文件追加。两态矢量因此落在 vade/ui/icon/ShellGlyphs.kt
-                            // （同包，Tabler 命名空间仍只在 icon/ 里）。
-                            TopBarButton(
-                                icon = panelToggleIcon(state.panelOpen),
-                                onClick = { state.togglePanel() },
-                                contentDescription = if (state.panelOpen) "收起右面板" else "展开右面板",
-                            )
-                        }
-                    },
-                )
+            // g-topbar-usage：顶栏统一成**一个** TopBar 调用点。if/else 的两个分支是两个
+            // 组合组，detailOpen 翻转会销毁整个 TopBar 实例（AnimatedContent 的过渡状态
+            // 随之丢失）——「列表⇄详情、切会话三种情形走同一段淡换」只有单调用点能做到。
+            // 标题/副标题/leading/actions 用表达式择值，不引入第二个组合组。
+            val listSubtitle = buildString {
+                append(metrics.tier.label)
+                if (state.dest == Destination.Sessions) append(" · ${state.totalSessions} 个会话")
+
             }
+            // 用量副标题（g-topbar-usage）：详情态才持有 loader；草稿没有服务端用量，
+            // 也不发注定失败的请求 —— 不显示副标题。
+            val usageLine: UsageSubtitleLine = when {
+                !detailOpen || session == null || session.isDraft -> UsageSubtitleLine.None
+                else -> rememberSessionUsageSubtitleLine(state.source, session.id)
+            }
+            val detailLeading: (@Composable () -> Unit)? = if (detailOpen) {
+                { TopBarButton(VadeIcons.Back, onClick = { sessionDetailBack(state, metrics.useRail) }, contentDescription = "返回") }
+            } else null
+            // 显式类型：if-表达式里的 @Composable lambda 经参数位推断不过（实测），声明处钉住。
+            val listActions: (@Composable RowScope.() -> Unit)? = if (detailOpen) null else {
+                {
+                    if (state.dest == Destination.Sessions) {
+                        // U1-c: phones reach search here; desktop also has ⌘K.
+                        TopBarButton(VadeIcons.Search, onClick = { state.openSearch() }, contentDescription = "搜索")
+                        TopBarButton(VadeIcons.Compose, onClick = { state.newSession() }, contentDescription = "新建会话")
+                    }
+                    if (metrics.hasRightPanel) {
+                        // g-glyph-clear: 这处曾是 `glyph = if (open) "▸" else "◂"` —— 源码
+                        // 注释自己写着「w2-icons 遗留」：VadeIcons 里没有侧栏语义名，本棒
+                        // 又不许往那个文件追加。两态矢量因此落在 vade/ui/icon/ShellGlyphs.kt
+                        // （同包，Tabler 命名空间仍只在 icon/ 里）。
+                        TopBarButton(
+                            icon = panelToggleIcon(state.panelOpen),
+                            onClick = { state.togglePanel() },
+                            contentDescription = if (state.panelOpen) "收起右面板" else "展开右面板",
+                        )
+                    }
+                }
+            }
+            TopBar(
+                title = if (detailOpen && session != null) session.title else state.dest.label,
+                subtitle = when {
+                    !detailOpen -> listSubtitle
+                    usageLine is UsageSubtitleLine.Text -> usageLine.text
+                    usageLine is UsageSubtitleLine.Retry -> usageLine.label
+                    else -> null // 加载中 / 无数据 / 草稿：不显示副标题（绝不编数字）
+                },
+                onSubtitleClick = (usageLine as? UsageSubtitleLine.Retry)?.onRetry,
+                leading = detailLeading,
+                actions = listActions,
+            )
         }
 
         // --- glass bottom bar: same sibling rule; floating capsule or docked by style. ---

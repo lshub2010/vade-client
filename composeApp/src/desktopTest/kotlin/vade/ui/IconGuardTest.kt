@@ -69,6 +69,12 @@ class IconGuardTest {
             "vade/ui/demo/MotionProbe.kt", 312, "好",
             "探针夹具的会话标题（15sp 行首文字，隔壁行是「为什么」），演示用假数据；不是图标槽",
         ),
+        // g-topbar-usage：用量副标题的量级后缀（「12.3万 tokens · 12 轮」的单位词），是
+        // 格式化纯函数 scaledTokenUnit 的字符串拼装参数，渲染在顶栏副标题文字里，不是图标槽。
+        GlyphLiteralScan.Allow(
+            "vade/ui/shell/TopBarUsage.kt", 70, "万",
+            "用量副标题的量级后缀（万 tokens 的单位词），格式化纯函数的拼装参数；不是图标槽",
+        ),
     )
 
     @Test
