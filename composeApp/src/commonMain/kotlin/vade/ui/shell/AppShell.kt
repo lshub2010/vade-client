@@ -337,6 +337,12 @@ private fun ShellBody(state: UiState) {
                         metaGroups = drawerMetaOverlay.meta.groups,
                         onLongPress = { drawerMetaOverlay.openSessionMenu(it) },
                         groups = drawerMetaOverlay.projectGroups(state.groups()),
+                        overlayHost = {
+                            SessionMetaOverlayHost(
+                                overlay = drawerMetaOverlay,
+                                rows = state.groups().flatMap { it.sessions },
+                            )
+                        },
                     )
                 } else {
                     DestinationHost(metrics = metrics, state = state, contentInsets = contentInsets)

@@ -153,6 +153,13 @@ internal fun SessionsDrawerHost(
     onLongPress: (SessionSummary) -> Unit = {},
     /** 同上：列表要画的是**投影后**的分组（乐观改名/置顶/归档立刻可见）。 */
     groups: List<SessionGroup>? = null,
+    /**
+     * B2：元数据悬浮面（长按菜单 / 分组编辑 / 错误横条）的宿主槽。
+     *
+     * 必须渲染在**抽屉层内部**：Popup 会以最近的窗口为参照，放进抽屉才能锚在列表那一侧；
+     * 挂在整屏上会飘到详情 pane。null = 无宿主（测试注入路径不变）。
+     */
+    overlayHost: (@Composable () -> Unit)? = null,
 ) {
     val spec = sessionsDrawerSpec(animate)
     val expanded = state.sessionsDrawerOpen
@@ -242,6 +249,9 @@ internal fun SessionsDrawerHost(
                 onLongPress = onLongPress,
                 groups = groups,
             )
+            // B2（s-meta-host）：菜单/分组编辑/回滚横条的宿主必须在抽屉层里，
+            // 否则长按后状态机变了却没有东西渲染弹出面（本棒合并时踩到的半个洞）。
+            overlayHost?.invoke()
         }
     }
 }
