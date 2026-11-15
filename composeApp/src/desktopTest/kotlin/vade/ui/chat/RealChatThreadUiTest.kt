@@ -40,6 +40,16 @@ class RealChatThreadUiTest {
             turnId: String,
             clientMsgId: String,
         ): RegenerateReceipt = writes.regenerate(sessionId, turnId, clientMsgId)
+
+        override suspend fun submit(
+            sessionId: String,
+            parts: List<ContentPart>,
+            clientMsgId: String,
+        ): SubmitReceipt = writes.submit(sessionId, parts, clientMsgId)
+
+        override suspend fun interrupt(sessionId: String, turnId: String) {
+            writes.interrupt(sessionId, turnId)
+        }
     }
 
     private class FakeTranscript(

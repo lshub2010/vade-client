@@ -9,8 +9,20 @@ import vade.ui.skin.AttachmentState
 import vade.ui.skin.Decision
 import vade.ui.skin.InputMode
 import vade.ui.chat.ApprovalOutcome
+import vade.ui.protocol.TurnCancelled
+import vade.ui.protocol.TurnCompleted
+import vade.ui.protocol.TurnFailed
+import vade.ui.protocol.TurnInterrupted
+import vade.ui.protocol.TurnStarted
 import vade.ui.protocol.VadeEvent
+import vade.ui.data.VadeErrorCategory
+import vade.ui.data.VadeErrorMapping
+import vade.ui.data.loadErrorCategoryOf
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlin.time.TimeSource
 
 /**
@@ -103,7 +115,36 @@ class ChatState(
     private var streamPos: Int = 0
     private var scriptCursor: Int = 0
 
-    val isStreaming: Boolean get() = runningId != null
+    // --- g-chat-send · 真源出网的本地簿记 ----------------------------------------
+    //
+    // submit/interrupt 是同步入口（composer 键盘、预设态都要调），RPC 从 [wireScope]
+    // 发射出去；回包与 turn.* 事件共同落进同一份状态。三个键把两边对上：
+    //  - [clientMsgIdByTurnId]：ui/submit 回包的 turn_id ↔ 屏上气泡的 client_msg_id；
+    //  - [runningTurnId]：最近一个 turn.started 的回合 —— ui/interrupt 的目标；
+    //  - [interruptInFlight]：中断在途去重（重复点 ■ 不再发第二次）。
+
+    /** 真源 RPC 的发射作用域：Unconfined 让假 gateway 的记录在 submit() 返回前确定（测试可用）。 */
+    private val wireScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+
+    private val clientMsgIdByTurnId = HashMap<String, String>()
+    private var runningTurnId: String? = null
+    private var interruptInFlight: String? = null
+
+    val isStreaming: Boolean get() = runningId != null || (isRealSource && realRunningTurnId() != null)
+
+    /**
+     * 真源下正在运行的回合 id：优先 [runningTurnId]（turn.started 事件），退而求其次取
+     * 最后一条 Running 的 live 行（`live:<turn_id>`——前缀剥离即 turn id；快照行没有
+     * 前缀，剥不动就返回 null，不为它编 id）。
+     */
+    private fun realRunningTurnId(): String? {
+        runningTurnId?.let { return it }
+        val row = items.lastOrNull {
+            it is ChatItem.Message && it.message.role == ChatRole.Assistant && it.message.state == MessageState.Running
+        } as? ChatItem.Message ?: return null
+        val turnId = row.message.id.removePrefix(LiveTranscript.LIVE_ID_PREFIX)
+        return turnId.takeIf { it != row.message.id }
+    }
 
     /**
      * Sendable = text, or at least one **finished** upload. An in-flight / failed chip is
@@ -175,8 +216,96 @@ class ChatState(
      * 投影一条 core→UI 事件。**不另写投影** —— 直接复用 `g-chatlive` 的
      * [vade.ui.chat.applyLive]：`items` 按 id upsert（就地替换 / 新行追加），seq 缺口、
      * 重复、溢出全部由 [LiveTranscript] 裁决（[liveAnomalies] 零静默）。
+     *
+     * 投影之后做真源回合的本地簿记（[projectTurnLifecycle]）：排队位、运行中的回合、
+     * 失败行的可读化 —— 全部幂等，未知的 turn 是 no-op，假源一行都不动。
      */
-    fun applyLiveEvent(event: VadeEvent): List<ChatMessage> = this.applyLive(live, event)
+    fun applyLiveEvent(event: VadeEvent): List<ChatMessage> {
+        val snapshot = this.applyLive(live, event)
+        projectTurnLifecycle(event)
+        return snapshot
+    }
+
+    /**
+     * turn.* 事件 → 本地回合状态的收尾。只服务真源：
+     *  - `turn.started` — 记下运行中的回合（ui/interrupt 的目标），把它的排队条目摘掉
+     *    （#N 徽标消失、气泡从 Queued 回到 Completed）；
+     *  - `turn.completed` / `turn.interrupted` / `turn.cancelled` — 同样摘条目、清运行态；
+     *  - `turn.failed` — 摘条目之外，把失败行按四类错误口径改成可读文案（[makeFailureReadable]）。
+     */
+    private fun projectTurnLifecycle(event: VadeEvent) {
+        if (!isRealSource) return
+        when (event) {
+            is TurnStarted -> {
+                runningTurnId = event.payload.turnId
+                dequeueTurn(event.payload.turnId)
+            }
+            is TurnCompleted -> {
+                if (runningTurnId == event.payload.turnId) runningTurnId = null
+                dequeueTurn(event.payload.turnId)
+            }
+            is TurnInterrupted -> {
+                if (runningTurnId == event.payload.turnId) runningTurnId = null
+                if (interruptInFlight == event.payload.turnId) interruptInFlight = null
+                dequeueTurn(event.payload.turnId)
+            }
+            is TurnCancelled -> {
+                if (runningTurnId == event.payload.turnId) runningTurnId = null
+                dequeueTurn(event.payload.turnId)
+            }
+            is TurnFailed -> {
+                if (runningTurnId == event.payload.turnId) runningTurnId = null
+                if (interruptInFlight == event.payload.turnId) interruptInFlight = null
+                dequeueTurn(event.payload.turnId)
+                makeFailureReadable(event.payload.turnId)
+            }
+            else -> Unit
+        }
+    }
+
+    /** 回合收尾：排队条目摘掉，气泡若还穿着 Queued 就回到 Completed（消息本身是送达的）。 */
+    private fun dequeueTurn(turnId: String) {
+        val clientMsgId = clientMsgIdByTurnId[turnId] ?: return
+        val entry = queue.firstOrNull { it.clientMsgId == clientMsgId } ?: return
+        queue.remove(entry)
+        setBubbleState(entry.messageId, from = MessageState.Queued, to = MessageState.Completed)
+    }
+
+    /**
+     * `turn.failed` 上屏：把投影行的原始 C-04 码徽标换成四类口径的可读文案
+     * （[VadeErrorMapping] 的冻结表 —— 与 `ModelFailure` 同一分类、同一 label）。
+     * 行本体（正文 / Failed 状态）由投影器负责，这里只换徽标。
+     */
+    private fun makeFailureReadable(turnId: String) {
+        val failure = live.failureOf(turnId) ?: return
+        val rowId = LiveTranscript.liveRowId(turnId)
+        val index = items.indexOfFirst { it is ChatItem.Message && it.message.id == rowId }
+        if (index < 0) return
+        val row = (items[index] as ChatItem.Message).message
+        items[index] = ChatItem.Message(row.copy(badges = listOf(turnFailureBadge(failure))))
+    }
+
+    /** 行上保留已追加的其他徽标，只把失败文案追加进去（不覆盖「已压缩」这类事实）。 */
+    private fun setBadge(messageId: String, badge: String) {
+        val index = items.indexOfFirst { it is ChatItem.Message && it.message.id == messageId }
+        if (index < 0) return
+        val row = (items[index] as ChatItem.Message).message
+        if (badge in row.badges) return
+        items[index] = ChatItem.Message(row.copy(badges = row.badges + badge))
+    }
+
+    /** [from] == null 表示不设前置条件；行不存在时静默（簿记不许比事件还响）。 */
+    private fun setBubbleState(messageId: String, from: MessageState?, to: MessageState) {
+        val index = items.indexOfFirst { it is ChatItem.Message && it.message.id == messageId }
+        if (index < 0) return
+        val row = (items[index] as ChatItem.Message).message
+        if (from != null && row.state != from) return
+        items[index] = ChatItem.Message(row.copy(state = to))
+    }
+
+    private fun bubbleText(messageId: String): String =
+        (items.firstOrNull { it is ChatItem.Message && it.message.id == messageId } as? ChatItem.Message)
+            ?.message?.bodyText ?: ""
 
     /**
      * 收集事件流直到协程被取消（页面在 `LaunchedEffect` 里调它）。读通道缺失时立即返回。
@@ -314,7 +443,7 @@ class ChatState(
         if (text.isEmpty()) return false
         val original = messages.firstOrNull { it.id == messageId } ?: return false
         val clientMsgId = "c-e-${items.count { it is ChatItem.Message } + 1}"
-        try {
+        val receipt = try {
             turns.editResubmit(sessionId, messageId, listOf(ContentPart.Text(text)), clientMsgId)
         } catch (error: CancellationException) {
             throw error
@@ -333,7 +462,20 @@ class ChatState(
         }
         editingId = null
         editDraft = ""
-        if (isStreaming) {
+        if (isRealSource) {
+            // g-chat-send · 真源的排队位来自回包：queue_pos > 0 才建条目（#N = 真值），
+            // queue_pos == 0 表示 core 已立即开始 —— 不建本地条目，事件流接管。
+            clientMsgIdByTurnId[receipt.turnId] = clientMsgId
+            if (receipt.queuePos > 0) {
+                queue += QueuedTurn(
+                    messageId = messageId,
+                    clientMsgId = clientMsgId,
+                    text = text,
+                    reason = "edit_resubmit",
+                    queuePos = receipt.queuePos,
+                )
+            }
+        } else if (isStreaming) {
             queue += QueuedTurn(
                 messageId = messageId,
                 clientMsgId = clientMsgId,
@@ -372,8 +514,11 @@ class ChatState(
     suspend fun regenerate(messageId: String): Boolean {
         if (!canRegenerate(messageId)) return false
         val clientMsgId = "c-r-${items.count { it is ChatItem.Message } + 1}"
-        try {
-            turns.regenerate(sessionId, messageId, clientMsgId)
+        // g-chat-send · 真源的行 id 是 `live:<turn_id>`：上帧必须还原成 core 的 turn_id
+        //（快照行没有前缀，原样透传 —— 假源的合成 id 同样透传）。
+        val turnId = messageId.removePrefix(LiveTranscript.LIVE_ID_PREFIX)
+        val receipt = try {
+            turns.regenerate(sessionId, turnId, clientMsgId)
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
@@ -384,6 +529,24 @@ class ChatState(
         if (index >= 0) {
             val old = (items[index] as ChatItem.Message).message
             items[index] = ChatItem.Message(old.copy(superseded = true))
+        }
+        if (isRealSource) {
+            // g-chat-send · 重生成同样落真 queue_pos：回合被 core 排队时，#N 挂在它服务的
+            // 那条用户消息上（assistant 行之前的最近一条 User）。
+            clientMsgIdByTurnId[receipt.turnId] = clientMsgId
+            if (receipt.queuePos > 0) {
+                val assistantIndex = messages.indexOfFirst { it.id == messageId }
+                val owner = messages.take(assistantIndex).lastOrNull { it.role == ChatRole.User }
+                if (owner != null && queue.none { it.clientMsgId == clientMsgId }) {
+                    queue += QueuedTurn(
+                        messageId = owner.id,
+                        clientMsgId = clientMsgId,
+                        text = owner.bodyText,
+                        reason = "regenerate",
+                        queuePos = receipt.queuePos,
+                    )
+                }
+            }
         }
         startAssistantTurn(messageId)
         return true
@@ -553,6 +716,10 @@ class ChatState(
      * Only **finished** uploads ride along (上传中点发送不带未完成附件): in-flight and
      * failed chips stay staged and keep moving. Returns the new `client_msg_id`, or null
      * when neither text nor a finished attachment is present (empty must not be sendable).
+     *
+     * g-chat-send · 真源模式下本地回显之外**必须出网**：`turns.submit`（即 `ui/submit`）
+     * 恰好一次，回包的 `turn_id` / `queue_pos` 落进 [queue] 与气泡状态（#N 用 core 的
+     * queue_pos）；失败落在气泡上（四类口径），绝不静默。假源路径逐字节不变。
      */
     fun submit(): String? {
         val text = draft.trim()
@@ -579,12 +746,62 @@ class ChatState(
         draft = ""
         lastNotice = null
 
+        if (isRealSource) {
+            // 真源：出网。同步入口不动本地回合语义（startAssistantTurn 在真源下本就 no-op），
+            // 排队与否由 core 的回包说了算。
+            wireScope.launch { submitOverWire(messageId, clientMsgId, parts) }
+            return clientMsgId
+        }
         if (busy) {
             queue += QueuedTurn(messageId = messageId, clientMsgId = clientMsgId, text = text)
         } else {
             startAssistantTurn(messageId)
         }
         return clientMsgId
+    }
+
+    /**
+     * 真源 `ui/submit` 的出网与回包落地。回包规则：
+     *  - `queue_pos > 0` 且该回合还没有可见的 live 行 → 建排队条目（#N = 真 queue_pos），
+     *    气泡穿 Queued；
+     *  - `queue_pos == 0` → core 立即开始：清掉本地乐观置队的痕迹，交给事件流；
+     *  - 回包晚于回合的可见行（事件跑赢了 RPC 回包）→ **不补**排队痕迹，只把可能存在的
+     *    乐观 Queued 纠正回去 —— 顺序反转不许在屏上撒谎。
+     */
+    private suspend fun submitOverWire(messageId: String, clientMsgId: String, parts: List<ContentPart>) {
+        val receipt = try {
+            turns.submit(sessionId, parts, clientMsgId)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            markSubmitFailed(messageId, error)
+            return
+        }
+        clientMsgIdByTurnId[receipt.turnId] = clientMsgId
+        val row = live.messageById(LiveTranscript.liveRowId(receipt.turnId))
+        if (receipt.queuePos > 0 && row == null) {
+            val existing = queue.firstOrNull { it.clientMsgId == clientMsgId }
+            if (existing == null) {
+                queue += QueuedTurn(
+                    messageId = messageId,
+                    clientMsgId = clientMsgId,
+                    text = bubbleText(messageId),
+                    queuePos = receipt.queuePos,
+                )
+            } else if (existing.queuePos != receipt.queuePos) {
+                queue[queue.indexOf(existing)] = existing.copy(queuePos = receipt.queuePos)
+            }
+            setBubbleState(messageId, from = null, to = MessageState.Queued)
+        } else {
+            queue.removeAll { it.clientMsgId == clientMsgId }
+            setBubbleState(messageId, from = MessageState.Queued, to = MessageState.Completed)
+        }
+    }
+
+    /** 发送失败不能吞：气泡就地 Failed + 四类口径的可读文案（正文仍是用户自己的话）。 */
+    private fun markSubmitFailed(messageId: String, error: Exception) {
+        setBadge(messageId, wireFailureBadge("发送失败", error))
+        setBubbleState(messageId, from = null, to = MessageState.Failed)
     }
 
     /** `ui/queue.cancel` (FR-8.36): the row disappears and the rest shift up immediately. */
@@ -600,16 +817,34 @@ class ChatState(
         return true
     }
 
-    /** 1-based position shown on the badge; 0 when not queued. */
-    fun queuePosition(messageId: String): Int =
-        queue.indexOfFirst { it.messageId == messageId }.let { if (it < 0) 0 else it + 1 }
+    /**
+     * 1-based position shown on the badge; 0 when not queued.
+     * g-chat-send · 真源条目带 core 的 `queue_pos`（[QueuedTurn.queuePos] > 0）时**只认真值**
+     * —— 本地计数只在假源条目（queuePos == 0）上兜底，行为与接线前逐字节一致。
+     */
+    fun queuePosition(messageId: String): Int {
+        val entry = queue.firstOrNull { it.messageId == messageId } ?: return 0
+        if (entry.queuePos > 0) return entry.queuePos
+        return queue.indexOfFirst { it.messageId == messageId }.let { if (it < 0) 0 else it + 1 }
+    }
 
     /**
      * `ui/interrupt` → `turn.interrupted` (FR-8.28 / RFC-0006 §4). The generated text is
      * **kept**, the turn becomes `interrupted` with `partial_chars`, and the next queued turn
      * starts. No red error state: an interrupt is a normal outcome.
+     *
+     * g-chat-send · 真源模式下停止**必须出网**：`turns.interrupt`（即 `ui/interrupt`）恰好
+     * 一次，本地不编 stop 语义 —— `turn.interrupted` 事件负责收尾上屏（部分文本、partial_chars、
+     * 下一个排队回合都由事件驱动）。在途去重：同一回合的重复 ■ 不发第二次。
      */
     fun stop(): Boolean {
+        if (isRealSource) {
+            val turnId = realRunningTurnId() ?: return false
+            if (interruptInFlight == turnId) return false
+            interruptInFlight = turnId
+            wireScope.launch { interruptOverWire(turnId) }
+            return true
+        }
         val id = runningId ?: return false
         val index = items.indexOfFirst { it is ChatItem.Message && it.message.id == id }
         if (index >= 0) {
@@ -629,6 +864,23 @@ class ChatState(
         lastNotice = "已停止 · 已生成 $chars 字"
         startNextQueued()
         return true
+    }
+
+    /**
+     * 真源中断的出网与失败可见化。成功时什么都不做（`turn.interrupted` 事件是唯一上屏者）；
+     * 失败时回合还在跑，状态行必须明说，不许让 ■ 假装已经停下。
+     */
+    private suspend fun interruptOverWire(turnId: String) {
+        try {
+            turns.interrupt(sessionId, turnId)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            interruptInFlight = null // 允许用户再点一次
+            val row = live.messageById(LiveTranscript.liveRowId(turnId))
+            if (row != null && row.state != MessageState.Running) return // 事件已收尾：报错就是噪音
+            lastNotice = "${wireFailureBadge("中断失败", error)}，可再试一次"
+        }
     }
 
     /**
@@ -868,6 +1120,26 @@ class ChatState(
             }
         }
     }
+
+    // --- g-chat-send · 失败文案（四类口径） ----------------------------------------
+
+    /**
+     * `turn.failed` 的可读徽标：`回合失败（<四类>）：<core 原话>` —— 分类与措辞都复用
+     * [VadeErrorMapping] 的冻结表（与 `ModelFailure` 的 label 口径同构：标题（分类）：正文）。
+     */
+    private fun turnFailureBadge(failure: TurnFailure): String =
+        failureBadge("回合失败", VadeErrorMapping.categoryOf(failure.code), failure.message.ifBlank { failure.code })
+
+    /** 通道/回包异常的徽标：分类走 [loadErrorCategoryOf]（非协议异常落 Retryable）。 */
+    private fun wireFailureBadge(headline: String, error: Throwable): String =
+        failureBadge(
+            headline,
+            loadErrorCategoryOf(error),
+            error.message?.takeIf { it.isNotBlank() } ?: error::class.simpleName ?: "通道异常",
+        )
+
+    private fun failureBadge(headline: String, category: VadeErrorCategory, detail: String): String =
+        "$headline（${category.label}）：$detail"
 
     companion object {
         /** RFC-0004 §6.1: `attach.max_per_turn` default 10, hard cap 20. */

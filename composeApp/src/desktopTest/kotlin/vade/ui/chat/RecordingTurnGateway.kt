@@ -23,8 +23,24 @@ internal class RecordingTurnGateway(
         val clientMsgId: String,
     )
 
+    data class SubmitCall(
+        val sessionId: String,
+        val parts: List<ContentPart>,
+        val clientMsgId: String,
+    )
+
+    data class InterruptCall(
+        val sessionId: String,
+        val turnId: String,
+    )
+
     val edits = mutableListOf<EditCall>()
     val regenerates = mutableListOf<RegenerateCall>()
+    val submits = mutableListOf<SubmitCall>()
+    val interrupts = mutableListOf<InterruptCall>()
+
+    /** g-chat-send · 出网写调用总数（submit/edit/regenerate/interrupt）——「1→2」这类断言用。 */
+    val totalCalls: Int get() = edits.size + regenerates.size + submits.size + interrupts.size
 
     private val fallback = InMemoryTurnGateway()
 
@@ -50,5 +66,19 @@ internal class RecordingTurnGateway(
         regenerates += RegenerateCall(sessionId, turnId, clientMsgId)
         if (regenerates.size <= failRegenerates) throw IllegalStateException("turn/regenerate 通道失败")
         return fallback.regenerate(sessionId, turnId, clientMsgId)
+    }
+
+    /** 记录出网调用（假源路径从不该碰这两个 —— 零调用回归钉就用这里的列表）。 */
+    override suspend fun submit(
+        sessionId: String,
+        parts: List<ContentPart>,
+        clientMsgId: String,
+    ): SubmitReceipt {
+        submits += SubmitCall(sessionId, parts, clientMsgId)
+        return fallback.submit(sessionId, parts, clientMsgId)
+    }
+
+    override suspend fun interrupt(sessionId: String, turnId: String) {
+        interrupts += InterruptCall(sessionId, turnId)
     }
 }

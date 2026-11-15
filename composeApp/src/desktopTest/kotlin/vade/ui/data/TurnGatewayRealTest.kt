@@ -6,6 +6,7 @@ import kotlinx.coroutines.runBlocking
 import vade.ui.chat.ContentPart
 import vade.ui.chat.EditResubmitReceipt
 import vade.ui.chat.RegenerateReceipt
+import vade.ui.chat.SubmitReceipt
 import vade.ui.protocol.FakeTransportFactory
 import vade.ui.protocol.VadeException
 import vade.ui.protocol.idOf
@@ -173,6 +174,80 @@ class TurnGatewayRealTest {
             assertFailsWith<VadeException> { adapter.regenerate("s-1", " ", "cm-9") }
             assertFailsWith<VadeException> { adapter.regenerate("s-1", "t-1", " ") }
             assertEquals(0, transport.record.size)
+            client.close()
+        }
+    }
+
+    // --- g-chat-send · ui/submit / ui/interrupt --------------------------------------
+
+    @Test
+    fun submitSendsTheExactUiSubmitFrameAndMapsTheReceipt() {
+        val factory = FakeTransportFactory()
+        runBlocking {
+            val (client, transport, adapter) = connectedAdapter(factory)
+            val deferred = async(Dispatchers.Default) {
+                adapter.submit(
+                    sessionId = "s-1",
+                    parts = listOf(
+                        ContentPart.Text("先跑一遍测试"),
+                        ContentPart.Image(
+                            fileId = "blb_img", name = "shot.png", size = 8L,
+                            width = 4, height = 4, mime = "image/png", sha256 = "bb".repeat(32),
+                        ),
+                    ),
+                    clientMsgId = "cm-1",
+                )
+            }
+            waitUntil { transport.record.size >= 1 }
+            assertEquals("ui/submit", requestOf(transport.record[0]).first)
+            // 逐字: parts 顺序 = 显示顺序；字段名/顺序与 ContentPart.toJson 的契约一致。
+            assertEquals(
+                """{"session_id":"s-1","client_msg_id":"cm-1",""" +
+                    """"content":[{"type":"text","text":"先跑一遍测试"},""" +
+                    """{"type":"image","file_id":"blb_img","mime":"image/png","name":"shot.png","size":8,""" +
+                    """"width":4,"height":4,"sha256":${jsonString("bb".repeat(32))}}]}""",
+                requestOf(transport.record[0]).second,
+            )
+            transport.push(responseFrame(idOf(transport.record[0]), """{"turn_id":"t-9","queue_pos":3}"""))
+            val receipt = deferred.await()
+            assertEquals(
+                SubmitReceipt(turnId = "t-9", queuePos = 3),
+                receipt,
+                "turn_id / queue_pos 逐字落 receipt（排队 #N 用 core 的值）",
+            )
+            client.close()
+        }
+    }
+
+    @Test
+    fun interruptSendsTheExactUiInterruptFrame() {
+        val factory = FakeTransportFactory()
+        runBlocking {
+            val (client, transport, adapter) = connectedAdapter(factory)
+            val deferred = async(Dispatchers.Default) { adapter.interrupt(sessionId = "s-1", turnId = "t-9") }
+            waitUntil { transport.record.size >= 1 }
+            assertEquals("ui/interrupt", requestOf(transport.record[0]).first)
+            assertEquals(
+                """{"session_id":"s-1","turn_id":"t-9"}""",
+                requestOf(transport.record[0]).second,
+            )
+            transport.push(responseFrame(idOf(transport.record[0]), """{"ok":true}"""))
+            deferred.await() // 完成即成功；turn.interrupted 事件负责上屏
+            client.close()
+        }
+    }
+
+    @Test
+    fun submitAndInterruptRefuseBlankArgsWithoutSending() {
+        val factory = FakeTransportFactory()
+        runBlocking {
+            val (client, transport, adapter) = connectedAdapter(factory)
+            assertFailsWith<VadeException> { adapter.submit(" ", listOf(ContentPart.Text("x")), "cm-1") }
+            assertFailsWith<VadeException> { adapter.submit("s-1", listOf(ContentPart.Text("x")), " ") }
+            assertFailsWith<VadeException> { adapter.submit("s-1", emptyList(), "cm-1") }
+            assertFailsWith<VadeException> { adapter.interrupt(" ", "t-1") }
+            assertFailsWith<VadeException> { adapter.interrupt("s-1", " ") }
+            assertEquals(0, transport.record.size, "校验失败不发帧")
             client.close()
         }
     }

@@ -54,6 +54,16 @@ class RealChatSourceTest {
             turnId: String,
             clientMsgId: String,
         ): RegenerateReceipt = writes.regenerate(sessionId, turnId, clientMsgId)
+
+        override suspend fun submit(
+            sessionId: String,
+            parts: List<ContentPart>,
+            clientMsgId: String,
+        ): SubmitReceipt = writes.submit(sessionId, parts, clientMsgId)
+
+        override suspend fun interrupt(sessionId: String, turnId: String) {
+            writes.interrupt(sessionId, turnId)
+        }
     }
 
     /** 可注入历史 / 故障 / 事件流的读通道。 */
@@ -294,7 +304,9 @@ class RealChatSourceTest {
 
         val row = chat.messages.last()
         assertEquals(MessageState.Failed, row.state)
-        assertEquals(listOf(VadeErrorCodes.TIMEOUT), row.badges)
+        // g-chat-send · 原始 C-04 码换成了四类口径的可读文案（TIMEOUT → 可重试）；
+        // 行正文仍是 core 的原话，失败详情可用 live.failureOf 追溯。
+        assertEquals(listOf("回合失败（可重试）：上游模型超时"), row.badges)
         assertEquals("上游模型超时", row.bodyText, "没流式过文本时用 wire message 兜底，行不能是空的")
     }
 
