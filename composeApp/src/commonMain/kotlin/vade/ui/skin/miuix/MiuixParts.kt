@@ -70,6 +70,7 @@ import vade.ui.skin.SkinShapes
 import vade.ui.skin.SkinTypography
 import vade.ui.skin.ToolCallView
 import vade.ui.skin.ToolCardState
+import vade.ui.skin.cardAccentBar
 
 /**
  * `miuix` implementations of C-09 components 7-11.
@@ -554,7 +555,11 @@ internal fun MiuixToolCallCard(
                     shape = RoundedCornerShape(shapes.md),
                     ambientColor = colors.shadowSoft,
                     spotColor = colors.shadowSoft,
-                ),
+                )
+                .clip(RoundedCornerShape(shapes.md))
+                // 左侧状态条：顶端沿 md(20dp) 圆弧走、3dp 收细到 0、65% 高度处消失。
+                // 半径用形状 token（不是写死的数）；三端同一份绘制代码。
+                .cardAccentBar(accent, cornerRadius = shapes.md),
             shape = RoundedCornerShape(shapes.md),
             color = colors.surface,
             contentColor = colors.onSurface,
@@ -563,12 +568,12 @@ internal fun MiuixToolCallCard(
         ) {
             Column {
                 Row(
-                    modifier = Modifier.fillMaxWidth().clickable { onToggle() }.padding(end = 10.dp),
+                    // 原来这里是「3dp 竖条 + 9dp 间隔」= 正文 12dp 起排；竖条改由 `cardAccentBar`
+                    // 画在卡片背景上之后，内边距直接站在 12dp。
+                    modifier = Modifier.fillMaxWidth().clickable { onToggle() }
+                        .padding(start = 12.dp, end = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    // Accent bar: the state colour, 3 dp wide, full header height.
-                    Box(Modifier.width(3.dp).height(40.dp).background(accent))
-                    Spacer(Modifier.width(9.dp))
                     Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
                         Text(
                             text = call.name,

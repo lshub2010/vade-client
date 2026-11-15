@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -76,6 +75,7 @@ import vade.ui.skin.SkinShapes
 import vade.ui.skin.SkinTypography
 import vade.ui.skin.ToolCallView
 import vade.ui.skin.ToolCardState
+import vade.ui.skin.cardAccentBar
 
 /**
  * `material` implementations of C-09 components 7-11, written against
@@ -482,19 +482,25 @@ internal fun MaterialToolCallCard(
             .fillMaxWidth()
             .shadow(2.dp, shape, ambientColor = colors.shadowSoft, spotColor = colors.shadowSoft)
             .clip(shape)
+            // 状态条必须在 `.background` / `.border` **之前**：`Modifier.border` 是画在内容
+            // 之后的（画完 content 再描边），所以竖条若挂在最后，它左侧 1dp 会被发丝线盖住，
+            // 实宽从 3dp 掉到 2dp 并留下一条缝。挂在最外层后 drawContent() 把底色 + 发丝线
+            // 全画完，竖条最后覆盖上去。
+            // 顶端沿 md(20dp) 圆弧走、3dp 收细到 0、65% 高度处收尖；半径用形状 token。
+            .cardAccentBar(status, cornerRadius = shapes.md)
             .background(colors.surface)
             .border(1.dp, colors.hairline, shape),
     ) {
         Row(Modifier.height(IntrinsicSize.Min)) {
-            // 左侧 3dp 状态条：success / danger / warn（视觉规范 §5 工具卡）。
-            Box(Modifier.width(3.dp).fillMaxHeight().background(status))
             Column(Modifier.weight(1f)) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 44.dp)
                         .clickable(onClick = onToggle)
-                        .padding(start = 13.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+                        // 原来这里左边是「3dp 竖条 + 13dp 内边距」= 16dp；竖条改由
+                        // `cardAccentBar` 画在卡片背景上之后，正文内边距直接站在 16dp。
+                        .padding(start = 16.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
@@ -523,7 +529,7 @@ internal fun MaterialToolCallCard(
                     )
                 }
                 if (expanded) {
-                    Column(Modifier.padding(start = 13.dp, end = 12.dp, bottom = 12.dp)) {
+                    Column(Modifier.padding(start = 16.dp, end = 12.dp, bottom = 12.dp)) {
                         Text("参数", fontSize = 11.sp, color = colors.onSurfaceVariant)
                         Spacer(Modifier.height(4.dp))
                         CodeBlock(
@@ -553,7 +559,7 @@ internal fun MaterialToolCallCard(
                     Box(
                         Modifier
                             .fillMaxWidth()
-                            .padding(start = 13.dp, end = 12.dp, bottom = 12.dp),
+                            .padding(start = 16.dp, end = 12.dp, bottom = 12.dp),
                     ) { meta() }
                 }
             }
