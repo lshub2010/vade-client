@@ -30,8 +30,13 @@ Vade 客户端自己**不产生任何智能**——它必须连一个 core 才�
 
 ```bash
 # 在内核仓库根目录（lshub2010/Vade）
-export PYTHONPATH="core;protocol/core/python"     # Linux / macOS 用冒号分隔
+# Windows（分隔符是分号）
+export PYTHONPATH="core;protocol/core/python"
 .venv/Scripts/python.exe -m vade --config core.toml
+
+# Linux / macOS（分隔符是冒号）
+export PYTHONPATH="core:protocol/core/python"
+.venv/bin/python -m vade --config core.toml
 ```
 
 > `PYTHONPATH` 里**两处都必须有**：`core`（`vade` 包本身）和 `protocol/core/python`（原生绑定 `vade_protocol`）。
