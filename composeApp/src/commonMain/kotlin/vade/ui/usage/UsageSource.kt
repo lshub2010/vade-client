@@ -5,6 +5,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import vade.ui.data.VadeErrorCategory
 import vade.ui.data.loadErrorCategoryOf
@@ -210,7 +212,11 @@ class UsageLoader(
             val next = try {
                 UsageLoadState.Ready(source.load(sessionId))
             } catch (e: CancellationException) {
-                return@launch // disposed/cancelled: no state write, never a fake failure
+                // Same split as ModelState.refresh: a timeout-shaped cancellation (the request
+                // died, our scope did not) is a retryable failure — rethrowing it used to leave
+                // the card in Loading forever; our own scope dying writes nothing.
+                currentCoroutineContext().ensureActive()
+                UsageLoadState.Failed(usageLoadErrorOf(e))
             } catch (t: Throwable) {
                 UsageLoadState.Failed(usageLoadErrorOf(t))
             }

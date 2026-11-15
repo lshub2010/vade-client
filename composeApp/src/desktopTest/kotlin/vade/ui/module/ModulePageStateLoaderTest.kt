@@ -10,6 +10,7 @@ import kotlinx.serialization.json.JsonObject
 import vade.ui.protocol.VadeErrorCodes
 import vade.ui.protocol.VadeException
 import vade.ui.protocol.VadeJson
+import vade.ui.protocol.harvestedTimeoutCancellationException
 import vade.ui.protocol.waitUntil
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicInteger
@@ -17,6 +18,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -76,8 +78,11 @@ class ModulePageStateLoaderTest {
 
     @Test
     fun oneLoadSendsOneFrameAndEndsReady() = runBlocking {
+        // 回包挂在闸门上：否则零延迟的假 fetcher 会赶在「同步进 Loading」断言之前写
+        // Ready（g-model-refresh 复验时红过一次——断言没错，回包来得比断言快）。
+        val gate = CompletableDeferred<Unit>()
         val fetcher = ScriptedStateFetcher()
-        fetcher.step({ state("你好，模块状态") })
+        fetcher.step({ state("你好，模块状态") }, gate)
         val loader = ModulePageStateLoader(fetcher, scope)
 
         assertEquals(null, loader.phase, "还没 load 过：没有状态（宿主此时不画任何状态行）")
@@ -85,6 +90,7 @@ class ModulePageStateLoaderTest {
 
         // 同步进 Loading（回包未到时横幅是「正在取回」，不是「取不到」）。
         assertEquals(ModulePageStatePhase.Loading(key("echo")), loader.phase)
+        gate.complete(Unit)
         waitUntil { loader.phase is ModulePageStatePhase.Ready }
 
         val ready = assertIs<ModulePageStatePhase.Ready>(loader.phase)
@@ -195,5 +201,23 @@ class ModulePageStateLoaderTest {
             loader.phase,
             "宿主侧已 dispose：迟到回包不许再写状态",
         )
+    }
+
+    // ------- g-model-refresh · 超时形取消 = 失败态，绝不卡死在 Loading（无重试出口）
+
+    @Test
+    fun timeoutShapedCancellationIsAFailedStateNeverAStuckLoading() = runBlocking {
+        val fetcher = ScriptedStateFetcher()
+        fetcher.step({ throw harvestedTimeoutCancellationException() })
+        val loader = ModulePageStateLoader(fetcher, scope)
+
+        loader.load(key("echo"))
+        assertEquals(ModulePageStatePhase.Loading(key("echo")), loader.phase, "同步进 Loading")
+        waitUntil { loader.phase is ModulePageStatePhase.Failed }
+
+        val failed = assertIs<ModulePageStatePhase.Failed>(loader.phase)
+        assertEquals(key("echo"), failed.key)
+        assertNull(failed.failure.code, "裸 CE 不带 C-04 码")
+        assertTrue(failed.failure.detail.contains("Timed out"), "失败行带传输原话：${failed.failure.detail}")
     }
 }

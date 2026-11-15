@@ -4,6 +4,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import vade.ui.data.AdapterProvider
 import vade.ui.icon.MetaIcons
 
@@ -430,8 +433,19 @@ class SessionMetaState(
             actionError = null
             true
         } catch (cancelled: CancellationException) {
-            groupsLoad = MetaGroupsLoad.Idle
-            throw cancelled
+            // A timeout IS a CancellationException subclass; the old `Idle + rethrow` left a
+            // weak-network `session/group.list` with no Failed state and no retry affordance.
+            // Split by the CURRENT job's liveness: our own scope dying keeps the old shape
+            // (back to Idle, rethrow); job alive → the cancellation came from the request →
+            // the same classified failure as any other Throwable.
+            if (!currentCoroutineContext().isActive) {
+                groupsLoad = MetaGroupsLoad.Idle
+                throw cancelled
+            }
+            val error = MetaActionError.of(MetaAction.LoadGroups, cancelled)
+            groupsLoad = MetaGroupsLoad.Failed(error)
+            actionError = error
+            false
         } catch (t: Throwable) {
             val error = MetaActionError.of(MetaAction.LoadGroups, t)
             // 失败绝不当空表：groups 保留上一次的权威快照，由 UI 渲染重试卡。
@@ -511,7 +525,12 @@ class SessionMetaState(
         true
     } catch (cancelled: CancellationException) {
         rollback()
-        throw cancelled
+        // 真取消（作用域销毁）→ 原样抛出；乐观值已回滚。超时形取消（TimeoutCancellationException
+        // 等 CE 子类，作用域还活着）＝真失败：按既有失败契约记录后返回 false（绝不 rethrow
+        // 把上层 UI 处理器整个打断），弱网下的写动作从此有可见反馈。
+        currentCoroutineContext().ensureActive()
+        actionError = MetaActionError.of(action, cancelled)
+        false
     } catch (t: Throwable) {
         actionError = MetaActionError.of(action, t)
         rollback()
@@ -522,7 +541,11 @@ class SessionMetaState(
     private suspend fun <T : Any> writeValue(action: MetaAction, block: suspend () -> T): T? = try {
         block().also { actionError = null }
     } catch (cancelled: CancellationException) {
-        throw cancelled
+        // 与 [write] 同一条判定：真取消 → 原样抛出；超时形取消＝真失败，按既有契约记录后
+        // 返回 null（「失败且已记录，调用方不得改本地列表」）。
+        currentCoroutineContext().ensureActive()
+        actionError = MetaActionError.of(action, cancelled)
+        null
     } catch (t: Throwable) {
         actionError = MetaActionError.of(action, t)
         null

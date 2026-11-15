@@ -40,6 +40,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import vade.ui.data.ModelActionsReal
 import vade.ui.protocol.ModelEntry
@@ -278,6 +280,18 @@ class ModelState private constructor(
      * Failures are recorded in [loadFailure] instead of thrown so the one-line `autoRefresh`
      * launch cannot crash the scope; the degrade case (`-32601`) is a RETURN VALUE of the
      * adapter (`readOnly = true`, `models = null`) and is mirrored, not treated as an error.
+     *
+     * Cancellation is split into two, because a timeout IS a `CancellationException` subclass
+     * and rethrowing it used to swallow the failure whole (`g-model-refresh`): a request that
+     * outlives its deadline surfaces as [CancellationException] (a `TimeoutCancellationException`
+     * from an inner `withTimeout`, Ktor's request-timeout shape, or a dead WebSocket session
+     * surfacing as a plain one). The two are told apart by the CURRENT job's liveness:
+     *  - our own scope is gone ([ensureActive] throws) → real cancellation: rethrow, record
+     *    nothing — the state object belongs to a dead scope and nobody observes it;
+     *  - the job is still alive → the cancellation came from the REQUEST, not from us: it is
+     *    a retryable failure and MUST land in [loadFailure]. Rethrowing it is what collapsed
+     *    a weak-network timeout into the 「无可用模型」 false empty state (`models` still null,
+     *    `loadFailure` null, `loadInFlight` reset by the finally).
      */
     suspend fun refresh() {
         val wiring = real ?: return
@@ -291,7 +305,8 @@ class ModelState private constructor(
             try {
                 wiring.adapter.refreshModels()
             } catch (c: CancellationException) {
-                throw c
+                currentCoroutineContext().ensureActive() // our own scope died → real cancel
+                loadFailure = modelLoadFailureOf(c) // timeout-shaped: a retryable failure
             } catch (t: Throwable) {
                 loadFailure = modelLoadFailureOf(t)
             }
@@ -308,7 +323,11 @@ class ModelState private constructor(
                     // the pull was in flight must not be clobbered by a stale answer.
                     if (selectedId == null) selectedId = wiring.adapter.sessionOverride(sessionId)
                 } catch (c: CancellationException) {
-                    throw c
+                    // Same split as the list pull above: a timeout-shaped cancellation of the
+                    // override pull is a failure (the first one already recorded keeps priority
+                    // — the card shows one classified failure, not two), a real cancel rethrows.
+                    currentCoroutineContext().ensureActive()
+                    if (loadFailure == null) loadFailure = modelLoadFailureOf(c)
                 } catch (t: Throwable) {
                     if (loadFailure == null) loadFailure = modelLoadFailureOf(t)
                 }
@@ -498,8 +517,15 @@ class ModelState private constructor(
             wiring.adapter.setSessionModelAwaiting(sessionId, modelId)
             writeFailure = null
         } catch (c: CancellationException) {
+            // Undo the optimistic flip for BOTH shapes (a dead scope and a timed-out write
+            // must both leave the selection where it was), then split them: real cancellation
+            // rethrows with no failure recorded; a timeout-shaped cancellation is a REAL
+            // failure — record it before rethrowing so the fire-and-forget launch (which
+            // swallows the rethrow) still shows the card's error line.
             selectedId = previous
             lastNotice = null
+            currentCoroutineContext().ensureActive()
+            writeFailure = modelWriteFailureOf(c)
             throw c
         } catch (t: Throwable) {
             selectedId = previous

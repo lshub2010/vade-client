@@ -5,6 +5,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import vade.ui.data.VadeErrorCategory
 import vade.ui.data.loadErrorCodeOf
 import vade.ui.data.loadErrorCategoryOf
@@ -280,7 +282,14 @@ class SearchState(
             val page = source.search(query = query, limit = SEARCH_RESULT_LIMIT, offset = 0)
             if (generation == remoteGeneration) applyPage(page)
         } catch (e: CancellationException) {
-            throw e // cancellation is control flow, not a failure to report
+            // A timeout IS a CancellationException subclass; rethrowing it used to end the
+            // remote run with neither a failure nor an in-flight flag — the overlay showed
+            // the stale/empty result as if the search had never happened. Split by the
+            // CURRENT job's liveness: our own scope dying → real cancel, rethrow; job alive →
+            // the cancellation came from the request → the same classified failure as any
+            // other Throwable.
+            currentCoroutineContext().ensureActive()
+            if (generation == remoteGeneration) failRemote(e)
         } catch (t: Throwable) {
             if (generation == remoteGeneration) failRemote(t)
         } finally {

@@ -14,6 +14,7 @@ import vade.ui.protocol.ModelUsage
 import vade.ui.protocol.SessionUsageGetResult
 import vade.ui.protocol.VadeErrorCodes
 import vade.ui.protocol.VadeException
+import vade.ui.protocol.harvestedTimeoutCancellationException
 import vade.ui.protocol.waitUntil
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -243,6 +244,30 @@ class UsageLoaderTest {
             loader.retry()
             assertNull(loader.sessionId)
             assertEquals(UsageLoadState.Loading, loader.state)
+        } finally {
+            loader.dispose()
+            scope.cancel()
+        }
+    }
+
+    // ------- g-model-refresh · 超时形取消 = 失败态，绝不卡死在 Loading（无重试出口）
+
+    @Test
+    fun timeoutShapedCancellationIsAFailedStateNeverAStuckLoading() = runBlocking {
+        val scope = newScope()
+        val source = ScriptedUsageSource()
+        // script 的答案在闸门放行后才被调用：先拿到闸门，load 起来后再放行（答案抛 TCE）。
+        val gate = source.script("s-t") { throw harvestedTimeoutCancellationException() }
+        val loader = UsageLoader(source, scope)
+        try {
+            loader.load("s-t")
+            assertEquals(UsageLoadState.Loading, loader.state, "同步进 Loading")
+            gate.complete(Unit)
+            waitUntil { loader.state is UsageLoadState.Failed }
+
+            val failed = assertIs<UsageLoadState.Failed>(loader.state)
+            assertEquals(VadeErrorCategory.Retryable, failed.error.category, "超时归「可重试」")
+            assertEquals("s-t", loader.sessionId)
         } finally {
             loader.dispose()
             scope.cancel()

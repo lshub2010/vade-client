@@ -1,9 +1,12 @@
 package vade.ui.protocol
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.runBlocking
 import java.io.IOException
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.longOrNull
@@ -146,4 +149,95 @@ fun testClient(factory: FakeTransportFactory, mutate: (VadeClientConfig) -> Vade
         json = VadeJson.default,
     )
     return VadeClient(mutate(config), factory)
+}
+
+/**
+ * Same config shape as [testClient] for factories that are not [FakeTransportFactory] —
+ * e.g. [TimeoutSendTransportFactory]. Overload resolution keeps the original call sites
+ * byte-identical (the more specific parameter wins for a [FakeTransportFactory] argument).
+ */
+fun testClient(factory: VadeTransportFactory, mutate: (VadeClientConfig) -> VadeClientConfig = { it }): VadeClient {
+    val config = VadeClientConfig(
+        host = "127.0.0.1",
+        port = 1,
+        browserSession = null,
+        requestTimeoutMs = 2000,
+        reconnectBaseMs = 5,
+        reconnectCapMs = 40,
+        keepaliveIntervalMs = null,
+        json = VadeJson.default,
+    )
+    return VadeClient(mutate(config), factory)
+}
+
+/**
+ * A GENUINE [TimeoutCancellationException] — the class has no public constructor, so the
+ * only honest way to hold one is to let a real 1 ms `withTimeout` throw it. This is the
+ * exact shape a request timeout surfaces as (kotlinx.coroutines converts it to
+ * `CancellationException` subclasses, and Ktor's request-timeout / dead-session failures do
+ * the same), which is why the UI loaders' `catch (CancellationException)` branches must
+ * distinguish it from a real scope cancellation.
+ */
+fun harvestedTimeoutCancellationException(): CancellationException = runBlocking {
+    try {
+        withTimeout(1) { awaitCancellation() }
+        error("unreachable: withTimeout(1) must throw")
+    } catch (c: CancellationException) {
+        c
+    }
+}
+
+/**
+ * [VadeTransport] whose `send` calls inside [throwAttempts] throw a genuine
+ * [TimeoutCancellationException] (or a plain [CancellationException] with [plainCeMessage] —
+ * the Ktor "session died mid-request" shape) before delegating to an inner [FakeTransport].
+ *
+ * This reproduces the raw-CE path the production transport can produce: the protocol layer
+ * converts its OWN `withTimeout` timeouts into `VadeException(TIMEOUT)`, but a send-time
+ * cancellation from Ktor reaches the loaders UNCONVERTED — exactly the input the
+ * timeout-as-cancellation defect swallowed. [sendAttempts] counts every `send` call,
+ * thrown ones included, so a test can prove a retry REALLY re-issued the request (1 → 2).
+ */
+class TimeoutSendTransport(
+    private val throwAttempts: IntRange = 1..1,
+    private val plainCeMessage: String? = null,
+    /** Throw this much later — lets a compose test push the failure after the first frame. */
+    private val throwDelayMs: Long = 0,
+) : VadeTransport {
+
+    private val inner = FakeTransport()
+    private val sends = java.util.concurrent.atomic.AtomicInteger()
+    private val timeoutCe: CancellationException = harvestedTimeoutCancellationException()
+
+    /** Every `send` call so far, thrown attempts included — the retry counter. */
+    val sendAttempts: Int get() = sends.get()
+
+    /** The inner [FakeTransport]'s recorded frames (only non-throwing sends land here). */
+    val record: MutableList<String> get() = inner.record
+
+    /** Core → client, straight to the inner [FakeTransport] (answers a retried request). */
+    fun push(frame: String) = inner.push(frame)
+
+    override val incoming get() = inner.incoming
+
+    override suspend fun send(frame: String) {
+        val n = sends.incrementAndGet()
+        if (n in throwAttempts) {
+            if (throwDelayMs > 0) delay(throwDelayMs)
+            throw plainCeMessage?.let { CancellationException(it) } ?: timeoutCe
+        }
+        inner.send(frame)
+    }
+
+    override suspend fun close() = inner.close()
+}
+
+/** [VadeTransportFactory] handing out one shared [TimeoutSendTransport]. */
+class TimeoutSendTransportFactory(
+    throwAttempts: IntRange = 1..1,
+    plainCeMessage: String? = null,
+    throwDelayMs: Long = 0,
+) : VadeTransportFactory {
+    val transport = TimeoutSendTransport(throwAttempts, plainCeMessage, throwDelayMs)
+    override suspend fun connect(): VadeTransport = transport
 }

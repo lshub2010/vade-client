@@ -142,6 +142,10 @@ class ModelStateSeamPathTest {
         waitUntil { transport.record.size >= 2 }
         transport.push(responseFrame(idOf(transport.record[1]), noOverrideJson))
         waitUntil { state.models != null }
+        // models 在 override 回包处理之前就已非空（refresh 中段写入）——等整个 refresh
+        // 走完 finally 再断言 loadInFlight，否则这里与异步的回包处理器赛跑（g-model-refresh
+        // 复验时红过一次：断言本身没错，等法错了）。
+        waitUntil { !state.loadInFlight }
 
         assertEquals(listOf("claude-sonnet", "local-qwen"), state.models.orEmpty().map { it.id }, "server order")
         assertTrue(state.loadAttempted)
