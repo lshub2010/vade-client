@@ -87,6 +87,15 @@ import vade.ui.component.liquid.layeredShadow
 import vade.ui.skin.cardAccentBar
 import vade.ui.skin.glass.GlassSurface
 import vade.ui.skin.glass.LocalGlassHazeState
+import vade.ui.glass.asGlassSource
+import androidx.compose.ui.platform.testTag
+
+/**
+ * g-haze-structure · 本页 haze **source**（消息滚动列）的 testTag —— `GlassStructureGuardTest`
+ * 用它在真实组合里断言浮层（composer / 附件预览）不在该节点的语义子树内。结构规则见
+ * `shell/AppShell.kt` 的类 KDoc：玻璃层必须是 source 的兄弟。
+ */
+internal const val GlassSourceThreadTag = "vade.glass.source.chatThread"
 
 /**
  * U1-b → v2 · 会话详情 — floating composer, out-of-frame send ball, icon-only controls,
@@ -188,6 +197,14 @@ fun ChatThread(
         // The scroll column runs the *full* height; the composer floats above it and the
         // trailing spacer keeps the newest row clear of it (§1: 高度 + 24dp).
         //
+        // g-haze-structure: this column IS the page's haze **source** — registered here,
+        // on the actual scrollable content, so the page's own floating glass layers (the
+        // composer panel below and the §9 image-preview sheet, both siblings of this
+        // column in the BoxWithConstraints stack) blur it instead of degrading to
+        // near-solid. The source used to sit on the whole ShellBody Row in `AppShell`,
+        // which made every in-page glass a descendant of its own backdrop — haze 2.1.0
+        // does not blur an effect under its own source subtree.
+        //
         // `reverseScrolling = true` is what makes this a chat log: offset 0 is the content
         // END, so the newest row is on screen from the **first frame** — no post-launch
         // frames needed. This matters because the capture harness (and any occluded window)
@@ -196,7 +213,9 @@ fun ChatThread(
         // (new content wins, FR-8.35) for the frames that do run.
         Column(
             modifier = Modifier
+                .asGlassSource(LocalGlassHazeState.current)
                 .fillMaxSize()
+                .testTag(GlassSourceThreadTag)
                 .verticalScroll(scroll, reverseScrolling = true)
                 .padding(start = gutter, end = gutter, top = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,

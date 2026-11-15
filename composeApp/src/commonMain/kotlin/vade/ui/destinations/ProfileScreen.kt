@@ -26,12 +26,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import vade.ui.UiText
 import vade.ui.buildconfig.VadeBuildConfig
 import vade.ui.data.AdapterProvider
+import vade.ui.glass.asGlassSource
 import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
 import vade.ui.model.InMemoryModelActions
@@ -43,6 +45,13 @@ import vade.ui.skin.BtnStyle
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.ThemeController
 import vade.ui.skin.ThemeMode
+import vade.ui.skin.glass.LocalGlassHazeState
+
+/**
+ * g-haze-structure · 我的页（主滚动列 + 关于子页滚动列）的 haze source tag ——
+ * 守卫见 `GlassStructureGuardTest`。两个滚动列互斥组合，共用 tag 不产生歧义。
+ */
+internal const val GlassSourceProfileTag = "vade.glass.source.profile"
 
 /**
  * 我的 (U1-a skeleton), v2 form — appearance is the only interactive block, because it is
@@ -111,7 +120,14 @@ fun ProfileScreen(
     ) {
         Column(
             Modifier
+                // g-haze-structure: this scroll column is the page's haze **source** (same
+                // contract as the sessions list / chat thread). The in-flow ModelPickerCard
+                // below stays inside it on purpose — it is an inline section card, not a
+                // floating overlay, and carries no glass surface; the floating session
+                // picker lives in SessionDetailScreen, OUTSIDE its thread source.
+                .asGlassSource(LocalGlassHazeState.current)
                 .fillMaxSize()
+                .testTag(GlassSourceProfileTag)
                 .verticalScroll(rememberScrollState())
                 .padding(contentPadding)
                 .padding(horizontal = 16.dp),
@@ -375,9 +391,12 @@ internal fun AboutPage(
     contentPadding: PaddingValues = PaddingValues(0.dp),
 ) {
     val skin = LocalSkin.current
+    // g-haze-structure: 关于子页的滚动列同样登记为本页 haze source（与主滚动列互斥组合）。
     Column(
         modifier
+            .asGlassSource(LocalGlassHazeState.current)
             .fillMaxSize()
+            .testTag(GlassSourceProfileTag)
             .background(skin.colors.canvas)
             .verticalScroll(rememberScrollState())
             .padding(contentPadding)
