@@ -8,12 +8,15 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.runComposeUiTest
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import vade.ui.data.ModuleCatalog
 import vade.ui.data.ModuleCatalogState
 import vade.ui.data.RealSessionSource
 import vade.ui.data.RealSessionState
+import vade.ui.data.VadeEvent
 import vade.ui.destinations.CapabilitiesScreen
 import vade.ui.module.ModulePageParser
 import vade.ui.module.ParseResult
@@ -32,40 +35,39 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.test.fail
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * g-module-page · B 段：**真 core + 真 echo 模块**，把 A 段那条链换成真传输再跑一遍。
+ * g-modulepage-wire · **承重验收**：真 core + 真 echo 模块，跑
+ * 「连上去 → 进能力页 → 看到「回声」入口 → 点开 → 三行中文原文逐行出现 →
+ * 没有「模块离线」/「页面不可用」」。
  *
- * 链路每一节都是真的：
- * 真 core（`vade.app.App` + uvicorn，临时数据目录）→ 模块密钥带外进 whitelist →
- * 真 echo 模块子进程走 Noise IK 注册（`module/register`）→ 浏览器 `POST /ui/session`
- * 拿 cookie → WS `ui/modules` → `ModulesLoader` 解码出 `pages[0]` → 真 `ui/page.get`
- * 拿回页面体 → 组合的 `CapabilitiesScreen` 上出现「回声」入口 → 点开 → 三行文字。
+ * ## 与上一棒（`shots/g-module-page`）的差别：测试不再补任何一脚
  *
- * ## 为什么这条测试要单独存在（A 段已经证明了渲染器）
+ * 上一棒这条链要测试自己 `catalog.retry()` + `pageSource.fetchPage(...)` 才跑得起来，
+ * 因为生产代码里那两脚**没有人踩**（RESULT 缺口 1、2）。本棒把三处接缝接进 `commonMain`：
  *
- * A 段（`CapabilitiesModulePageOpenTest`）证的是「给定一帧回包 + 一份页面体，屏幕上会出现
- * 入口并渲染那三行」。它把**传输**换成了常量。本测试把常量换回真的 WS/HTTP，于是
- * 「core 真会给这几页」「`ui/page.get` 真会把这份 schema 交回来」「客户端解码链真的
- * 认这个形状」三件事同时被钉住 —— 三者任一不成立，入口或正文就消失。
+ * | 缺口 | 本棒的接线 | 本测试怎么证明它真的在跑 |
+ * |---|---|---|
+ * | 1 清单没人拉 | 能力页 `LaunchedEffect` → `ModuleCatalog.ensureLoaded()` | 进屏幕**之前**断言 `Loading`；进屏幕后**不调任何手动动作**，入口自己出现 |
+ * | 2 页面体没人拉 | `ModulePageHost(pageFetch = 真实页面源)` → `ui/page.get` | 点开后三行出现，且 `loadPage` 缓存里真有 core 交回的那棵树（4 节点 / 0 动作） |
+ * | 3 恒报离线 | `RealModulePageSource.status()` ← `ModulesLoader.registry` | 页面顶部**没有**「模块离线」，而 `pages.status(...).online == true` |
  *
- * ## 这条测试自己补的两脚（生产路径目前缺，属于别的包的改动）
+ * 链路每一节仍然都是真的：真 core（`vade.app.App` + uvicorn，临时数据目录）→
+ * 模块密钥带外进 whitelist → 真 echo 模块子进程走 Noise IK 注册（`module/register`）→
+ * 浏览器 `POST /ui/session` 拿 cookie → WS `ui/modules` → 真 `ui/page.get` → 组合的
+ * `CapabilitiesScreen`。
  *
- * 1. `ModuleCatalog` 的第一次拉取：`RealSessionSource.connect()` 只建 loader，`commonMain`
- *    里没有 `ModulesLoader.load()` 的调用点，所以这里显式 `retry()`（接口上的公开动作，
- *    「首次拉取前调用也合法」）。
- * 2. 页面体：`ModulePageHost` 是同步值语义，不会自己发 `ui/page.get`，而
- *    `RealModulePageSource.fetchPage(...)` 在 `commonMain` 里也没有调用点。这里显式拉一次。
- *
- * 两处都在报告里列为缺口（改它们要动 data 包 / 宿主生命周期，不在本棒红线内）。
- * 除此之外没有替身：没有假 core、没有假回包、没有跳过网络。
+ * 组合根也只走生产那一个口：`RealSessionSource` → `adapters.modulePages()`（就是
+ * `RealModulePageSource`，不是测试里 new 出来的另一个），清单通道是
+ * `(source as ModuleCatalogProvider).moduleCatalog`。
  *
  * ## 失败时的取证
  *
- * 启动器（`shots/g-module-page/core_echo_launcher.py`）会把 core 侧的事实先打出来：
+ * 启动器（`shots/g-module-page/core_echo_launcher.py`）先把 core 侧的事实打出来：
  * `{"stage":"module", pages, page_ids, online, ui_warnings}`。断言失败消息里带这行原文，
  * 于是「模块没注册」「注册了但 0 页（页面被校验剔掉）」「注册了也有页但客户端没显示」
  * 三种病在日志里长得不一样。
@@ -86,7 +88,7 @@ class RealCoreModulePageE2ETest {
 
     @Test
     fun realCoreEchoPageOpensAndRendersTheThreeLines() {
-        val dir = Files.createTempDirectory("vade-g-module-page-").toFile()
+        val dir = Files.createTempDirectory("vade-g-modulepage-wire-").toFile()
         val launcher = launcherScript(dir)
         val lines = Collections.synchronizedList(mutableListOf<String>())
         val stderr = StringBuilder()
@@ -109,7 +111,7 @@ class RealCoreModulePageE2ETest {
             .redirectErrorStream(false)
             .start()
         core = process
-        thread(isDaemon = true, name = "g-module-page-core-out") {
+        thread(isDaemon = true, name = "g-modulepage-wire-core-out") {
             runCatching {
                 BufferedReader(InputStreamReader(process.inputStream, Charsets.UTF_8)).useLines { l ->
                     l.forEach { line ->
@@ -119,7 +121,7 @@ class RealCoreModulePageE2ETest {
                 }
             }
         }
-        thread(isDaemon = true, name = "g-module-page-core-err") {
+        thread(isDaemon = true, name = "g-modulepage-wire-core-err") {
             runCatching {
                 BufferedReader(InputStreamReader(process.errorStream, Charsets.UTF_8)).useLines { l ->
                     l.forEach { line ->
@@ -132,13 +134,13 @@ class RealCoreModulePageE2ETest {
         val ready = awaitStage(lines, "ready") { process.isAlive }
         val port = IntField(ready, "port")
         val pairCode = StrField(ready, "pair_code")
-        println("g-module-page · core ready port=$port")
+        println("g-modulepage-wire · core ready port=$port")
 
         // ① core 侧的事实：模块注册了、在线、声明了几页、页 id 是什么。
         val moduleStage = awaitStage(lines, "module") { process.isAlive }
         val corePages = IntField(moduleStage, "pages")
         val corePageIds = StrListField(moduleStage, "page_ids")
-        println("g-module-page · module=$moduleStage")
+        println("g-modulepage-wire · module=$moduleStage")
         assertEquals(1, corePages, "真 echo 模块必须声明 1 页（core 侧事实，0 页 = 页面被校验剔掉或模块没 ui 块）：$moduleStage")
         assertEquals(listOf("echo"), corePageIds, "页 id 必须是 echo：$moduleStage")
 
@@ -147,7 +149,7 @@ class RealCoreModulePageE2ETest {
                 VadeClientConfig(
                     host = "127.0.0.1",
                     port = port,
-                    browserSession = BrowserPairing(pairCode, clientName = "g-module-page"),
+                    browserSession = BrowserPairing(pairCode, clientName = "g-modulepage-wire"),
                     requestTimeoutMs = 20_000,
                     reconnectBaseMs = 200,
                     reconnectCapMs = 1_000,
@@ -159,19 +161,59 @@ class RealCoreModulePageE2ETest {
                 created.state.first { it is RealSessionState.Connected }
             }
 
-            // ② 真 WS `ui/modules`。生产路径目前没有「第一次拉取」的那一脚（见类 KDoc），
-            //    这里用接口上的公开动作补上，并把补之前的状态如实打出来。
+            // ② 生产组合根的三样东西都必须在：清单通道、适配器包、页面源就是那个真类。
             val catalog = created.moduleCatalog
                 ?: fail("连接后 moduleCatalog 必须非空（ModuleCatalogProvider 的接线在 connect() 里）")
-            println("g-module-page · catalog state before kick = ${catalog.state}")
-            catalog.retry()
-            val deadline = System.currentTimeMillis() + CoreBootBudget.WAIT_TIMEOUT_MS
-            while (catalog.state !is ModuleCatalogState.Ready && System.currentTimeMillis() < deadline) {
-                Thread.sleep(20)
-            }
-            val readyState = assertIs<ModuleCatalogState.Ready>(
+            val adapters = created.adapters
+                ?: fail("连接后 adapters 必须非空（AdapterHost 的接线在 connect() 里）")
+            val pageSource = adapters.modulePages()
+            val pages = pageSource as? RealModulePageSource
+                ?: fail("modulePages() 必须交回 RealModulePageSource，实际是 ${pageSource::class.simpleName}")
+
+            // ③ **本测试不 kick**：进屏幕之前一帧都还没发——这正是缺口的形状。
+            println("g-modulepage-wire · catalog state before the screen = ${catalog.state}")
+            assertEquals(
+                ModuleCatalogState.Loading,
                 catalog.state,
-                "ui/modules 必须成功返回（不是 Loading/Failed）：${catalog.state}",
+                "进屏幕之前不该有人拉过清单（谁先拉是缺口 1 的判据）",
+            )
+            assertNull(
+                pages.loadPage("com.example.echo", "echo"),
+                "页面体在点开之前不该在缓存里（缺口 2 的判据）",
+            )
+
+            Bundle(catalog = catalog, pages = pages, events = created.observeEvents())
+        }
+
+        runComposeUiTest(testTimeout = 240.seconds) {
+            setContent {
+                CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
+                    CapabilitiesScreen(
+                        moduleCatalog = record.catalog,
+                        pageSource = record.pages,
+                        events = record.events,
+                    )
+                }
+            }
+            try {
+                // ④ 入口出现 = 屏幕真的发起了那次唯一拉取（测试没有 retry/load）。
+                waitUntil(timeoutMillis = CoreBootBudget.WAIT_TIMEOUT_MS) {
+                    onAllNodesWithText(ENTRY_TITLE).fetchSemanticsNodes().isNotEmpty()
+                }
+            } catch (t: Throwable) {
+                throw AssertionError(
+                    "能力页没有出现「$ENTRY_TITLE」入口（说明第一次 ui/modules 没被发起或没解开）。" +
+                        "core 侧事实=$moduleStage，catalog.state=${record.catalog.state}，语义树：\n" +
+                        runCatching { onRoot(useUnmergedTree = true).printToString(maxDepth = 25) }
+                            .getOrElse { "dump failed: $it" },
+                    t,
+                )
+            }
+
+            // ⑤ 清单是屏幕自己拉到的：1 个模块、1 页、在线（全部来自真 core 回包）。
+            val readyState = assertIs<ModuleCatalogState.Ready>(
+                record.catalog.state,
+                "ui/modules 必须成功返回（不是 Loading/Failed）：${record.catalog.state}",
             )
             assertEquals(1, readyState.moduleCount, "清单里必须恰好一个模块")
             assertEquals(1, readyState.pageCount, "页面数必须 1 —— 恒为 0 的那条路正是本测试要拆开的")
@@ -181,70 +223,71 @@ class RealCoreModulePageE2ETest {
             assertEquals("回声", declaration.pages.single().title)
             assertEquals(true, declaration.online, "模块在线（registry health = ONLINE）")
 
-            // ③ 真 `ui/page.get`：页面体经真 RPC 回来，并进 RealModulePageSource 的缓存。
-            val client = created.client ?: fail("连接后 client 必须存在")
-            val pageSource = RealModulePageSource(client)
-            val pageId = declaration.pages.single().pageId
-            val fetched = pageSource.fetchPage(
-                moduleId = declaration.moduleId,
-                instanceId = declaration.instanceId,
-                pageId = pageId,
-                declaredPageIds = setOf(pageId),
+            // ⑥ 缺口 3：页面源读的是同一份快照，不是恒 false 的常量。
+            assertEquals(
+                true,
+                record.pages.status(declaration.moduleId).online,
+                "RealModulePageSource.status 必须反映 registry 的在线态（否则页面顶部恒画「模块离线」）",
             )
-            println("g-module-page · ui/page.get → nodes=${fetched.nodeCount} actions=${fetched.actionCount}")
-            assertEquals(4, fetched.nodeCount, "column + 三个 text = 4 个节点")
-            assertEquals(0, fetched.actionCount, "echo 页面没有任何动作")
-            assertTrue(
-                pageSource.loadPage(declaration.moduleId, pageId) != null,
-                "fetchPage 成功后 loadPage 必须命中（否则宿主会画「页面不可用」）",
+            assertEquals(
+                listOf("echo"),
+                record.pages.declarations().single().pages.map { it.pageId },
+                "声明也必须来自同一份快照（页内 navigate 目标校验要用）",
             )
-            recordPage(pageSource, declaration.moduleId, pageId)
-            PageBundle(catalog = catalog, pages = pageSource)
-        }
 
-        runComposeUiTest(testTimeout = 240.seconds) {
-            setContent {
-                CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
-                    CapabilitiesScreen(moduleCatalog = record.catalog, pageSource = record.pages)
-                }
-            }
+            onNodeWithText(ENTRY_TITLE).assertExists()
+            // 点之前正文不在树上。
+            ECHO_LINES.forEach { line -> onNodeWithText(line).assertDoesNotExist() }
+
+            // ⑦ 点它：宿主自己去发 ui/page.get（测试不碰 fetchPage）。
+            onNodeWithText(ENTRY_TITLE).performClick()
             try {
                 waitUntil(timeoutMillis = CoreBootBudget.WAIT_TIMEOUT_MS) {
-                    onAllNodesWithText(ENTRY_TITLE).fetchSemanticsNodes().isNotEmpty()
+                    onAllNodesWithText(LINE_1).fetchSemanticsNodes().isNotEmpty()
                 }
             } catch (t: Throwable) {
                 throw AssertionError(
-                    "能力页没有出现「$ENTRY_TITLE」入口。core 侧事实=$moduleStage，语义树：\n" +
+                    "点开之后正文没有出现（ui/page.get 没被宿主发起，或回包没解开）。语义树：\n" +
                         runCatching { onRoot(useUnmergedTree = true).printToString(maxDepth = 25) }
                             .getOrElse { "dump failed: $it" },
                     t,
                 )
             }
-            onNodeWithText(ENTRY_TITLE).assertExists()
-            // 点之前正文不在树上。
-            ECHO_LINES.forEach { line -> onNodeWithText(line).assertDoesNotExist() }
-            onNodeWithText(ENTRY_TITLE).performClick()
             waitForIdle()
+
+            onNodeWithText("$MODULE_TITLE › $ENTRY_TITLE").assertExists()
             ECHO_LINES.forEach { line -> onNodeWithText(line).assertExists() }
-            onNodeWithText("页面无法渲染").assertDoesNotExist()
+
+            // ⑧ 三条「医生说没病」的正面判据：不画离线横幅、不画两张错误卡。
+            assertTrue(
+                onAllNodesWithText("模块离线", substring = true).fetchSemanticsNodes().isEmpty(),
+                "模块在线时页面不得出现「模块离线」：\n" +
+                    onRoot(useUnmergedTree = true).printToString(maxDepth = 25),
+            )
             onNodeWithText("页面不可用").assertDoesNotExist()
+            onNodeWithText("页面无法渲染").assertDoesNotExist()
+            onNodeWithText("正在取回页面").assertDoesNotExist()
+
+            // ⑨ 页面体现在真的在缓存里 = 那一帧 `ui/page.get` 真发出去了、真的是 core 交回的树。
+            val cached = record.pages.loadPage(declaration.moduleId, "echo")
+                ?: fail("点开之后 loadPage 必须命中（否则宿主画的就是「页面不可用」）")
+            val parsed = ModulePageParser.parse(cached, setOf("echo"))
+            val ok = assertIs<ParseResult.Ok>(parsed, "core 交回的页面体必须过渲染期的 fail-closed 校验：$parsed")
+            println("g-modulepage-wire · ui/page.get → nodes=${ok.nodeCount} actions=${ok.actionCount}")
+            assertEquals(4, ok.nodeCount, "column + 三个 text = 4 个节点")
+            assertEquals(0, ok.actionCount, "echo 页面没有任何动作")
+
             println("--- 真 core 语义树（点开之后）--------------------------------------")
             println(onRoot(useUnmergedTree = true).printToString(maxDepth = 25))
         }
     }
 
-    /** 组合需要的一对：清单通道与真页面源（同一个连接）。 */
-    private class PageBundle(
-        val catalog: vade.ui.data.ModuleCatalog,
+    /** 组合需要的一对：清单通道与真页面源（同一个连接、同一个 registry）。 */
+    private class Bundle(
+        val catalog: ModuleCatalog,
         val pages: RealModulePageSource,
+        val events: Flow<VadeEvent>,
     )
-
-    /** 页面体自检：`loadPage` 回来的 schema 自己再解析一遍，确认它是 echo 的那棵树。 */
-    private fun recordPage(source: RealModulePageSource, moduleId: String, pageId: String) {
-        val body = source.loadPage(moduleId, pageId) ?: fail("loadPage 必须命中 $moduleId/$pageId")
-        val parsed = ModulePageParser.parse(body, setOf(pageId))
-        assertIs<ParseResult.Ok>(parsed, "core 交回的页面体必须过渲染期的 fail-closed 校验：$parsed")
-    }
 
     // ------------------------------------------------------------------ 装置
 
@@ -312,6 +355,7 @@ class RealCoreModulePageE2ETest {
         val ECHO_MODULE_SRC: String =
             System.getenv("VADE_ECHO_MODULE_SRC") ?: "D:/HermesWorkspace/Vade/Vade-module-echo/src"
 
+        const val MODULE_TITLE = "回声模块"
         const val ENTRY_TITLE = "回声"
         const val LINE_1 = "这个页面由模块的 manifest 声明（C-03 ui.pages），不是客户端硬编码的。"
         const val LINE_2 = "模块没有 ui 块时，ui/modules 里一个入口都不会出现（FR-8.79）。"

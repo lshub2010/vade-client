@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.concurrent.Volatile
 import vade.ui.module.ModuleDeclaration
+import vade.ui.module.ModuleRegistryView
 import vade.ui.module.ModuleStatus as ModuleOnlineStatus
 import vade.ui.module.PageDeclaration
 import vade.ui.module.PageIcon
@@ -50,7 +51,7 @@ import vade.ui.protocol.strStrict
  * 连接身份）。[status] 按 `module_id` 聚合（任一实例在线即在线），因为 `ModulePageSource.status`
  * 只有 `moduleId` 一个参数。
  */
-class ModuleRegistry {
+class ModuleRegistry : ModuleRegistryView {
 
     /**
      * 一个已登记的模块实例。字段全部来自 wire，没有派生值：
@@ -215,7 +216,7 @@ class ModuleRegistry {
      * 只返回**已注入 manifest** 的实例（[Node.isDeclared]）。仅收到过 `module.status` 的模块
      * 不在这里：没有显示名就没有入口标题，编一个等于替模块起名。顺序 = 首次出现顺序。
      */
-    fun declarations(): List<ModuleDeclaration> = snapshot.nodes
+    override fun declarations(): List<ModuleDeclaration> = snapshot.nodes
         .filter { it.isDeclared }
         .map { node ->
             ModuleDeclaration(
@@ -233,7 +234,7 @@ class ModuleRegistry {
      * → 在线；版本取第一个在线实例的，否则取第一个实例的。**未知模块返回离线**，不返回
      * null、不崩：宿主据 §7.4 显示「模块离线」并禁用动作。
      */
-    fun status(moduleId: String): ModuleOnlineStatus {
+    override fun status(moduleId: String): ModuleOnlineStatus {
         val matching = snapshot.nodes.filter { it.moduleId == moduleId }
         if (matching.isEmpty()) return ModuleOnlineStatus(online = false, version = null)
         val online = matching.firstOrNull { it.online }

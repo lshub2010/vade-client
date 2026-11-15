@@ -31,7 +31,6 @@ import vade.ui.skin.material.MaterialSkin
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
  * 能力页真的**订阅**模块清单：三态各自成面、`revision` 变化会重组、`module.status` 会被
@@ -51,8 +50,14 @@ class CapabilitiesModulesTest {
     private class FakeModuleCatalog(initial: ModuleCatalogState) : ModuleCatalog {
         var retries = 0
             private set
+        /** [ModuleCatalog.ensureLoaded] 的调用次数（首次进入只该 +1）。 */
+        var ensures = 0
+            private set
         val events = mutableListOf<VadeEvent>()
         override var state: ModuleCatalogState by mutableStateOf(initial)
+        override fun ensureLoaded() {
+            ensures += 1
+        }
         override fun retry() {
             retries += 1
         }
@@ -262,6 +267,10 @@ class CapabilitiesModulesTest {
                 CapabilitiesScreen(moduleCatalog = loader, events = events)
             }
         }
+        // g-modulepage-wire：屏幕进入即发起**那一次**拉取（缺口 1 的接线），先等它到 Ready。
+        // 于是本测试之后数的是「一条 module.status 带来几次**额外**的重拉」，而不是绝对次数。
+        waitUntil(timeoutMillis = 5_000) { loader.state is ModuleCatalogState.Ready }
+        assertEquals(1, source.calls.get(), "进屏一次 = 一帧（这条同时是首次拉取的锚点）")
         // 组合期的失效边一旦订阅上，`module.status` 就能到 loader。
         waitUntil(timeoutMillis = 5_000) { events.subscriptionCount.value > 0 }
         kotlinx.coroutines.runBlocking {
@@ -269,10 +278,10 @@ class CapabilitiesModulesTest {
                 ModuleStatusChangedEvent(seq = 1, moduleId = "mod.alpha", instanceId = "inst-1", online = false, version = "1.0.0"),
             )
         }
-        waitUntil(timeoutMillis = 5_000) { source.calls.get() == 1 }
+        waitUntil(timeoutMillis = 5_000) { source.calls.get() == 2 }
         waitUntil(timeoutMillis = 5_000) { (loader.state as? ModuleCatalogState.Ready)?.revision == 1L }
         onNodeWithText("页面甲").assertExists()
-        assertTrue(source.calls.get() == 1, "一次 module.status = 一次重拉，不是 0 次也不是 N 次")
+        assertEquals(2, source.calls.get(), "一次 module.status = 恰好一次重拉（1 → 2），不是 0 次也不是 N 次")
         loader.dispose()
         scope.cancel()
     }
