@@ -11,6 +11,8 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.runComposeUiTest
@@ -211,10 +213,10 @@ class AppShellMetaGroupWiringTest {
             onAllNodesWithText(groupedRow.title).fetchSemanticsNodes().isNotEmpty()
         }
         waitUntil(timeoutMillis = 10_000) {
-            onAllNodesWithText(GROUP_NAME).fetchSemanticsNodes().isNotEmpty()
+            onAllNodesWithContentDescription(GROUP_DOT).fetchSemanticsNodes().isNotEmpty()
         }
 
-        onNodeWithText(GROUP_NAME).assertExists()
+        onNodeWithContentDescription(GROUP_DOT).assertExists()
         assertEquals(
             0,
             onAllNodesWithText(GROUP_ID).fetchSemanticsNodes().size,
@@ -238,10 +240,10 @@ class AppShellMetaGroupWiringTest {
             onAllNodesWithText(groupedRow.title).fetchSemanticsNodes().isNotEmpty()
         }
         waitUntil(timeoutMillis = 10_000) {
-            onAllNodesWithText(GROUP_NAME).fetchSemanticsNodes().isNotEmpty()
+            onAllNodesWithContentDescription(GROUP_DOT).fetchSemanticsNodes().isNotEmpty()
         }
 
-        onNodeWithText(GROUP_NAME).assertExists()
+        onNodeWithContentDescription(GROUP_DOT).assertExists()
         assertEquals(
             0,
             onAllNodesWithText(GROUP_ID).fetchSemanticsNodes().size,
@@ -281,9 +283,9 @@ class AppShellMetaGroupWiringTest {
         }
 
         waitUntil(timeoutMillis = 10_000) {
-            onAllNodesWithText(GROUP_NAME).fetchSemanticsNodes().isNotEmpty()
+            onAllNodesWithContentDescription(GROUP_DOT).fetchSemanticsNodes().isNotEmpty()
         }
-        onNodeWithText(OTHER_GROUP_NAME).assertExists()
+        onNodeWithContentDescription(OTHER_GROUP_DOT).assertExists()
 
         assertEquals(
             0,
@@ -308,17 +310,23 @@ class AppShellMetaGroupWiringTest {
             }
         }
 
+        // Q2-B：裸 id 的「可见」信号 = 色点读屏语义（`分组：g-1`），行上不再出现裸 id 文字。
         waitUntil(timeoutMillis = 10_000) {
-            onAllNodesWithText(GROUP_ID).fetchSemanticsNodes().isNotEmpty()
+            onAllNodesWithContentDescription("分组：$GROUP_ID").fetchSemanticsNodes().isNotEmpty()
         }
         assertEquals(
             0,
-            onAllNodesWithText(GROUP_NAME).fetchSemanticsNodes().size,
-            "适配器查找失败时跑的是内存假实现，它的组名绝不能上屏",
+            onAllNodesWithContentDescription(GROUP_DOT).fetchSemanticsNodes().size,
+            "适配器查找失败时跑的是内存假实现，fixture 的组名（点语义）绝不能上屏",
         )
         assertEquals(
             0,
-            onAllNodesWithText(OTHER_GROUP_NAME).fetchSemanticsNodes().size,
+            onAllNodesWithText(GROUP_NAME).fetchSemanticsNodes().size,
+            "fixture 的组名文字同样不许出现",
+        )
+        assertEquals(
+            0,
+            onAllNodesWithContentDescription(OTHER_GROUP_DOT).fetchSemanticsNodes().size,
             "同上：$OTHER_GROUP_NAME 也是 fixture 的组名，一个都不许漏到真会话上",
         )
     }
@@ -334,8 +342,9 @@ class AppShellMetaGroupWiringTest {
             }
         }
 
+        // Q2-B：裸 id 的「可见」信号 = 色点读屏语义（`分组：g-1`）。
         waitUntil(timeoutMillis = 10_000) {
-            onAllNodesWithText(GROUP_ID).fetchSemanticsNodes().isNotEmpty()
+            onAllNodesWithContentDescription("分组：$GROUP_ID").fetchSemanticsNodes().isNotEmpty()
         }
         assertEquals(
             0,
@@ -344,7 +353,7 @@ class AppShellMetaGroupWiringTest {
         )
         assertEquals(
             0,
-            onAllNodesWithText(OTHER_GROUP_NAME).fetchSemanticsNodes().size,
+            onAllNodesWithContentDescription(OTHER_GROUP_DOT).fetchSemanticsNodes().size,
             "读失败也不许拿 fixture 的 $OTHER_GROUP_NAME 顶上",
         )
     }
@@ -416,10 +425,13 @@ class AppShellMetaGroupWiringTest {
     private companion object {
         const val GROUP_ID = "g-1"
         const val GROUP_NAME = "项目"
+        /** Q2-B：组名不再是行上文字，而是色点的读屏语义（`分组：<名>`）。 */
+        const val GROUP_DOT = "分组：$GROUP_NAME"
 
         /** fixture 的第二个组（`FakeMetaActions.defaultGroups[1]`）：假源/真源两条路都要认它。 */
         const val OTHER_GROUP_ID = "g-2"
         const val OTHER_GROUP_NAME = "灵感"
+        const val OTHER_GROUP_DOT = "分组：$OTHER_GROUP_NAME"
 
         /** 服务端会返回的组名字表：`g-1` → 「项目」（一个具体中文名，不是 id 的回声）。 */
         val GROUPS = listOf(MetaGroup(GROUP_ID, GROUP_NAME, "briefcase", "#3B82F6"))

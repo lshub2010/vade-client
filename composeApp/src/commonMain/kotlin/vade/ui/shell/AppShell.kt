@@ -111,17 +111,25 @@ fun AppShell(state: UiState) {
     // v2 §5: one shared HazeState per window — backdrop and all glass layers sample it.
     val glass = rememberGlassState()
     GlassScope(state = glass) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .onPreviewKeyEvent { event -> handleShellKeys(event, state, backDispatcher) }
-                .focusRequester(rootFocus)
-                .focusable(),
-        ) {
-            ShellBody(state)
-            // U1-c: phone glass overlay card below 600dp, ⌘K palette above it. Also a
-            // glass layer — sibling of the backdrop source.
-            SearchHost(state)
+        // g-route-transition：Esc 的抽屉语义需要知道断点（双栏没有抽屉），而 handleShellKeys
+        // 挂在根部——这里用一个不含布局副作用的外层 BoxWithConstraints 把 twoPane 读出来。
+        // g-back-handler：返回栈 provider 仍在组合根，两个参数都要传。
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val twoPane = metricsFor(maxWidth).twoPane
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .onPreviewKeyEvent { event ->
+                        handleShellKeys(event, state, twoPane = twoPane, backDispatcher = backDispatcher)
+                    }
+                    .focusRequester(rootFocus)
+                    .focusable(),
+            ) {
+                ShellBody(state)
+                // U1-c: phone glass overlay card below 600dp, ⌘K palette above it. Also a
+                // glass layer — sibling of the backdrop source.
+                SearchHost(state)
+            }
         }
     }
 }
@@ -301,9 +309,13 @@ private fun ShellBody(state: UiState) {
         // 接线（g-activate）：真数据源的适配器包从这里往下传；假源不实现 AdapterHost ⇒ null。
         val adapters = adaptersOf(state)
         val detailOpen = state.dest == Destination.Sessions && session != null && !metrics.twoPane
+        // g-route-transition：详情「真正可见」= 详情开着 且（无抽屉断点 或 抽屉已收回）。
+        // 顶栏 chrome 与底栏显隐都跟着这个走：抽屉开着时屏上是列表 → 列表 chrome；
+        // 抽屉收回时屏上是详情 → 详情 chrome + 隐藏底栏（D88 原语义不变）。
+        val detailVisible = detailOpen && (metrics.useRail || !state.sessionsDrawerOpen)
 
         // v2 bottom bar: compact single-pane only, never while a detail is pushed (D88).
-        val showBar = !metrics.useRail && !detailOpen
+        val showBar = !metrics.useRail && !detailVisible
         // P1-3 + g-zone-split: the reserved zone is the **composed form's** measured-in-code
         // footprint, so it tracks the navigation inset (gesture ≈ 24 dp, 3-button ≈ 48 dp)
         // instead of guessing one constant — and the docked form no longer reserves the
@@ -344,21 +356,15 @@ private fun ShellBody(state: UiState) {
             }
 
             Column(Modifier.weight(1f).fillMaxHeight()) {
-                if (detailOpen) {
-                    // Pushed detail: the glass top bar (title + back) floats above and the
-                    // thread scrolls FULL-BLEED under it — TOP_BAR_ZONE is handed over as
-                    // *content* padding (SessionDetailScreen floats its header below the
-                    // bar zone and lets ChatThread span the window), never as container
-                    // padding: that cropped the viewport below the bar, no row ever passed
-                    // under the glass, and the blur had nothing behind it — the
-                    // 「看不出有模糊」 user complaint.
-                    SessionDetailScreen(
-                        session = session,
-                        preset = state.chatPreset,
-                        animate = state.chatPreset == vade.ui.chat.ChatPreset.Live,
-                        showTitle = false,
+                if (!metrics.useRail && state.dest == Destination.Sessions) {
+                    // g-route-transition（口径变更 2026-11-15）：手机单栏（<600dp）改抽屉模型
+                    // —— 详情常驻底层、列表是盖在上面的抽屉（80% 宽 + 右缘圆角 + 遮罩）。
+                    // 双栏与 600–719 rail 单栏仍走 DestinationHost，行为不变。
+                    SessionsDrawerHost(
+                        state = state,
                         adapters = adapters,
-                        contentPadding = PaddingValues(top = TOP_BAR_ZONE),
+                        contentInsets = contentInsets,
+                        animate = state.chatPreset == vade.ui.chat.ChatPreset.Live,
                     )
                 } else {
                     DestinationHost(metrics = metrics, state = state, contentInsets = contentInsets)
@@ -407,11 +413,12 @@ private fun ShellBody(state: UiState) {
                     top = TopBarTopGap,
                 ),
         ) {
-            if (detailOpen) {
+            if (detailVisible) {
                 TopBar(
                     title = session.title,
                     subtitle = "会话详情 · 消息流 / 工具卡为假数据",
-                    leading = { TopBarButton(VadeIcons.Back, onClick = { state.back() }, contentDescription = "返回") },
+                    // g-route-transition：手机抽屉上返回 = 滑出列表（详情保留）；rail 单栏/双栏仍退出详情。
+                    leading = { TopBarButton(VadeIcons.Back, onClick = { sessionDetailBack(state, metrics.useRail) }, contentDescription = "返回") },
                 )
             } else {
                 TopBar(
@@ -821,6 +828,7 @@ private fun navItems(): List<BottomBarItem> = Destination.entries.map {
 internal fun handleShellKeys(
     event: KeyEvent,
     state: UiState,
+    twoPane: Boolean = true,
     backDispatcher: BackDispatcher? = null,
 ): Boolean {
     if (event.type != KeyEventType.KeyDown) return false
@@ -842,7 +850,9 @@ internal fun handleShellKeys(
 
     if (!search.open) {
         if (event.key == Key.Escape && state.selectedSessionId != null) {
-            state.back()
+            // g-route-transition：双栏没有抽屉——Esc 仍是「退出详情」（FR-8.72 原行为）；
+            // 手机单栏抽屉上 Esc 在「列表/详情」之间切换（详情常驻底层，不销毁）。
+            if (twoPane) state.back() else state.toggleSessionsDrawer()
             return true
         }
         return false

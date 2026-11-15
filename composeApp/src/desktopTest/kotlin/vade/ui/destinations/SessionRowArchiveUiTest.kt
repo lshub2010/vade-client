@@ -103,36 +103,42 @@ class SessionRowArchiveUiTest {
         assertEquals(1, archivedBadgeCount(row(archived = true)))
     }
 
-    // ------------------------------------------------------------ 3. 组名渲染 / 不多渲
+    // ------------------------------------------------------------ 3. 分组色点渲染 / 不多渲（Q2-B 单行形态）
 
     @Test
-    fun groupedRowShowsTheGroupNameAndUngroupedRowShowsNothing() {
-        val ungrouped = textsOf(row(groupId = null))
+    fun groupedRowCarriesTheGroupDotAndUngroupedRowDoesNot() {
+        // Q2-B（g-route-transition 口径变更）：单行条目 = 组色点 + 标题。组名不再是行上
+        // 的一段文字，而是色点的读屏语义（`分组：<名>`）——「分类」必须仍可被读屏报出，
+        // 测试也用同一定位。预览行已废除，任何行都不该再有第二行文字。
+        val ungrouped = dotCount("分组：项目", row(groupId = null))
+        val grouped = dotCount("分组：项目", row(groupId = "g-1"), metaGroups = listOf(PROJECT))
+        assertEquals(0, ungrouped, "未分组的行不该有组色点")
+        assertEquals(1, grouped, "有组的行必须有一枚带组名语义的色点")
+    }
+
+    @Test
+    fun thePreviewLineIsGoneUnderQ2b() {
         val grouped = textsOf(row(groupId = "g-1"), metaGroups = listOf(PROJECT))
-        assertTrue("项目" !in ungrouped, "未分组的行里不该出现任何组名")
-        assertTrue("项目" in grouped, "有组的行必须显示组名")
-        assertEquals(
-            listOf("项目"),
-            grouped - ungrouped,
-            "加一个分组只许多出一条组名 —— 多出别的（空行、占位符、分隔符）就是噪声",
-        )
-        assertEquals(emptyList(), ungrouped - grouped, "反向也要成立：未分组行没有组名以外的差异")
+        val ungrouped = textsOf(row(groupId = null))
+        assertTrue("预览一行" !in grouped, "Q2-B：预览行必须从条目上消失")
+        assertTrue("项目" !in grouped, "组名不再以文字出现（移进了色点语义）")
+        assertEquals(ungrouped, grouped, "分组只加一枚色点（语义），不多一行文字")
     }
 
     @Test
     fun unknownGroupRendersTheRawIdOnTheRow() {
-        val texts = textsOf(row(groupId = "g-404"), metaGroups = emptyList())
-        assertTrue("g-404" in texts, "组名查不到时行上要显示裸 id（诚实退化）")
-        assertTrue("项目" !in texts)
+        // 行上不再有组名文字；裸 id 走色点语义（诚实退化不变，只是换了通道）。
+        assertEquals(0, dotCount("分组：项目", row(groupId = "g-404")))
+        assertEquals(1, dotCount("分组：g-404", row(groupId = "g-404"), metaGroups = emptyList()))
     }
 
     @Test
     fun archivedAndGroupedRowShowsBothWithoutLosingTheTitle() {
-        val texts = textsOf(row(archived = true, groupId = "g-1"), metaGroups = listOf(PROJECT))
-        assertEquals(1, archivedBadgeCount(row(archived = true, groupId = "g-1")), "标记仍在")
-        assertTrue("项目" in texts, "组名仍在")
-        assertTrue("会话标题" in texts, "标题一个字都不许被挤掉")
-        assertTrue("预览一行" in texts)
+        val summary = row(archived = true, groupId = "g-1")
+        assertEquals(1, archivedBadgeCount(summary), "标记仍在")
+        assertEquals(1, dotCount("分组：项目", summary, metaGroups = listOf(PROJECT)), "组色点仍在")
+        assertTrue("会话标题" in textsOf(summary, metaGroups = listOf(PROJECT)), "标题一个字都不许被挤掉")
+        assertTrue("预览一行" !in textsOf(summary), "Q2-B：预览行必须消失")
     }
 
     // ------------------------------------------------------------ harness
@@ -163,6 +169,24 @@ class SessionRowArchiveUiTest {
             texts = collectTexts()
         }
         return texts
+    }
+
+    /**
+     * Q2-B：组名/裸 id 走**色点的读屏语义**（`分组：<名>`）。色点在行内是合并子节点，
+     * 它的 contentDescription 会并入行节点的合并语义，所以这里数语义树上的匹配数即可。
+     */
+    private fun dotCount(
+        description: String,
+        session: SessionSummary,
+        metaGroups: List<MetaGroup> = emptyList(),
+    ): Int {
+        var count = -1
+        runComposeUiTest {
+            setContent { SessionsScreenFor(session, metaGroups) }
+            waitForIdle()
+            count = onAllNodesWithContentDescription(description).fetchSemanticsNodes().size
+        }
+        return count
     }
 
     private fun archivedBadgeCount(session: SessionSummary): Int {

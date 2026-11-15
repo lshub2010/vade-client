@@ -108,12 +108,18 @@ class TopGlassGuardTest {
     @Test
     fun detailThreadIsContentPaddedNotContainerPadded() {
         val appShell = codeOf(src("commonMain/kotlin/vade/ui/shell/AppShell.kt"))
-        // pushed detail + two-pane Sessions + two-pane detail — all three hand the zone
-        // over as *content* padding so the thread spans the window and scrolls UNDER the
-        // glass (the g-glass fix; container padding cropped the viewport and killed the blur).
+        val routeTransition = codeOf(src("commonMain/kotlin/vade/ui/shell/RouteTransition.kt"))
+        // g-route-transition：AppShell 里剩两处（600–719 rail 单栏推入 + 双栏详情），
+        // 手机单栏的第三处详情随抽屉模型搬进 RouteTransition（常驻底层）——三处都必须把
+        // zone 作为 *content* padding 交出去，线程才能全出血滚进玻璃底下（g-glass 语义不变）。
         assertEquals(
-            3,
+            2,
             count(appShell, """contentPadding = PaddingValues\(top = TOP_BAR_ZONE\)"""),
+        )
+        assertEquals(
+            1,
+            count(routeTransition, """contentPadding = PaddingValues\(top = TOP_BAR_ZONE\)"""),
+            "抽屉的详情底层必须继续以 content padding 形态消费 TOP_BAR_ZONE",
         )
         // The other four destinations receive the shared insets object.
         assertEquals(4, count(appShell, """contentPadding = contentInsets"""))
