@@ -176,32 +176,33 @@ alpha 阶段的完整清单在 **[主仓 `docs/ALPHA.md` §八](https://github.c
 
 ## 许可
 
-**GNU General Public License v3.0 或更新版本（GPL-3.0-or-later）** —— 完整条款见 [`LICENSE`](LICENSE)。
+**Apache License 2.0** —— 完整条款见 [`LICENSE`](LICENSE)，署名与第三方声明见 [`NOTICE`](NOTICE)。
 
 ```
 Copyright (c) 2026 Vade contributors
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
 
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 ```
 
 ### 二次修改与再分发（必须标明原作者）
 
-派生作品**必须**保留本项目的版权声明与作者署名，并按 GPLv3 §5(a) 在显著位置说明：
+Apache-2.0 是宽松许可（可商用、可闭源衍生），但**署名不能省**：
 
-- 你**修改过**这份代码；
-- **修改的日期**；
-- 原始项目出处：**Vade contributors — https://github.com/lshub2010/vade-client**
+- 再分发时必须保留 [`LICENSE`](LICENSE) 与 [`NOTICE`](NOTICE)（§4(c)(d)）；
+- **凡改动过的文件，必须在文件内显著声明「你改过」**（§4(b)）；
+- 不得暗示原作者为你背书（§4(g)），不得使用项目商标（§6）。
 
-换句话说：**你可以改、可以商用、可以再分发，但不能抹掉原作者、不能把改过的版本说成原版、也不能改成闭源。**
-任何再分发的衍生版本同样受 GPL-3.0 约束。
+一句话：**可以改、可以商用、可以不开源，但不能抹掉原作者、不能把改过的版本说成原版。**
 
 ## 引用
 
@@ -239,8 +240,8 @@ GNU General Public License for more details.
 | **Tabler Icons**（icons-tabler-cmp / outline / filled） | 2.2.1 | **MIT** | 矢量图标，经 [composeicons](https://github.com/composablehorizons/composeicons) 打包 · 图标集本身 Copyright (c) 2018-2026 Tabler contributors |
 | **KernelSU**（浮动胶囊交互移植） | — | **Apache-2.0** | 阻尼拖拽指示器、按压缩放、速度拉伸、橡皮筋、内层阴影 · Copyright (c) 2023-2026 weishu & contributors · [KernelSU](https://github.com/tiann/KernelSU)（原实现改编自 compose-miuix-ui 的 `IosLiquidGlassNavigationBar`） |
 
-> **许可兼容性**：Apache-2.0 与 GPLv3 兼容（Apache-2.0 的专利条款不额外限制 GPLv3），MIT 兼容。
-> 本项目按 GPL-3.0-or-later 分发，上述组件的声明随源码与二进制一同保留。
+> **许可兼容性**：上述组件均为 Apache-2.0 / MIT，与本项目所选许可互不冲突。
+> 本项目按 Apache-2.0 分发，这些组件的版权与许可声明随源码与二进制一同保留（见 `NOTICE`）。
 
 ### HarmonyOS Sans（待定）
 若后续采用，需在此声明：本软件使用 HarmonyOS Sans 字体（© Huawei Device Co., Ltd.），
