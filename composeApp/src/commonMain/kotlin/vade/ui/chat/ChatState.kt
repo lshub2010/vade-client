@@ -205,8 +205,10 @@ class ChatState(
             val rows = channel.history(sessionId)
             live.seed(rows)
             // 用投影器的行序重建：快照行 + 加载期间已经到达的 live 行，一次到位、不叠行。
+            // A3 · 已投影的工具卡一并重建（按 call_id 幂等；同回合的 live 行可定位时插回其行后）。
             items.clear()
             live.messages.forEach { items += ChatItem.Message(it) }
+            live.toolItems.forEach { upsertToolItem(it.call) }
             phase = ChatPhase.Ready
             true
         } catch (error: CancellationException) {
@@ -1022,6 +1024,12 @@ class ChatState(
     /** 服务端 `request_id` → 卡片 id。确定性：重放幂等，不依赖事件到达顺序。 */
     private fun approvalCallId(requestId: String): String = "approval:$requestId"
 
+    /**
+     * A3 · `request_id` → 卡片 id 的**正查表**（resolved / required 都用它）：绑定卡 =
+     * 它那条工具卡的 `call_id`；映射不到的降级卡 = `approval:<request_id>`。
+     */
+    private val requestIdToCallId = HashMap<String, String>()
+
     /** [callId] 对应的服务端 `request_id`；null = 本地/夹具卡片（没有服务端审批请求）。 */
     fun approvalRequestId(callId: String): String? = approvalRequestIds[callId]
 
@@ -1137,16 +1145,28 @@ class ChatState(
     }
 
     /**
-     * 审批请求 → 内联卡（待批准）。`request_id`/`expires_at` 存进单一真相表；卡片插在
-     * 时间线尾部（当前时刻的位置）。子代理的审批广播在父会话流里（payload 的
-     * `session_id` 是父、`turn_id` 是子回合、`task_id`/`task_name` 命名任务）—— 处理
-     * 逻辑相同，卡片的 `turnId` 保留子回合事实。
+     * 审批请求 → 内联卡（待批准）。A3 归位：`turn.approval_required` **没有** `call_id`，
+     * 绑定靠 [bindableToolCardId]（同一回合 + 同一工具名 + 尚未绑定请求 + 仍在运行的工具
+     * 卡，取最近一条）——找到就把**那条工具卡原地升级**成审批卡（Running → PendingApproval，
+     * risk 用事件真值），不另建卡；映射不到时保持 B6 的尾部降级行为，卡 id 仍是
+     * `approval:<request_id>`（子代理审批广播在父会话流里、`turn_id` 是子回合，父会话
+     * 没有它的工具卡 —— 正是走降级的一类）。FULL args 不进卡片（见 [projectApprovalLifecycle]）。
      */
     private fun onApprovalRequired(p: TurnApprovalRequiredPayload) {
-        val callId = approvalCallId(p.requestId)
-        if (approvalRequestIds.containsKey(callId)) return // 重放/重复帧：幂等，不建第二张卡
+        if (requestIdToCallId.containsKey(p.requestId)) return // 重放/重复帧：幂等，不建第二张卡
+        val boundId = bindableToolCardId(p)
+        val callId = boundId ?: approvalCallId(p.requestId)
         approvalRequestIds[callId] = p.requestId
+        requestIdToCallId[p.requestId] = callId
         approvalExpiresAt[callId] = p.expiresAt
+        if (boundId != null) {
+            val index = items.indexOfFirst { it is ChatItem.Tool && it.call.id == boundId }
+            if (index >= 0) {
+                val call = (items[index] as ChatItem.Tool).call
+                items[index] = ChatItem.Tool(call.copy(state = ToolRunState.PendingApproval, risk = p.risk))
+            }
+            return
+        }
         items += ChatItem.Tool(
             ToolCall(
                 id = callId,
@@ -1162,13 +1182,36 @@ class ChatState(
     }
 
     /**
+     * A3 · 绑定目标：同一 `turn_id` + 同一工具名 + 还没绑定请求（`approvalRequestIds`
+     * 不含它）+ 仍在 Running 的工具卡，取**最早**一条（事件到达序；审批请求按调用序
+     * 发出，第 N 个请求对齐第 N 次调用 —— 同回合同工具并行调用时不会两个请求挤到
+     * 同一张卡上）。找不到 → null（调用方走尾部降级）。
+     */
+    private fun bindableToolCardId(p: TurnApprovalRequiredPayload): String? {
+        for (index in items.indices) {
+            val item = items[index]
+            if (item !is ChatItem.Tool) continue
+            val call = item.call
+            if (call.turnId == p.turnId &&
+                call.name == p.tool &&
+                call.state == ToolRunState.Running &&
+                !approvalRequestIds.containsKey(call.id)
+            ) {
+                return call.id
+            }
+        }
+        return null
+    }
+
+    /**
      * `turn.approval_resolved` 到达 → **服务端为准**：覆盖乐观值，并记下 `by`/`scope`
      * （归属行形如「admin 批准 · 本次会话内有效」——by 与决定方向、scope 都是服务端事实）。
-     * 已知 request 才处理；未知 request（父会话根本没见过它）不建卡、不崩。
+     * A3 · request → 卡片的解析走 [requestIdToCallId]：绑定卡（工具卡的 call_id）与
+     * 降级卡（`approval:<request_id>`）同一条路径收口。未知 request（父会话根本没见过它）
+     * 不建卡、不崩。
      */
     private fun onApprovalResolved(p: TurnApprovalResolvedPayload) {
-        val callId = approvalCallId(p.requestId)
-        if (!approvalRequestIds.containsKey(callId)) return
+        val callId = requestIdToCallId[p.requestId] ?: return
         val outcome = when (p.decision) {
             ApprovalDecision.APPROVE.raw -> ApprovalOutcome.Allowed
             ApprovalDecision.DENY.raw -> ApprovalOutcome.Denied

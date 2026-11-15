@@ -13,6 +13,10 @@ import vade.ui.protocol.TurnInterruptedPayload
 import vade.ui.protocol.TurnQueued
 import vade.ui.protocol.TurnStarted
 import vade.ui.protocol.TurnSuperseded
+import vade.ui.protocol.TurnToolCall
+import vade.ui.protocol.TurnToolCallPayload
+import vade.ui.protocol.TurnToolResult
+import vade.ui.protocol.TurnToolResultPayload
 import vade.ui.protocol.VadeEvent
 import vade.ui.protocol.VadeUsage
 
@@ -39,6 +43,15 @@ import vade.ui.protocol.VadeUsage
  *    new text is projected, 「已编辑」 is set, attachments are carried over; replay is
  *    de-duplicated by `superseded_by_message_id` (the RFC's dedupe key).
  *  - `turn.superseded` — the old row is marked 「旧版本」 and **kept**, never deleted.
+ *  - `turn.tool_call` (A3) — one [ChatItem.Tool] card per `call_id`, inserted **in event
+ *    arrival order** (seq discipline makes projection order == arrival order); the card
+ *    body carries only wire facts: tool name + `args_preview` (the redacted ≤512B digest
+ *    — FULL args travel only in `turn.approval_required` and never land on a card).
+ *    Replay of the same `call_id` updates the card **in place** — never a second card.
+ *  - `turn.tool_result` (A3) — updates **the same card** (indexed by `call_id`) to
+ *    `Succeeded` / `Failed` with the wire summary/code/duration. A result for a call the
+ *    projector never saw creates nothing (a card without a tool name would be fabricated
+ *    data) and records [TranscriptAnomalyKind.UnknownToolResult].
  *
  * Seq discipline (RFC-0007 §5.5): an event is projected only when `seq == lastSeq + 1`.
  *  - `seq <= lastSeq` (reconnect replay / duplicate frame) → dropped, [duplicates]
@@ -73,8 +86,18 @@ class LiveTranscript(
     private val pending = ArrayDeque<VadeEvent>()
     private val recorded = ArrayList<TranscriptAnomaly>()
 
+    /**
+     * A3 · `call_id` → 投影中的工具卡。**插入序 = 首次到达序**（事件按 seq 投影，到达序
+     * 就是 seq 序）；同一 `call_id` 重放按原位更新，绝不建第二张卡。
+     */
+    private val toolCalls = LinkedHashMap<String, ToolCall>()
+
     /** ids the last [apply] added or replaced — empty when the event was dropped. */
     var changedIds: Set<String> = emptySet()
+        private set
+
+    /** A3 · tool `call_id`s the last [apply] added or replaced — empty when nothing changed. */
+    var changedToolIds: Set<String> = emptySet()
         private set
 
     /** Highest contiguous seq applied; `seq <= lastSeq` never projects twice. */
@@ -92,6 +115,13 @@ class LiveTranscript(
     /** The current transcript, in row order (seed order first, live rows appended). */
     val messages: List<ChatMessage>
         get() = rows.values.toList()
+
+    /** A3 · [callId] 的投影工具卡；null = 该 call 从未以 `turn.tool_call` 到达。 */
+    fun toolCallById(callId: String): ToolCall? = toolCalls[callId]
+
+    /** A3 · 全部工具卡（首次到达序）—— 时间线重建（`ChatState.loadHistory`）时的卡源。 */
+    val toolItems: List<ChatItem.Tool>
+        get() = toolCalls.values.map { ChatItem.Tool(it) }
 
     /** RFC-0005 usage of a finalized turn (`completed` / `failed` / `interrupted`). */
     fun usageOf(turnId: String): VadeUsage? = usages[turnId]
@@ -119,6 +149,7 @@ class LiveTranscript(
      */
     fun apply(event: VadeEvent): List<ChatMessage> {
         changedIds = emptySet()
+        changedToolIds = emptySet()
         val seq = event.seq
         if (seq <= lastSeq) {
             // Already applied (exact duplicate or older replay frame) — idempotent drop.
@@ -187,10 +218,12 @@ class LiveTranscript(
             is TurnInterrupted -> onInterrupted(event.payload)
             is MessageEdited -> onEdited(event)
             is TurnSuperseded -> onSuperseded(event)
+            is TurnToolCall -> onToolCall(event.payload)
+            is TurnToolResult -> onToolResult(event)
             // turn.queued / turn.started / turn.cancelled carry no renderable text (user
-            // bubbles are the local echo / snapshot rows); every other topic (tools,
-            // approvals, tasks, queue, sessions, subagents, …) is not transcript content.
-            // Deliberate ignores — not anomalies, and never a crash.
+            // bubbles are the local echo / snapshot rows); every other topic (approvals —
+            // ChatState's inline approval cards —, tasks, queue, sessions, subagents, …)
+            // is not transcript content. Deliberate ignores — not anomalies, never a crash.
             is TurnQueued, is TurnStarted, is TurnCancelled -> Unit
             else -> Unit
         }
@@ -258,6 +291,60 @@ class LiveTranscript(
         }
         rows[id] = previous.copy(superseded = true)
         changedIds += id
+    }
+
+    /**
+     * A3 · `turn.tool_call` → 一条工具卡。**按事件到达顺序插入**（seq 纪律保证投影序 ==
+     * 到达序）；同一 `call_id` 再次到达（重放/重发帧）→ 原位更新，绝不出现第二张卡。
+     * 卡体只穿事件带来的事实：参数摘要用 `args_preview`（≤512B 脱敏 JSON，RFC-0006
+     * 1.1.0 —— 这就是 UI 的「digest 口径」），FULL 参数只走 `turn.approval_required`，
+     * 永远不上卡。`started_at` 是 unix ms 而模型字段是 ISO-8601：不换算、不上卡（不编
+     * 数据）。状态/结果只前进不回退 —— result 之后的重放不许把卡打回 Running。
+     */
+    private fun onToolCall(p: TurnToolCallPayload) {
+        val previous = toolCalls[p.callId]
+        toolCalls[p.callId] = ToolCall(
+            id = p.callId,
+            turnId = p.turnId,
+            name = p.tool,
+            argsPreview = p.argsPreview,
+            argsPreviewMode = p.argsPreviewMode ?: "redacted",
+            argsPreviewRedacted = p.argsPreviewRedacted ?: emptyList(),
+            argsPreviewTruncated = p.argsPreviewTruncated ?: false,
+            batchId = p.batchId,
+            risk = previous?.risk ?: "low",
+            state = previous?.state ?: ToolRunState.Running,
+            result = previous?.result,
+        )
+        changedToolIds += p.callId
+    }
+
+    /**
+     * A3 · `turn.tool_result` → **就地更新同一条卡**（按 `call_id` 索引），状态
+     * Succeeded / Failed 携带 wire 的 summary / code / duration_ms / truncated /
+     * result_ref；重复 result 帧写同值 = 幂等。call 未见过时不建卡 —— result 没有
+     * 工具名/参数摘要，凭空造卡体就是编数据；记 [TranscriptAnomalyKind.UnknownToolResult]
+     * 留痕（零静默）。
+     */
+    private fun onToolResult(event: TurnToolResult) {
+        val p = event.payload
+        val previous = toolCalls[p.callId]
+        if (previous == null) {
+            record(TranscriptAnomalyKind.UnknownToolResult, event.seq, "turn.tool_result for unknown call ${p.callId}")
+            return
+        }
+        toolCalls[p.callId] = previous.copy(
+            state = if (p.ok) ToolRunState.Succeeded else ToolRunState.Failed,
+            result = ToolResult(
+                ok = p.ok,
+                summary = p.summary,
+                durationMs = p.durationMs,
+                truncated = p.truncated ?: false,
+                resultRef = p.resultRef,
+                code = p.code,
+            ),
+        )
+        changedToolIds += p.callId
     }
 
     // --- row building -----------------------------------------------------------
@@ -349,6 +436,13 @@ enum class TranscriptAnomalyKind {
 
     /** `turn.superseded` for a turn the transcript does not know. */
     UnknownSupersedeTarget,
+
+    /**
+     * A3 · `turn.tool_result` for a call the projector never saw (`turn.tool_call` never
+     * arrived): no card is created — a card without a tool name/args would be fabricated
+     * data. The seq still advances.
+     */
+    UnknownToolResult,
 }
 
 /**
@@ -378,5 +472,39 @@ fun ChatState.applyLive(
         val index = items.indexOfFirst { it is ChatItem.Message && it.message.id == id }
         if (index >= 0) items[index] = ChatItem.Message(message) else items += ChatItem.Message(message)
     }
+    // A3 · 工具卡 upsert（按 call_id 幂等，见 [upsertToolItem]）。假源时间线一行不动：
+    // fixtures 自己拥有工具卡，事件投影不进演示时间线。
+    if (isRealSource) {
+        for (callId in transcript.changedToolIds) {
+            val call = transcript.toolCallById(callId) ?: continue
+            upsertToolItem(call)
+        }
+    }
     return snapshot
+}
+
+/**
+ * A3 · 工具卡按 `call_id` upsert 到时间线：已在 → 原位替换（`turn.tool_result` 就地改
+ * 状态的关键）；不在 → 插到**同一回合的最后一条条目之后**（回合块内保持事件到达序 ——
+ * 后到的用户气泡/其他回合的条目不会被它挤开），该回合还没有任何条目时才追加到尾部。
+ */
+fun ChatState.upsertToolItem(call: ToolCall) {
+    val item = ChatItem.Tool(call)
+    val existing = items.indexOfFirst { it is ChatItem.Tool && it.call.id == call.id }
+    if (existing >= 0) {
+        items[existing] = item
+        return
+    }
+    var insertAt = -1
+    for (index in items.indices) {
+        if (itemTurnId(items[index]) == call.turnId) insertAt = index + 1
+    }
+    if (insertAt < 0) items += item else items.add(insertAt, item)
+}
+
+/** 条目所属回合：live 行剥前缀，工具卡读 `turnId`；快照行剥不动 → null（不匹配）。 */
+private fun itemTurnId(item: ChatItem): String? = when (item) {
+    is ChatItem.Message ->
+        item.message.id.removePrefix(LiveTranscript.LIVE_ID_PREFIX).takeIf { it != item.message.id }
+    is ChatItem.Tool -> item.call.turnId
 }
