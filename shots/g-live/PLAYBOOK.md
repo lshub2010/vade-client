@@ -91,12 +91,26 @@ core 可达 + 配对码有效 → 看到的是 core 里的真会话行；不可�
 
 ### 2b. Android（intent extra 优先，env 兜底）
 
+**g-rescue-text（2026-11-15）修正**：旧版手册这条命令的键名是**错的**——解析器读的是
+**裸键** `source` / `host` / `port` / `pair_code`（`SourceKeys` 真相表；`intent.extras?.getString()`
+逐键取，键名来自 `SourceKeys` 常量），带 `vade.` 前缀的键根本取不到，照抄会**静默回落假数据**
+（审计 G4，两次复现）。历史原样保留（删除线），不抹记录：
+
+> ~~adb shell am start -n vade.ui/.MainActivity \~~
+> ~~  --es vade.source real \~~
+> ~~  --es vade.host 192.168.1.20 \~~
+> ~~  --es vade.port 18744 \~~
+> ~~  --es vade.pair_code \<stdout第2行的pair_code\>~~
+
+修正后的命令（裸键，照抄可连；键名与 `SourceKeys` 同源，守卫测试
+`SelfRescueRemedyGuardTest` 钉住）：
+
 ```bash
 adb shell am start -n vade.ui/.MainActivity \
-  --es vade.source real \
-  --es vade.host 192.168.1.20 \
-  --es vade.port 18744 \
-  --es vade.pair_code <stdout第2行的pair_code>
+  --es source real \
+  --es host 192.168.1.20 \
+  --es port 18744 \
+  --es pair_code <stdout第2行的pair_code>
 ```
 
 `MainActivity.onCreate` 在组合前把 `intent?.extras` 装进 `AndroidSourceEnv`
@@ -154,7 +168,9 @@ PATH=/d/Hermes/tools/gradle-9.6.1/bin:$PATH gradle :composeApp:desktopTest \
 1. **没有配对码 = 纯 JSON 客户端说不通话**。`RealSessionSource(host, port)` 便捷构造器传
    `browserSession = null`（`data/RealSessionSource.kt:80-87`），对真 core 的 WS 升级会被
    当设备端走 Noise（`server.py:314-317`）。g-live 的开关因此加了 `VADE_PAIR_CODE` /
-   `vade.pair_code` / `?pair_code=`，从 `SourceConfig.kt` 的 `sessionSourceFrom` 直接构造带
+   裸键 `pair_code`（Android extra 与 `?pair_code=`；~~`vade.pair_code`~~ 是 g-rescue-text
+   修前的误写——解析器从不读带 `vade.` 前缀的键），从 `SourceConfig.kt` 的
+   `sessionSourceFrom` 直接构造带
    `BrowserPairing` 的 `VadeClientConfig`。实测：不带配对码时 WS 能升级但帧全乱，最终
    `session/list` 以 `TIMEOUT` 失败横幅收场（不是崩溃，也不是假数据）。
 2. **attach(sessionId = null) 铸的新会话没有标题**：core 的 `attach` 走 `create_session(title=None)`
@@ -191,7 +207,7 @@ PATH=/d/Hermes/tools/gradle-9.6.1/bin:$PATH gradle :composeApp:desktopTest \
 | --- | --- | --- | --- |
 | 不给 | `Fake` | `Fake` | `Fake` |
 | `source=real`（无 host/port） | `Real(127.0.0.1, 8443)` | 同左 | 同左 |
-| `source=real&host=10.0.0.5&port=9911` | `VADE_SOURCE=real VADE_HOST=10.0.0.5 VADE_PORT=9911` | `--es vade.source real --es vade.host 10.0.0.5 --es vade.port 9911` | `?source=real&host=10.0.0.5&port=9911` |
+| `source=real&host=10.0.0.5&port=9911` | `VADE_SOURCE=real VADE_HOST=10.0.0.5 VADE_PORT=9911` | `--es source real --es host 10.0.0.5 --es port 9911`（g-rescue-text 修前此格误写为 `--es vade.source real …`——键带 `vade.` 前缀解析器不读） | `?source=real&host=10.0.0.5&port=9911` |
 | `port=8443x` | 抛 `IllegalArgumentException`（不静默回退） | 同左 | 同左 |
 
 钉死这三端一致性的测试：`desktopTest/kotlin/vade/ui/data/SourceConfigParseTest.kt`

@@ -17,9 +17,9 @@ import vade.ui.protocol.VadeException
  * differ per platform (`expect fun rawSourceStrings`):
  *
  * - desktop: `VADE_SOURCE` / `VADE_HOST` / `VADE_PORT` (+ `VADE_PAIR_CODE`) env vars;
- * - Android: `vade.source` / `vade.host` / `vade.port` (+ `vade.pair_code`) intent
- *   extras FIRST, the same env vars as fallback (installed by `MainActivity` into
- *   [AndroidSourceEnv] before composition);
+ * - Android: intent extras with the BARE keys `source` / `host` / `port` (+ `pair_code`)
+ *   FIRST (the same table as wasm — [SourceKeys]), the same env vars as fallback
+ *   (installed by `MainActivity` into [AndroidSourceEnv] before composition);
  * - wasm: `?source=real&host=...&port=...&pair_code=...` URL query.
  *
  * Everything else — the [SourceSpec] type, the grammar, the defaults, the
@@ -47,6 +47,19 @@ object SourceKeys {
     const val HOST = "host"
     const val PORT = "port"
     const val PAIR_CODE = "pair_code"
+
+    /**
+     * g-rescue-text · 真相表：解析器接受的**全部**裸键，顺序与 [SourceConfig.parse] 的
+     * 参数一致。Android 的 intent extras（Android actual 逐键读 [SourceKeys]）与 wasm 的
+     * URL query（[rawStringsFromQuery] 用同一张表）共用它。
+     *
+     * 任何**写给用户看**的键名（自救卡的 adb 命令、Wasm query 示例、文档）都必须从这里
+     * 派生，不许手写第二份——手写第二份正是 g-rescue-text 修掉的那类漂移：卡上教
+     * `--es vade.source real`，解析器读的却是裸键 `source`，用户照抄 → extras 里没有
+     * 解析器要找的键 → **静默回落假数据**，还以为连上了（两次复现）。
+     * 守卫测试 `SelfRescueRemedyGuardTest` 钉住「文案里的键集合 == 这张表」。
+     */
+    val acceptedKeys: List<String> = listOf(SOURCE, HOST, PORT, PAIR_CODE)
 }
 
 /**

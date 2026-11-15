@@ -43,9 +43,11 @@ class MainActivity : ComponentActivity() {
         setContent {
             // g-live: install the launch intent's extras BEFORE composition so the
             // shared switch (vade.ui.data.SourceConfig) can read them — extras beat
-            // env vars per key (see SourceConfig.android.kt). Doc comment below the
-            // class kdoc: the switch is `vade.source=real` + `vade.host`/`vade.port`
-            // (+ `vade.pair_code`), e.g. from `adb shell am start --es ...`.
+            // env vars per key (see SourceConfig.android.kt). Comment below the
+            // class kdoc: the switch is the BARE extra keys `source=real` +
+            // `host`/`port` (+ `pair_code`) — the same `SourceKeys` table the
+            // self-rescue card copy derives from — e.g. from
+            // `adb shell am start --es source real ...`.
             AndroidSourceEnv.intentExtras = intent?.extras
             Box(
                 Modifier

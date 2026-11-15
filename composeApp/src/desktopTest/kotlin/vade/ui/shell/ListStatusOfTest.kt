@@ -264,10 +264,12 @@ class ListStatusOfTest {
     @Test
     fun remedyNamesTheOtherTwoTargetsChannels() {
         // 三个目标的通道不一样（desktop env / Android intent extra / wasm URL query，见
-        // g-live PLAYBOOK §2）。桌面命令 + 一句「另两端怎么传」是诚实的写法；
-        // 假装一条命令通吃会在 Android/wasm 上把用户带沟里。
+        // g-live PLAYBOOK §2）。每端给一条**可整行照抄**的命令/示例是诚实的写法；假装一条
+        // 命令通吃会在 Android/wasm 上把用户带沟里。键名与解析器同源的守卫在
+        // SelfRescueRemedyGuardTest（g-rescue-text：这里曾断言漂移的 `vade.pair_code`——
+        // 测试自己在守护缺陷，键名断言全部移进守卫测试、从 SourceKeys 派生）。
         val failed = assertIs<ListStatus.Failed>(statusOf(phase = LoadPhase.Failed, error = unreachable))
-        assertTrue(failed.remedy.contains("vade.pair_code"), "Android 的 intent extra 要提: ${failed.remedy}")
-        assertTrue(failed.remedy.contains("pair_code=<码>"), "Wasm 的 query 要提: ${failed.remedy}")
+        assertTrue(failed.remedy.contains("adb shell am start"), "Android 的整行照抄命令要提: ${failed.remedy}")
+        assertTrue(failed.remedy.contains("<配对码>"), "两端命令都带配对码占位符: ${failed.remedy}")
     }
 }

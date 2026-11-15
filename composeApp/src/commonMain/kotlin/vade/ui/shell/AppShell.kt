@@ -47,6 +47,7 @@ import vade.ui.data.FakeSessionSource
 import vade.ui.data.ModuleCatalogProvider
 import vade.ui.data.RawSourceStrings
 import vade.ui.data.SourceConfig
+import vade.ui.data.SourceKeys
 import vade.ui.data.VadeErrorCategory
 import vade.ui.data.rawSourceStrings
 import vade.ui.destinations.ActivityScreen
@@ -547,7 +548,7 @@ internal fun portOf(raw: RawSourceStrings): String =
     raw.port?.trim()?.takeIf { it.isNotEmpty() } ?: SourceConfig.DEFAULT_PORT.toString()
 
 /**
- * 连不上时那张「自救卡」的正文：一行**可照抄**的启动命令 + 配对码从哪取。
+ * 连不上时那张「自救卡」的正文：每端一条**可整行照抄**的启动命令/示例 + 配对码从哪取。
  *
  * 首次真实验收的结论是「第一次用的人连不上」——唯一的通道是 `VADE_SOURCE` /
  * `VADE_PAIR_CODE` 环境变量，而任何用户文档都没写过（D3/D4）。运行期改配对码在架构上
@@ -559,11 +560,27 @@ internal fun portOf(raw: RawSourceStrings): String =
  *  - 配对码只出现为占位符 `<配对码>`（**绝不回显**：它是一次性凭证，`LoadError.detail`
  *    里也可能带码，所以这里不拼 detail 进命令）；
  *  - 已经给过码仍失败 → 明说「一次性码可能已过期」，这是最常见的原因；
- *  - Android / Wasm 的通道与桌面不同，一句带过，不在桌面命令里假装统一。
+ *  - Android / Wasm 的通道与桌面不同，各给一条自己的命令/示例，不在桌面命令里假装统一。
+ *
+ * g-rescue-text（根治键名漂移）：下面三条命令里的**键名与模式词全部派生自单一真相**——
+ * 裸键取 [SourceKeys]（Android actual 逐键读它、wasm query 语法用它，同一张表），模式词
+ * 取 [SourceConfig.REAL]（[SourceConfig.parse] 只认这个词）。之前 Android 那句是手写的
+ * `--es vade.source real --es vade.pair_code <码>`，而解析器读的是裸键 `source` /
+ * `pair_code`——用户照抄 → extras 里根本没有解析器要找的键 → **静默回落假数据**（审计
+ * G4，两次复现）。键名从此不再手写；守卫测试 `SelfRescueRemedyGuardTest` 钉住
+ * 「文案里的键集合 == [SourceKeys.acceptedKeys]」与「照抄命令 → parse 得真源」。
  */
 internal fun selfRescueRemedy(raw: RawSourceStrings): String {
-    val command = "VADE_SOURCE=real VADE_HOST=${hostOf(raw)} VADE_PORT=${portOf(raw)} " +
+    val host = hostOf(raw)
+    val port = portOf(raw)
+    val desktop = "VADE_SOURCE=${SourceConfig.REAL} VADE_HOST=$host VADE_PORT=$port " +
         "VADE_PAIR_CODE=<配对码> gradle :composeApp:run"
+    val android = "adb shell am start -n vade.ui/.MainActivity " +
+        "--es ${SourceKeys.SOURCE} ${SourceConfig.REAL} " +
+        "--es ${SourceKeys.HOST} $host --es ${SourceKeys.PORT} $port " +
+        "--es ${SourceKeys.PAIR_CODE} <配对码>"
+    val wasm = "?${SourceKeys.SOURCE}=${SourceConfig.REAL}&${SourceKeys.HOST}=$host" +
+        "&${SourceKeys.PORT}=$port&${SourceKeys.PAIR_CODE}=<配对码>"
     val expired = if (raw.pairCode != null) {
         "已经给了配对码仍连不上：一次性码可能已用或过期，回 core 重新取一个。\n"
     } else {
@@ -571,10 +588,12 @@ internal fun selfRescueRemedy(raw: RawSourceStrings): String {
     }
     return expired +
         "用环境变量重连（桌面照抄这一行）：\n" +
-        command + "\n" +
-        "配对码 = core 启动后 stdout 里 `pair_code=` 那一行。Android 用 " +
-        "`--es vade.source real --es vade.pair_code <码>`，Wasm 用 URL query " +
-        "`?source=real&pair_code=<码>`。"
+        desktop + "\n" +
+        "配对码 = core 启动后 stdout 里 `pair_code=` 那一行。\n" +
+        "Android 照抄这一行：\n" +
+        android + "\n" +
+        "Wasm 照抄这段 query（拼在页面 URL 后）：\n" +
+        wasm
 }
 
 @Composable
