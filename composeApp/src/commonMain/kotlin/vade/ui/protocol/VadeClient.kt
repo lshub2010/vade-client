@@ -143,7 +143,17 @@ internal enum class VadeMethod(val wire: String) {
     SESSION_GROUP_DELETE("session/group.delete"),
     SESSION_GROUP_ASSIGN("session/group.assign"),
     SESSION_SEARCH("session/search"),
+    // RFC-0016 · blob credential minting — contract 1.7.0 registered `ui/blob.token`
+    // in directions.ui_to_core. This entry retires the client's last raw-frame RPC:
+    // the old blobTokenProbe deliberately bypassed this table while the submodule pin
+    // lagged at 1.6.0 (the coverage guard would have gone red otherwise).
+    BLOB_TOKEN("ui/blob.token"),
 }
+
+/** RFC-0016 §4 `ui/blob.token` params：`ttl_s int 60..900`（可选，缺省 600）。 */
+internal const val BLOB_TOKEN_MIN_TTL_S: Int = 60
+internal const val BLOB_TOKEN_MAX_TTL_S: Int = 900
+internal const val BLOB_TOKEN_DEFAULT_TTL_S: Int = 600
 
 /**
  * The Vade client protocol layer: JSON-RPC 2.0 over WebSocket (rpc.json §transport/
@@ -628,30 +638,36 @@ class VadeClient(
         call(VadeMethod.UI_MODULES, buildJsonObject { }) { it }
 
     /**
-     * `ui/blob.token` 的**能力探测**（RFC-0004 §4.5 / `DRAFT-blob-token.md`：从已认证
-     * ws 会话为原生设备铸一个 600 s 的 blob Bearer —— 附件上传走 `/ui/blob*` 数据面
-     * HTTP 的唯一合法凭据来源）。
+     * `ui/blob.token`（RFC-0016 §4；契约 **1.7.0** 起登记在 `directions.ui_to_core`）：
+     * 从已认证 ws 会话为原生设备铸一个 blob Bearer（`ttl_s` 秒，默认 600）—— 附件上传
+     * 走 `/ui/blob*` 数据面 HTTP 的唯一合法凭据来源。
      *
-     * 这个方法**故意不进 [VadeMethod]**：契约（submodule 当前 pin）的 `ui_to_core` 还没有
-     * 它（`DRAFT-blob-token.md` 是提案、未登记），[VadeContractCoverageGuardTest] 会把
-     * enum 与契约逐名对齐，加进去就红 —— 所以它只作为裸帧发出，这是全客户端唯一一条
-     * 不经 [VadeMethod] 的出站 RPC。params 固定 `{}`（`ttl` 省略 = 契约默认 600 s）。
+     * [VadeMethod.BLOB_TOKEN] 已正式登记，本方法走 [call] 的普通路径（与文件内其余
+     * wrapper 同一条路；曾经的裸帧绕行是契约还钉在 1.6.0 时的临时手段，随 1.7.0 收掉）。
+     * 名字保留 "Probe"：消费方 `data/BlobUploadCapability` 仍把它当**能力探测**用 ——
+     * 老 core（RFC-0016 之前）未注册它。
      *
-     * 探测的三种结局（消费方 `data/BlobUploadCapability`）：
-     *  - 老 core 未注册它 → [VadeException.isMethodMissing]（今天的 core 答
-     *    `NOT_FOUND` + `unknown method 'ui/blob.token'`，实跑钉住）→ 降级「该 core 不支持附件上传」；
+     * params 只带 `ttl_s`（契约 1.7.0：`int 60..900`，可选、默认 600；**其余任何键
+     * core 一律 INVALID_ARGUMENT 拒掉** —— 这是铸凭据的方法，静默忽略参数会让客户端
+     * 误以为拿到了它没拿到的东西）。[ttlS] 越界在这里就拒（不上线，同
+     * `SubagentListParams.limit` 的纪律）。
+     *
+     * 三种结局（消费方 `data/BlobUploadCapability`）：
+     *  - 老 core 未注册它 → [VadeException.isMethodMissing]（真实形态 `NOT_FOUND` +
+     *    `unknown method 'ui/blob.token'`，实跑钉住）→ 降级「该 core 不支持附件上传」；
      *  - 回包成功 → `{token, expires_at, max_bytes, endpoints{…}}` 原文（本层不解码；
-     *    HTTP 凭据接线是 shell 的下一步）；
-     *  - 其它失败（TIMEOUT / UNAVAILABLE / …）→ [VadeException] 原样穿透 —— 真故障，
-     *    绝不当「不支持」。
+     *    token 缓存至 `expires_at` 前 30 s 的语义由 data 层的 `BlobUploadGate` 负责）；
+     *  - 其它失败（TIMEOUT / UNAVAILABLE / PERMISSION_DENIED / …）→ [VadeException]
+     *    原样穿透 —— 真故障，绝不当「不支持」。
      */
-    suspend fun blobTokenProbe(): JsonObject {
-        val result = rpc("ui/blob.token", buildJsonObject { }, config.requestTimeoutMs)
-        return result as? JsonObject
-            ?: throw VadeException(
-                VadeErrorCodes.PROTOCOL_MISMATCH,
-                "result of ui/blob.token is not an object: $result",
+    suspend fun blobTokenProbe(ttlS: Int = BLOB_TOKEN_DEFAULT_TTL_S): JsonObject {
+        if (ttlS !in BLOB_TOKEN_MIN_TTL_S..BLOB_TOKEN_MAX_TTL_S) {
+            throw VadeException(
+                VadeErrorCodes.INVALID_ARGUMENT,
+                "params.ttl_s must be in $BLOB_TOKEN_MIN_TTL_S..$BLOB_TOKEN_MAX_TTL_S, got $ttlS",
             )
+        }
+        return call(VadeMethod.BLOB_TOKEN, buildJsonObject { put("ttl_s", ttlS) }) { it }
     }
 
 suspend fun uiStateGet(params: StateGetParams): StateGetResult =

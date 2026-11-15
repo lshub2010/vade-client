@@ -37,10 +37,12 @@ import kotlin.test.assertTrue
  * **绝不**被降级成「不支持」。
  *
  * 三层都钉住：
- *  1. [BlobUploadGate]（探测结论缓存：不支持粘住、真故障不缓存、token 保持 null）；
+ *  1. [BlobUploadGate]（探测结论缓存：不支持粘住、真故障不缓存、token 缓存至
+ *     `expires_at` 前 30 s、过期重铸、token 保持 null 的那些格）；
  *  2. [CapabilityGatedUploader]（降级文案 + 零字节触碰 + 放行委托）；
- *  3. `VadeClient.blobTokenProbe` 的**线上形态**（发出的方法名逐字 = `ui/blob.token`，
- *     错误帧两种形态都能到 [isMethodMissing]）。
+ *  3. `VadeClient.blobTokenProbe` 的**线上形态**（类型化调用、走 `VadeMethod.BLOB_TOKEN`：
+ *     发出的方法名逐字 = `ui/blob.token` 且 params 只有 `ttl_s`，错误帧两种形态都能到
+ *     [isMethodMissing]）。
  */
 class BlobUploadCapabilityTest {
 
@@ -127,13 +129,17 @@ class BlobUploadCapabilityTest {
 
     @Test
     fun availableGateExtractsTheToken() = runBlocking {
-        val gate = BlobUploadGate {
-            buildJsonObject {
-                put("token", "tok-abc123def")
-                put("expires_at", 1_700_000_600_000L)
-                put("max_bytes", 10_485_760L)
-            }
-        }
+        val gate = BlobUploadGate(
+            probe = {
+                buildJsonObject {
+                    put("token", "tok-abc123def")
+                    put("expires_at", 1_700_000_600_000L)
+                    put("max_bytes", 10_485_760L)
+                }
+            },
+            // 距 expires_at 恰 600 s（> 30 s 余量）—— 新鲜窗口内，token 才会交出。
+            nowMs = { 1_700_000_000_000L },
+        )
         assertIs<BlobUploadSupport.Available>(gate.ensureProbed())
         assertEquals("tok-abc123def", gate.token)
     }
@@ -219,7 +225,7 @@ class BlobUploadCapabilityTest {
         assertEquals(listOf("u-1"), recorder.calls)
     }
 
-    // ------------------------------------------------- 3. 线上形态：blobTokenProbe
+    // ------------------------------------------------- 3. 线上形态：类型化 blobTokenProbe（VadeMethod.BLOB_TOKEN）
 
     @Test
     fun blobTokenProbeRidesTheExactMethodNameAndSurfacesTheShippedShape() = runBlocking {
@@ -233,9 +239,13 @@ class BlobUploadCapabilityTest {
         assertEquals(
             "ui/blob.token",
             requestOf(transport.record[0]).first,
-            "探测线上方法名必须逐字是 ui/blob.token（RFC-0004 §4.5 / DRAFT-blob-token）",
+            "探测线上方法名必须逐字是 ui/blob.token（RFC-0016 §4，契约 1.7.0 登记）",
         )
-        assertEquals("{}", requestOf(transport.record[0]).second, "params 固定 {}（ttl 省略 = 默认 600 s）")
+        assertEquals(
+            """{"ttl_s":600}""",
+            requestOf(transport.record[0]).second,
+            "params 只有 ttl_s（= 契约默认 600；其余任何键 core 都会 INVALID_ARGUMENT 拒掉）",
+        )
         transport.push(
             errorFrame(idOf(transport.record[0]), VadeErrorCodes.NOT_FOUND, "unknown method 'ui/blob.token'"),
         )
@@ -278,5 +288,137 @@ class BlobUploadCapabilityTest {
         )
         val reply: JsonObject = deferred.await()
         assertEquals("tok-abc123def", reply.strStrict("token"), "成功回包原文上交（本层不解码）")
+    }
+
+    @Test
+    fun outOfRangeTtlIsRefusedHereNotOnTheWire() = runBlocking {
+        val factory = FakeTransportFactory()
+        val (client, transport) = connectedClient(factory)
+        val failure = assertFailsWith<VadeException> { client.blobTokenProbe(ttlS = 10) }
+        assertEquals(VadeErrorCodes.INVALID_ARGUMENT, failure.code)
+        assertTrue(
+            transport.record.isEmpty(),
+            "越界 ttl 在客户端就拒（契约 60..900）—— 一帧都不许上线",
+        )
+    }
+
+    // ------------------------------------------------- 4. token 缓存：expires_at 前 30 s
+
+    @Test
+    fun freshTokenIsReusedWithoutReminting() = runBlocking {
+        var now = 1_000_000_000_000L
+        var mints = 0
+        val gate = BlobUploadGate(
+            probe = {
+                mints += 1
+                buildJsonObject { put("token", "tok-$mints"); put("expires_at", now + 600_000L) }
+            },
+            nowMs = { now },
+        )
+        gate.ensureProbed()
+        assertEquals("tok-1", gate.token, "新鲜（距到期 600 s > 30 s 余量）→ 交出 token")
+        now += 5_000
+        gate.ensureProbed()
+        assertEquals(1, mints, "新鲜窗口内复用缓存，不发第二帧")
+        assertEquals("tok-1", gate.token)
+    }
+
+    @Test
+    fun exactlyAtThe30sMarginCountsAsStale() = runBlocking {
+        var mints = 0
+        val gate = BlobUploadGate(
+            probe = {
+                mints += 1
+                buildJsonObject { put("token", "tok-$mints"); put("expires_at", 2_000_000_000_000L) }
+            },
+            nowMs = { 2_000_000_000_000L - BLOB_TOKEN_REFRESH_MARGIN_MS }, // 恰好 30 s
+        )
+        gate.ensureProbed()
+        assertNull(gate.token, "now == expires_at - 30s：边界不算新鲜（判定是严格 <）")
+        gate.ensureProbed()
+        assertEquals(2, mints, "越过余量 → 下一次取凭据即重铸")
+        assertNull(gate.token, "重铸的回包仍是同一个 expires_at：此刻仍在余量内 → 不交出")
+    }
+
+    @Test
+    fun tokenIsRemintedInsideTheMarginAndFreshAgain() = runBlocking {
+        var now = 1_000_000_000_000L
+        var mints = 0
+        val gate = BlobUploadGate(
+            probe = {
+                mints += 1
+                buildJsonObject { put("token", "tok-$mints"); put("expires_at", now + 600_000L) }
+            },
+            nowMs = { now },
+        )
+        gate.ensureProbed()
+        assertEquals("tok-1", gate.token)
+        now = 1_000_000_585_000L // 距到期 15 s —— 已进入 30 s 余量
+        gate.ensureProbed()
+        assertEquals(2, mints, "越过 30 s 余量 → 重铸")
+        assertEquals("tok-2", gate.token, "重铸的 expires_at = now + 600 s → 再次新鲜")
+    }
+
+    @Test
+    fun expiredTokenIsNeverServedAndNextUploadRemints() = runBlocking {
+        var now = 1_000_000_000_000L
+        var mints = 0
+        val gate = BlobUploadGate(
+            probe = {
+                mints += 1
+                buildJsonObject { put("token", "tok-$mints"); put("expires_at", now + 600_000L) }
+            },
+            nowMs = { now },
+        )
+        gate.ensureProbed()
+        assertEquals("tok-1", gate.token)
+        now += 700_000 // 已过期
+        assertNull(gate.token, "已过期：绝不交出失效凭据")
+        gate.ensureProbed()
+        assertEquals(2, mints, "过期后下一次上传重铸（可重试语义原样保留）")
+        assertEquals("tok-2", gate.token)
+    }
+
+    @Test
+    fun replyWithoutExpiresAtIsNeverServedAsAFreshToken() = runBlocking {
+        var mints = 0
+        val gate = BlobUploadGate(
+            probe = {
+                mints += 1
+                buildJsonObject { put("token", "tok-$mints") } // 异常回包：无 expires_at
+            },
+            nowMs = { 0L },
+        )
+        gate.ensureProbed()
+        assertNull(gate.token, "expires_at 缺失 = 无法证明新鲜 → 不交出（fail-safe）")
+        gate.ensureProbed()
+        assertEquals(2, mints, "无法证明新鲜的回包每次都重铸 —— 旧 token 绝不被无限持有")
+    }
+
+    @Test
+    fun remintFaultPropagatesAndKeepsTheAvailableConclusion() = runBlocking {
+        var now = 1_000_000_000_000L
+        var mints = 0
+        val gate = BlobUploadGate(
+            probe = {
+                mints += 1
+                if (mints != 2) { // 第 2 次（进入余量后的那次重铸）撞真故障；第 1/3 次成功
+                    buildJsonObject { put("token", "tok-$mints"); put("expires_at", now + 600_000L) }
+                } else {
+                    throw VadeException(VadeErrorCodes.TIMEOUT, "no reply within 5000ms for ui/blob.token")
+                }
+            },
+            nowMs = { now },
+        )
+        gate.ensureProbed()
+        now = 1_000_000_590_000L // 距到期 10 s —— 进入余量，触发重铸
+        val failure = assertFailsWith<VadeException> { gate.ensureProbed() }
+        assertEquals(VadeErrorCodes.TIMEOUT, failure.code, "重铸撞真故障：原样穿透")
+        assertIs<BlobUploadSupport.Available>(gate.support, "结论不被真故障改写（能力此前已确认）")
+        assertNull(gate.token, "但旧 token 已过余量 → 不交出")
+        now += 100_000
+        gate.ensureProbed()
+        assertEquals(3, mints, "重铸失败后下一次上传再试 —— 可重试语义原样保留")
+        assertEquals("tok-3", gate.token)
     }
 }
