@@ -1,6 +1,7 @@
 package vade.ui.data
 
 import vade.ui.chat.AttachmentUploader
+import vade.ui.chat.ApprovalDecideChannel
 import vade.ui.chat.ChatTranscriptSource
 import vade.ui.chat.ChatTurnGateway
 import vade.ui.chat.PendingAttachment
@@ -144,6 +145,11 @@ internal class RealAdapters(
      */
     private val chatTranscript: ChatTranscriptSource? = null,
     /**
+     * B6 · 审批出网通道（= [RealSessionSource.decideApproval] 的方法引用）。`null` =
+     * 未接线（测试直构）：turns 窄缝的审批决定以 `UNAVAILABLE` 响亮失败，不许静默假成功。
+     */
+    private val approvalDecide: ApprovalDecideChannel? = null,
+    /**
      * 附件上传的**能力闸门**（`ui/blob.token` 探测，见 `BlobUploadCapability.kt`）。
      * `null` = 不设闸（测试直构通道机制用例时用）；组合根传
      * `BlobUploadGate { client.blobTokenProbe() }` —— 今天的 core 未注册该方法，
@@ -156,7 +162,14 @@ internal class RealAdapters(
 
     private val modelActions: ModelActions by lazy { ModelActionsReal(client) }
 
-    private val turnGateway: ChatTurnGateway by lazy { TurnGatewayReal(client, chatTranscript) }
+    private val turnGateway: ChatTurnGateway by lazy {
+        TurnGatewayReal(
+            client = client,
+            transcriptSource = chatTranscript,
+            // B6 · 审批出网通道：组合根交进来的唯一出网路径。
+            approvalDecide = approvalDecide,
+        )
+    }
 
     private val pageSource: ModulePageSource by lazy { RealModulePageSource(client, moduleRegistry) }
 

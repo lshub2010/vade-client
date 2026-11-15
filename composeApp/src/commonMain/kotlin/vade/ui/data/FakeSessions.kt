@@ -6,6 +6,8 @@ import kotlinx.coroutines.flow.emptyFlow
 import vade.ui.chat.ChatFixtures
 import vade.ui.chat.ChatItem
 import vade.ui.chat.ChatMessage
+import vade.ui.protocol.ApprovalDecision
+import vade.ui.protocol.ApprovalScope
 
 /**
  * List-side session model for U1-a. **Fake data by design**: this slice does not touch
@@ -83,6 +85,20 @@ object FakeSessions : SessionSource {
             .map { it.message }
 
     override fun observeEvents(): Flow<VadeEvent> = emptyFlow()
+
+    /**
+     * B6 · 假源的审批口：**只做本地投影**（投影由 `ChatState` 完成），本方法只记录、立即
+     * 返回 —— **出网 0 次**。这不是嘴说：[FakeSessions] 是纯内存 object，没有任何
+     * transport / client 字段，结构上就没有可出网的通道；[decideCalls] 是探针，供
+     * `ApprovalDecideWireTest` 钉住「调用被记录、永不抛、夹具路径行为逐字节不变」。
+     * 端到端的零出网证明在 `ApprovalWireTest`（RecordingTurnGateway 探针：夹具卡片点击
+     * → gateway 零调用）。
+     */
+    val decideCalls = mutableListOf<Pair<String, ApprovalDecision>>()
+
+    override suspend fun decideApproval(requestId: String, decision: ApprovalDecision, scope: ApprovalScope) {
+        decideCalls += requestId to decision
+    }
 
     private const val D = 1L
     private const val H = 60L

@@ -2,6 +2,8 @@ package vade.ui.data
 
 import kotlinx.coroutines.flow.Flow
 import vade.ui.chat.ChatMessage
+import vade.ui.protocol.ApprovalDecision
+import vade.ui.protocol.ApprovalScope
 
 /**
  * Client-side placeholder for a protocol event, until the contracts batch lands.
@@ -48,6 +50,29 @@ interface SessionSource {
 
     /** Live protocol events (turn deltas, approvals, …). Cold stream; empty for the fake. */
     fun observeEvents(): Flow<VadeEvent>
+
+    /**
+     * B6 · `approval/decide`（rpc.json 1.7.0，params 逐字：`request_id` /
+     * `decision` = `approve|deny` / `scope` = `once|session`；errors
+     * `APPROVER_INVALID | READ_ONLY_SESSION | NOT_FOUND`）。
+     *
+     * [requestId] 必须来自 `turn.approval_required` 事件的 `request_id` —— 客户端工具卡的
+     * callId **不是**它。失败以 [vade.ui.protocol.VadeException] 原码穿透（调用方用
+     * [VadeErrorMapping] 分四类），三类语义错误各自可辨：`APPROVER_INVALID`（浏览器会话
+     * 不能审批 —— **设计行为**，不是 bug）、`READ_ONLY_SESSION`、`NOT_FOUND`（请求已过期
+     * 或不存在）；超时/断线是 `TIMEOUT`/`UNAVAILABLE`（可重试）。
+     *
+     * 默认实现是**故意的响亮失败**：一个没接 `approval/decide` 的源假装成功，等于把
+     * 「点批准没反应」的病（B6）再引进来一次。假源要显式声明本地投影（[FakeSessions]）。
+     */
+    suspend fun decideApproval(
+        requestId: String,
+        decision: ApprovalDecision,
+        scope: ApprovalScope,
+    ): Unit = throw IllegalStateException(
+        "SessionSource.decideApproval is not implemented: this source cannot decide approvals " +
+            "(implement approval/decide or declare an explicit local-projection fake)",
+    )
 }
 
 /**
