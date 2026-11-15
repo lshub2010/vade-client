@@ -71,6 +71,8 @@ internal enum class LoadBannerKind(
     val retryTag: String,
     /** What failed, lowercase, used inside the sentence copy. */
     val subject: String,
+    /** 失败标题（A4-1：新建是「动作失败」，不是「加载失败」，逐类可改文案）。 */
+    val failTitle: String,
     /** A11y description of the retry button (never empty, never a glyph). */
     val retryDescription: String,
 ) {
@@ -78,13 +80,22 @@ internal enum class LoadBannerKind(
         tag = "load-banner:sessions",
         retryTag = "load-banner:sessions:retry",
         subject = "会话列表",
+        failTitle = "会话列表加载失败",
         retryDescription = "重试加载会话列表",
     ),
     Messages(
         tag = "load-banner:messages",
         retryTag = "load-banner:messages:retry",
         subject = "该会话的消息",
+        failTitle = "该会话的消息加载失败",
         retryDescription = "重试加载该会话的消息",
+    ),
+    NewSession(
+        tag = "load-banner:new-session",
+        retryTag = "load-banner:new-session:retry",
+        subject = "新建会话",
+        failTitle = "新建会话失败",
+        retryDescription = "重试新建会话",
     ),
 }
 
@@ -137,7 +148,7 @@ internal fun loadBannerModel(
         return LoadBannerModel(
             tag = kind.tag,
             retryTag = kind.retryTag,
-            title = "${kind.subject}加载失败",
+            title = kind.failTitle,
             categoryLine = if (code.isNullOrBlank()) error.category.label else "${error.category.label} · $code",
             detail = error.detail,
             hint = loadErrorHint(error.category),
@@ -190,6 +201,19 @@ fun MessageThreadLoadBanner(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) = LoadBannerHost(LoadBannerKind.Messages, phase, error, onRetry, modifier)
+
+/**
+ * A4-1 · 新建会话失败横幅（✎ 的动作失败，不是一次「读取」）。独立的 kind / 独立的重试
+ * （重试入口 = `UiState.newSession()`，它会真的重发 `ui/attach(null)`，1 → 2）—— 与
+ * 列表 / 消息横幅互不合并、互不遮挡。
+ */
+@Composable
+fun NewSessionLoadBanner(
+    phase: LoadPhase,
+    error: LoadError?,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) = LoadBannerHost(LoadBannerKind.NewSession, phase, error, onRetry, modifier)
 
 @Composable
 private fun LoadBannerHost(

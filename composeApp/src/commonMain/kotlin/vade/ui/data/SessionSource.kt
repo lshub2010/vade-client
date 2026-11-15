@@ -73,6 +73,25 @@ interface SessionSource {
         "SessionSource.decideApproval is not implemented: this source cannot decide approvals " +
             "(implement approval/decide or declare an explicit local-projection fake)",
     )
+
+    /**
+     * A4-1 · 新建会话口。真源走 `ui/attach` 且 `session_id = null`（core
+     * `manager.attach()` 开头 `if session_id is None: create_session()`，并把
+     * `session.list_changed(added)` 扇给其他设备），返回 core 铸的新 id —— **建会话与
+     * 建事件订阅是同一个动作**：这次 attach 已经为该会话建好 sink，调用方切过去时不得
+     * 再发第二次 attach（同连接同会话双 sink = 事件双投递）。
+     *
+     * 失败以 [vade.ui.protocol.VadeException] 原码穿透（`UNAVAILABLE`/`TIMEOUT`/…），
+     * 调用方用 [VadeErrorMapping] 分四类文案；**不允许失败时伪造本地会话**。
+     *
+     * 默认实现是故意的响亮失败（与 [decideApproval] 同款）：一个没接「建会话」的源假装
+     * 成功，等于把 A4-1 的病（草稿 id 发 `ui/submit` 得 NOT_FOUND）再引进来一次。夹具源
+     * 要显式声明本地投影（[FakeSessionSource]）。
+     */
+    suspend fun createSession(): String = throw IllegalStateException(
+        "SessionSource.createSession is not implemented: this source cannot create sessions " +
+            "(implement ui/attach with session_id=null or declare an explicit local-projection fake)",
+    )
 }
 
 /**
@@ -82,4 +101,25 @@ interface SessionSource {
  * `FakeSessionSource()` at a call site — this one-line class delegates everything to it
  * (same fixtures, same behaviour).
  */
-class FakeSessionSource : SessionSource by FakeSessions
+class FakeSessionSource : SessionSource by FakeSessions {
+    /**
+     * A4-1 · 夹具源的「建会话」本地投影：只铸一个草稿 id，**出网 0 次** —— 这个类没有
+     * transport / client 字段、不实现 [AdapterHost]，结构上就不存在可出网的通道。
+     *
+     * [createCalls] 是探针。夹具路径（`UiState` 的 `loader == null` 分支）按 w-wire 的
+     * 设计是**纯同步**的：那里没有 scope、不允许有协程，所以草稿行仍由
+     * `UiState.newSession()` 就地构造，**从不路由过这个 suspend 口** —— 探针钉住
+     * 「夹具路径新建 = 对源的出网调用 0 次」。本 override 同时让夹具源是一个完整的
+     * [SessionSource]：直接调用它也只回本地 id，绝不落到接口的响亮默认失败上。
+     */
+    val createCalls = mutableListOf<String>()
+
+    private var draftSeq = 0
+
+    override suspend fun createSession(): String {
+        draftSeq += 1
+        val id = "draft-$draftSeq"
+        createCalls += id
+        return id
+    }
+}

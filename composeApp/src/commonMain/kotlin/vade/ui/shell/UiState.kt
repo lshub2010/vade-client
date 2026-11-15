@@ -4,9 +4,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlin.concurrent.Volatile
 import vade.ui.chat.ChatMessage
 import vade.ui.chat.ChatPreset
 import vade.ui.data.FakeSessionSource
@@ -104,15 +108,27 @@ class UiState(
     val pendingApprovals: Int = 0
 
     /**
-     * w-wire: the async reads of [source]. `null` on the fixture path — that path must
-     * stay purely synchronous (see the class doc), so no scope and no coroutine exist
-     * for it at all.
+     * w-wire: the async reads of [source] run here. `null` on the fixture path — that
+     * path must stay purely synchronous (see the class doc), so no scope and no coroutine
+     * exist for it at all.
+     *
+     * A4-1：新建会话的真源协程也跑在这个 scope 上（与 loader 同生命周期：夹具路径没有
+     * scope，也就没有可飞的创建协程）。
      */
-    private val loader: SessionsLoader? = when (source) {
+    private val asyncScope: CoroutineScope? = when (source) {
         is FakeSessionSource -> null
-        else -> SessionsLoader(
+        else -> loaderScope ?: CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    }
+
+    /**
+     * w-wire: the async reads of [source]. `null` on the fixture path. Derived from
+     * [asyncScope] — the two share the same condition, so `loader != null` ⟺
+     * `asyncScope != null` holds by construction.
+     */
+    private val loader: SessionsLoader? = asyncScope?.let { scope ->
+        SessionsLoader(
             source = source,
-            scope = loaderScope ?: CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            scope = scope,
         )
     }
 
@@ -170,10 +186,90 @@ class UiState(
 
     /**
      * w-wire: stops every async read and event subscription; no further state writes.
-     * The fixture path has nothing to stop.
+     * The fixture path has nothing to stop. A4-1：在飞的新建协程一并取消 —— 取消只会
+     * 落在 `createSession()` 的挂起点上，结果不会写进已销毁的 state，更不会伪造会话。
      */
     fun dispose() {
+        newSessionJob?.cancel()
+        newSessionJob = null
         loader?.dispose()
+    }
+
+    // --- A4-1 · 新建会话（真源异步路径；夹具路径没有这个动作的异步态） ----------------
+
+    /**
+     * 新建会话的 Loading / Ready / Failed。夹具路径恒 [LoadPhase.Ready]（那是同步的本地
+     * 草稿，没有「正在创建」可言）；真源路径在 `ui/attach(null)` 飞行中为 Loading。
+     */
+    var newSessionPhase: LoadPhase by mutableStateOf(LoadPhase.Ready)
+        private set
+
+    /** 新建会话失败的分类错误（四类文案之一，见 [LoadError]）；`null` = 没有失败要显示。 */
+    var newSessionError: LoadError? by mutableStateOf<LoadError?>(null)
+        private set
+
+    /** 幂等闸：双击「新建」只允许一次在飞 —— 第二次点击是 no-op，绝不建出第二个会话。 */
+    @Volatile
+    private var creatingSession = false
+
+    /** 在飞的新建协程；[dispose] 取消它。 */
+    private var newSessionJob: Job? = null
+
+    /**
+     * ✎ / the future `⌘N` (shortcuts are U1-g). A4-1 · 新建会话：
+     *
+     * **夹具路径**（[FakeSessionSource]）—— 与本批之前**逐字节相同**：纯同步地就地造一条
+     * 本地草稿。源不被询问（`FakeSessionSource.createCalls` 探针钉住「出网 0 次」）、
+     * 零协程 —— 这条路径上根本不存在 scope。
+     *
+     * **真源路径** —— 先在服务端真的建出会话（[SessionSource.createSession] =
+     * `ui/attach(null)`），拿到 core 铸的 id 后**再**切过去。失败绝不伪造本地会话：
+     * [newSessionError] 带四类分类文案、✎ 可以再按（重试真的重发 attach，1 → 2）。
+     * 成功后用 `isDraft = true` 的加载分支切会话：创建那次 attach 已经带回（空）快照并
+     * 建好 sink —— 再让 loader 拉一次线程 = 对同一会话的第二次 attach = 同连接双 sink
+     * （事件双投递），这正是本批不许引入的。
+     */
+    fun newSession() {
+        val ldr = loader
+        if (ldr == null) {
+            // Fixture path — byte-for-byte the pre-A4-1 behaviour: a purely local draft.
+            val index = drafts.size + 1
+            val draft = SessionSummary(
+                id = "draft-$index",
+                title = "新会话 #$index（草稿）",
+                preview = "本地草稿 · 未发送（U1-b 接 submit）",
+                bucket = TimeBucket.Today,
+                updatedAt = 10_000L + index,
+                updatedLabel = "刚刚",
+                isDraft = true,
+            )
+            drafts.add(0, draft)
+            dest = Destination.Sessions
+            selectSession(draft.id)
+            return
+        }
+        val scope = asyncScope ?: return // 不可达：loader != null ⟺ asyncScope != null
+        if (creatingSession) return
+        creatingSession = true
+        newSessionPhase = LoadPhase.Loading
+        newSessionError = null
+        newSessionJob = scope.launch {
+            try {
+                val newId = source.createSession()
+                selectedSessionId = newId
+                sessionsDrawerOpen = false
+                dest = Destination.Sessions
+                ldr.selectSession(sessionId = newId, isDraft = true)
+                newSessionPhase = LoadPhase.Ready
+            } catch (e: CancellationException) {
+                throw e // dispose / cancel —— 不写状态、更不伪造会话
+            } catch (t: Throwable) {
+                newSessionPhase = LoadPhase.Failed
+                newSessionError = loadErrorOf(t)
+            } finally {
+                creatingSession = false
+            }
+        }
     }
 
     val selectedSession: SessionSummary?
@@ -268,27 +364,6 @@ class UiState(
 
     fun togglePanel() {
         panelOpen = !panelOpen
-    }
-
-    /**
-     * ✎ / the future `⌘N` (shortcuts are U1-g). Creates a local draft row only — it is
-     * *not* submitted, has no `session_id`, and the detail pane says so. U1-b replaces
-     * this with `ProtocolClient.submit`.
-     */
-    fun newSession() {
-        val index = drafts.size + 1
-        val draft = SessionSummary(
-            id = "draft-$index",
-            title = "新会话 #$index（草稿）",
-            preview = "本地草稿 · 未发送（U1-b 接 submit）",
-            bucket = TimeBucket.Today,
-            updatedAt = 10_000L + index,
-            updatedLabel = "刚刚",
-            isDraft = true,
-        )
-        drafts.add(0, draft)
-        dest = Destination.Sessions
-        selectSession(draft.id)
     }
 
     /** Badge source for rail / bottom bar; empty until U1-d wires approvals. */

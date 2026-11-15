@@ -290,8 +290,12 @@ class VadeContractFramesTest {
     // ------------------------------------------------------------ attach params wire shape
 
     @Test
-    fun attachParamsOmitNullKeysAndNameTheContractFields() {
-        assertEquals("{}", AttachParams(null, null).toJson().toString(), "a first-ever attach sends no session_id/last_seq at all")
+    fun attachParamsNameTheContractFieldsAndTheCreateFormIsAnExplicitNull() {
+        // A4-1: the null session_id IS the CREATE request — core `manager.attach()` reads
+        // null and mints a session. putStr's omission degraded the frame to `{}`, which no
+        // frame-level test could tell apart from "no params". The key is always present;
+        // `last_seq` stays omission-encoded (its null really is "nothing to say").
+        assertEquals("""{"session_id":null}""", AttachParams(null, null).toJson().toString(), "a CREATE attach names session_id with an explicit null")
         assertEquals("""{"session_id":"s1","last_seq":41}""", AttachParams("s1", 41).toJson().toString(), "reconnect carries the tracked seq")
     }
 

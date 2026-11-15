@@ -45,7 +45,11 @@ data class LoadError(
     val label: String get() = "${category.label}：$detail"
 }
 
-private fun loadErrorOf(t: Throwable): LoadError =
+/**
+ * A4-1 · `internal`（原 file-private）：`UiState.newSession()` 的真源失败也要走**同一条**
+ * 分类路径 —— 分类逻辑全仓只有这一份，不许 UiState 再抄一份漂移。
+ */
+internal fun loadErrorOf(t: Throwable): LoadError =
     LoadError(
         category = loadErrorCategoryOf(t),
         code = loadErrorCodeOf(t),

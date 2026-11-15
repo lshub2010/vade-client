@@ -247,6 +247,16 @@ internal class AutoConnectingSessionSource(
         real.decideApproval(requestId = requestId, decision = decision, scope = scope)
     }
 
+    /**
+     * A4-1 · 「新建会话」透传：先等连接（与 sessions/messages 同一口径），再交 [real] 的
+     * `ui/attach(null)` 实现 —— 帧逐字、错误原码穿透。缺了它，真实模式（`SourceConfig`
+     * 组装出来的就是本 shim）的「新建」会落到接口的响亮默认失败上。
+     */
+    override suspend fun createSession(): String {
+        awaitConnected()
+        return real.createSession()
+    }
+
     /** Test/diagnostic access: the wrapped real source (g-pair-first-run wiring tests). */
     internal val delegate: RealSessionSource get() = real
 

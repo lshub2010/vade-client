@@ -288,6 +288,22 @@ class RealSessionSource(
         return snapshotToMessages(result.snapshot?.messages)
     }
 
+    /**
+     * A4-1 · 「新建会话」：`ui/attach` 且 `session_id = null` —— core `manager.attach()`
+     * 开头见 null 就 `create_session()` 并把 `session.list_changed(added)` 扇给其他设备。
+     * **建会话与建事件订阅是同一个动作**：这次 attach 已为该会话注册 sink，调用方切过去
+     * 时不得再对同一会话发第二次 attach（同连接双 sink = 事件双投递）。
+     *
+     * 帧 params 逐字 `{"session_id":null}`（[AttachParams] 的编码：键恒在，显式 null 即
+     * 「创建」；`[VadeClient.attach]` 的 seq 替换只作用于同会话 re-attach，不会往创建帧
+     * 里塞旧会话的 last_seq）。返回 core 铸的新 id；失败以 [VadeException] 原码穿透
+     * （断线 = `UNAVAILABLE`，四类文案由调用方分类）。
+     */
+    override suspend fun createSession(): String {
+        val result = attachedClient().uiAttach(AttachParams(sessionId = null, lastSeq = null))
+        return result.sessionId
+    }
+
     // ------------------------------------------------------------------ protocol actions for the (future) UI pages
 
     /** `ui/attach` — attach to an existing session, or `null` to create a NEW one. */
