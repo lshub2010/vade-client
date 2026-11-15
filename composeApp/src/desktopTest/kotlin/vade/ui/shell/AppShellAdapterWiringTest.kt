@@ -395,13 +395,26 @@ class AppShellAdapterWiringTest {
         )
 
         val detail = callBlocks(src, "SessionDetailScreen")
-        assertEquals(3, detail.size, "SessionDetailScreen 应有 3 个调用点（推入详情 / 双栏详情 / 单栏兜底）")
+        assertEquals(
+            2,
+            detail.size,
+            "AppShell 的 SessionDetailScreen 应剩 2 个调用点（双栏详情 / 600–719 rail 单栏兜底）；" +
+                "手机单栏抽屉的详情底层已随 g-route-transition 搬进 RouteTransition.kt",
+        )
         detail.forEachIndexed { index, block ->
             assertTrue(
                 block.contains("adapters = adapters"),
                 "第 ${index + 1} 个 SessionDetailScreen 调用点没传 adapters:\n$block",
             )
         }
+
+        val drawerSrc = File(ROUTE_TRANSITION_SOURCE).readText()
+        val drawerDetail = callBlocks(drawerSrc, "SessionDetailScreen")
+        assertEquals(1, drawerDetail.size, "RouteTransition（抽屉详情底层）应有且只有 1 个 SessionDetailScreen 调用点")
+        assertTrue(
+            drawerDetail.single().contains("adapters = adapters"),
+            "抽屉的 SessionDetailScreen 调用点没传 adapters:\n${drawerDetail.single()}",
+        )
 
         val capabilities = callBlocks(src, "CapabilitiesScreen")
         assertEquals(1, capabilities.size)
@@ -443,6 +456,7 @@ class AppShellAdapterWiringTest {
         const val PROBE_MODEL_NAME = "壳层探针模型"
         const val PROBE_BLOB_ID = "blb_probe_shell"
         const val SHELL_SOURCE = "src/commonMain/kotlin/vade/ui/shell/AppShell.kt"
+        const val ROUTE_TRANSITION_SOURCE = "src/commonMain/kotlin/vade/ui/shell/RouteTransition.kt"
 
         /** The first fake session's title — a string no other screen prints. */
         const val FIXTURE_SESSION_TITLE = "RFC-0004 附件与多模态评审"

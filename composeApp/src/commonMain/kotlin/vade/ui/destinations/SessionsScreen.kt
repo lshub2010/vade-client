@@ -22,9 +22,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -38,16 +40,13 @@ import vade.ui.meta.MetaGroup
 import vade.ui.skin.LocalSkin
 
 /**
- * 会话 · 列表 (U1-a), v2 form (visual language §12「会话列表」row).
+ * 会话 · 列表 (U1-a), Q2-B 单行形态（g-route-transition 口径变更，2026-11-15）。
  *
- * Row spec: height ≥64dp, `sm` (16dp) corners, selected = `accentSoft` fill **plus a 3dp
- * accent bar on the left edge** (the bar is the unmistakable half of the pair; the 8% fill
- * alone reads as noise on canvas), timestamp in the muted token, and **no dividers** — rows
- * separate by spacing only. The bar is **drawn** by [SessionRow]'s `drawBehind`, not laid
- * out: a `Box(width = 3.dp).fillMaxHeight()` collapses to 3×0 inside a `LazyColumn` item
- * (unbounded height on the main axis ⇒ `fillMaxHeight` falls back to `minHeight = 0`), which
- * is exactly how D8 in `shots/g-visual-audit2` shipped a bar that nobody could see.
- * The list sits on `canvas`, edge-to-edge: [contentPadding]
+ * Row spec（Q2-B 覆盖 §12 旧行）：**单行条目 = 组色点 + 标题（单行省略）**——
+ * 预览行、右侧时间戳/置顶/未读/模型列、行头像全部移除；分组色点保留（分类是刚接通的），
+ * 组名移到色点的读屏语义里。行块左右内缩 8dp；选中态 = 带圆角的强调色块
+ * （见 [SELECTED_BLOCK_CORNER] 一组常量），不再是「accentSoft + 左侧 3dp 条」。
+ * 列表仍靠间距分层、没有分隔线。The list sits on `canvas`, edge-to-edge: [contentPadding]
  * (the shell's floating glass bar zones) is passed straight into the `LazyColumn`, so rows
  * really scroll behind the glass bars instead of stopping short of them.
  *
@@ -97,6 +96,11 @@ fun SessionsScreen(
      * （`AppShell`）必须显式传真实状态。
      */
     status: ListStatus = ListStatus.Fixtures,
+    /**
+     * g-route-transition：挂到**选中行**上的焦点请求器——手机抽屉重新滑出时由宿主请求，
+     * 让焦点回到原来那一行（无障碍口径）。null = 无人请求（旧调用点不需要动焦点）。
+     */
+    selectedRowFocus: FocusRequester? = null,
 ) {
     val skin = LocalSkin.current
     LazyColumn(
@@ -145,11 +149,18 @@ fun SessionsScreen(
                 }
             }
             items(group.sessions, key = { it.id }) { session ->
+                val selected = session.id == selectedId
                 SessionRow(
                     session = session,
-                    selected = session.id == selectedId && twoPane,
+                    selected = selected,
                     onClick = { onOpen(session) },
                     groupTag = sessionGroupTag(session.groupId, metaGroups),
+                    // g-route-transition：焦点请求器只挂在选中行上（抽屉回开时焦点回到那一行）。
+                    modifier = if (selected && selectedRowFocus != null) {
+                        Modifier.focusRequester(selectedRowFocus)
+                    } else {
+                        Modifier
+                    },
                 )
             }
         }
@@ -163,129 +174,67 @@ private fun SessionRow(
     selected: Boolean,
     onClick: () -> Unit,
     groupTag: SessionGroupTag?,
+    modifier: Modifier = Modifier,
 ) {
     val skin = LocalSkin.current
-    val accentSoft = skin.colors.primary.copy(alpha = if (skin.colors.isDark) 0.14f else 0.08f)
-    val shape = RoundedCornerShape(skin.shapes.sm)
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
+            // Q2-B（g-route-transition 口径变更）：行块**左右内缩 8dp**——选中态不是通栏
+            // 满宽矩形，而是一块带圆角的强调色块。
             .padding(horizontal = 8.dp, vertical = 3.dp)
-            .heightIn(min = 64.dp)
-            .clip(shape)
-            .background(if (selected) accentSoft else androidx.compose.ui.graphics.Color.Transparent)
-            // 选中态的另一半（§12「`accentSoft` + 左侧 3dp 条」）：**画**，不**排**。
-            // 这里原先是一个 `Box(Modifier.width(3.dp).fillMaxHeight())`，而 `LazyColumn` 的
-            // item 在主轴上给的是**无界**高度（`maxHeight = Infinity`），`fillMaxHeight()`
-            // 对这种约束直接退化成 `minHeight`（= 0）—— 那根条被量成 3×0，静默消失。
-            // 观感上就是「选中行只有填充、没有左条」（shots/g-visual-audit2 的 D8）。
-            // `drawBehind` 用的是行**量完之后**的真实高度（≥64dp、随内容长），并且画在
-            // `.clip(shape)` 之内，两端随 `sm` 圆角自然收进去；它不占布局宽度，所以
-            // 选中/未选中切换时文字左缘不会跳。
-            .drawBehind {
+            .heightIn(min = SELECTED_BLOCK_MIN_HEIGHT)
+            .clip(RoundedCornerShape(if (selected) SELECTED_BLOCK_CORNER else skin.shapes.sm))
+            // 选中态 = **带圆角的强调色块**（accent 淡染，亮 12% / 暗 16%，都在 10–16% 口径内）。
+            // 旧 §12 的「左侧 3dp 条」随 Q2-B 一并废除（口径变更覆盖视觉语言那一行）。
+            .background(
                 if (selected) {
-                    drawRect(size = Size(ACCENT_BAR_WIDTH.toPx(), size.height), color = skin.colors.primary)
-                }
-            }
+                    skin.colors.primary.copy(
+                        alpha = if (skin.colors.isDark) SELECTED_BLOCK_ALPHA_DARK else SELECTED_BLOCK_ALPHA_LIGHT,
+                    )
+                } else {
+                    Color.Transparent
+                },
+            )
             .clickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // 左条由上面的 drawBehind 画在行自己的高度里，不占布局宽度（所以这里直接 16dp：
-        // 3dp 条 + 13dp 内容间距，条落在 padding 里，不压 32dp 头像）。
-        Row(
-            modifier = Modifier
-                .weight(1f)
-                .padding(start = 16.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        // 组色点槽位：固定宽度让「有组/无组」行的标题起点对齐；点 8dp、查不到合法色时
+        // 退化 muted（sessionGroupTag 的既有规则 3/4，不动）。
+        Box(
+            Modifier.width(24.dp).height(SELECTED_BLOCK_MIN_HEIGHT),
+            contentAlignment = Alignment.Center,
         ) {
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(RoundedCornerShape(skin.shapes.sm))
-                    .background(skin.colors.primary.copy(alpha = 0.12f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                UiText(
-                    text = session.title.take(1),
-                    size = 13,
-                    weight = FontWeight.SemiBold,
-                    color = skin.colors.primary,
+            if (groupTag != null) {
+                Box(
+                    Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(groupTag.color ?: skin.colors.onSurfaceVariant)
+                        // Q2-B 只留色点不留组名文字（单行化）：组名移到读屏语义里，
+                        // 同时是 UI 测试定位「分组色点仍在」的锚点。
+                        .semantics { contentDescription = "分组：${groupTag.label}" },
                 )
             }
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (session.archived) {
-                        // 「已归档」标记：矢量图标（ImageVector，禁字符/汉字当图标），13dp +
-                        // muted 色 —— 明确可辨但不刺眼；contentDescription 同时喂给读屏与 UI 测试。
-                        VadeIcon(
-                            vector = VadeIcons.Archive,
-                            contentDescription = ARCHIVED_BADGE_LABEL,
-                            size = 13.dp,
-                            tint = skin.colors.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.width(4.dp))
-                    }
-                    UiText(
-                        text = session.title,
-                        modifier = Modifier.weight(1f, fill = false),
-                        size = 15,
-                        weight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                if (session.preview.isNotEmpty()) {
-                    Spacer(Modifier.height(2.dp))
-                    UiText(
-                        text = session.preview,
-                        size = 12,
-                        color = skin.colors.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                if (groupTag != null) {
-                    // 分类：组色点 + 组名。只有真的属于某个分组才出现 —— 未分组行一行不多。
-                    Spacer(Modifier.height(3.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            Modifier
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(groupTag.color ?: skin.colors.onSurfaceVariant),
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        UiText(
-                            text = groupTag.label,
-                            modifier = Modifier.weight(1f, fill = false),
-                            size = 10,
-                            color = skin.colors.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-            }
-            Spacer(Modifier.width(8.dp))
-            Column(horizontalAlignment = Alignment.End, verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp)) {
-                // 时间戳 = muted token（onSurfaceVariant，即视觉语言的 textMuted）。
-                UiText(session.updatedLabel, size = 11, color = skin.colors.onSurfaceVariant)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (session.pinned) {
-                        UiText("置顶", size = 9, color = skin.colors.primary)
-                        Spacer(Modifier.width(4.dp))
-                    }
-                    if (session.unread) {
-                        Box(Modifier.size(6.dp).clip(CircleShape).background(skin.colors.error))
-                        Spacer(Modifier.width(4.dp))
-                    }
-                    if (session.model != null) {
-                        UiText(session.model, size = 9, color = skin.colors.onSurfaceVariant)
-                    }
-                }
-            }
         }
+        if (session.archived) {
+            // 「已归档」标记（g-archive-ui 原样保留）：矢量图标 13dp + muted 色。
+            VadeIcon(
+                vector = VadeIcons.Archive,
+                contentDescription = ARCHIVED_BADGE_LABEL,
+                size = 13.dp,
+                tint = skin.colors.onSurfaceVariant,
+            )
+            Spacer(Modifier.width(4.dp))
+        }
+        UiText(
+            text = session.title,
+            modifier = Modifier.weight(1f).padding(end = 12.dp),
+            size = 15,
+            weight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -296,11 +245,19 @@ private fun SessionRow(
 internal const val ARCHIVED_BADGE_LABEL = "已归档"
 
 /**
- * 选中行左侧强调条的宽度 —— `docs/visual-language.md` §12「会话列表」那一行：
- * 「选中态 `accentSoft` + **左侧 3dp 条**」。条由 [SessionRow] 的 `drawBehind` 画，
- * 不参与布局（见那一段注释：`fillMaxHeight()` 在 `LazyColumn` 的 item 里会塌成 0）。
+ * Q2-B 选中块的**可断言几何/色值常量**（g-route-transition 口径变更）：选中行是
+ * 「带圆角的强调色块」，不是通栏满宽矩形——
+ *  - 圆角 [SELECTED_BLOCK_CORNER]，落在口径要求的 12–16dp 里；
+ *  - accent 淡染透明度亮/暗两档（[SELECTED_BLOCK_ALPHA_LIGHT] / [SELECTED_BLOCK_ALPHA_DARK]），
+ *    都落在口径要求的 10–16% 里，文字对比不受影响（底色只被染了这么一点）；
+ *  - 行块左右各内缩 8dp（`SessionRow` 的 `padding(horizontal = 8.dp)`，测试量像素）；
+ *  - 「已选中」语义（`selected = true` 的行）不再有 §12 的 3dp 左条——那根条随 Q2-B
+ *    单行化一并废除，`SessionRowSelectedBlockTest` 用像素断言接住新形态。
  */
-internal val ACCENT_BAR_WIDTH = 3.dp
+internal val SELECTED_BLOCK_CORNER = 14.dp
+internal const val SELECTED_BLOCK_ALPHA_LIGHT = 0.12f
+internal const val SELECTED_BLOCK_ALPHA_DARK = 0.16f
+internal val SELECTED_BLOCK_MIN_HEIGHT = 48.dp
 
 /**
  * 会话行上的「分类」展示值：组名（or 裸 id）+ 组色。

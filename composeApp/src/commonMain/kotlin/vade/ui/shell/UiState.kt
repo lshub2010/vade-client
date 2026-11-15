@@ -77,6 +77,29 @@ class UiState(
     var panelOpen by mutableStateOf(initialPanelOpen)
         private set
 
+    /**
+     * g-route-transition · 手机单栏（<600dp）的抽屉开合：`true` = 列表抽屉盖在详情之上。
+     * 深链/截图环直接进详情（`initialSessionId != null`）时初始为收起，与旧行为一致；
+     * 双栏与 600–719（rail）不渲染抽屉，此值在那里是死状态（读写都不产生界面效果）。
+     */
+    var sessionsDrawerOpen by mutableStateOf(initialSessionId == null)
+        private set
+
+    /** 返回/Esc（单栏抽屉上）的入口：滑出列表抽屉，**详情保留在底层不销毁**。 */
+    fun openSessionsDrawer() {
+        sessionsDrawerOpen = true
+    }
+
+    /** 返回键（抽屉开着时）/点遮罩的入口：收回抽屉，露出底下完好的详情。 */
+    fun closeSessionsDrawer() {
+        sessionsDrawerOpen = false
+    }
+
+    /** Esc（单栏抽屉）在「列表/详情」之间的切换入口。 */
+    fun toggleSessionsDrawer() {
+        sessionsDrawerOpen = !sessionsDrawerOpen
+    }
+
     /** Approvals are a U1-d feature; kept at 0 so no badge is faked. */
     val pendingApprovals: Int = 0
 
@@ -172,6 +195,10 @@ class UiState(
     fun select(destination: Destination) {
         dest = destination
         if (destination != Destination.Sessions) selectedSessionId = null
+        // g-route-transition：抽屉跟随目的地——落在会话页且没有选中会话 ⇒ 抽屉必须开着
+        //（否则手机端会停在「无详情 + 抽屉收起」的空白状态）；离开会话页时抽屉不渲染，
+        // 值无所谓，这里仍写成一个统一规则而不是特判。
+        sessionsDrawerOpen = destination == Destination.Sessions && selectedSessionId == null
     }
 
     fun open(sessionId: String) {
@@ -185,12 +212,16 @@ class UiState(
      */
     fun selectSession(sessionId: String) {
         selectedSessionId = sessionId
+        // g-route-transition：点行/搜索命中/新建草稿都会落到这里 ⇒ 抽屉收回，露出底层详情。
+        sessionsDrawerOpen = false
         val ldr = loader ?: return
         ldr.selectSession(sessionId, isDraft = drafts.any { it.id == sessionId })
     }
 
     fun back() {
         selectedSessionId = null
+        // g-route-transition：选中清空 ⇒ 抽屉必须开着（与 select() 同一条规则；双栏不渲染）。
+        sessionsDrawerOpen = true
     }
 
     // --- U1-c · search ---------------------------------------------------------
