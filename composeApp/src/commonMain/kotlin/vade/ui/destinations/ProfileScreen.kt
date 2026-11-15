@@ -15,16 +15,20 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import vade.ui.UiText
 import vade.ui.buildconfig.VadeBuildConfig
 import vade.ui.data.AdapterProvider
@@ -94,6 +98,8 @@ fun ProfileScreen(
     }
     val modelActionsResolved = seam.value
     val modelState = remember(modelActionsResolved) { ModelState.forDefault(modelActionsResolved) }
+    // 「重试拉取模型列表」行的协程作用域（refresh() 是 suspend，挂在组合作用域上）。
+    val retryScope = rememberCoroutineScope()
     // A5 · 关于 opens as a full-screen subpage over this screen (D91: 设置项打开为全屏子页，
     // 不做弹层). The state stays local to this page — the shell must not learn about
     // settings subpages.
@@ -183,6 +189,36 @@ fun ProfileScreen(
                     ) +
                 seam.degraded?.let { " · $it" }.orEmpty(),
         )
+        // G · 拉取失败的可重试出口：ModelPickerCard 的 LoadFailed 文案承诺「重试后再判断」，
+        // 但卡内没有重试钮（model/ 包本棒不可改），这里补上它。refresh() 就是既有的拉取
+        // 入口（不是第二套重试）；点击后 loadFailure 清空、loadInFlight 点亮，卡片回到
+        // 「正在加载模型列表」——结果只会是三态之一，绝不洗成空列表。方法不存在（-32601）
+        // 走卡的只读降级，不落进这里（readOnly 时 refresh 直接 return，loadFailure 为空）。
+        if (modelState.loadFailure != null) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(percent = 50))
+                    .background(skin.colors.surfaceVariant)
+                    .clickable { retryScope.launch { modelState.refresh() } }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                VadeIcon(
+                    VadeIcons.Refresh,
+                    contentDescription = "重试",
+                    size = 16.dp,
+                    tint = skin.colors.onSurface,
+                )
+                Spacer(Modifier.width(6.dp))
+                UiText(
+                    "重试拉取模型列表",
+                    size = 12,
+                    weight = FontWeight.Medium,
+                    color = skin.colors.onSurface,
+                )
+            }
+        }
 
         SectionLabel("其它")
         GroupCard {

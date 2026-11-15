@@ -15,9 +15,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,13 +39,17 @@ import vade.ui.protocol.VadeErrorCodes
 import vade.ui.protocol.VadeException
 import vade.ui.protocol.VadeUsage
 import vade.ui.skin.LocalSkin
+import vade.ui.subagent.SubagentLoadState
+import vade.ui.subagent.SubagentLoader
 import vade.ui.subagent.SubagentPanel
 import vade.ui.subagent.SubagentRunView
-import vade.ui.subagent.SubagentSectionLive
+import vade.ui.subagent.SubagentSection
 import vade.ui.subagent.SubagentSource
 import vade.ui.subagent.SubagentSourceReal
+import vade.ui.usage.UsageLoadState
+import vade.ui.usage.UsageLoader
 import vade.ui.usage.UsagePanel
-import vade.ui.usage.UsageSectionLive
+import vade.ui.usage.UsageSection
 import vade.ui.usage.UsageSource
 import vade.ui.usage.UsageSourceReal
 
@@ -52,7 +59,10 @@ import vade.ui.usage.UsageSourceReal
  * The three U1-a placeholder blocks (运行中 / 待审批 / 最近失败) stay empty until U1-d
  * wires turn events — nothing here invents an event stream. The two data panels are now
  * **wired end to end**: 后台任务·子代理 reads `subagent/list`, 用量 reads
- * `session/usage.get`, both with the three honest states (加载中 / 加载失败+重试 / 已加载).
+ * `session/usage.get`, both with the three honest states (加载中 / 加载失败+重试 / 已加载)
+ * **plus the fourth face**: a core that answers 方法不存在（-32601 / NOT_FOUND unknown method）
+ * gets [ActivityMethodMissingCard] — 不支持 is not a failure (retrying can never succeed)
+ * and not an empty list; see [isMethodMissingAnswer].
  *
  * ## 为什么需要「查看范围」（本批的核心侦察结论）
  * 用量与子代理在契约里**不是同一种东西**：
@@ -154,7 +164,7 @@ fun ActivityScreen(
         when {
             // 全局范围 + 有读取口：契约没有跨会话用量读法 —— 说明清楚，不让它落到空态里。
             usageLive != null && scope is ActivityScope.All -> GlobalUsageNeedsSessionCard()
-            usageLive != null -> UsageSectionLive(
+            usageLive != null -> ActivityUsageLive(
                 source = usageLive,
                 sessionId = scope.sessionIdOrNull(),
                 lastTurn = lastTurnUsage,
@@ -170,7 +180,7 @@ fun ActivityScreen(
 
         SectionLabel("后台任务 · 子代理")
         if (subagentsLive != null) {
-            SubagentSectionLive(
+            ActivitySubagentsLive(
                 source = subagentsLive,
                 // null = 全部会话；契约允许，且每行自带 parent_session_id。
                 sessionId = scope.sessionIdOrNull(),
@@ -352,6 +362,114 @@ fun GlobalUsageNeedsSessionCard(modifier: Modifier = Modifier) {
 @Composable
 internal fun SectionLabel(text: String) {
     UiText(text, size = 11, weight = FontWeight.SemiBold, color = LocalSkin.current.colors.onSurfaceVariant)
+}
+
+// ==========================================================================
+// G · 两个读数区的屏幕侧壳：同一 loader、同一 retry，外加「不支持」第三态
+// ==========================================================================
+
+/**
+ * 用量读数的屏幕侧壳。拥有与 `UsageSectionLive` 相同的 [UsageLoader] 接线（同一 loader、
+ * 同一 `loader.retry()` 入口 —— 不造第二套重试），渲染委托给 [UsageSection]，但在那之前
+ * 先拦一道：core 对 `session/usage.get` 回答**方法不存在**时（[isMethodMissingAnswer]），
+ * 那不是失败 —— 重试永不成功 —— 单独画 [ActivityMethodMissingCard]（第三态）。
+ */
+@Composable
+private fun ActivityUsageLive(
+    source: UsageSource,
+    sessionId: String?,
+    modifier: Modifier = Modifier,
+    lastTurn: VadeUsage? = null,
+    budgetNotice: UsageBudgetPayload? = null,
+) {
+    val scope = rememberCoroutineScope()
+    val loader = remember(source) { UsageLoader(source, scope) }
+    DisposableEffect(loader) { onDispose { loader.dispose() } }
+    LaunchedEffect(loader, sessionId) {
+        if (!sessionId.isNullOrBlank()) loader.load(sessionId)
+    }
+    if (sessionId.isNullOrBlank()) {
+        EmptyStateCard(
+            icon = VadeIcons.Empty,
+            title = "尚未选择会话",
+            body = "打开一个会话后，这里通过 session/usage.get 拉取真实的 token 统计与预算进度。",
+            modifier = modifier,
+        )
+        return
+    }
+    val state = loader.state
+    if (state is UsageLoadState.Failed &&
+        isMethodMissingAnswer(state.error.code, state.error.detail)
+    ) {
+        ActivityMethodMissingCard(
+            method = "session/usage.get",
+            transportWords = state.error.detail,
+            modifier = modifier,
+        )
+        return
+    }
+    UsageSection(
+        state = state,
+        onRetry = loader::retry,
+        modifier = modifier,
+        lastTurn = lastTurn,
+        budgetNotice = budgetNotice,
+    )
+}
+
+/**
+ * 子代理读数的屏幕侧壳：与 [ActivityUsageLive] 同一条纪律。`null` 范围是合法的
+ * （`subagent/list` 契约允许跨会话列出），照常拉取；只有**方法不存在**的失败被拦下来
+ * 画成第三态，其余失败原样交给 [SubagentSection]（分类 + code + 重试）。
+ */
+@Composable
+private fun ActivitySubagentsLive(
+    source: SubagentSource,
+    sessionId: String?,
+    modifier: Modifier = Modifier,
+) {
+    val scope = rememberCoroutineScope()
+    val loader = remember(source) { SubagentLoader(source, scope) }
+    DisposableEffect(loader) { onDispose { loader.dispose() } }
+    LaunchedEffect(loader, sessionId) { loader.load(sessionId) }
+    val state = loader.state
+    if (state is SubagentLoadState.Failed &&
+        isMethodMissingAnswer(state.error.code, state.error.detail)
+    ) {
+        ActivityMethodMissingCard(
+            method = "subagent/list",
+            transportWords = state.error.detail,
+            modifier = modifier,
+        )
+        return
+    }
+    SubagentSection(
+        state = state,
+        onRetry = loader::retry,
+        modifier = modifier,
+        sessionScoped = sessionId != null,
+    )
+}
+
+/**
+ * 「此 core 还没有 <方法>」——方法不存在的**第三态**，与 Loading / Failed / Empty 在
+ * 字面上完全不同。这不是加载失败：重试不可能成功，所以**没有重试按钮**；也不代表没有
+ * 数据：读数从未到达。升级 core 后这里自动出现真实数据。传输原话原样保留，可核对。
+ */
+@Composable
+private fun ActivityMethodMissingCard(
+    method: String,
+    transportWords: String,
+    modifier: Modifier = Modifier,
+) {
+    EmptyStateCard(
+        icon = VadeIcons.Empty,
+        title = "此 core 还没有 $method 方法",
+        body = "core 对 $method 回答方法不存在（$transportWords）——" +
+            "这不是加载失败，也不代表没有数据：这个 core 版本还没有这个读数。" +
+            "升级 core 后，这里会显示真实数据。",
+        modifier = modifier,
+    )
 }
 
 /** Placeholder kept so the file compiles before U1-d grows real sections. */
