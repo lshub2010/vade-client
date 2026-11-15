@@ -82,8 +82,13 @@ fun main(args: Array<String>) {
     // The flag starts the real `App()` — not the showcase — so the shots are the product.
     val skinId = args.flag("--skin=") ?: System.getenv("VADE_SKIN") ?: "material"
     val dark = args.has("--dark") || System.getenv("VADE_DARK") == "1"
-    vade.ui.skin.miuix.MiuixSkinEntry.dark = dark
-    vade.ui.skin.material.MaterialSkinEntry.dark = dark
+    // g-dark-follow · the `--dark` prior becomes a ThemeController override (手选暗) instead of
+    // writing the skin factories' plain vars directly: without `--dark` the app now follows the
+    // system theme via the desktop actual (能取到就跟，取不到=false 保持亮色现行为). The factory
+    // vars (MiuixSkinEntry.dark / MaterialSkinEntry.dark) are synced by ThemeController in
+    // composition (App.kt's remember key) — single source, same seam as the settings page.
+    vade.ui.skin.ThemeController.override =
+        if (dark) vade.ui.skin.ThemeMode.Dark else vade.ui.skin.ThemeMode.FollowSystem
     // Kept out of `App()` on purpose: U1-b has no chat page yet, so the message-bubble /
     // tool-card / input-bar shots come from the skin's own page (see MiuixShowcase.kt).
     val showcase = args.has("--showcase")

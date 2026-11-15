@@ -34,9 +34,11 @@ import vade.ui.model.InMemoryModelActions
 import vade.ui.model.ModelActions
 import vade.ui.model.ModelPickerCard
 import vade.ui.model.ModelState
-import vade.ui.skin.BtnStyle
 import vade.ui.skin.BottomBarStyle
+import vade.ui.skin.BtnStyle
 import vade.ui.skin.LocalSkin
+import vade.ui.skin.ThemeController
+import vade.ui.skin.ThemeMode
 
 /**
  * 我的 (U1-a skeleton), v2 form — appearance is the only interactive block, because it is
@@ -129,6 +131,22 @@ fun ProfileScreen(
                 )
                 UiText(
                     text = "内部 id：material · miuix · glass（皮肤注册表主键；当前 $skinId）",
+                    size = 11,
+                    color = skin.colors.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(2.dp))
+                // g-dark-follow · 主题：跟随系统（默认）/ 亮 / 暗。写入 ThemeController.override；
+                // 解析与即时切换的机制见 skin/ThemeMode.kt 的类 KDoc（remember key → 只换 LocalSkin）。
+                UiText("主题", size = 13, weight = FontWeight.SemiBold)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ThemeChip(ThemeMode.FollowSystem)
+                    ThemeChip(ThemeMode.Light)
+                    ThemeChip(ThemeMode.Dark)
+                }
+                UiText(
+                    text = "默认跟随系统：Android 监听 uiMode、Web 读 prefers-color-scheme、桌面跟系统主题" +
+                        "（取不到保持亮色）；手选后覆盖系统。切换只换 LocalSkin 的值，不重建整棵树——" +
+                        "当前会话与滚动位置保留。",
                     size = 11,
                     color = skin.colors.onSurfaceVariant,
                 )
@@ -239,6 +257,21 @@ private fun BarChip(
         text = label,
         onClick = { onSelect(style) },
         style = if (style == current) BtnStyle.Primary else BtnStyle.Secondary,
+    )
+}
+
+/**
+ * g-dark-follow · 主题三态 chips（跟随系统 / 亮 / 暗），外观分区的手动覆盖入口。
+ * 与 SkinChip/BarChip 同一形态：选中态由 BtnStyle 表达。当前值直接读
+ * `ThemeController.override`（组合期状态，不进 UiState——主题不是会话状态，D98 口径），
+ * 点选即写回，`App.kt` 的 remember key 随之翻转、只换 LocalSkin 的值。
+ */
+@Composable
+private fun ThemeChip(mode: ThemeMode) {
+    LocalSkin.current.Button(
+        text = mode.label,
+        onClick = { ThemeController.override = mode },
+        style = if (ThemeController.override == mode) BtnStyle.Primary else BtnStyle.Secondary,
     )
 }
 

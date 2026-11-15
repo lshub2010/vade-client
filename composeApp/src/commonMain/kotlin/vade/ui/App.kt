@@ -59,7 +59,8 @@ fun App(
             }
         }
     }
-    val skin = remember(state.skinId) { SkinRegistry.get(state.skinId) }
+    val skin =
+        remember(state.skinId, vade.ui.skin.ThemeController.currentDark()) { SkinRegistry.get(state.skinId) }
 
     CompositionLocalProvider(LocalSkin provides skin) {
         AppShell(state)
