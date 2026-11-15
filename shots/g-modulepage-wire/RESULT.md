@@ -183,7 +183,11 @@ files=113  tests=1154  skipped=1  failures=0  errors=0
 
 - 改动只在 `composeApp/src/commonMain/kotlin/vade/ui/{data,module,destinations}/**` 与
   `composeApp/src/desktopTest/**`；**`shell/AppShell.kt` 一行未动**，`protocol/**`、`skin/**`、
-  `icon/**`、`chat/**`、`build.gradle.kts`、`contracts/**`、`schema/**` 全部未动；
+  `icon/**`、`chat/**`、`build.gradle.kts`、`contracts/**`、`schema/**` 全部未动
+  （`git diff --stat 1112fff..HEAD -- <这些路径>` 输出为 0 行）；
+- 本棒工作期间本地 `main` 从 `1112fff` 前移了一个**只动 `shots/g-visual-audit2/`** 的提交
+  （`bbfdf2f`）：`git log --name-only 1112fff..main` 里没有任何 `composeApp/src` 文件，
+  所以本分支合并回 `main` 时与它零冲突（也再次说明本棒没碰别人的目录）；
 - 未 push、未合并；无 `--amend` / `--rebase` / `--reset`；没有删测、skip 或弱化断言；
 - 未用真机、未用模拟器；渲染器视觉未调（新增的一张是异步路径必需的「正在取回页面」卡片，
   与既有「页面不可用」卡同形）。
