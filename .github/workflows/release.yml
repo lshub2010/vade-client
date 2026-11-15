@@ -1,0 +1,148 @@
+name: Release build
+
+# 每次发布（release published）自动构建三端产物并挂到该 Release 上。
+# 也可手动触发：Actions → Release build → Run workflow，填一个已存在的 tag。
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "已存在的 tag（例如 v0.0.1-alpha）"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-build-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx3g -Dorg.gradle.daemon=false"
+
+jobs:
+  build:
+    name: 构建 Android / Windows / Web 产物
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: 检出源码（含契约 submodule）
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          submodules: recursive
+
+      - name: 安装 JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: 安装 Gradle 9.6.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.6.1"
+
+      - name: 安装 Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 写 local.properties
+        shell: pwsh
+        run: |
+          $sdk = $env:ANDROID_HOME
+          if (-not $sdk) { $sdk = $env:ANDROID_SDK_ROOT }
+          "sdk.dir=$($sdk -replace '\\','/')" | Out-File -Encoding ascii -NoNewline local.properties
+          Get-Content local.properties
+
+      - name: 读取版本号
+        id: ver
+        shell: pwsh
+        run: |
+          $line = Select-String -Path gradle.properties -Pattern '^vadeVersion=(.*)$'
+          if (-not $line) { throw "gradle.properties 里没有 vadeVersion" }
+          $v = $line.Matches[0].Groups[1].Value.Trim()
+          # MSI 的 packageVersion 只接受纯数字段，构建脚本取的是 '-' 之前的部分
+          $appver = $v.Split('-')[0]
+          "version=$v"     >> $env:GITHUB_OUTPUT
+          "appver=$appver" >> $env:GITHUB_OUTPUT
+          Write-Host "version=$v appver=$appver"
+
+      - name: 服务端无关的全量测试（不阻断发布）
+        continue-on-error: true
+        run: gradle :composeApp:desktopTest --rerun --console=plain
+
+      - name: 构建 APK
+        run: gradle :composeApp:assembleDebug --console=plain --stacktrace
+
+      - name: 构建桌面可移植目录
+        run: gradle :composeApp:createDistributable --console=plain --stacktrace
+
+      - name: 准备 WiX（打 MSI 用；缺失则尝试安装）
+        shell: pwsh
+        run: |
+          if (-not (Get-Command candle.exe -ErrorAction SilentlyContinue)) {
+            choco install wixtoolset -y --no-progress
+            $wix = "C:\Program Files (x86)\WiX Toolset v3.14\bin"
+            if (Test-Path $wix) { $wix >> $env:GITHUB_PATH }
+          }
+
+      - name: 构建 MSI
+        continue-on-error: true
+        run: gradle :composeApp:packageMsi --console=plain --stacktrace
+
+      - name: 构建 wasm 站点
+        run: gradle :composeApp:wasmJsBrowserDistribution --console=plain --stacktrace
+
+      - name: 收集并重命名产物
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.ver.outputs.version }}"
+          $appver = "${{ steps.ver.outputs.appver }}"
+          New-Item -ItemType Directory -Force -Path out | Out-Null
+
+          $apk = "composeApp/build/outputs/apk/debug/composeApp-debug.apk"
+          if (-not (Test-Path $apk)) { throw "APK 未生成：$apk" }
+          Copy-Item $apk "out/vade-ui-$ver-android.apk"
+
+          $appDir = "composeApp/build/compose/binaries/main/app/vade-ui"
+          if (Test-Path $appDir) {
+            Compress-Archive -Path "$appDir/*" -DestinationPath "out/vade-ui-$ver-windows-x64.zip" -Force
+          } else { Write-Warning "可移植目录缺失：$appDir" }
+
+          $msi = "composeApp/build/compose/binaries/main/msi/vade-ui-$appver.msi"
+          if (Test-Path $msi) {
+            Copy-Item $msi "out/vade-ui-$ver-windows-x64.msi"
+          } else { Write-Warning "MSI 缺失（WiX 可能不可用）：$msi" }
+
+          $wasmDir = "composeApp/build/dist/wasmJs/productionExecutable"
+          if (-not (Test-Path $wasmDir)) {
+            $idx = Get-ChildItem -Path "composeApp/build/dist" -Recurse -Filter index.html -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($idx) { $wasmDir = $idx.Directory.FullName }
+          }
+          if (Test-Path $wasmDir) {
+            Compress-Archive -Path "$wasmDir/*" -DestinationPath "out/vade-ui-$ver-web.zip" -Force
+          } else { Write-Warning "wasm 站点目录缺失" }
+
+          Get-ChildItem out | ForEach-Object { "{0}  {1:N0} bytes" -f $_.Name, $_.Length }
+          if (-not (Get-ChildItem out)) { throw "没有产出任何文件" }
+
+      - name: 挂到 Release
+        if: github.event_name == 'release'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.event.release.tag_name }}"
+          Get-ChildItem out | ForEach-Object {
+            Write-Host "upload $($_.Name)"
+            gh release upload $tag $_.FullName --clobber
+          }
+
+      - name: 留档（手动触发也能下载）
+        uses: actions/upload-artifact@v4
+        with:
+          name: vade-ui-${{ steps.ver.outputs.version }}
+          path: out/*
+          if-no-files-found: error

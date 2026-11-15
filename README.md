@@ -1,5 +1,7 @@
 # Vade
 
+![Release build](https://github.com/lshub2010/vade-client/actions/workflows/release.yml/badge.svg)
+
 **Vade**（中文名「偕行」）是一个「内核极薄、能力全靠模块」的 Agent 运行时。
 
 本仓库是它的**客户端**：Android / 桌面 / Web 三端共用同一套 Compose UI（Kotlin Multiplatform）。协议内核、契约与设计文档在 **[lshub2010/Vade](https://github.com/lshub2010/Vade)**。
