@@ -36,6 +36,7 @@ import vade.ui.destinations.SessionsScreen
 import vade.ui.meta.FakeMetaActions
 import vade.ui.meta.MetaGroup
 import vade.ui.meta.SessionMetaActions
+import vade.ui.meta.SessionMetaState
 import vade.ui.model.ModelActions
 import vade.ui.module.ModuleDeclaration
 import vade.ui.module.ModulePageSource
@@ -63,9 +64,16 @@ import kotlin.test.assertTrue
  *  2. **屏上是组名，不是 id**：`g-1` → 「项目」后，`项目` 出现在屏上、裸 `g-1` 一个都没有；
  *  3. **未分组的行不多画**：传了非空组表，未分组行的整棵语义树文本与空表时**逐字相等**
  *     （多一行空组名/色点也算回归）；
- *  4. **没有分组权威时不发明组名**：假源（`adapters == null`）与「适配器查找抛异常」
- *     （`forAdapters` 退化到 `FakeMetaActions`）两种情形，屏上必须继续是裸 `g-1`，
- *     绝不能冒出 fixture 的「项目/灵感」——那等于把假数据当 core 的组名。
+ *  4. **有分组权威时才显示组名，没有时不装死**（2026-11 修订，见 D5）：
+ *     - 假源（`adapters == null`，即屏上跑的本来就是 fixture 会话）⇒ 组表是**fixture 自己的**
+ *       ——`FakeMetaActions.defaultGroups`（`g-1` 项目 / `g-2` 灵感）。这条路屏上显示的
+ *       一直是假数据，给它配上假组名不冒充任何真理，反而去掉了「● g-1」这种一看就断的观感；
+ *     - 「适配器查找抛异常」（`forAdapters` 退化到 `FakeMetaActions`）与「`session/group.list`
+ *       读失败」⇒ 屏上是**真会话**，组表必须留空、屏上继续是裸 `g-1`，绝不能冒出 fixture 的
+ *       「项目/灵感」——那等于把假数据当 core 的组名（上一棒的裁定，本棒不动）。
+ *
+ * 两条分界线的判据是「**这一屏的会话行是不是假数据**」，不是「有没有 `FakeMetaActions`」：
+ * 假源 ⇒ 行与组名同源（都假，自洽）；真源 ⇒ 组名要么来自 core，要么不显示。
  *
  * 组名从 `session/group.list` 来（[AdapterProvider.meta] → [SessionMetaActions.listGroups]），
  * 由 [metaGroupsOf] 取：测试走的正是生产那条路，没有任何只为测试存在的形参或开关。
@@ -257,12 +265,14 @@ class AppShellMetaGroupWiringTest {
         )
     }
 
-    // -------------------------- 4 · 没有分组权威时不发明组名（假源 / 适配器退化 / 拉取失败）
+    // ------------------ 4 · 假源同源（显示 fixture 组名）/ 真源无权威（裸 id，不发明名字）
 
     @Test
-    fun theFixturePathKeepsShowingTheRawIdAndNeverAFabricatedName() = runComposeUiTest {
-        // 假源不实现 AdapterHost ⇒ adapters == null ⇒ 没有分组权威。fixture 行的 groupId
-        // 仍是 g-1，所以屏上继续显示裸 id —— 这是**接线前**的行为，必须逐字不变。
+    fun theFixturePathShowsTheFixtureGroupNamesAndNeverTheRawIds() = runComposeUiTest {
+        // 假源不实现 AdapterHost ⇒ adapters == null ⇒ 屏上**每一行都是 fixture 会话**。
+        // 这条路的分组权威就是 fixture 自己的那张表（`FakeMetaActions.defaultGroups`：
+        // g-1 项目 / g-2 灵感），屏上显示它不冒充 any core 事实 —— 而裸 `g-1` 是把内部 id
+        // 塞给了用户（D5）。判据：真组名上榜，两个裸 id 一个都不许有。
         val ui = state(FakeSessionSource())
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
@@ -271,12 +281,19 @@ class AppShellMetaGroupWiringTest {
         }
 
         waitUntil(timeoutMillis = 10_000) {
-            onAllNodesWithText(GROUP_ID).fetchSemanticsNodes().isNotEmpty()
+            onAllNodesWithText(GROUP_NAME).fetchSemanticsNodes().isNotEmpty()
         }
+        onNodeWithText(OTHER_GROUP_NAME).assertExists()
+
         assertEquals(
             0,
-            onAllNodesWithText(GROUP_NAME).fetchSemanticsNodes().size,
-            "假源没有分组权威：不许把 fixture 的组名当成真的画上去",
+            onAllNodesWithText(GROUP_ID).fetchSemanticsNodes().size,
+            "假源屏上不许出现内部 id $GROUP_ID：裸 id 就是 D5 那条观感缺陷",
+        )
+        assertEquals(
+            0,
+            onAllNodesWithText(OTHER_GROUP_ID).fetchSemanticsNodes().size,
+            "假源屏上不许出现内部 id $OTHER_GROUP_ID",
         )
     }
 
@@ -299,6 +316,11 @@ class AppShellMetaGroupWiringTest {
             onAllNodesWithText(GROUP_NAME).fetchSemanticsNodes().size,
             "适配器查找失败时跑的是内存假实现，它的组名绝不能上屏",
         )
+        assertEquals(
+            0,
+            onAllNodesWithText(OTHER_GROUP_NAME).fetchSemanticsNodes().size,
+            "同上：$OTHER_GROUP_NAME 也是 fixture 的组名，一个都不许漏到真会话上",
+        )
     }
 
     @Test
@@ -320,6 +342,42 @@ class AppShellMetaGroupWiringTest {
             onAllNodesWithText(GROUP_NAME).fetchSemanticsNodes().size,
             "读失败时没有组名可显示，只能退化成裸 id",
         )
+        assertEquals(
+            0,
+            onAllNodesWithText(OTHER_GROUP_NAME).fetchSemanticsNodes().size,
+            "读失败也不许拿 fixture 的 $OTHER_GROUP_NAME 顶上",
+        )
+    }
+
+    // ---------------------------------- 5 · 假源种子只属于假源（forAdapters(null) 的分界）
+
+    @Test
+    fun onlyTheFixturePathSeedsTheFakeGroupTable() {
+        // 状态机层面的边界，比 UI 更早一道：`forAdapters(null)` 是**假源**，它拿到
+        // `FakeMetaActions` 的同源组表；而 `adapters != null` 的两条失败路径（查找抛异常 /
+        // 列表读失败）都**必须**拿到空表 —— 空表正是「读不到就显示裸 id」那条真实行为的来源。
+        val fixture = SessionMetaState.forAdapters(adapters = null, sessionId = "s-1")
+        assertEquals(
+            FakeMetaActions.defaultGroups.map { it.name },
+            fixture.groups.map { it.name },
+            "假源路径的组表必须是 fixture 自己的（项目/灵感），否则屏上又是裸 g-1",
+        )
+
+        val degraded = SessionMetaState.forAdapters(
+            adapters = object : AdapterProvider {
+                override fun meta(sessionId: String): SessionMetaActions =
+                    throw IllegalStateException("boom（测试）")
+
+                override fun model(sessionId: String) = error("不该查 model")
+                override fun modelDefault() = error("不该查 modelDefault")
+                override fun turns(sessionId: String) = error("不该查 turns")
+                override fun uploader() = error("不该查 uploader")
+                override fun modulePages() = error("不该查 modulePages")
+            },
+            sessionId = "s-1",
+        )
+        assertTrue(degraded.groups.isEmpty(), "适配器退化的那一支绝不许带上 fixture 组名")
+        assertTrue(degraded.wiringDegradation != null, "退化必须留原因")
     }
 
     // ------------------------------------------------------------------ 工具
@@ -358,6 +416,10 @@ class AppShellMetaGroupWiringTest {
     private companion object {
         const val GROUP_ID = "g-1"
         const val GROUP_NAME = "项目"
+
+        /** fixture 的第二个组（`FakeMetaActions.defaultGroups[1]`）：假源/真源两条路都要认它。 */
+        const val OTHER_GROUP_ID = "g-2"
+        const val OTHER_GROUP_NAME = "灵感"
 
         /** 服务端会返回的组名字表：`g-1` → 「项目」（一个具体中文名，不是 id 的回声）。 */
         val GROUPS = listOf(MetaGroup(GROUP_ID, GROUP_NAME, "briefcase", "#3B82F6"))

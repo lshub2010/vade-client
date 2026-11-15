@@ -586,7 +586,26 @@ class SessionMetaState(
                 return SessionMetaState(sessions, groups, actions, focusSessionId = sessionId)
             }
             if (adapters == null) {
-                return SessionMetaState(sessions, groups, FakeMetaActions(), focusSessionId = sessionId)
+                // 假源（fixture）：屏上的会话行**本来就是**这份 fixture（`FakeSessions` 的
+                // groupId 就是 `g-1` / `g-2`），它的分组权威也就是 fixture 自己的那张表 ——
+                // 这里刚 new 出来的那个 `FakeMetaActions` 的种子。
+                //
+                // 构造期直接取，不额外发一次 `session/group.list`：假源没有 core，那条
+                // "请求"只会在台账里多一条自己给自己的回声，而首帧还要先闪一下裸 `g-1`
+                // 等协程回来（D5：界面上不该出现内部 id）。
+                //
+                // 分界线是 `adapters == null`（整屏都是假数据），**不是**「有没有 Fake」：
+                // 一旦有适配器 —— 包括 `meta()` 抛异常、已经退化成 `FakeMetaActions` 的
+                // 那一支 —— 组表必须保持调用方给的值（默认空表）。那种情形下行是真会话，
+                // 拿 fixture 的「项目/灵感」去配它们就是撒一个比裸 id 更坏的谎，
+                // 由 `shell/AppShell.kt` 的 `metaGroupsOf` 与两条回归测试钉住。
+                val fake = FakeMetaActions()
+                return SessionMetaState(
+                    initialSessions = sessions,
+                    initialGroups = groups.ifEmpty { fake.groups.value },
+                    actions = fake,
+                    focusSessionId = sessionId,
+                )
             }
             return try {
                 SessionMetaState(sessions, groups, adapters.meta(sessionId), focusSessionId = sessionId)
