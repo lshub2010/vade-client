@@ -1,107 +1,31 @@
-# .gitleaks.toml — Vade 仓库 gitleaks 配置（两仓内容一致）
+# .gitleaks.toml — Vade 仓库 gitleaks 定稿配置（两仓内容一致，s-gitleaks-final）
 #
-# 基础规则集：gitleaks v8.30.1 内建的官方默认规则集（[extend] useDefault = true），
-# 不本地 fork 规则，随工具升级自动同步官方新增规则。
+# 定稿策略（取代 09a2ac5 的「行级 allowlist」初稿）：
+#   1. 规则集 = gitleaks 内建官方默认规则（[extend] useDefault = true），
+#      不 fork、不删减、不改写任何规则。
+#   2. 白名单【只允许路径级排除】，且仅限以下四类「从不进入版本库」的树
+#      （全部被 .gitignore 覆盖，排除它们不可能掩盖真实提交过的凭据）：
+#        - .venv/**           Python 虚拟环境：第三方 wheel / vendor 类型存根
+#        - **/build/**        构建产物：由源码与第三方拷贝生成
+#        - **/.gradle/**      Gradle 本地缓存与状态
+#        - **/node_modules/** npm 第三方依赖
+#   3. 【禁止】regex / stopword / 行特征级 allowlist：不允许用「抹具体字符串」
+#      的方式把命中悄悄归零。真命中必须照报，由人判断真/假。
+#      （gitleaks 内建默认规则自带的全局降噪项属于工具默认行为，不在此约束内。）
+#   4. 「路径级排除没有削弱扫描」由金丝雀自证：shots/s-gitleaks-final/ 归档了
+#      金丝雀仓的扫描结果——未排除路径上的假 AWS key / GitHub PAT / RSA 私钥
+#      全部命中，四个排除树里的同款饵全部不报。
 #
-# 白名单策略（硬约束）：
-#   1. 只允许“已知误报”，每条必须有 description 说明为什么不是凭据；
-#   2. 禁止整目录 paths 排除（build/、.venv/、tests/、docs/ 之类一律不做目录级豁免）；
-#   3. 能用行级 regex 锁死的就不写 paths；必须写 paths 时锚定到具体文件。
-# 因此本文件里的每一条都是「具体路径 + 具体行特征」，其余一律照常扫描、照常报。
+# 路径正则同时兼容 / 与 \ 分隔符（Windows 工作区扫描的路径分隔符是反斜杠）。
 
 [extend]
 useDefault = true
 
-# ---------------------------------------------------------------------------
-# 1) JDK 自带 security 属性文件里的密码套件参数列表
-#    命中文本形如 "jdk.tls.keyLimits=AES/GCM/NoPadding KeyUpdate 2^37"。
-#    这是 JDK 的 TLS key update 阈值声明，不是任何形式的凭据；
-#    该文件会被构建流程复制到 composeApp/build/... 下，行内容不变。
-#    只放行 keyLimits 这两种 JDK 属性名，其余行照扫。
-# ---------------------------------------------------------------------------
 [[allowlists]]
-description = "JDK java.security 的 jdk.tls.keyLimits / jdk.quic.tls.keyLimits 属性行（密码套件参数，非凭据）"
-regexTarget = "line"
-regexes = [
-  '''jdk\.(?:quic\.)?tls\.keyLimits\s*=''',
+description = "仅排除不入库的依赖/构建树：.venv、build、.gradle、node_modules"
+paths = [
+  '''(^|[\\/])\.venv([\\/].*)?$''',
+  '''(^|[\\/])build([\\/].*)?$''',
+  '''(^|[\\/])\.gradle([\\/].*)?$''',
+  '''(^|[\\/])node_modules([\\/].*)?$''',
 ]
-
-# ---------------------------------------------------------------------------
-# 2) docs/QUICKSTART.md 的 WebSocket 握手示例
-#    命中文本形如 curl -H "Sec-WebSocket-Key: <24 字符 base64>"。
-#    RFC 6455 §4.1:Sec-WebSocket-Key 是客户端每次连接随机生成的 16 字节 nonce,
-#    服务端只回显到 Accept 头里做握手校验,不具备任何授权能力。
-#    仅限该文档内的 Sec-WebSocket-Key 头,同文件的其它行照扫。
-# ---------------------------------------------------------------------------
-[[allowlists]]
-description = "docs/QUICKSTART.md 中 WebSocket 握手示例的 Sec-WebSocket-Key（RFC6455 随机 nonce，非凭据）"
-paths = ['''(^|/)docs/QUICKSTART\.md$''']
-regexTarget = "line"
-regexes = [
-  '''Sec-WebSocket-Key:\s*[A-Za-z0-9+/=]{16,}''',
-]
-
-# ---------------------------------------------------------------------------
-# 3) cryptography wheel 自带的 hpke.pyi 类型存根
-#    命中文本形如 "private_key: x25519.X25519PrivateKey | ec.EllipticCurvePrivateKey"。
-#    这是 PEP 484 类型注解（联合类型），没有字面量密钥值。
-#    用行特征锁死,不按 .venv/ 目录豁免。
-# ---------------------------------------------------------------------------
-[[allowlists]]
-description = "cryptography hpke.pyi 类型存根里的 private_key: <类型> 注解（无字面量密钥）"
-regexTarget = "line"
-regexes = [
-  '''private_key:\s*\w+(?:\.\w+)*PrivateKey''',
-]
-
-# ---------------------------------------------------------------------------
-# 4) core/tests/admin/test_passwords.py 的“错误口令”测试夹具
-#    该用例断言错误口令返回 401,夹具值是自造的无效串。
-#    锚定到 log_in(...) 调用的 password 实参,文件内其它行照扫。
-# ---------------------------------------------------------------------------
-[[allowlists]]
-description = "core/tests/admin/test_passwords.py 中 log_in(...) 的假口令夹具（断言 401 用）"
-paths = ['''(^|/)core/tests/admin/test_passwords\.py$''']
-regexTarget = "line"
-regexes = [
-  '''log_in\(.*password="''',
-]
-
-# ---------------------------------------------------------------------------
-# 5) core/tests/input/test_audit.py 的 SECRET 金丝雀常量
-#    该测试用 SECRET 断言「提交的输入值不得出现在日志/审计行里」
-#    (assert SECRET not in everything)。值是合成的 sk-live-<14 位>,
-#    长度 22;真实 Stripe live key 为 sk_live_ 前缀、长度约 107,格式与长度均不符。
-#    锚定文件常量声明行,文件内其它赋值照扫。
-# ---------------------------------------------------------------------------
-[[allowlists]]
-description = "core/tests/input/test_audit.py 的 SECRET 金丝雀常量（redaction 断言用，合成值非真实 key）"
-paths = ['''(^|/)core/tests/input/test_audit\.py$''']
-regexTarget = "line"
-regexes = [
-  '''^SECRET = "sk-''',
-]
-
-# ---------------------------------------------------------------------------
-# 6) core/tests/loop/test_args_redaction.py 的假参数表
-#    整个文件就是在测「命令行/env 里的 secret 会被打码」,
-#    表里的 Bearer token 与 AWS_ACCESS_KEY_ID 正是被断言要打码的输入,非凭据。
-#    只放行这两类行,同文件其它行照扫。
-# ---------------------------------------------------------------------------
-[[allowlists]]
-description = "core/tests/loop/test_args_redaction.py 的假凭据参数表（被测对象就是“会被打码”的输入）"
-paths = ['''(^|/)core/tests/loop/test_args_redaction\.py$''']
-regexTarget = "line"
-regexes = [
-  '''Authorization: Bearer''',
-  '''AWS_ACCESS_KEY_ID=''',
-]
-
-# ---------------------------------------------------------------------------
-# 7) 上条夹具的字节码副本（同一份假值编译产物）
-#    __pycache__ 被 .gitignore 覆盖、从未入库;文件名锚定到该测试模块,
-#    不放行整个 __pycache__ 目录。
-# ---------------------------------------------------------------------------
-[[allowlists]]
-description = "test_args_redaction 的 .pyc 编译副本（同一夹具的字节码，gitignored 未入库）"
-paths = ['''(^|/)core/tests/loop/__pycache__/test_args_redaction\..*\.pyc$''']
