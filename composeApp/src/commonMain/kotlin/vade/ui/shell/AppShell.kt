@@ -366,12 +366,36 @@ private fun ShellBody(state: UiState) {
         // --- glass top bar: sibling of the source (haze cannot capture its own layer). ---
         // Inset start by the rail so the bar floats over the content column only, and end
         // by the right panel when it is open (the panel is a full-height backdrop column).
+        // The two extents are derived **once** (g-topbar-band): the band below and the
+        // capsule share them, so "where the shelf ends" and "where the card is inset"
+        // cannot drift apart — a 12dp divergence at the panel edge would leave a sharp
+        // sliver of panel content beside the glass.
+        val topBarStart = if (metrics.useRail) metrics.railWidth else 0.dp
+        val topBarEnd = if (metrics.hasRightPanel && state.panelOpen) 320.dp + 1.dp else 0.dp
+
+        // --- top-bar band (g-topbar-band): the glass shelf the floating capsule sits on. ---
+        // Covers the WHOLE top-bar zone — the 8dp above the card and the 8dp below it are
+        // the two strips where scrolled content used to show up sharp and readable (D2).
+        // Drawn **before** the capsule so it is the card's backdrop, never an overlay: the
+        // card's own glass is opaque, so its pixels stay identical to the pre-fix frame.
+        // Edge-to-edge on the content column (no 12dp inset, no corner radius): the side
+        // margins and the four 28dp corner slivers are part of the leak too.
+        Box(
+            Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .padding(start = topBarStart, end = topBarEnd)
+                .height(TOP_BAR_ZONE),
+        ) {
+            TopBarBand(Modifier.fillMaxSize())
+        }
+
         Row(
             Modifier
                 .align(Alignment.TopCenter)
                 .padding(
-                    start = if (metrics.useRail) metrics.railWidth + 12.dp else 12.dp,
-                    end = if (metrics.hasRightPanel && state.panelOpen) 12.dp + 320.dp + 1.dp else 12.dp,
+                    start = topBarStart + 12.dp,
+                    end = topBarEnd + 12.dp,
                     top = TopBarTopGap,
                 ),
         ) {
