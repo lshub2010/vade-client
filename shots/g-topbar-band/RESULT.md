@@ -26,6 +26,14 @@
 
 **未改**：`destinations/**`、`skin/**` 的 token 值、`data/**`、`protocol/**`、`build.gradle.kts`、`contracts/**`；`AppShell.kt` 里 `metaGroupsOf` / `metaGroups =` 一行未动。
 
+**断点分支**（顶栏在每个断点都画，所以带子也在；变的只是水平范围——跟着内容列走，不凭空多画一条）：
+
+| 断点 | 带子左边界 | 带子右边界 | 证据 |
+|---|---|---|---|
+| `<600dp`（底栏单栏） | 0（窗口左沿） | 窗口右沿 | `after-a/b-*.png` |
+| `600–1199dp`（rail） | `metrics.railWidth`（80/72dp）——**不压 rail** | 窗口右沿 | 桌面像素测试 + 源码守卫 |
+| `≥1200dp` 且右面板开 | 同上 | `320dp + 1dp` 之前——**不压面板** | `after-c-desktop-chat.png`（1280×800：带子从 rail 右沿起、止于窗口右沿，rail 与面板都没被糊） |
+
 ---
 
 ## 2. 验收 1 · 空隙不再是"锐的"（真机像素）
