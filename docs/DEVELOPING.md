@@ -125,7 +125,9 @@ done
 - **不要把 `android-actions/setup-android` 加回来**：它内部跑 `sdkmanager tools`，该包已从 SDK 仓库移除 ⇒ 直接失败。现在改成用 runner 预装的 SDK，只补 `platforms;android-37.0` 与 `build-tools;37.0.0`。
 - **CI 里不跑 `desktopTest`**：Compose 桌面 UI 测试在无桌面会话的 runner 上会挂住（实测 19 分钟仍 `in_progress`）。测试在本地门禁跑，CI 只出产物。
 - 版本号唯一源是 `gradle.properties` 的 `vadeVersion`；MSI 的 `packageVersion` 取 `-` 之前的部分（`0.0.1-alpha` → `0.0.1`）。
-- 手动重跑：Actions → Release build → Run workflow，填一个**已存在的** tag。
+- 手动重跑：Actions → Release build → Run workflow，填一个**已存在的** tag（这条路径会跳过「挂到 Release」，只出构建产物）。
+- **`release` 事件跑的是「tag 那条提交」里的工作流文件**，不是默认分支最新版：如果 tag 停在加 workflow 之前的提交，事件来了也不会产生 run。改过 workflow 之后，记得把 tag 移到含 workflow 的提交再发。
+- 想验证整条链路又不想等下次真发布：把 release 改成草稿再重新发布（`draft:true → false`），这就是一次 `published`。
 
 ## 提交约定
 

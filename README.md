@@ -11,6 +11,17 @@
 
 ---
 
+## 下载
+
+现成产物挂在 [Releases](https://github.com/lshub2010/vade-client/releases/tag/v0.0.1-alpha)（每次发布由 CI 自动构建）：
+
+| 文件 | 平台 |
+|---|---|
+| `vade-ui-<版本>-android.apk` | Android |
+| `vade-ui-<版本>-windows-x64.msi` | Windows 安装器 |
+| `vade-ui-<版本>-windows-x64.zip` | Windows 免安装（解压即用，自带运行时） |
+| `vade-ui-<版本>-web.zip` | Web 静态站点（解压后起任意静态服务器） |
+
 ## 三端状态
 
 | 平台 | 状态 | 怎么装 |
