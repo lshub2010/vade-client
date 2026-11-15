@@ -78,20 +78,13 @@ class RealSessionSource(
 ) : SessionSource, AdapterHost, ModuleCatalogProvider {
 
     /**
-     * 模块清单通道 —— **本棒明确返回 `null`，这是阻塞，不是遗漏**。
+     * 模块清单通道：**连接期非空、断开后回到 `null`**（`connect()` 建，`disconnect()` dispose）。
      *
-     * `ui/modules` 在 core 侧已实现（`{revision, modules:[...]}`），但
-     * `contracts/vade/schema/rpc.json`（submodule `320384a`）里 `grep -c 'ui/modules'` = **0**：
-     * 冻结契约里模块相关的只有 `module.status` 事件。`protocol/VadeClient` 的方法是按
-     * 契约逐个手写的（`VadeMethod` 表），没有 `ui/modules` 就没有 typed 调用；本棒的
-     * 约束又不许改 submodule 指针、不许伪造回包。于是这里如实交 `null`：
-     *
-     *  - 能力页因此保持既有占位（**行为与接线前逐字节相同**），不会出现「加载中」假转圈，
-     *    也不会出现「core 说没有模块」这种我们并不知道的结论；
-     *  - 契约落地后这里只需 `ModulesLoader(WireModuleCatalogSource(...), scope)` 一行，
-     *    屏幕与 `AppShell` 都不用改（它们只认 `ModuleCatalog`）。
+     * g-modulepage-wire 之前这里恒为 `null`（`ui/modules` 还没进 `VadeMethod` 表），能力页
+     * 因此在生产形态下永远拿不到清单。现在通道已建出，第一次拉取由能力页的
+     * `LaunchedEffect(moduleCatalog)` → `ensureLoaded()` 发起（见 `data/ModuleCatalog.kt`）。
      */
-    /** 连接期由 [connect] 建出（与 client 同生命周期）；断开即置空。 */
+    @Volatile
     private var _moduleCatalog: ModuleCatalog? = null
 
     override val moduleCatalog: ModuleCatalog? get() = _moduleCatalog
@@ -170,10 +163,19 @@ class RealSessionSource(
         if (_client == null) {
             val created = VadeClient(config, tapFactory)
             _client = created
+            val s = scope ?: CoroutineScope(SupervisorJob() + Dispatchers.Default).also { scope = it }
+            // A3 · 模块清单（C-05 1.6.0 `ui/modules`）。与 client 同生命周期：断开后 client
+            // 不可复活，清单也不再可信。**先建 loader、再建适配器**：页面源要绑它的
+            // registry（声明 + 在线态），顺序反了就只能拿到 null 再补一个 setter。
+            val modules = ModulesLoader(WireModuleCatalogSource { created.uiModulesRaw() }, s)
+            _moduleCatalog = modules
             // Same lifetime as the client: the adapters ARE the client, just behind the
             // five narrow seams (see AdapterProvider).
             _adapters = RealAdapters(
-                created,
+                client = created,
+                // g-modulepage-wire · 页面源的声明与在线态 = 上面这份清单快照（同一个
+                // loader 实例），于是 `status()` 读的是真在线态而不是恒 false。
+                moduleRegistry = modules.registry,
                 // B2 · 读侧：history 是 data 层的读（session/messages.get），
                 // events 必须用**原始协议流**——`SessionSource.observeEvents` 是
                 // `mapEvent` 的有损投影（注释原话「六种核心事件 → UI 事件；其余全部丢弃」），
@@ -184,10 +186,6 @@ class RealSessionSource(
                     events = { created.events },
                 ),
             )
-            val s = scope ?: CoroutineScope(SupervisorJob() + Dispatchers.Default).also { scope = it }
-            // A3 · 模块清单（C-05 1.6.0 `ui/modules`）。与 client 同生命周期：
-            // 断开后 client 不可复活，清单也不再可信。
-            _moduleCatalog = ModulesLoader(WireModuleCatalogSource { created.uiModulesRaw() }, s)
             // Both collectors must be SUBSCRIBED before connect() — client.events is a
             // hot SharedFlow without replay, and late subscribers miss early events
             // (replay frames arrive right after Connected).

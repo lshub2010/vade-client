@@ -7,6 +7,7 @@ import vade.ui.chat.PendingAttachment
 import vade.ui.meta.SessionMetaActions
 import vade.ui.model.ModelActions
 import vade.ui.module.ModulePageSource
+import vade.ui.module.ModuleRegistryView
 import vade.ui.module.RealModulePageSource
 import vade.ui.protocol.VadeClient
 import vade.ui.protocol.VadeErrorCodes
@@ -129,6 +130,14 @@ internal class RealAdapters(
     /** 附件字节来源（shell 注入；null = 未接线，上传明确拒绝）。 */
     private val blobByteSource: BlobByteSource? = null,
     /**
+     * g-modulepage-wire · 模块声明与在线态的数据源（= `ModulesLoader.registry`，也就是
+     * 一次 `ui/modules` 聚合出来的快照）。组合根在 `connect()` 里把它交进来，于是
+     * `modulePages()` 的 `status()` 读的是**真**在线态，而不是恒为 false 的常量。
+     *
+     * `null` = 未接线（只有单测会这么构造）→ 页面源保持接线前的行为：声明为空、报离线。
+     */
+    private val moduleRegistry: ModuleRegistryView? = null,
+    /**
      * B2 · 聊天的**读**通道（历史 + 事件）。`null` = 未接线 —— 聊天页会明说「拿不到历史」
      * 并可重试，**不回退 fixtures**。组合根（[RealSessionSource]）传 `of(this::messages,
      * this::observeEvents)`，两个方法引用的签名与 [ChatTranscriptSource.of] 逐字相同。
@@ -142,7 +151,7 @@ internal class RealAdapters(
 
     private val turnGateway: ChatTurnGateway by lazy { TurnGatewayReal(client, chatTranscript) }
 
-    private val pageSource: ModulePageSource by lazy { RealModulePageSource(client) }
+    private val pageSource: ModulePageSource by lazy { RealModulePageSource(client, moduleRegistry) }
 
     private val blobUploader: AttachmentUploader by lazy {
         BlobUploaderReal(

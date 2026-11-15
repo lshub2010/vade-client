@@ -9,9 +9,10 @@ import vade.ui.protocol.VadeException
 import kotlin.concurrent.Volatile
 
 /**
- * [ModulePageSource] 的真实现（w-modulewire）：持 [VadeClient]，把 C-19 模块页宿主从
- * 内存示例树（`ModulePageSources.demo()`）接到 `ui/page.get` / `ui/state.get` 两条真实
- * RPC 上。不改接口、不改协议层——协议层的类型化包装（[VadeClient.uiPageGet] /
+ * [ModulePageSource] 的真实现（w-modulewire / g-modulepage-wire）：持 [VadeClient]，把
+ * C-19 模块页宿主从内存示例树（`ModulePageSources.demo()`）接到 `ui/page.get` /
+ * `ui/state.get` 两条真实 RPC 上，并把**声明与在线态**接到一次 `ui/modules` 的聚合快照上。
+ * 不改接口、不改协议层——协议层的类型化包装（[VadeClient.uiPageGet] /
  * [VadeClient.uiStateGet]，经 `VadeMethod.UI_PAGE_GET` / `UI_STATE_GET` 路由）已经存在，
  * 本类只包一层。
  *
@@ -39,33 +40,32 @@ import kotlin.concurrent.Volatile
  *  - 其余失败原样穿透 [VadeException]（core 的 34 个错误名 / 客户端 TIMEOUT /
  *    UNAVAILABLE），本类不吞、不改名、不重试。
  */
-class RealModulePageSource(private val client: VadeClient) : ModulePageSource {
+class RealModulePageSource(
+    private val client: VadeClient,
+    /** 声明与在线态的数据源（`data.ModuleRegistry`）；`null` = 未接线，见类 KDoc。 */
+    private val registry: ModuleRegistryView? = null,
+) : ModulePageSource, ModulePageBodyFetcher {
 
     /**
-     * 模块与页面声明快照：**返回空列表，这不是偷懒，而是没有真实数据源**。
+     * 声明快照：接上 [registry] 后它就是 `ui/modules` 一次拉取聚合出来的那份（模块标题 +
+     * `ui.pages[]`），**不是**这里编的；没接线时返回空列表（= 没有数据源）。
      *
-     * 声明只随 core→UI 的 `module.register` 事件到达（`manifest.ui.pages[]`），而
-     * `ui_to_core` 的 34 个方法（`VadeMethod` dispatch 表）里**没有任何**返回模块清单
-     * 的 RPC 可以拉取它；同时协议层 `VadeEventParser` 尚未解码 `module.register`
-     * （不在 `VADE_EVENT_TYPES` 清单里），事件流上也没有现成数据可订阅。没有 RPC、
-     * 没有可解码的事件，任何非空返回都只能是臆造。空声明经
-     * `ModulePageEntryRules.build` 推出空入口集：能力页整个「模块页面」区块不渲染
-     * （FR-8.79：无声明 → 无入口，不是空列表占位）——这是 fail-closed 的正确形态。
-     * 接线点：协议层解码 `module.register` 后由宿主收集事件喂给本类（建议签名见
-     * `shots/g-modulewire/RESULT.md`）。
+     * 空声明的影响被限制在「页内 navigate 目标校验」与面包屑的目标页查找这两处，
+     * 两者都 fail-closed（带 `module:<page_id>` 的页内导航整页拒渲）——能力页的入口
+     * 来自清单通道本身（`ModuleCatalog`），不经过这里。
      */
-    override fun declarations(): List<ModuleDeclaration> = emptyList()
+    override fun declarations(): List<ModuleDeclaration> = registry?.declarations().orEmpty()
 
     /**
-     * 模块在线状态：**返回离线，同样是诚实的「无数据源」**。
+     * 模块在线状态：接上 [registry] 后就是 `ui/modules` 回包里的 `online`
+     * （`ModuleRegistry` 按 `module_id` 聚合，任一实例在线即在线）——**这是真值**，
+     * 不是常量。页面顶部因此不再在模块真的在线时画「模块离线」。
      *
-     * `module.status` 事件协议层**已**解码（`client.events` 上有 `ModuleStatus`），
-     * 但它没有对应的拉取式 RPC，而本接口是同步值语义——SharedFlow 无法被非挂起方法
-     * 消费，收集事件需要一个宿主提供的协程作用域，那是宿主接线的一部分，不是本类
-     * 能自作主张的。在事件接线落地前返回离线（`online=false`）：宿主按 §7.4 显示
-     * 「模块离线」并禁用动作，绝不假装在线——把未知状态报成在线等于替模块担保。
+     * 未接线（`registry == null`）时返回离线：把未知状态报成在线等于替模块担保，
+     * 宿主按 §7.4 显示「模块离线」并禁用动作是那时唯一诚实的画法。
      */
-    override fun status(moduleId: String): ModuleStatus = ModuleStatus(online = false, version = null)
+    override fun status(moduleId: String): ModuleStatus =
+        registry?.status(moduleId) ?: ModuleStatus(online = false, version = null)
 
     /** 缓存：`moduleId/pageId` → 解析校验通过的原样 schema（不可变 map 整体替换）。 */
     @Volatile
@@ -104,19 +104,46 @@ class RealModulePageSource(private val client: VadeClient) : ModulePageSource {
         instanceId: String,
         pageId: String,
         declaredPageIds: Set<String> = emptySet(),
-    ): ParseResult.Ok {
+    ): ParseResult.Ok = pageGet(moduleId, instanceId, pageId, declaredPageIds).parsed
+
+    /**
+     * [ModulePageBodyFetcher] 的实现：同样的 `ui/page.get`，把 **schema 原文**交给调用方
+     * （宿主 `ModulePageHost` 的异步后备）。
+     *
+     * 与 [fetchPage] 走同一段代码（同一个参数校验、同一次解析校验、同一份缓存写入），
+     * 差别只在返回值：这里要的是「拿来渲染的树」，`fetchPage` 要的是「解析结论」。
+     * 解析拒绝照样抛 `PROTOCOL_MISMATCH`——异步不等于放松校验。
+     */
+    override suspend fun fetchBody(
+        moduleId: String,
+        instanceId: String,
+        pageId: String,
+        declaredPageIds: Set<String>,
+    ): JsonObject = pageGet(moduleId, instanceId, pageId, declaredPageIds).schema
+
+    /** `ui/page.get` 的一帧：解析校验通过才进缓存，然后两个返回值一起交出去。 */
+    private suspend fun pageGet(
+        moduleId: String,
+        instanceId: String,
+        pageId: String,
+        declaredPageIds: Set<String>,
+    ): PageBody {
         requireParams(moduleId, instanceId, pageId)
         val result = client.uiPageGet(PageGetParams(moduleId, instanceId, pageId))
         val parsed = ModulePageParser.parse(result.schema, declaredPageIds)
         return when (parsed) {
             is ParseResult.Ok -> {
                 // Ok 蕴含 root 是 JsonObject（解析器第一道门），此处强转安全。
-                pages = pages + ("$moduleId/$pageId" to (result.schema as JsonObject))
-                parsed
+                val schema = result.schema as JsonObject
+                pages = pages + ("$moduleId/$pageId" to schema)
+                PageBody(schema = schema, parsed = parsed)
             }
             is ParseResult.Rejected -> throw pageRejected(moduleId, pageId, parsed.reasons)
         }
     }
+
+    /** [pageGet] 的两个返回值：schema 原文（渲染用）+ 解析结论（计数/拒渲理由）。 */
+    private class PageBody(val schema: JsonObject, val parsed: ParseResult.Ok)
 
     /**
      * `ui/state.get` → `result.state`。[loadState] 的真实后备。

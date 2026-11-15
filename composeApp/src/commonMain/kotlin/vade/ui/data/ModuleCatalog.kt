@@ -55,6 +55,19 @@ interface ModuleCatalog {
     /** 当前快照。**在组合里读它就是订阅**（`mutableStateOf`）。 */
     val state: ModuleCatalogState
 
+    /**
+     * **首次进入时的幂等启动**：只有本实例的**第一次**调用会发起一次 `ui/modules`，
+     * 之后（含上一次拉取失败后的再次进入）什么都不做——重试是 [retry] 的事。
+     *
+     * 这是「谁负责发起第一次拉取」的唯一入口，调用点只有一个：能力页的
+     * `LaunchedEffect(moduleCatalog)`。为什么幂等性长在 loader 上、而不是调用点的
+     * `remember` 里：`remember` 会随屏幕离开组合而丢弃，用户「进来—出去—再进来」
+     * 每次都会重拉一次；而 loader 与连接同生命周期（`connect()` 建、`disconnect()`
+     * 释放），把「已经拉过」记在它身上，反复进出就自然不重复拉。失效仍只走
+     * [invalidate]（`module.status`）。
+     */
+    fun ensureLoaded()
+
     /** 失败卡上的重试入口：重发一次 `ui/modules`（首次拉取前调用也合法 = 开始拉取）。 */
     fun retry()
 
@@ -283,16 +296,18 @@ internal class WireModuleCatalogSource(
  *  - **在飞不重发**：一次拉取在飞时 [invalidate] 只记 `pullAgain`，不并发发帧；完成后
  *    若期间来过失效，**补一次**（不是 N 次）—— 这就是「抖动不发帧风暴」的那道闸。
  *
- * ## 阻塞（诚实记录，不要当成 TODO 装饰）
+ * ## 接线（g-modulepage-wire 起已全部到位）
  *
- * 本类**没有生产接线**：`contracts/vade/schema/rpc.json`（submodule `320384a`）里没有
- * `ui/modules`，`protocol/VadeClient` 因此没有对应方法，`VadeMethod` 表里也没有它。
- * 本棒按约束**不改 submodule 指针、不伪造回包**，所以 [ModuleCatalogProvider] 在
- * 组合根上返回 `null`（`RealSessionSource.moduleCatalog`），能力页保持既有占位。
- * 契约落地后接线只差三步：① 契约里加 `ui/modules`；② 协议层加一个 typed 方法
- * （或复用 `RealSessionSource.rawRpc`）实现 [ModuleCatalogSource]；③ 组合根把它包成
- * `ModulesLoader(source, scope)` 从 [ModuleCatalogProvider] 交出去 —— 屏幕与 `AppShell`
- * 一行都不用改（它们只认 [ModuleCatalog]）。
+ *  - 通道：`RealSessionSource.connect()` 里 `ModulesLoader(WireModuleCatalogSource { created.uiModulesRaw() }, s)`，
+ *    经 [ModuleCatalogProvider] 交给能力页（`AppShell` → `CapabilitiesScreen`）；
+ *  - **第一次拉取**：能力页的 `LaunchedEffect(moduleCatalog)` → [ensureLoaded]（幂等，
+ *    只发一次）；之后的变化只由 `module.status` → [invalidate] 驱动；
+ *  - **页面/在线态**：同一个 loader 的 [registry] 就是 `ui/modules` 聚合出来的快照，
+ *    组合根把它绑给 `RealModulePageSource`（`module/ModulePageSource.kt` 的
+ *    `ModuleRegistryView`），于是页面宿主的 `status()` 不再恒报离线。
+ *
+ * 早先这里写着「没有生产接线 / 组合根交 null」——那是本仓 `ui/modules` 尚未进
+ * `VadeMethod` 表时的状态，现已不成立。
  */
 internal class ModulesLoader(
     private val source: ModuleCatalogSource,
@@ -313,6 +328,10 @@ internal class ModulesLoader(
     @Volatile
     private var disposed = false
 
+    /** 「已经发起过拉取」：`ensureLoaded` 的幂等旗标（见该方法的 KDoc）。 */
+    @Volatile
+    private var everLoaded = false
+
     /** 一次拉取在飞（[invalidate] 据此决定「直接补拉」还是「记一笔待补」）。 */
     @Volatile
     private var inFlight = false
@@ -327,10 +346,25 @@ internal class ModulesLoader(
 
     /** 开始（或重发）一次拉取；与 [retry] 同义，给组合期直接调用用。 */
     fun load() {
+        everLoaded = true
         pull()
     }
 
     override fun retry() {
+        everLoaded = true
+        pull()
+    }
+
+    /**
+     * 幂等首次拉取（[ModuleCatalog.ensureLoaded] 的实现）：记在 **loader 实例**上，
+     * 所以能力页反复进出不会重拉；`load()` / `retry()` 也算「已经拉过」，避免
+     * 「先手动重试、再进屏幕」时多打一帧。
+     *
+     * 只从组合线程调用（`LaunchedEffect` 的单一调用点），与 [invalidate] 同一条线程假设。
+     */
+    override fun ensureLoaded() {
+        if (disposed || everLoaded) return
+        everLoaded = true
         pull()
     }
 

@@ -21,12 +21,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.snapshots.SnapshotStateMap
@@ -186,7 +189,22 @@ private fun ModulePageCard(shape: RoundedCornerShape, content: @Composable () ->
  *
  * 页内 `navigate`（module:&lt;page_id&gt;）在宿主内推进面包屑栈（§8.3：上限 3 层，
  * 第 4 次替换栈顶）；其余 navigate 目标与 `tools/call` / `ui/submit` 通过回调交给
- * 接线方——本轮协议未接（见 RESULT 未接线清单）。
+ * 接线方。
+ *
+ * ## 页面体：同步缓存 vs 异步取回（g-modulepage-wire）
+ *
+ * 过去本宿主只有同步值语义：`source.loadPage(...)` 命中就渲染，没命中就画
+ * 「页面不可用」——而 `ui/page.get` 是挂起调用，`commonMain` 里没人发它，于是**每一页**
+ * 都命中不了（`shots/g-module-page/RESULT.md` 缺口 2）。
+ *
+ * 现在多一条路：传了 [pageFetch]（真实现 = `RealModulePageSource`，它本身也是
+ * [ModulePageBodyFetcher]）就走**异步**——进入页面 / 页内导航 / 点重试时发**一帧**
+ * `ui/page.get`，由 [ModulePageBodyLoader] 收成 `Loading → Ready/Failed`。
+ * 没传（示例树、假数据源、既有测试）时行为与接线前**逐字节相同**：只读
+ * [ModulePageSource.loadPage] 的缓存。
+ *
+ * 「不能每帧都发」的保证在两处：请求由 `LaunchedEffect(key, attempt)` 触发（键变化才发，
+ * 不是重组就发），以及 loader 里的 generation 守卫（切页后旧回包直接丢弃）。
  */
 @Composable
 fun ModulePageHost(
@@ -196,6 +214,11 @@ fun ModulePageHost(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
     hasActiveSession: Boolean = false,
+    /**
+     * 页面体的异步后备（`ui/page.get`）。`null` = 只读 [ModulePageSource.loadPage] 的缓存
+     * ——示例树与假数据源就是这一路，行为不变。
+     */
+    pageFetch: ModulePageBodyFetcher? = null,
     onToolCall: (PageAction.ToolCall, kotlinx.serialization.json.JsonObject) -> Unit = { _, _ -> },
     onSubmit: (List<String>) -> Unit = {},
     onNavigateOut: (NavigateTarget) -> Unit = {},
@@ -204,7 +227,9 @@ fun ModulePageHost(
     val declaredPages = remember(source, entry.moduleId) { declaredPageIds(source, entry.moduleId) }
 
     // 面包屑栈：深度 1 = 页面标题；navigate 到同模块另一页入栈（≤3 层，第 4 次替换栈顶）。
-    val stack = remember { mutableStateListOf(entry) }
+    // 键 = 调用方交来的那一页：宿主被复用到另一页时必须**重置**栈，否则面包屑与正文会
+    // 停在上一页（`remember` 不随形参变化）。页内 navigate 只改这个 list，形参不变 → 不重置。
+    val stack = remember(entry.moduleId, entry.instanceId, entry.pageId) { mutableStateListOf(entry) }
     val current = stack.last()
     var refresh by remember(current.pageId) { mutableIntStateOf(0) }
 
@@ -212,11 +237,39 @@ fun ModulePageHost(
     val inputs = remember(current.pageId) { mutableStateMapOf<String, String>() }
     val tabSelections = remember(current.pageId) { mutableStateMapOf<String, Int>() }
 
-    val status = remember(current.moduleId, refresh) { source.status(current.moduleId) }
-    val raw = remember(current.pageId, refresh) { source.loadPage(current.moduleId, current.pageId) }
+    // 在线态**不 memo**：`ModuleRegistry` 的快照是整体替换的不可变值，只有每次重读才看得见
+    // `module.status` 带来的变化。整表就几个节点，按帧线性扫一遍比「记住一个过期快照」便宜。
+    val status = source.status(current.moduleId)
+
+    // 页面体：绑了异步后备就只认那一帧的结果，否则（示例树/假源）退回同步缓存。
+    val bodyScope = rememberCoroutineScope()
+    val bodies = remember(pageFetch) { pageFetch?.let { ModulePageBodyLoader(it, bodyScope) } }
+    DisposableEffect(bodies) { onDispose { bodies?.dispose() } }
+
+    // 每次进入页面 / 每次点重试 = 一代；key 变化（换页）也是新一代。
+    var attempt by remember(current.moduleId, current.pageId) { mutableIntStateOf(0) }
+    val key = ModulePageKey(current.moduleId, current.instanceId, current.pageId)
+    LaunchedEffect(bodies, key, attempt) {
+        // 一帧 ui/page.get：不是每帧都发（键不变就不重跑），也不是永远不发。
+        if (bodies == null) return@LaunchedEffect
+        bodies.load(key, declaredPages)
+    }
+
+    val bodyState = bodies?.state?.takeIf { it.key == key }
+    val cached = remember(current.pageId, refresh) { source.loadPage(current.moduleId, current.pageId) }
+    val raw = when {
+        bodies == null -> cached
+        else -> (bodyState as? ModulePageBodyState.Ready)?.schema
+    }
     val state = remember(current.pageId, refresh) { source.loadState(current.moduleId, current.instanceId, current.pageId) }
-    val parseResult = remember(current.pageId, raw, declaredPages) {
+    val parseResult = remember(raw, declaredPages) {
         raw?.let { ModulePageParser.parse(it, declaredPages) }
+    }
+
+    // 重试 = 重发一帧页面体（异步路）+ 重读同步缓存（示例树路）；两条路都走同一颗按钮。
+    val retry: () -> Unit = {
+        refresh += 1
+        attempt += 1
     }
 
     val env = PageEnv(
@@ -278,15 +331,22 @@ fun ModulePageHost(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         HostHeader(stack, onBack = { if (stack.size > 1) stack.removeAt(stack.lastIndex) else onBack() })
-        BannerRow(current, status, state, hasActiveSession, onRetry = { refresh += 1 })
+        BannerRow(current, status, state, hasActiveSession, onRetry = retry)
         when {
-            raw == null -> UnavailableCard(onRetry = { refresh += 1 }, onBack = onBack)
+            // 异步路的三态：失败 → 带 C-04 名的可重试卡；还没结果 → 「正在取回」卡。
+            bodies != null && bodyState is ModulePageBodyState.Failed -> UnavailableCard(
+                detail = bodyState.failure.label,
+                onRetry = retry,
+                onBack = onBack,
+            )
+            bodies != null && raw == null -> PageBodyLoadingCard()
+            raw == null -> UnavailableCard(onRetry = retry, onBack = onBack)
             parseResult is ParseResult.Rejected -> ModulePageErrorCard(
                 moduleTitle = current.moduleTitle,
                 pageTitle = current.pageTitle,
                 reasons = parseResult.reasons,
                 onBack = onBack,
-                onRetry = { refresh += 1 },
+                onRetry = retry,
             )
             resolved != null -> PageShell {
                 RenderResolved(
@@ -298,7 +358,7 @@ fun ModulePageHost(
                     dispatch = dispatch,
                 )
             }
-            else -> UnavailableCard(onRetry = { refresh += 1 }, onBack = onBack)
+            else -> UnavailableCard(onRetry = retry, onBack = onBack)
         }
         Spacer(Modifier.height(8.dp))
     }
@@ -408,18 +468,57 @@ private fun ModulePageErrorCard(
     }
 }
 
-/** `ui/page.get` 不可用（NOT_FOUND / UNAVAILABLE）→ 卡片 + 重试，不白屏（§7.4）。 */
+/**
+ * `ui/page.get` 不可用（NOT_FOUND / UNAVAILABLE / 传输失败）→ 卡片 + 重试，不白屏（§7.4）。
+ *
+ * [detail] 是失败那一行的原话（C-04 名 + 传输层消息，见 [ModulePageBodyFailure.label]）；
+ * 为 `null` 时退回事先写好的通用说明——同步缓存路（示例树）没有具体失败可报。
+ */
 @Composable
-private fun UnavailableCard(onRetry: () -> Unit, onBack: () -> Unit) {
+private fun UnavailableCard(detail: String? = null, onRetry: () -> Unit, onBack: () -> Unit) {
     val skin = LocalSkin.current
     ModulePageCard(shape = RoundedCornerShape(skin.shapes.xl)) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             UiText("页面不可用", size = 20, weight = FontWeight.SemiBold, color = skin.colors.onSurface)
-            UiText("页面暂时取不到，可重试或返回。", size = 13, color = skin.colors.onSurfaceVariant)
+            UiText(
+                detail ?: "页面暂时取不到，可重试或返回。",
+                size = 13,
+                color = skin.colors.onSurfaceVariant,
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 skin.Button(text = "重试", onClick = onRetry, style = BtnStyle.Secondary)
                 skin.Button(text = "返回", onClick = onBack, style = BtnStyle.Primary)
             }
+        }
+    }
+}
+
+/**
+ * 一帧 `ui/page.get` 还在飞（含「进入页面后的第一帧，请求刚发出」）。
+ *
+ * 刻意**不**画成 [UnavailableCard]：那时我们还不知道能不能取到，画「不可用」就是替 core
+ * 说一句它还没说的话——与 `ModuleCatalogState.Loading` 不复用空态卡是同一条理由。
+ */
+@Composable
+private fun PageBodyLoadingCard() {
+    val skin = LocalSkin.current
+    ModulePageCard(shape = RoundedCornerShape(skin.shapes.xl)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                VadeIcon(
+                    VadeIcons.Waiting,
+                    contentDescription = "加载中",
+                    size = 16.dp,
+                    tint = skin.colors.onSurfaceVariant,
+                )
+                Spacer(Modifier.size(8.dp))
+                UiText("正在取回页面", size = 15, weight = FontWeight.Medium, color = skin.colors.onSurface)
+            }
+            UiText(
+                "ui/page.get 已发出，等模块返回这一页的结构。",
+                size = 13,
+                color = skin.colors.onSurfaceVariant,
+            )
         }
     }
 }

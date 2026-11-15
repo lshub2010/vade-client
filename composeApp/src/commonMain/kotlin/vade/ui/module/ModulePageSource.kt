@@ -31,6 +31,53 @@ interface ModulePageSource {
 
 data class ModuleStatus(val online: Boolean, val version: String?)
 
+/**
+ * 模块快照的**只读视图**（声明 + 在线态）——`ModulePageSource.declarations()` /
+ * `status()` 的唯一正确数据源。
+ *
+ * ## 为什么是接口，而不是直接吃 `data.ModuleRegistry`
+ *
+ * 正确数据早就有了：一次 `ui/modules` 拉取之后，`data/ModuleRegistry` 手里就是
+ * 「有哪些模块、在线没在线、各自声明了哪些页」的全量快照。但依赖方向是
+ * **data → module**（`ModuleRegistry.declarations()` 返回的正是本包的 [ModuleDeclaration]），
+ * 让 `ui/module` 反过来 import `ui/data` 会把这条单向依赖掰成环。所以这里只声明
+ * 「读两个东西」的窄口，由 `ModuleRegistry` 实现，组合根（`RealSessionSource.connect()`）
+ * 在连接期把它绑给 [RealModulePageSource]。
+ *
+ * 没绑定（示例树 / 只持 `VadeClient` 的构造）时实现方保持接线前的行为：声明为空、
+ * 在线态报离线。**「没有数据源」不等于「模块离线」以外的东西**——多报一个字都是替模块担保。
+ */
+interface ModuleRegistryView {
+    /** 声明快照（`ui/modules` 的 manifest 顺序）。 */
+    fun declarations(): List<ModuleDeclaration>
+
+    /** 按 `module_id` 聚合的在线态（任一实例在线即在线）。 */
+    fun status(moduleId: String): ModuleStatus
+}
+
+/**
+ * 页面体的**异步后备**：一次 `ui/page.get` 往返。
+ *
+ * [ModulePageSource.loadPage] 是同步值语义（缓存读），所以「点开一页就去取」这件事
+ * 在过去**没有任何调用点**，宿主只能拿到 null 并画「页面不可用」。宿主
+ * [ModulePageHost] 拿到本接口的实现后不再只读缓存：进入页面 / 重试时发**一帧**，
+ * 结果进 [ModulePageBodyState]（Loading → Ready/Failed）。
+ *
+ * 实现约定（`RealModulePageSource` 就是）：
+ *  - 成功返回 `ui/page.get` 的 `result.schema` **原文**；渲染期仍由 [ModulePageParser]
+ *    fail-closed 复核一遍（防御纵深，不是重复劳动）；
+ *  - 失败抛带 C-04 名的 `VadeException`——不返回空树、不返回 null 伪装成功；
+ *  - 由调用方（[ModulePageBodyLoader]）保证「一页一次」，实现方不需要自己防抖。
+ */
+fun interface ModulePageBodyFetcher {
+    suspend fun fetchBody(
+        moduleId: String,
+        instanceId: String,
+        pageId: String,
+        declaredPageIds: Set<String>,
+    ): JsonObject
+}
+
 data class ModuleDeclaration(
     val moduleId: String,
     val instanceId: String,

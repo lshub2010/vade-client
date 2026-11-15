@@ -35,6 +35,7 @@ import vade.ui.data.VadeEvent
 import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
 import vade.ui.module.ModuleDeclaration
+import vade.ui.module.ModulePageBodyFetcher
 import vade.ui.module.ModulePageEntry
 import vade.ui.module.ModulePageEntryList
 import vade.ui.module.ModulePageEntryRules
@@ -123,6 +124,23 @@ fun CapabilitiesScreen(
 
     var openEntry by remember { mutableStateOf<ModulePageEntry?>(null) }
 
+    /**
+     * **清单的第一次拉取**（g-modulepage-wire 缺口 1 的接线）：单一负责方 = 本屏的首次进入。
+     *
+     * 为什么是这里、而不是 `RealSessionSource.connect()`：
+     *  - `connect()` 的契约是「runner 已启动」，**不等** `Connected`；在那里 kick 会把
+     *    一帧 `ui/modules` 打在一个可能还没建好的 socket 上，于是「一切正常」的连接会
+     *    先闪一张**失败卡**（而且那张卡会一直留着，因为 `Failed` 不会自己好）。
+     *  - 清单只有这一屏消费：懒拉取 = 用户从不开能力页就一帧不花；「清单过期」由
+     *    `module.status` → [ModuleCatalog.invalidate] 负责，与「第一次拉取」是两件事。
+     *  - 「恰好一次」的幂等性长在 loader 上（[ModuleCatalog.ensureLoaded]），不在本屏的
+     *    `remember` 里：屏幕离开组合时 `remember` 会丢，而 loader 与连接同生命周期，
+     *    所以反复进出本屏只拉一次。
+     */
+    LaunchedEffect(moduleCatalog) {
+        moduleCatalog?.ensureLoaded()
+    }
+
     // 失活边：module.status（events.json 唯一的模块 topic）→ 一次 ui/modules 重拉。
     // 不新增 topic、不把 payload 当清单用；抖动由 loader 的「在飞不重发 + revision 去重」吸收。
     LaunchedEffect(moduleCatalog, events) {
@@ -135,6 +153,9 @@ fun CapabilitiesScreen(
         ModulePageHost(
             entry = opened,
             source = source,
+            // 异步页面体：真页面源（`RealModulePageSource`）就是 [ModulePageBodyFetcher]，
+            // 宿主于是会真发 `ui/page.get`；示例树/假源不实现它 → 只读缓存，行为不变。
+            pageFetch = source as? ModulePageBodyFetcher,
             onBack = { openEntry = null },
             modifier = modifier,
             contentPadding = contentPadding,
@@ -167,7 +188,7 @@ fun CapabilitiesScreen(
             ModuleCatalogState.Loading -> ModuleCatalogLoadingCard()
             is ModuleCatalogState.Failed -> ModuleCatalogFailedCard(
                 error = catalogState.error,
-                onRetry = { moduleCatalog?.retry() },
+                onRetry = { moduleCatalog.retry() },
             )
             is ModuleCatalogState.Ready ->
                 if (catalogState.isEmpty) {
