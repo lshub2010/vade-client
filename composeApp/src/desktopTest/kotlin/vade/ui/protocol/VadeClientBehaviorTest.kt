@@ -282,7 +282,11 @@ class VadeClientBehaviorTest {
         runBlocking {
             val call = async { client.attach(AttachParams(null, lastSeq = null)) }
             val frame = transport.awaitSent()
-            assertEquals("{}", requestOf(frame).second, "fresh attach sends neither session_id nor last_seq")
+            assertEquals(
+                """{"session_id":null}""",
+                requestOf(frame).second,
+                "fresh attach names session_id with an explicit null — the CREATE form (A4-1)",
+            )
             transport.push(
                 responseFrame(
                     idOf(frame),

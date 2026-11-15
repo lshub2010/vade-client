@@ -55,7 +55,14 @@ data class AttachParams(
     val lastSeq: Long? = null,
 ) {
     fun toJson(): JsonObject = buildJsonObject {
-        putStr("session_id", sessionId)
+        // A4-1 · `session_id` is `"string|null"` and the null form is MEANINGFUL: it is the
+        // CREATE request (core `manager.attach()` sees null and mints a session). putStr
+        // would omit the key and the frame would degrade to `{}` — indistinguishable from
+        // "no params at all" and impossible to pin at the frame level. The key is therefore
+        // ALWAYS present: a string for an existing session, an explicit JsonNull to create.
+        // `last_seq` stays omission-encoded: its null really is "nothing to say" (a fresh
+        // attach), and [VadeClient.attach] substitutes the tracked seq where it applies.
+        put("session_id", sessionId?.let(::JsonPrimitive) ?: JsonNull)
         putLng("last_seq", lastSeq)
     }
 }

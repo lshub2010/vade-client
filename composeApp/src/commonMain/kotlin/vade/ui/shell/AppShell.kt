@@ -653,8 +653,12 @@ private fun DestinationHost(
     // g-error-retry: one slot per READ (list vs thread), each with its own retry entry.
     // The list slot only exists while that read is not Ready — otherwise the 假数据 note in
     // SessionsScreen (fixture-path copy) would be hidden for no reason.
+    // A4-1：新建会话的失败横幅折进同一个列表槽（夹具路径四个条件全 Ready/null ⇒ 槽仍为
+    // null，行为逐字节不变；真源路径失败时两条横幅各自渲染、各自有重试钮）。
     val sessionListBanner: (@Composable () -> Unit)? =
-        if (state.sessionsPhase == LoadPhase.Ready && state.sessionsError == null) {
+        if (state.sessionsPhase == LoadPhase.Ready && state.sessionsError == null &&
+            state.newSessionPhase == LoadPhase.Ready && state.newSessionError == null
+        ) {
             null
         } else {
             {
@@ -662,6 +666,11 @@ private fun DestinationHost(
                     phase = state.sessionsPhase,
                     error = state.sessionsError,
                     onRetry = state::retrySessions,
+                )
+                NewSessionLoadBanner(
+                    phase = state.newSessionPhase,
+                    error = state.newSessionError,
+                    onRetry = { state.newSession() },
                 )
             }
         }
