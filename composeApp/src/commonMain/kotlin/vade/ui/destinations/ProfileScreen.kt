@@ -114,13 +114,21 @@ fun ProfileScreen(
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 UiText("皮肤", size = 13, weight = FontWeight.SemiBold)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SkinChip("material", skinId, onSkinChange)
-                    SkinChip("miuix", skinId, onSkinChange)
-                    SkinChip("glass", skinId, onSkinChange)
+                    SkinChip("material", "经典", skinId, onSkinChange)
+                    SkinChip("miuix", "Miuix", skinId, onSkinChange)
+                    SkinChip("glass", "玻璃", skinId, onSkinChange)
                 }
+                // 用户可读名在按钮上，内部 id 退到下一行次级位置（SkinRegistry 的主键是
+                // material / miuix / glass —— 开发要看得到，用户不该被这串小写英文拦下）。
                 UiText(
-                    text = "miuix / glass 是占位实现（返回 material token + 未安装角标），" +
-                        "U2/U3 注册真实现后自动可用。",
+                    text = "miuix 是完整实现：自有 token、真字体缝（VadeFonts，Web 也走同一族）" +
+                        "与 12 个 C-09 组件，不是 material 换色；glass 仍是占位（复用 material token，" +
+                        "行内标「glass 未安装」），U3 注册真实现后自动可用。",
+                    size = 11,
+                    color = skin.colors.onSurfaceVariant,
+                )
+                UiText(
+                    text = "内部 id：material · miuix · glass（皮肤注册表主键；当前 $skinId）",
                     size = 11,
                     color = skin.colors.onSurfaceVariant,
                 )
@@ -202,11 +210,18 @@ internal fun resolveProfileModelActions(
 ) { InMemoryModelActions() }
 
 @Composable
-private fun SkinChip(id: String, current: String, onSelect: (String) -> Unit) {
+private fun SkinChip(
+    id: String,
+    label: String,
+    current: String,
+    onSelect: (String) -> Unit,
+) {
     // w-g-icons：选中标记不再往文字里塞 `●` 字符（v2 §3 禁字符图标）——选中态已由
     // BtnStyle.Primary（accent 实底）与 Secondary 的对比表达，重复标记只会加噪音。
+    // [label] 是用户可读名（经典 / Miuix / 玻璃），[id] 是 SkinRegistry 主键；列表里只
+    // 显示前者，后者退到下面那行 11sp 的「内部 id」。
     LocalSkin.current.Button(
-        text = id,
+        text = label,
         onClick = { onSelect(id) },
         style = if (id == current) BtnStyle.Primary else BtnStyle.Secondary,
     )
