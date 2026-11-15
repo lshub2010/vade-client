@@ -1,6 +1,7 @@
 # 视觉修复 · g-topbar-band —— 模糊覆盖整条顶栏带，浮卡本体不动
 
 - 仓库 / 基线：`vade-client` · `origin/main` = **bbfdf2f**（worktree `tmp/g-topbar-band`）
+- 本棒提交：**40be454**（代码 + 守卫测试 + 本文件首版）
 - 用户拍板（2026-11-15，逐字）：「让模糊覆盖整条顶栏带（浮卡外圈加同色遮罩），卡片外观不变——修 D2 且不动你认可的观感」
 - 缺陷来源：`shots/g-visual-audit2/RESULT.md` **D2**（顶栏是内缩浮卡，卡片本体有模糊，但卡片**上方 8–12dp / 下方 8–12dp** 两条空隙里的滚动内容**原样清晰**）
 - 构建：`gradle :composeApp:assembleDebug`（BUILD SUCCESSFUL）
@@ -113,3 +114,17 @@ A/B 口径（`shots/g-topbar-band/capture.sh`，可复现）：
 
 - 新增：`composeApp/src/commonMain/kotlin/vade/ui/component/liquid/GlassBand.kt`、`composeApp/src/desktopTest/kotlin/vade/ui/shell/TopBarBandTest.kt`、`shots/g-topbar-band/**`（图 + `capture.sh` + `metrics.py` + 本文件）
 - 修改：`shell/TopBar.kt`（+`TopBarBand`、两个常量、KDoc）、`shell/AppShell.kt`（顶栏带那一段 + `topBarStart/topBarEnd` 收敛）
+
+## 8. 复现
+
+```bash
+# 帧（需先分别装 baseline / 本次构建的 debug APK；脚本只用 emulator-5554）
+adb -s emulator-5554 install -r <apk> && bash shots/g-topbar-band/capture.sh before|after
+# 数字（带顶 63px = 24dp 状态栏 inset @420dpi）
+python shots/g-topbar-band/metrics.py shots/g-topbar-band/before-a-phone-sessions-scrolled.png \
+       shots/g-topbar-band/after-a-phone-sessions-scrolled.png 2.625 63
+```
+
+`capture.sh` 的三条纪律（都踩过）：开头 `pm clear` 一次（每次都清会把 system_server 拖进 ANR）、
+显式 `--es source fake`、滚到**两端之一**（夹紧才逐像素可复现）。装完 APK 要**验证 dex 里有
+`topbar.band`** —— 有一轮 `install -r` 报了 Success 但设备上仍是旧包，差点把整组 A/B 做废。
