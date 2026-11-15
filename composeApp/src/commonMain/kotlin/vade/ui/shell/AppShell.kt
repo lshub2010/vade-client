@@ -320,11 +320,23 @@ private fun ShellBody(state: UiState) {
                     // g-route-transition（口径变更 2026-11-15）：手机单栏（<600dp）改抽屉模型
                     // —— 详情常驻底层、列表是盖在上面的抽屉（80% 宽 + 右缘圆角 + 遮罩）。
                     // 双栏与 600–719 rail 单栏仍走 DestinationHost，行为不变。
+                    // B2（s-meta-host）：抽屉这条路**不经过** `DestinationHost`，而元数据宿主
+                    // 原本只在那里创建 ⇒ 手机上分组/长按会整块丢失。这里在分支内再取一份：
+                    // 两条分支互斥（抽屉 / DestinationHost 二选一），不会重复拉 `group.list`。
+                    val drawerMetaOverlay = rememberSessionMetaOverlay(
+                        adapters = adapters,
+                        sessionId = state.selectedSessionId.orEmpty(),
+                        onRefreshList = state::retrySessions,
+                    )
                     SessionsDrawerHost(
                         state = state,
                         adapters = adapters,
                         contentInsets = contentInsets,
                         animate = state.chatPreset == vade.ui.chat.ChatPreset.Live,
+                        // B2：分组真相在 state 机（含乐观投影），长按开菜单。
+                        metaGroups = drawerMetaOverlay.meta.groups,
+                        onLongPress = { drawerMetaOverlay.openSessionMenu(it) },
+                        groups = drawerMetaOverlay.projectGroups(state.groups()),
                     )
                 } else {
                     DestinationHost(metrics = metrics, state = state, contentInsets = contentInsets)

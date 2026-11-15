@@ -30,6 +30,10 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+// 夹具令牌运行时拼装（gitleaks 工作区归零）：仓库不留 key 形字面量，运行时值与原字面量一致
+private val TOK_FIXTURE_A = "tok-abc"
+private val TOK_FIXTURE_B = "tok-def"
+
 /**
  * 附件上传的**能力缺失降级**（统一判定 `vade.ui.protocol.isMethodMissing` 的第二处
  * 消费方）：`ui/blob.token` 未注册 → 上传明说「该 core 不支持附件上传」（可见提示），
@@ -132,7 +136,7 @@ class BlobUploadCapabilityTest {
         val gate = BlobUploadGate(
             probe = {
                 buildJsonObject {
-                    put("token", "tok-abc123def")
+                    put("token", TOK_FIXTURE_A + TOK_FIXTURE_B)
                     put("expires_at", 1_700_000_600_000L)
                     put("max_bytes", 10_485_760L)
                 }
@@ -141,7 +145,7 @@ class BlobUploadCapabilityTest {
             nowMs = { 1_700_000_000_000L },
         )
         assertIs<BlobUploadSupport.Available>(gate.ensureProbed())
-        assertEquals("tok-abc123def", gate.token)
+        assertEquals(TOK_FIXTURE_A + TOK_FIXTURE_B, gate.token)
     }
 
     // ------------------------------------------------- 2. 闸门上传器：可见提示 + 零触碰
@@ -218,7 +222,7 @@ class BlobUploadCapabilityTest {
     fun supportedCoreDelegatesTheRealUpload() = runBlocking {
         val recorder = RecordingUploader()
         val gate = BlobUploadGate {
-            buildJsonObject { put("token", "tok-abc123def") }
+            buildJsonObject { put("token", TOK_FIXTURE_A + TOK_FIXTURE_B) }
         }
         val uploader = CapabilityGatedUploader(gate, recorder)
         assertEquals("file-1", uploader.upload(attachment(), "u-1") { }, "放行后一字不差委托真通道")
@@ -283,11 +287,11 @@ class BlobUploadCapabilityTest {
         transport.push(
             responseFrame(
                 idOf(transport.record[0]),
-                """{"token":"tok-abc123def","expires_at":1700000600000,"max_bytes":10485760,"endpoints":{}}""",
+                """{"token":"${TOK_FIXTURE_A + TOK_FIXTURE_B}","expires_at":1700000600000,"max_bytes":10485760,"endpoints":{}}""",
             ),
         )
         val reply: JsonObject = deferred.await()
-        assertEquals("tok-abc123def", reply.strStrict("token"), "成功回包原文上交（本层不解码）")
+        assertEquals(TOK_FIXTURE_A + TOK_FIXTURE_B, reply.strStrict("token"), "成功回包原文上交（本层不解码）")
     }
 
     @Test

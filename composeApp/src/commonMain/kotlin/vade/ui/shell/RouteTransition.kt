@@ -33,9 +33,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import vade.ui.data.AdapterProvider
 import vade.ui.data.FakeSessionSource
+import vade.ui.data.SessionGroup
+import vade.ui.data.SessionSummary
 import vade.ui.destinations.SessionDetailScreen
 import vade.ui.destinations.SessionsScreen
 import vade.ui.destinations.settledListStatus
+import vade.ui.meta.MetaGroup
 import vade.ui.skin.LocalSkin
 
 /**
@@ -141,6 +144,15 @@ internal fun SessionsDrawerHost(
     base: (@Composable () -> Unit)? = null,
     /** 同 [base]，替代真实列表层。 */
     drawer: (@Composable () -> Unit)? = null,
+    /**
+     * B2（s-meta-host）：分组表与长按入口由组合根注入 —— 分组真相在
+     * `rememberSessionMetaOverlay` 的状态机里（含乐观投影），抽屉层不再自己算。
+     * 默认空表 + 空回调 = 只画裸 id、无长按（测试与旧调用点行为不变）。
+     */
+    metaGroups: List<MetaGroup> = emptyList(),
+    onLongPress: (SessionSummary) -> Unit = {},
+    /** 同上：列表要画的是**投影后**的分组（乐观改名/置顶/归档立刻可见）。 */
+    groups: List<SessionGroup>? = null,
 ) {
     val spec = sessionsDrawerSpec(animate)
     val expanded = state.sessionsDrawerOpen
@@ -226,6 +238,9 @@ internal fun SessionsDrawerHost(
                 adapters = adapters,
                 contentInsets = contentInsets,
                 rowFocus = rowFocus,
+                metaGroups = metaGroups,
+                onLongPress = onLongPress,
+                groups = groups,
             )
         }
     }
@@ -267,8 +282,10 @@ private fun DrawerSessionList(
     adapters: AdapterProvider?,
     contentInsets: PaddingValues,
     rowFocus: FocusRequester,
+    metaGroups: List<MetaGroup>,
+    onLongPress: (SessionSummary) -> Unit,
+    groups: List<SessionGroup>?,
 ) {
-    val metaGroups = metaGroupsOf(adapters = adapters, sessionId = state.selectedSessionId.orEmpty())
     val sessionListBanner: (@Composable () -> Unit)? =
         if (state.sessionsPhase == LoadPhase.Ready && state.sessionsError == null) {
             null
@@ -290,12 +307,13 @@ private fun DrawerSessionList(
         )
     }
     SessionsScreen(
-        groups = state.groups(),
+        groups = groups ?: state.groups(),
         selectedId = state.selectedSessionId,
         twoPane = false,
         onOpen = { state.open(it.id) },
         contentPadding = contentInsets,
         metaGroups = metaGroups,
+        onLongPress = onLongPress,
         banner = sessionListBanner,
         status = status,
         // 抽屉重新滑出时焦点回到原来那一行（无障碍口径）。
