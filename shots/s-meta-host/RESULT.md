@@ -71,7 +71,7 @@
 3. **删组不删会话**：`deletingAGroupThroughTheOverlayKeepsEverySession`（经挂载面全路径：菜单 → 移动到分组 → 编辑分组 → 删除 → 组没了、会话一条不少、`groupId` 置 null、投影同步显示未分组）；状态机层既有 `GroupFlowTest.deletingGroupKeepsSessionsAndUntagsThem` 仍在。
 4. **假源无裸 `g-1`**：既有 `AppShellMetaGroupWiringTest` 全绿（含 fixture 同源、退化、读失败三条分界），挂载后未破坏。
 5. **真源零会话无菜单入口**：`aRealSourceWithZeroSessionsShowsNoMenuEntry`（6 个菜单文案在语义树里一个都没有）；草稿行同样不进菜单（`draftRowsNeverOpenTheMenu`，零适配器回调）。
-6. **无障碍 / Esc**：菜单卡与弹层卡自抓焦点（FocusRequester），Esc 关闭（`escapeClosesTheLongPressMenu` + 真机 keyevent 111 复核）；菜单行 Tab 聚焦 + Enter/Space 触发。**待接一行**：系统返回键的返回栈接管（`g-back-handler` 未合入 origin/main，全仓无 `BackHandler`）——合入后在 `SessionMetaOverlayHost` 加 `BackHandler(enabled = menuOpen || editor != null) { … }`。
+6. **无障碍 / Esc**：菜单卡与弹层卡自抓焦点（FocusRequester），Esc 关闭（`escapeClosesTheLongPressMenu` + 真机 keyevent 111 复核）；菜单行 Tab 聚焦 + Enter/Space 触发。**待接一行**（合并时接）：本棒基点 `4c1579a` 上 `g-back-handler` 未合入；**它已在 main 落地**（`256477e merge: tmp/g-back-handler`，提供 `shell/BackDispatch.kt` 的 `BackLayer(enabled, onBack)`）。父代合并后在 `SessionMetaOverlayHost` 里加一行即可接管系统返回：`BackLayer(enabled = meta.menuFor != null || meta.editor != null, onBack = { if (meta.menuFor != null) meta.closeSessionMenu() else meta.closeEditor() })`。
 7. **设备验证（emulator-5554）**：`shots/s-meta-host/dev-02-longpress-menu.png`（长按菜单：重命名/取消置顶/归档/移动到分组/新建分组/删除，置顶行标签正确翻转）、`dev-03-move-group-sheet.png`（分组面板：未分组/项目✓/灵感 + 每组编辑笔 + 新建分组）、`dev-04-group-editor.png`（分组编辑器全量：名称/39 图标格/10 色盘/清除按钮/危险区文案）、`dev-05-rename-sheet.png`、`dev-06-renamed.png`（改名提交后行标题变 `RenamedOnDevice`、无横条）、`dev-07-esc-closed.png`（Esc 关菜单）。`wm size reset` 已执行。
 
 ## 4. 三目标门禁（原始数字，最终源码）
