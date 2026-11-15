@@ -273,7 +273,12 @@ class AppShellAdapterWiringTest {
         onNodeWithText(PUSHED_DETAIL_SUBTITLE, substring = true).assertExists()
         // Collapsed picker header prints currentLabel(): the probe name only exists if the
         // pushed detail got the provider.
-        onNodeWithText(PROBE_MODEL_NAME, substring = true).assertExists()
+        // g-model-chip：会话详情上模型名由 header 行与 composer chip 共同承载（设置页仍只有
+        // 卡片一处）—— 统一断言「出现」，不再断言「唯一」。
+        assertTrue(
+            onAllNodesWithText(PROBE_MODEL_NAME, substring = true).fetchSemanticsNodes().isNotEmpty(),
+            "接线束提供的模型名必须出现在会话详情上",
+        )
         assertEquals(listOf(sessionId), provider.modelIds, "model(sessionId) must be asked on the detail page")
     }
 
@@ -295,7 +300,12 @@ class AppShellAdapterWiringTest {
         // Not the pushed branch (that subtitle belongs to `ShellBody` only) ⇒ the detail here
         // is `DestinationHost`'s two-pane SessionDetailScreen.
         onNodeWithText(PUSHED_DETAIL_SUBTITLE, substring = true).assertDoesNotExist()
-        onNodeWithText(PROBE_MODEL_NAME, substring = true).assertExists()
+        // g-model-chip：会话详情上模型名由 header 行与 composer chip 共同承载（设置页仍只有
+        // 卡片一处）—— 统一断言「出现」，不再断言「唯一」。
+        assertTrue(
+            onAllNodesWithText(PROBE_MODEL_NAME, substring = true).fetchSemanticsNodes().isNotEmpty(),
+            "接线束提供的模型名必须出现在会话详情上",
+        )
         assertEquals(listOf(sessionId), provider.modelIds, "the two-pane detail must ask model(sessionId)")
     }
 
@@ -312,7 +322,12 @@ class AppShellAdapterWiringTest {
         runOnIdle { ui.select(Destination.Me) }
         waitForIdle()
 
-        onNodeWithText(PROBE_MODEL_NAME, substring = true).assertExists()
+        // g-model-chip：会话详情上模型名由 header 行与 composer chip 共同承载（设置页仍只有
+        // 卡片一处）—— 统一断言「出现」，不再断言「唯一」。
+        assertTrue(
+            onAllNodesWithText(PROBE_MODEL_NAME, substring = true).fetchSemanticsNodes().isNotEmpty(),
+            "接线束提供的模型名必须出现在会话详情上",
+        )
         assertEquals(1, provider.modelDefaultCalls, "设置页必须走 modelDefault()")
         assertEquals(emptyList(), provider.modelIds, "设置页不得调用 model(...)——包括 model(\"\")")
     }
@@ -379,7 +394,12 @@ class AppShellAdapterWiringTest {
 
         assertEquals(1, provider.modelDefaultCalls)
         assertEquals(emptyList(), provider.modelIds, "model(\"\") 会拿到会话级适配器——这不是设置页要的")
-        onNodeWithText(PROBE_MODEL_NAME, substring = true).assertExists()
+        // g-model-chip：会话详情上模型名由 header 行与 composer chip 共同承载（设置页仍只有
+        // 卡片一处）—— 统一断言「出现」，不再断言「唯一」。
+        assertTrue(
+            onAllNodesWithText(PROBE_MODEL_NAME, substring = true).fetchSemanticsNodes().isNotEmpty(),
+            "接线束提供的模型名必须出现在会话详情上",
+        )
     }
 
     // -------------------------------------------------------- 5 · source policy (all five)

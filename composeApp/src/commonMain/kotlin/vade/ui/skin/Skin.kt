@@ -206,6 +206,13 @@ interface Skin {
      * float shadow + `xl` corners; the 16dp/24dp float margins are page layout (§4.4/D5
      * of RFC-0011) so a page can compose `[＋] [InputBar] [12dp] [SendOrb]` in one row
      * without margin stacking. [maxLines] caps growth (six lines, then internal scroll).
+     *
+     * [leading] is the optional bottom-row slot (added after the C-09 freeze, 2026-11-15,
+     * same additive rule as `MessageBubble.body` / `AttachmentChip.leading`): the page
+     * passes a compact control that must share the panel's existing bottom row — the SAME
+     * visual line the send orb sits on — without adding a line of height. The skin renders
+     * it at the row START (left of the text field, before the voice button); null keeps
+     * the frozen bottom row byte-for-byte.
      */
     @Composable
     fun InputBar(
@@ -216,6 +223,7 @@ interface Skin {
         enabled: Boolean = true,
         voiceAvailable: Boolean = false,
         maxLines: Int = 6,
+        leading: (@Composable () -> Unit)? = null,
     )
 
     /**

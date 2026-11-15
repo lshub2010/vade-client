@@ -553,6 +553,7 @@ class MiuixSkin(
         enabled: Boolean,
         voiceAvailable: Boolean,
         maxLines: Int,
+        leading: (@Composable () -> Unit)?,
     ) = MiuixInputBar(
         value = value,
         onValueChange = onValueChange,
@@ -561,6 +562,7 @@ class MiuixSkin(
         enabled = enabled,
         voiceAvailable = voiceAvailable,
         maxLines = maxLines,
+        leading = leading,
         colors = colors,
         shapes = shapes,
         typography = typography,
