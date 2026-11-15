@@ -1,0 +1,16 @@
+== gitleaks 金丝雀自证（canary） ==
+配置: 定稿 .gitleaks.toml（复制自主仓 worktree；白名单仅 4 条路径级排除，零字符串 allowlist）
+gitleaks: 8.30.1
+布饵: 5 份同款饵文件 -> canary-root.txt（未排除路径）+ .venv/ build/ .gradle/ node_modules/ 各 1 份
+饵料形态: api_key=「假 key」占位值 / 合成 AKIA(base32域) / ghp_ 36 位 PAT / 夹具同款 AWS 行 / RSA PEM 块（值已掩码）
+机制注记（gitleaks 8.30.1 默认规则源）: aws-access-token 正则后缀字符集为 [A-Z2-7]{16}、entropy=3，且规则自带
+  allowlist regex '.+EXAMPLE$' —— 教科书 AWS 示例 key 被官方默认豁免，故占位值行不报（工具内置降噪，非本配置削弱）。
+  generic-api-key entropy=3.5，固定形状饵不依赖它做断言。
+git --log-opts=--all 扫描: exit=0, findings=4
+dir 扫描: exit=0, findings=4
+git 扫描 (file,rule) 分布: [(('canary-root.txt', 'aws-access-token'), 2), (('canary-root.txt', 'github-pat'), 1), (('canary-root.txt', 'private-key'), 1)]
+dir 扫描 (file,rule) 分布: [(('canary-root.txt', 'aws-access-token'), 2), (('canary-root.txt', 'github-pat'), 1), (('canary-root.txt', 'private-key'), 1)]
+断言1 未排除路径命中（aws-access-token/github-pat/private-key 全中）: PASS
+断言2 四个排除树零命中: PASS
+对照逻辑: 同一份饵在根路径被默认规则命中 -> 扫描器与配置均活着；同款饵在四个排除树零命中 ->
+          唯一差异是路径 -> 路径级排除生效且未扩大化（未排除路径的扫描强度与无配置时一致）。
