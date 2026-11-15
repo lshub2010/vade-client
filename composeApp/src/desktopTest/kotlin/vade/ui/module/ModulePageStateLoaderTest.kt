@@ -4,7 +4,6 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.serialization.json.JsonObject
@@ -12,7 +11,6 @@ import vade.ui.protocol.VadeErrorCodes
 import vade.ui.protocol.VadeException
 import vade.ui.protocol.VadeJson
 import vade.ui.protocol.harvestedTimeoutCancellationException
-import vade.ui.protocol.waitUntil
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.AfterTest
@@ -243,14 +241,17 @@ class ModulePageStateLoaderTest {
     // ------- g-model-refresh · 超时形取消 = 失败态，绝不卡死在 Loading（无重试出口）
 
     @Test
-    fun timeoutShapedCancellationIsAFailedStateNeverAStuckLoading() = runBlocking {
+    fun timeoutShapedCancellationIsAFailedStateNeverAStuckLoading() {
         val fetcher = ScriptedStateFetcher()
         fetcher.step({ throw harvestedTimeoutCancellationException() })
         val loader = ModulePageStateLoader(fetcher, scope)
 
         loader.load(key("echo"))
         assertEquals(ModulePageStatePhase.Loading(key("echo")), loader.phase, "同步进 Loading")
-        waitUntil { loader.phase is ModulePageStatePhase.Failed }
+        // 受控调度器（StandardTestDispatcher）推到底 = 失败已写入。**不能用 runBlocking +
+        // waitUntil**：本类的 scope 挂在 TestCoroutineScheduler 上，runBlocking 里没人推进
+        // 调度器，waitUntil 只会白等到超时（合并 g-flake-ui-timing 后实测红）。
+        settle()
 
         val failed = assertIs<ModulePageStatePhase.Failed>(loader.phase)
         assertEquals(key("echo"), failed.key)
