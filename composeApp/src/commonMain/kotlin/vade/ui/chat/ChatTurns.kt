@@ -1,6 +1,8 @@
 package vade.ui.chat
 
 import androidx.compose.runtime.Immutable
+import vade.ui.protocol.ApprovalDecision
+import vade.ui.protocol.ApprovalScope
 
 /**
  * v1.1 · the narrow seam between the chat page and the two new turn methods
@@ -72,7 +74,31 @@ interface ChatTurnGateway {
         "ChatTurnGateway.interrupt is not implemented: this gateway cannot interrupt (implement " +
             "ui/interrupt or declare an explicit in-memory fake via synthetic = true)",
     )
+
+    /**
+     * B6 · `approval/decide`（rpc.json 1.7.0）— 对服务端的一次审批决定。[requestId] **必须**
+     * 来自 `turn.approval_required` 事件的 `request_id` —— 本地工具卡的 callId 不是它。
+     *
+     * 默认实现是**故意的响亮失败**（同 [submit] / [interrupt]）：真通道忘了接审批，
+     * 「点了没反应」比立刻报错更糟 —— 那正是 B6 的病。假实现要显式声明本地投影
+     * （[InMemoryTurnGateway]）。
+     */
+    suspend fun decideApproval(
+        requestId: String,
+        decision: ApprovalDecision,
+        scope: ApprovalScope,
+    ): Unit = throw IllegalStateException(
+        "ChatTurnGateway.decideApproval is not implemented: this gateway cannot decide approvals (implement " +
+            "approval/decide or declare an explicit local-projection fake via synthetic = true)",
+    )
 }
+
+/**
+ * B6 · `approval/decide` 的出网通道形状 —— 由组合根接 `vade.ui.data.RealSessionSource.decideApproval`
+ * （唯一持有 [vade.ui.protocol.VadeClient] 的地方），[TurnGatewayReal] 只做校验与透传。
+ * 全仓 `client.approvalDecide` 的出网点因此只有一处。
+ */
+typealias ApprovalDecideChannel = suspend (requestId: String, decision: ApprovalDecision, scope: ApprovalScope) -> Unit
 
 /** Shape of the `ui/submit` result (schema/rpc.json, names as delivered). */
 @Immutable
@@ -148,5 +174,15 @@ class InMemoryTurnGateway : ChatTurnGateway {
     /** 假源中断是本地 stop 语义（脚本收尾）：出网空操作。 */
     override suspend fun interrupt(sessionId: String, turnId: String) {
         // no-op — the fixture script owns the fake turn lifecycle.
+    }
+
+    /**
+     * B6 · 假源审批 = **只做本地投影**（投影由 `ChatState` 完成），出网空操作。
+     * 夹具演示路径的审批卡没有服务端 `request_id`，本方法在演示路径下根本不会被
+     * 真参数碰到；显式声明 no-op 而不是吃接口的响亮默认，是为了让「假实现」这件事
+     * 在源码里可见。
+     */
+    override suspend fun decideApproval(requestId: String, decision: ApprovalDecision, scope: ApprovalScope) {
+        // no-op — the fixture demo path owns its own local projection.
     }
 }

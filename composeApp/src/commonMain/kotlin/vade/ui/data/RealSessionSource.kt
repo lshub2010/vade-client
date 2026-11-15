@@ -25,6 +25,9 @@ import vade.ui.chat.ChatTranscriptSource
 import vade.ui.chat.ChatMessage
 import vade.ui.protocol.AttachParams
 import vade.ui.protocol.AttachResult
+import vade.ui.protocol.ApprovalDecideParams
+import vade.ui.protocol.ApprovalDecision
+import vade.ui.protocol.ApprovalScope
 import vade.ui.protocol.DetachParams
 import vade.ui.protocol.InterruptParams
 import vade.ui.protocol.KtorTransportFactory
@@ -185,6 +188,11 @@ class RealSessionSource(
                     history = { sessionId -> messages(sessionId) },
                     events = { created.events },
                 ),
+                // B6 · 审批出网通道：chat 的 turns 窄缝最终落回 SessionSource 口（本类）——
+                // `client.approvalDecide` 的唯一出网点。
+                approvalDecide = { requestId, decision, scope ->
+                    decideApproval(requestId = requestId, decision = decision, scope = scope)
+                },
                 // 附件上传的能力闸门：`ui/blob.token` 探测（RFC-0004 §4.5，DRAFT-blob-token）。
                 // 今天的 core 未注册该方法 → 上传降级成「该 core 不支持附件上传」的可见提示，
                 // 而不是 UNAVAILABLE 故障 chip；core 实装后同一条闸门放行并交出 token。
@@ -307,6 +315,25 @@ class RealSessionSource(
     /** `ui/interrupt` — stop the RUNNING turn. */
     suspend fun interrupt(sessionId: String, turnId: String) {
         attachedClient().uiInterrupt(InterruptParams(sessionId = sessionId, turnId = turnId))
+    }
+
+    /**
+     * B6 · `approval/decide` — SessionSource 口的实现：参数逐字上帧
+     * （[ApprovalDecideParams] 的 `request_id` / `decision` / `scope`），错误帧以原 C-04 码
+     * 穿透（[VadeException]）。chat 的 turns 窄缝（`TurnGatewayReal.decideApproval`）经
+     * 组合根注入的 [vade.ui.chat.ApprovalDecideChannel] 最终也落在这里 —— **全仓唯一一处
+     * `client.approvalDecide` 出网点**。
+     */
+    override suspend fun decideApproval(requestId: String, decision: ApprovalDecision, scope: ApprovalScope) {
+        if (requestId.isBlank()) {
+            throw VadeException(
+                VadeErrorCodes.INVALID_ARGUMENT,
+                "params.request_id is required and must be non-blank",
+            )
+        }
+        attachedClient().approvalDecide(
+            ApprovalDecideParams(requestId = requestId, decision = decision, scope = scope),
+        )
     }
 
     /** `session/usage.get` — the D102 usage panel. */

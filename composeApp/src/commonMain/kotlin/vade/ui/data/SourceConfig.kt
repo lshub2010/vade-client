@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import vade.ui.chat.ChatMessage
+import vade.ui.protocol.ApprovalDecision
+import vade.ui.protocol.ApprovalScope
 import vade.ui.protocol.BrowserPairing
 import vade.ui.protocol.KtorTransportFactory
 import vade.ui.protocol.VadeClientConfig
@@ -235,6 +237,15 @@ internal class AutoConnectingSessionSource(
     }
 
     override fun observeEvents(): Flow<VadeEvent> = real.observeEvents()
+
+    /**
+     * B6 · `approval/decide` 透传：先等连接（与 sessions/messages 同一口径），再交
+     * [real] 的实现 —— 参数逐字、错误原码穿透。
+     */
+    override suspend fun decideApproval(requestId: String, decision: ApprovalDecision, scope: ApprovalScope) {
+        awaitConnected()
+        real.decideApproval(requestId = requestId, decision = decision, scope = scope)
+    }
 
     /** Test/diagnostic access: the wrapped real source (g-pair-first-run wiring tests). */
     internal val delegate: RealSessionSource get() = real

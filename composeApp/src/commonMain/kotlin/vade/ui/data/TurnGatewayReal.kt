@@ -1,12 +1,15 @@
 package vade.ui.data
 
 import vade.ui.chat.ChatTranscriptSource
+import vade.ui.chat.ApprovalDecideChannel
 import vade.ui.chat.ChatTurnGateway
 import vade.ui.chat.ContentPart as ChatContentPart
 import vade.ui.chat.EditResubmitReceipt
 import vade.ui.chat.RegenerateReceipt
 import vade.ui.chat.SubmitReceipt
 import vade.ui.protocol.ContentPart as WireContentPart
+import vade.ui.protocol.ApprovalDecision
+import vade.ui.protocol.ApprovalScope
 import vade.ui.protocol.EditResubmitParams
 import vade.ui.protocol.InterruptParams
 import vade.ui.protocol.SubmitParams
@@ -36,6 +39,11 @@ class TurnGatewayReal(
      * [ChatTranscriptSource.of] 的 `history` / `events` 逐字相同。
      */
     private val transcriptSource: ChatTranscriptSource? = null,
+    /**
+     * B6 · 审批出网通道（= 组合根注入的 `RealSessionSource.decideApproval`）。`null` =
+     * 未接线（测试直构）—— [decideApproval] 以 `UNAVAILABLE` 响亮失败，**绝不静默假成功**。
+     */
+    private val approvalDecide: ApprovalDecideChannel? = null,
 ) : ChatTurnGateway {
 
     override fun transcript(): ChatTranscriptSource? = transcriptSource
@@ -119,6 +127,27 @@ class TurnGatewayReal(
         requireNonBlank(sessionId, "session_id")
         requireNonBlank(turnId, "turn_id")
         client.uiInterrupt(InterruptParams(sessionId = sessionId, turnId = turnId))
+    }
+
+    /**
+     * B6 · `approval/decide` — 校验后透传给组合根注入的通道（最终落在
+     * `RealSessionSource.decideApproval`，全仓唯一出网点）。[requestId] 是服务端
+     * `turn.approval_required` 的 `request_id`，**不是**本地工具卡 callId —— 那道映射
+     * 是 `ChatState` 的事，本层只保证传进来的东西非空白。
+     */
+    override suspend fun decideApproval(
+        requestId: String,
+        decision: ApprovalDecision,
+        scope: ApprovalScope,
+    ) {
+        requireNonBlank(requestId, "request_id")
+        val channel = approvalDecide
+            ?: throw VadeException(
+                VadeErrorCodes.UNAVAILABLE,
+                "approval/decide is not wired into this TurnGatewayReal: the composition root must " +
+                    "supply an ApprovalDecideChannel (RealSessionSource.decideApproval) — see shots/b6-approval/RESULT.md",
+            )
+        channel(requestId, decision, scope)
     }
 
     /** Chat-layer part union → the wire part union (RFC-0004 §6.1), field-for-field. */

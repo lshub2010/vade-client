@@ -9,14 +9,23 @@ import vade.ui.skin.AttachmentState
 import vade.ui.skin.Decision
 import vade.ui.skin.InputMode
 import vade.ui.chat.ApprovalOutcome
+import vade.ui.protocol.ApprovalDecision
+import vade.ui.protocol.ApprovalScope
+import vade.ui.protocol.TurnApprovalRequired
+import vade.ui.protocol.TurnApprovalRequiredPayload
+import vade.ui.protocol.TurnApprovalResolved
+import vade.ui.protocol.TurnApprovalResolvedPayload
 import vade.ui.protocol.TurnCancelled
 import vade.ui.protocol.TurnCompleted
 import vade.ui.protocol.TurnFailed
 import vade.ui.protocol.TurnInterrupted
 import vade.ui.protocol.TurnStarted
+import vade.ui.protocol.VadeErrorCodes
 import vade.ui.protocol.VadeEvent
+import vade.ui.protocol.VadeException
 import vade.ui.data.VadeErrorCategory
 import vade.ui.data.VadeErrorMapping
+import vade.ui.data.epochNowMs
 import vade.ui.data.loadErrorCategoryOf
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -223,6 +232,7 @@ class ChatState(
     fun applyLiveEvent(event: VadeEvent): List<ChatMessage> {
         val snapshot = this.applyLive(live, event)
         projectTurnLifecycle(event)
+        projectApprovalLifecycle(event)
         return snapshot
     }
 
@@ -983,15 +993,49 @@ class ChatState(
      * No clock: the resolved card's 「时间戳」 is honest elapsed-since-screen-open (`T+Ns`,
      * monotonic). A real socket swap replaces it with the event's own timestamp — a source
      * change, not a view change (D98).
+     *
+     * B6 · 本节从「纯本地投影」升级为**真出网**的入口：`decideApproval` 对带服务端
+     * `request_id` 的卡片走 `turns.decideApproval`（乐观更新 + 失败回滚），没有
+     * `request_id` 的卡片保持本地投影（见其 KDoc 的显式选择）。`projectApprovalLifecycle`
+     * 消费 `turn.approval_required` / `turn.approval_resolved`（真源事件；假源一行不动）。
      */
     private val approvals = mutableStateMapOf<String, ApprovalOutcome>()
     private val approvalDetailRows = mutableStateListOf<String>()
     private val approvalDecidedAt = mutableMapOf<String, String>()
     private val screenOpenMark = TimeSource.Monotonic.markNow()
 
+    // --- B6 · 审批投影的单一真相（callId → 服务端 request_id / expires_at） ------------
+
+    /**
+     * 卡片 id → 服务端 `request_id`。**唯一真相**：只由 `turn.approval_required` 事件写入；
+     * `decideApproval` 出网时**只认这里的值**，绝不拿本地 callId 冒充服务端 id。夹具 /
+     * 历史回放 / 假源卡片不在表里（`approvalRequestId` == null → 本地投影）。
+     */
+    private val approvalRequestIds = mutableStateMapOf<String, String>()
+
+    /** 卡片 id → `turn.approval_required.expires_at`（unix ms）。超时 = deny 的读时依据。 */
+    private val approvalExpiresAt = mutableStateMapOf<String, Long>()
+
+    /** 本地乐观决定在途的卡片 —— resolved 覆盖或失败回滚后摘除（回滚不许覆盖服务端事实）。 */
+    private val optimisticDecisions = mutableSetOf<String>()
+
+    /** 服务端 `request_id` → 卡片 id。确定性：重放幂等，不依赖事件到达顺序。 */
+    private fun approvalCallId(requestId: String): String = "approval:$requestId"
+
+    /** [callId] 对应的服务端 `request_id`；null = 本地/夹具卡片（没有服务端审批请求）。 */
+    fun approvalRequestId(callId: String): String? = approvalRequestIds[callId]
+
     /** Outcome of the inline approval card for [callId]; [ApprovalOutcome.Pending] until decided. */
-    fun approvalOutcome(callId: String): ApprovalOutcome =
-        approvals[callId] ?: ApprovalOutcome.Pending
+    fun approvalOutcome(callId: String): ApprovalOutcome {
+        val recorded = approvals[callId]
+        if (recorded != null && recorded != ApprovalOutcome.Pending) return recorded
+        // B6 · 超时 = deny（fail-closed）：`expires_at` 已过而未决定 → 读作 TimedOut。
+        // 读时投影（不需要时钟驱动；resolved 事件晚到仍以服务端为准覆盖）。夹具卡片没有
+        // expires_at，行为逐字节不变。
+        val expiresAt = approvalExpiresAt[callId]
+        if (expiresAt != null && epochNowMs() >= expiresAt) return ApprovalOutcome.TimedOut
+        return recorded ?: ApprovalOutcome.Pending
+    }
 
     /** The elapsed label rendered next to a resolved outcome; null while pending. */
     fun approvalDecidedLabel(callId: String): String? = approvalDecidedAt[callId]
@@ -1004,18 +1048,146 @@ class ChatState(
     }
 
     /**
-     * ✓ 允许 / ✕ 拒绝. Succeeds only for a real `PendingApproval` tool row that is still
-     * undecided — deciding twice is a no-op (`turn.approval_resolved` arrives once).
+     * ✓ 允许 / ✕ 拒绝 —— B6 起这是**真出网**的入口。
+     *
+     * ## 显式选择：没有 request_id 的卡片 = 只做本地投影
+     * 夹具 / 历史回放 / 假源卡片没有服务端 `request_id`（[approvalRequestId] == null）：
+     * 点下去只写本地投影、立刻返回 true，gateway **一次都不被碰**（出网 0 次，
+     * `ApprovalWireTest` 的探针钉住）。这是刻意保留的演示路径 —— 行为与接线前逐字节一致。
+     *
+     * ## 有 request_id 的卡片 = 乐观更新 + 失败回滚
+     * 点下去**先**本地变 Allowed/Denied（交互不等往返），然后经 [turns] 窄缝发
+     * `approval/decide`（scope 恒为 [ApprovalScope.ONCE] —— UI 先只发 once，参数位已留）。
+     * 失败回滚到 Pending 并给可读提示（[approvalFailureNotice]）：
+     *  - `APPROVER_INVALID` → 浏览器会话不能审批，请在设备端操作（**设计行为**，不是 bug）；
+     *  - `READ_ONLY_SESSION` → 只读会话；
+     *  - `NOT_FOUND` → 请求已过期或不存在；
+     *  - 超时/断线 → 可重试（回滚清掉在途标记，允许再点）。
+     *
+     * 双击/重复决定 = no-op：乐观写完成后 [approvalOutcome] 已不是 Pending，第二次点击在
+     * 入口就被拒 —— **不发第二次帧**。`turn.approval_resolved` 到达时以服务端为准覆盖本地。
      */
     fun decideApproval(callId: String, decision: Decision): Boolean {
         val call = toolCallById(callId) ?: return false
         if (call.state != ToolRunState.PendingApproval) return false
         if (approvalOutcome(callId) != ApprovalOutcome.Pending) return false
+        val requestId = approvalRequestIds[callId]
         approvals[callId] =
             if (decision == Decision.Approve) ApprovalOutcome.Allowed else ApprovalOutcome.Denied
         approvalDecidedAt[callId] = "T+${screenOpenMark.elapsedNow().inWholeSeconds}s"
+        if (requestId == null) return true // 夹具/回放/假源：只做本地投影（KDoc 的显式选择）
+        optimisticDecisions += callId
+        val wireDecision =
+            if (decision == Decision.Approve) ApprovalDecision.APPROVE else ApprovalDecision.DENY
+        wireScope.launch { decideApprovalOverWire(callId = callId, requestId = requestId, decision = wireDecision) }
         return true
     }
+
+    /** `approval/decide` 的出网与失败落地。成功时什么都不做（`turn.approval_resolved` 是唯一上屏者）。 */
+    private suspend fun decideApprovalOverWire(callId: String, requestId: String, decision: ApprovalDecision) {
+        try {
+            turns.decideApproval(requestId = requestId, decision = decision, scope = ApprovalScope.ONCE)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            rollbackApproval(callId = callId, error = error)
+        }
+    }
+
+    /**
+     * 失败回滚：只有**本地乐观值**还在（[optimisticDecisions] 命中）才回滚 —— 若
+     * `turn.approval_resolved` 已先到（服务端已决），本地错误帧只是迟到，覆盖服务端事实
+     * 就是撒谎。
+     */
+    private fun rollbackApproval(callId: String, error: Exception) {
+        if (callId !in optimisticDecisions) return
+        optimisticDecisions.remove(callId)
+        approvals.remove(callId)
+        approvalDecidedAt.remove(callId)
+        lastNotice = approvalFailureNotice(error)
+    }
+
+    /** B6 四类口径：三类语义错误各有指定文案，其余按冻结表分四类给「可重试」。 */
+    private fun approvalFailureNotice(error: Exception): String {
+        val detail = error.message?.takeIf { it.isNotBlank() } ?: error::class.simpleName ?: "通道异常"
+        return when {
+            error is VadeException && error.code == VadeErrorCodes.APPROVER_INVALID ->
+                "审批未送达：浏览器会话不能审批，请在设备端操作（设计行为，不是故障）"
+            error is VadeException && error.code == VadeErrorCodes.READ_ONLY_SESSION ->
+                "审批未送达：只读会话不能审批（$detail）"
+            error is VadeException && error.code == VadeErrorCodes.NOT_FOUND ->
+                "审批未送达：审批请求已过期或不存在，可刷新后重试"
+            else -> "审批未送达（${loadErrorCategoryOf(error).label}）：$detail，可重试"
+        }
+    }
+
+    /**
+     * B6 · `turn.approval_required` / `turn.approval_resolved` → 审批卡投影。只服务真源：
+     * 假源时间线一行不动（fixtures 自己拥有）。卡片 id 是 `approval:<request_id>`
+     * （确定性 → 重放幂等）。**FULL args 不进卡片**：客户端没有脱敏引擎，渲染事件里
+     * 的全量参数就是泄漏；卡体沿用 `args_preview` 口径（本轮事件没有它 → 占位行）。
+     */
+    private fun projectApprovalLifecycle(event: VadeEvent) {
+        if (!isRealSource) return
+        when (event) {
+            is TurnApprovalRequired -> onApprovalRequired(event.payload)
+            is TurnApprovalResolved -> onApprovalResolved(event.payload)
+            else -> Unit
+        }
+    }
+
+    /**
+     * 审批请求 → 内联卡（待批准）。`request_id`/`expires_at` 存进单一真相表；卡片插在
+     * 时间线尾部（当前时刻的位置）。子代理的审批广播在父会话流里（payload 的
+     * `session_id` 是父、`turn_id` 是子回合、`task_id`/`task_name` 命名任务）—— 处理
+     * 逻辑相同，卡片的 `turnId` 保留子回合事实。
+     */
+    private fun onApprovalRequired(p: TurnApprovalRequiredPayload) {
+        val callId = approvalCallId(p.requestId)
+        if (approvalRequestIds.containsKey(callId)) return // 重放/重复帧：幂等，不建第二张卡
+        approvalRequestIds[callId] = p.requestId
+        approvalExpiresAt[callId] = p.expiresAt
+        items += ChatItem.Tool(
+            ToolCall(
+                id = callId,
+                turnId = p.turnId,
+                name = p.tool,
+                // FULL args 故意不上屏（见 [projectApprovalLifecycle] KDoc）；
+                // args_preview 由 core 在 turn.tool_call 里提供，本轮事件没有它。
+                argsPreview = null,
+                risk = p.risk,
+                state = ToolRunState.PendingApproval,
+            ),
+        )
+    }
+
+    /**
+     * `turn.approval_resolved` 到达 → **服务端为准**：覆盖乐观值，并记下 `by`/`scope`
+     * （归属行形如「admin 批准 · 本次会话内有效」——by 与决定方向、scope 都是服务端事实）。
+     * 已知 request 才处理；未知 request（父会话根本没见过它）不建卡、不崩。
+     */
+    private fun onApprovalResolved(p: TurnApprovalResolvedPayload) {
+        val callId = approvalCallId(p.requestId)
+        if (!approvalRequestIds.containsKey(callId)) return
+        val outcome = when (p.decision) {
+            ApprovalDecision.APPROVE.raw -> ApprovalOutcome.Allowed
+            ApprovalDecision.DENY.raw -> ApprovalOutcome.Denied
+            else -> return // 契约外的决定值：宁可保留现状，也不编一个终态
+        }
+        approvals[callId] = outcome
+        optimisticDecisions.remove(callId)
+        approvalDecidedAt[callId] = approvalResolvedLabel(p)
+    }
+
+    /** resolved 的归属行：`by` + 决定方向 + `scope`，全部是服务端事实（整句模板，不产单汉字短字面量）。 */
+    private fun approvalResolvedLabel(p: TurnApprovalResolvedPayload): String =
+        "${p.by} ${decisionVerb(p.decision)} · ${scopeText(p.scope)}"
+
+    private fun decisionVerb(raw: String): String =
+        if (raw == ApprovalDecision.APPROVE.raw) "批准" else "拒绝"
+
+    private fun scopeText(raw: String): String =
+        if (raw == ApprovalScope.SESSION.raw) "本次会话内有效" else "仅本次有效"
 
     /** Timeout projection: the same card flips to 「已超时」 without a user decision. */
     fun expireApproval(callId: String): Boolean {
