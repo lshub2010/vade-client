@@ -42,6 +42,7 @@ import vade.ui.module.ModulePageEntryRules
 import vade.ui.module.ModulePageHost
 import vade.ui.module.ModulePageSource
 import vade.ui.module.ModulePageSources
+import vade.ui.protocol.VadeErrorCodes
 import vade.ui.skin.LocalSkin
 
 /**
@@ -186,10 +187,17 @@ fun CapabilitiesScreen(
                     "本切片没有任何真实模块，所以不给假卡片。",
             )
             ModuleCatalogState.Loading -> ModuleCatalogLoadingCard()
-            is ModuleCatalogState.Failed -> ModuleCatalogFailedCard(
-                error = catalogState.error,
-                onRetry = { moduleCatalog.retry() },
-            )
+            is ModuleCatalogState.Failed ->
+                if (isMethodMissingAnswer(catalogState.error.code, catalogState.error.detail)) {
+                    // 老 core 明确说「没有这个方法」：不是失败（重试永不成功），也不是
+                    // 没有模块（清单从未到达）——第三态，单独表达（FR-8.46 同一判据）。
+                    ModuleCatalogMethodMissingCard(catalogState.error)
+                } else {
+                    ModuleCatalogFailedCard(
+                        error = catalogState.error,
+                        onRetry = { moduleCatalog.retry() },
+                    )
+                }
             is ModuleCatalogState.Ready ->
                 if (catalogState.isEmpty) {
                     ModuleCatalogEmptyCard(catalogState.revision)
@@ -316,6 +324,27 @@ private fun ModuleCatalogEmptyCard(revision: Long, modifier: Modifier = Modifier
     )
 }
 
+/**
+ * 「此 core 还没有 ui/modules」——方法不存在的**第三态**，与 Loading / Failed / Empty
+ * 在字面上完全不同。
+ *
+ * 老 core 对 `ui/modules` 答 -32601 / NOT_FOUND "unknown method"（判据见
+ * [isMethodMissingAnswer]）。这不是加载失败：重试不可能成功，所以**没有重试按钮**；
+ * 也不代表没有模块：清单从未到达。升级 core 后这里自动出现模块卡片。
+ * 传输原话（error.detail）原样保留在文案里，可核对。
+ */
+@Composable
+private fun ModuleCatalogMethodMissingCard(error: ModuleLoadError, modifier: Modifier = Modifier) {
+    EmptyStateCard(
+        icon = VadeIcons.Empty,
+        title = "此 core 还没有模块清单方法",
+        body = "core 对 ui/modules 回答方法不存在（${error.detail}）——" +
+            "这不是加载失败，也不代表没有模块：这个 core 版本还没有 ui/modules。" +
+            "升级 core 后，模块卡片会自动出现在这里。",
+        modifier = modifier,
+    )
+}
+
 /** 成功且有模块：每个实例一行（显示名 / 身份 / 版本 / 在线态 / 页数）。 */
 @Composable
 private fun ModuleCatalogListCard(state: ModuleCatalogState.Ready, modifier: Modifier = Modifier) {
@@ -378,3 +407,22 @@ internal fun resolveCapabilitiesPageSource(
     adapters = adapters,
     lookup = { modulePages() },
 ) { ModulePageSources.demo() }
+
+// ------------------------------------------------------------------ 不支持 ≠ 失败
+
+/**
+ * 「core 没有这个方法」的回答形状（**不支持**，不是失败）——与
+ * `data/ModelActionsReal.isMethodMissing` 同一判据（FR-8.46）：JSON-RPC 保留码 `-32601`，
+ * 或 NOT_FOUND 且传输原话以 `unknown method` 开头（已上线 core 对未注册方法的真实形状；
+ * 其它 NOT_FOUND 是真 NOT_FOUND，不是方法缺失）。
+ *
+ * 三个目的地屏幕共用（能力页 ui/modules / 活动页 session/usage.get + subagent/list）：
+ * 方法不存在是**第三态**——重试永不成功，不得渲染成「加载失败 + 重试」；它也**不是**空
+ * （清单/读数从未到达）。这是本仓「不支持 vs 空」区分传统的延续，不得倒退。
+ */
+internal fun isMethodMissingAnswer(code: String?, detail: String): Boolean =
+    code == METHOD_MISSING_JSONRPC_CODE ||
+        (code == VadeErrorCodes.NOT_FOUND && detail.startsWith("unknown method"))
+
+/** JSON-RPC 为未注册方法保留的错误码，core 原样上带（契约注记：不是 C-04 名）。 */
+private const val METHOD_MISSING_JSONRPC_CODE = "-32601"
