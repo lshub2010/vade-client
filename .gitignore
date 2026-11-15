@@ -7,6 +7,7 @@ node_modules/
 kotlin-js-store/
 # Runtime classpath dump for tools/capture-window.ps1
 cp.txt
+cp*.txt
 cp.raw
 cp.err
 # Metrics venv/pycache for tools/motion-metrics*.py

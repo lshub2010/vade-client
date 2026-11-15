@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use Vade in academic work, please cite it as below."
+title: "Vade: a thin-core, module-first agent runtime"
+abstract: >-
+  Vade is an agent runtime whose core stays thin: it only owns connection,
+  routing, the turn loop, keys and audit. Tools, memory, models and clients are
+  separate processes that attach to it.
+type: software
+authors:
+  - name: "Vade contributors"
+license: MIT
+version: 0.0.1-alpha
+date-released: "2026-11-15"
+repository-code: "https://github.com/lshub2010/vade-client"
+keywords:
+  - agent runtime
+  - kotlin multiplatform
+  - compose multiplatform
+  - llm
+preferred-citation:
+  type: software
+  title: "Vade: a thin-core, module-first agent runtime"
+  authors:
+    - name: "Vade contributors"
+  year: 2026
+  version: 0.0.1-alpha
+  url: "https://github.com/lshub2010/vade-client"

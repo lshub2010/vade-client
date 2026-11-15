@@ -1,109 +1,205 @@
-# vade-client —— Vade 客户端（Compose Multiplatform，三端同源）
+# Vade
 
-Vade Agent Runtime（中文「偕行」）的客户端仓。**按模块管理**：独立仓、独立构建、独立发版；契约（`schema/`、错误码、Kotlin 绑定）通过 git submodule `contracts/vade` 从主仓取得。
+**Vade**（中文名「偕行」）是一个「内核极薄、能力全靠模块」的 Agent 运行时。
 
-| 项 | 值 |
-|---|---|
-| 主仓 | https://github.com/lshub2010/Vade（`dev_gingshan` 集成，`debug` 基线，只收 PR） |
-| 本仓 | https://github.com/lshub2010/vade-client（`main` 基线，只收 PR） |
-| 契约 | `contracts/vade` → 主仓，**钉 commit**；升契约要单独一次提交并说明 |
-| 迁出时间 | 2026-11-14（原主仓 `ui/`，保留全部历史） |
+本仓库是它的**客户端**：Android / 桌面 / Web 三端共用同一套 Compose UI（Kotlin Multiplatform）。协议内核、契约与设计文档在 **[lshub2010/Vade](https://github.com/lshub2010/Vade)**。
 
-> 当前范围：**U1-a 骨架 + U1-c 搜索**已落地。消息流 / 输入 / 附件 / 工具卡是 **U1-b**；`miuix` / `glass` 是 **U2 / U3**；任务书在主仓 `docs/agents/50-U1-*`～`53-U4-*`（其中 `ui/...` 路径即本仓路径）。
+> **当前发布：`0.0.1-alpha`（pre-release）**
+> alpha 的含义：能连真 core、能发消息、能审批、能管会话——**不保证**协议 / 数据 / 界面稳定，前后版本的数据结构随时可能变。
 
-## 目录
+---
 
-```
-.
-├── settings.gradle.kts
-├── build.gradle.kts
-├── gradle.properties            # 构建矩阵（见下）
-├── composeApp/src/
-│   ├── commonMain/kotlin/vade/ui/
-│   │   ├── skin/Skin.kt           # C-09：11 个组件的接口（冻结后只许加可选参数）
-│   │   ├── skin/material/         # material 皮肤的最小实现
-│   │   ├── skin/SkinRegistry.kt   # material 真实现；miuix/glass 占位
-│   │   ├── shell/                 # 底栏 / 顶栏 / 断点布局 / 快捷键
-│   │   ├── destinations/          # 会话 / 活动 / 能力 / 我的
-│   │   ├── search/                # U1-c：本地索引、派生状态、两形态覆盖层
-│   │   └── model/                 # 假数据与 UI 侧视图模型
-│   ├── desktopMain/kotlin/vade/ui/Main.kt   # 桌面入口（--bar / --dest / --panel / --search）
-│   ├── androidMain/                          # Activity 入口
-│   └── wasmJsMain/                           # ComposeViewport 入口
-├── shots/                         # 真实窗口截图（u1a 骨架 / u1c 搜索）
-├── tools/capture-window.ps1       # 真实窗口截图（PrintWindow + PW_RENDERFULLCONTENT）
-└── contracts/vade                 # git submodule → 主仓（schema / 绑定的唯一来源）
-```
+## 三端状态
 
-## 契约（submodule）
+| 平台 | 状态 | 怎么装 |
+|---|---|---|
+| Android | ✅ 可用（minSdk 24，实测 API 30 / API 37） | 装 `composeApp-debug.apk` |
+| 桌面 · Windows | ✅ 可用 | 装 MSI，或 `gradle :composeApp:run` |
+| 桌面 · macOS / Linux | ⚠️ 未验证 | 同上，需自备 JDK 21 |
+| Web · wasmJs | 🟡 能编译通过，**未出可分发的站点** | 仅源码构建 |
+
+---
+
+## 快速开始
+
+### 1. 先跑一个 core
+
+Vade 客户端自己**不产生任何智能**——它必须连一个 core 才有模型、工具和会话。
 
 ```bash
-git clone --recurse-submodules https://github.com/lshub2010/vade-client.git
-# 已 clone 过的：
-git submodule update --init --recursive
+# 在内核仓库里（见 lshub2010/Vade）
+python -m vade --config core.toml
 ```
 
-只在本地需要 `schema/` 时（客户端构建当前不依赖它，为 U1-b 的协议接入预留）：
+core 起来后会给出一个 **8 位配对码**（2 个汉字 + 6 位 base32，**一次性、180 秒有效**）。找不到就重启 core 再看。
+
+### 2. 让客户端连上这个 core
+
+客户端**默认是假数据模式**（用来离线看界面）。要连真 core，三端各有传参方式，键名固定为 `source` / `host` / `port` / `pair_code`：
+
+**Android**（ADB 启动，注意是**裸键**，不是 `vade.source`）：
 
 ```bash
-bash tools/setup-contracts.sh      # 对 contracts/vade 做 sparse-checkout，只取 schema/ + protocol/core/kotlin
+adb shell am start -n vade.ui/.MainActivity \
+  --es source real --es host 192.168.1.10 --es port 8443 --es pair_code ABCDEFGH
 ```
 
-## 构建矩阵（照主仓 `spike/miuix` 已验证值，别改）
-
-| 项 | 值 |
-|---|---|
-| AGP | **9.5.1** |
-| Gradle | **9.6.1**（系统 `gradle`，本工程不生成 wrapper） |
-| compileSdk / targetSdk / minSdk | **37 / 36 / 24** |
-| AGP 兼容开关 | `android.builtInKotlin=false`、`android.newDsl=false`、`android.suppressUnsupportedCompileSdk=37` |
-| Compose Multiplatform | 1.12.0 |
-| 桌面 JVM 目标 | **17**（daemon 是 JDK 26，不钉会编出 26 的字节码，截图进程加载不了） |
-
-> 两个 AGP 开关已 deprecated，AGP 10 会移除；届时的正解是拆独立 `androidApp` 模块 + `com.android.kotlin.multiplatform.library`。
-
-## 常用命令
+**桌面**（环境变量）：
 
 ```bash
-source D:/Hermes/tools/env/vade-env.sh     # JAVA_HOME / ANDROID_HOME / GRADLE_USER_HOME
-gradle :composeApp:desktopMainClasses      # 桌面编译
+VADE_SOURCE=real VADE_HOST=192.168.1.10 VADE_PORT=8443 VADE_PAIR_CODE=ABCDEFGH ./vade-ui
+# Windows PowerShell: $env:VADE_SOURCE="real"; ... ; .\vade-ui.exe
+```
+
+**Web**（URL 查询参数）：
+
+```
+http://localhost:8080/?source=real&host=192.168.1.10&port=8443&pair_code=ABCDEFGH
+```
+
+> 也可以什么都不传：首次启动时**会话列表顶部会出现一张引导卡**，在卡里输入配对码即可。
+> 三种失败（码错 / core 没起 / 网络不通）会**分开报**，不会含糊成一句「连接失败」。
+
+### 3. 开始用
+
+1. 点右上角 **✎**（手机）或按 **⌘N / Ctrl+N**（桌面）**新建会话**；
+2. 底部悬浮输入框里输入，点右侧圆形按钮发送；
+3. 想换模型：输入框右下角的**模型 chip** → 弹出选择面板；
+4. 模型要执行危险动作时会弹一张**内联审批卡**（不弹独立窗口），点 ✓ 批准 / ✕ 拒绝。
+
+---
+
+## 日常使用
+
+### 会话
+
+- **新建**：✎ / `⌘N`——会在服务端**真建**一个会话（不是本地假草稿），其他设备会同步看到。
+- **打开**：点列表任意一行进入会话详情。
+- **回到列表**：手机端从左侧滑出抽屉，返回键 = 收起抽屉；桌面端是双栏，直接点左栏。
+- **长按一行**：重命名 / 置顶 / 归档 / 移动到分组 / 新建分组 / 删除（删除有二次确认）。
+- 任何失败都会**整行回滚**并在顶部显示错误横条——不会出现「界面改了、服务端没改」的假象。
+
+### 发消息
+
+- 输入框是**常驻悬浮**的，发送键是右侧独立圆钮。
+- 回复**逐字流式上屏**（不是等完成再整段替换）。
+- 生成中点 **■** 中断：已生成的部分会保留。
+- 发送失败的消息气泡留在屏上并带错误分类（可重试 / 需重连 / 需你操作 / 致命）。
+
+### 审批（approval）
+
+模型要执行高风险动作时，会话流里会出现一张卡：
+
+- 显示工具名与参数**摘要**（完整参数不上屏，避免泄漏）；
+- ✓ 允许 / ✕ 拒绝，**只对这次调用生效**；
+- 决定会发往 core；**超时未点 = 拒绝**（fail-closed，安全默认）；
+- 若你用浏览器会话连入，审批会回「浏览器会话不能审批」——这是设计行为，请在设备端操作。
+
+### 模型与用量
+
+- 会话内可单独指定模型；不指定则用全局默认。
+- 顶栏副标题显示**本会话累计用量**（`6.6k tokens · 5 轮`），数据来自 `session/usage.get`。
+  加载中或失败**不显示任何数字**；失败时那一行可点重试。
+
+### 附件
+
+- 输入框左侧 **+** 添加图片 / 文件；纯图片消息（无文字）也可以发。
+- 预览浮层是**真高斯模糊的玻璃卡**，点空白或按 Esc 关闭。
+
+### 搜索
+
+- 手机：列表页顶部搜索图标；桌面：`⌘K / Ctrl+K`。
+- 输入 3 个字符触发，防抖 200ms，命中片段高亮。
+
+### 分组
+
+- 会话行显示**组色点 + 组名**。
+- 分组可建 / 改图标（39 个内置）/ 改颜色 / 删除；**删组不删会话**，会话回到未分组。
+
+### 外观
+
+- 两套皮肤：`material`（默认）与 `miuix`。
+- 主题三态：跟随系统 / 亮 / 暗（「我的 → 外观」）。
+- 底栏两态：贴底（docked）与悬浮胶囊（floating）。
+
+---
+
+## 从源码构建
+
+**要求**：JDK **21**、Gradle **9.6.1**、Android SDK（仅构建 APK 时需要）、Node 22（仅 Web）。
+
+```bash
+gradle :composeApp:run                     # 桌面：直接运行
+gradle :composeApp:packageMsi              # 桌面：打包安装器
 gradle :composeApp:assembleDebug           # Android APK
-gradle :composeApp:wasmJsBrowserProductionWebpack   # Wasm 生产包
-gradle :composeApp:desktopTest             # 防回退测试 + 搜索流程测试
+#   → composeApp/build/outputs/apk/debug/composeApp-debug.apk
+gradle :composeApp:compileKotlinWasmJs     # Web：只验证编译
+gradle :composeApp:desktopTest --rerun     # 全量测试（~1500 条）
 ```
 
-真实窗口截图（Windows）：
+构建前把 `local.properties` 里的 `sdk.dir` 指到你自己的 Android SDK（该文件不进仓库）。
+构建矩阵、门禁、防回退约束、截图工具见 **[`docs/DEVELOPING.md`](docs/DEVELOPING.md)**。
 
-```bash
-gradle :composeApp:desktopMainClasses :composeApp:printRuntimeClasspath -q > cp.txt
-for b in fixed floating blur; do
-  pwsh -NoProfile -File tools/capture-window.ps1 \
-    -Java "$JAVA_HOME/bin/java.exe" -ClassPathFile cp.txt \
-    -Bar $b -OutFile shots/u1a/desktop-$b.png
-done
-```
+---
 
-## 已实现 / 未实现（别当已完成）
+## 数据与隐私
 
-| 项 | 状态 |
+- 配对码**只走内存**：不落盘、不进日志、不进 URL（有专门的守卫测试盯着）。
+- 鉴权 token 由 core 下发，客户端不打印、不上报。
+- 默认假数据模式**不发出任何网络请求**——想离线看界面就一直用默认模式。
+
+---
+
+## 已知限制
+
+alpha 阶段的完整清单在 **[主仓 `docs/ALPHA.md` §八](https://github.com/lshub2010/Vade/blob/dev_gingshan/docs/ALPHA.md)**（每条都写了「用户会看到什么 / 怎么绕」）。最常被问到的三条：
+
+1. **Web 端首次配对不可用**——浏览器读不到 `Set-Cookie`，请在桌面 / 手机完成首次配对。
+2. **会话中段没有连接状态指示**——断线会自动重连（指数退避，上限 30 s），但界面只在列表首次加载时显示连接态。
+3. **同一会话在一条连接上会 attach 两次**（既有基线问题）——正常使用无感，长连接下事件可能被处理两次，重启客户端即回收。
+
+---
+
+## 文档
+
+| 想看什么 | 去哪 |
 |---|---|
-| 四目的地（会话 / 活动 / 能力 / 我的） | 已实现（活动/能力/我的为骨架与空态） |
-| 底栏三态 | 已实现（w2-bottombar）：三种形态由 shell 层渲染。`Floating`/`FloatingBlur` 为 KernelSU 风格液态玻璃浮动胶囊（阻尼拖拽指示器、按压缩放、速度拉伸、橡皮筋、内层阴影）；`Fixed` 与 `FloatingBlur` 走 **miuix-blur 真模糊**（`drawBackdrop` + blur/lens/BloomStroke 高光）。旧的"垂直 alpha 渐变遮罩"假模糊已从应用路径下线（skin 内实现保留但不再被 shell 调用）。Android < 13 无 RuntimeShader，按库内门控自动退化为纯染色（见 `shots/w2-bottombar/RESULT.md`） |
-| 四档断点 | 已实现：<600 底栏；600–839 rail 80；840–1199 rail 72 + 双栏；≥1200 双栏 + 右面板（默认收起） |
-| C-09 Skin 11 组件 | 接口 + material 实现；`miuix`/`glass` 仅占位 |
-| 会话列表 | 6 条假数据（2 置顶 + 今天 2 + 昨天 1 + 7 天内 1），**未连 core** |
-| 搜索（手机全屏覆盖层 / 桌面 ⌘K） | 已实现（U1-c）；**降级为本地缓存索引**并常驻「范围：已缓存」——`schema/rpc.json` 里没有 `session/search` |
-| 消息流 / 输入区 / 附件 / 工具卡页面 | 已实现（U1-b，**全假数据，未连 core**）：流式、队列、中断、工具卡折叠策略、Markdown、图片预览、多行输入。视觉 v2（悬浮输入/发送球/纯图标/内联审批/高斯模糊）未落地，待统一重构。见 `shots/u1b/RESULT.md` |
-| 快捷键（⌘N/⌘1–4/⌘B/⌘\\/Esc） | **未实现**（U1-g）；`⌘K` / `Ctrl+K` 已随 U1-c 落地 |
-| Android / Wasm 运行时与截图 | **未验证**（只验了构建） |
-| 无障碍（字体缩放 / TalkBack） | **未验证**（U1-g） |
+| 整个项目的设计、协议、决策台账 | [lshub2010/Vade](https://github.com/lshub2010/Vade) 的 `docs/` |
+| 从零跑起来（分步命令 + 常见错误） | [`docs/QUICKSTART.md`](docs/QUICKSTART.md) |
+| 构建矩阵 / 门禁 / 防回退约束 | [`docs/DEVELOPING.md`](docs/DEVELOPING.md) |
+| 构建环境与版本矩阵 | [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md) |
+| 视觉规范（圆角 / 阴影 / 模糊 / token） | [`docs/visual-language.md`](docs/visual-language.md) |
+| 协议契约原文（rpc / events / schema） | [`contracts/vade`](contracts/vade)（submodule） |
+| alpha 台账与已知缺陷 | [主仓 `docs/ALPHA.md`](https://github.com/lshub2010/Vade/blob/dev_gingshan/docs/ALPHA.md) |
 
-## 防回退测试
+---
 
-`desktopTest` 里有真跑的断言：
+## 许可
 
-1. 业务页面**不得** import `material3` / `miuix` / `glass`（只能经 `Skin`）；扫描目录含 `destinations`、`shell`、`search`、`chat`。
-2. `Skin.kt` **恰好 11 个** `@Composable fun` —— 少一个说明组件被删，多一个说明有人绕过 C-09 流程加了第 12 个。
+MIT License —— 见 [`LICENSE`](LICENSE)。
+
+```
+Copyright (c) 2026 Vade contributors
+```
+
+## 引用
+
+如果你在文章、论文或产品里用到 Vade，请按下面格式引用：
+
+```bibtex
+@software{vade2026,
+  title     = {Vade: a thin-core, module-first agent runtime},
+  author    = {{Vade contributors}},
+  year      = {2026},
+  version   = {0.0.1-alpha},
+  url       = {https://github.com/lshub2010/vade-client},
+  note      = {Client for Android / Desktop / Web (Kotlin Multiplatform)}
+}
+```
+
+机器可读的引用元数据见 [`CITATION.cff`](CITATION.cff)。
+
+---
 
 ## 第三方许可与致谢
 
@@ -112,7 +208,7 @@ done
 [KernelSU](https://github.com/tiann/KernelSU)，Copyright (c) 2023-2026 weishu &
 contributors，以 **Apache License 2.0** 授权。原实现改编自 compose-miuix-ui 示例
 `IosLiquidGlassNavigationBar`（Apache 2.0）。本项目的移植版本保持同一许可
-（`ui/component/liquid/` 与 `ui/shell/FloatingBottomBar.kt` 文件头均带来源声明）。
+（`component/liquid/` 与 `shell/` 下相关文件头均带来源声明）。
 
 ### Miuix
 毛玻璃、回弹与主题基础组件来自 [Miuix](https://github.com/miuix-kotlin-multiplatform/miuix)
@@ -120,33 +216,13 @@ contributors，以 **Apache License 2.0** 授权。原实现改编自 compose-mi
 
 ### Tabler Icons
 矢量图标来自 [Tabler Icons](https://tabler.io/icons)，经
-`com.composables:icons-tabler-cmp` 2.2.1（打包：[Composable Horizons
-composeicons](https://github.com/composablehorizons/composeicons)）接入，统一重导出于
-`vade.ui.icon.VadeIcons`。
+`com.composables:icons-tabler-cmp` 2.2.1（打包：[Composable Horizons composeicons](https://github.com/composablehorizons/composeicons)）接入，
+统一重导出于 `vade.ui.icon.VadeIcons`。
 
-Tabler Icons 以 **MIT License** 发布，版权行：**Copyright (c) 2018-2026 Tabler
-contributors**（[许可原文](https://github.com/tabler/tabler-icons/blob/main/LICENSE)）。
+Tabler Icons 以 **MIT License** 发布，版权行：**Copyright (c) 2018-2026 Tabler contributors**
+（[许可原文](https://github.com/tabler/tabler-icons/blob/main/LICENSE)）。
 `shell/`、`skin/` 之外的业务代码不得直接 import `com.composables.icons.tabler.*`。
 
 ### HarmonyOS Sans（待定）
 若后续采用，需在此声明：本软件使用 HarmonyOS Sans 字体（© Huawei Device Co., Ltd.），
 按 HarmonyOS Sans Fonts License Agreement 使用。
-
-## 快速开始
-
-- **从零到跑起桌面客户端**：[docs/QUICKSTART.md](docs/QUICKSTART.md) —— 分步命令 + 预期输出 +
-  常见错误解法（SDK not found / Gradle 版本不符 / `D:\d\` 双前缀 / UP-TO-DATE 假绿灯等，全部本机复现过）。
-  文档顶部有**当前状态表**：哪些能用、哪些还是假数据（现状：**UI 全部假数据，未连 core**，真连接见主仓 `docs/ALPHA.md` 的 W2）、哪些未实现——别把计划当现状。
-- **构建矩阵为什么钉死这些版本、动了会怎样**：[docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) ——
-  Miuix 0.9.x → compileSdk 37 → AGP 9.x → `builtInKotlin`/`newDsl` 双开关 → AGP 10 拆模块的完整链条。
-
-最小路径（Windows / MSYS bash；每步的预期输出与坑见 QUICKSTART）：
-
-```bash
-source D:/Hermes/tools/env/vade-env.sh
-export JAVA_HOME=D:/Hermes/tools/jdk21
-export PATH="/d/Hermes/tools/gradle-9.6.1/bin:$PATH"   # vade-env.sh 把 8.10.2 排最前，必须覆盖
-gradle :composeApp:desktopMainClasses                  # 编译桌面端
-gradle :composeApp:run                                 # 起窗口（假数据，会话列表 + 底栏四目的地）
-```
-
