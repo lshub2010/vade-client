@@ -3,6 +3,7 @@ package vade.ui.model
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
@@ -17,7 +18,6 @@ import vade.ui.protocol.idOf
 import vade.ui.protocol.requestOf
 import vade.ui.protocol.responseFrame
 import vade.ui.protocol.testClient
-import vade.ui.protocol.waitUntil
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -66,6 +66,28 @@ class ModelRealWiringTest {
         }
     }
 
+    /**
+     * Event-driven frame wait: SUSPENDS on the transport's sent channel (the same
+     * primitive the protocol-layer tests use) instead of polling the wall clock — a
+     * busy machine can delay the wake, but can never make this wait miss a frame or
+     * fire before the condition holds. The cap is deadlock insurance only.
+     */
+    private suspend fun FakeTransport.awaitNextFrame(description: String): String =
+        try {
+            awaitSent(FRAME_WAIT_INSURANCE_MS)
+        } catch (e: TimeoutCancellationException) {
+            error(
+                "no frame within ${FRAME_WAIT_INSURANCE_MS}ms while waiting for [$description]; " +
+                    "frames sent so far: " +
+                    record.map { runCatching { requestOf(it).first }.getOrDefault("<unparseable>") },
+            )
+        }
+
+    private companion object {
+        /** Deadlock insurance for the event-driven waits — NOT the expected latency. */
+        const val FRAME_WAIT_INSURANCE_MS = 30_000L
+    }
+
     private fun entryJson(id: String, provider: String, displayName: String, priority: Int): String =
         """{"id":"$id","provider":"$provider","display_name":"$displayName",""" +
             """"input_modalities":["text"],"max_image_bytes":null,"max_image_px":null,""" +
@@ -83,12 +105,9 @@ class ModelRealWiringTest {
         listResultJson: String,
         overrideJson: String = """{"model_id":null,"source":"default","resolved":true,"global_default":"claude-sonnet"}""",
     ) {
-        val start = transport.record.size
         val pull = async(Dispatchers.Default) { state.refresh() }
-        waitUntil { transport.record.size >= start + 1 }
-        transport.push(responseFrame(idOf(transport.record[start]), listResultJson))
-        waitUntil { transport.record.size >= start + 2 }
-        transport.push(responseFrame(idOf(transport.record[start + 1]), overrideJson))
+        transport.push(responseFrame(idOf(transport.awaitNextFrame("model/list request")), listResultJson))
+        transport.push(responseFrame(idOf(transport.awaitNextFrame("session/model.get request")), overrideJson))
         pull.await()
     }
 
@@ -98,7 +117,7 @@ class ModelRealWiringTest {
     fun refreshFillsRowsInServerOrderFromModelList() = harness { client, transport, scope ->
         val state = ModelState.forRealSession(client, "s-1", scope, autoRefresh = false)
         val pull = async(Dispatchers.Default) { state.refresh() }
-        waitUntil { transport.record.size >= 1 }
+        transport.awaitNextFrame("model/list request")
         val (method, params) = requestOf(transport.record[0])
         assertEquals("model/list", method)
         assertEquals("{}", params, "no if_revision on the first pull")
@@ -111,7 +130,7 @@ class ModelRealWiringTest {
                 ),
             ),
         )
-        waitUntil { transport.record.size >= 2 }
+        transport.awaitNextFrame("session/model.get request")
         transport.push(responseFrame(idOf(transport.record[1]), """{"model_id":null,"source":"default","resolved":true,"global_default":"claude-sonnet"}"""))
         pull.await()
         assertEquals(listOf("claude-sonnet", "local-qwen"), state.models.orEmpty().map { it.id }, "server order, never re-sorted")
@@ -132,7 +151,7 @@ class ModelRealWiringTest {
     fun methodMissing32601ShowsReadOnlyBadgeAndKeepsModelsNull() = harness { client, transport, scope ->
         val state = ModelState.forRealSession(client, "s-1", scope, autoRefresh = false)
         val pull = async(Dispatchers.Default) { state.refresh() }
-        waitUntil { transport.record.size >= 1 }
+        transport.awaitNextFrame("model/list request")
         transport.push(errorFrame(idOf(transport.record[0]), "-32601", "method not found: model/list"))
         pull.await()
 
@@ -160,7 +179,7 @@ class ModelRealWiringTest {
     fun unknownMethodNotFoundDegradesTheSameWay() = harness { client, transport, scope ->
         val state = ModelState.forRealSession(client, "s-1", scope, autoRefresh = false)
         val pull = async(Dispatchers.Default) { state.refresh() }
-        waitUntil { transport.record.size >= 1 }
+        transport.awaitNextFrame("model/list request")
         transport.push(errorFrame(idOf(transport.record[0]), "NOT_FOUND", "unknown method 'model/list'"))
         pull.await()
 
@@ -175,7 +194,7 @@ class ModelRealWiringTest {
     fun genuineLoadFailureIsNotDegradedIntoTheReadOnlyBadge() = harness { client, transport, scope ->
         val state = ModelState.forRealSession(client, "s-1", scope, autoRefresh = false)
         val pull = async(Dispatchers.Default) { state.refresh() }
-        waitUntil { transport.record.size >= 1 }
+        transport.awaitNextFrame("model/list request")
         transport.push(errorFrame(idOf(transport.record[0]), "INTERNAL", "session RPC failed"))
         pull.await()
 
@@ -226,7 +245,7 @@ class ModelRealWiringTest {
             ),
         )
         val write = async(Dispatchers.Default) { state.selectAwaiting("local-qwen") }
-        waitUntil { transport.record.size >= 3 }
+        transport.awaitNextFrame("session/model.set request")
         val (method, params) = requestOf(transport.record[2])
         assertEquals("session/model.set", method)
         assertEquals("""{"session_id":"s-1","model_id":"local-qwen"}""", params)
@@ -258,7 +277,7 @@ class ModelRealWiringTest {
         assertNull(state.selectedId, "starts on the global default")
 
         val write = async(Dispatchers.Default) { runCatching { state.selectAwaiting("local-qwen") } }
-        waitUntil { transport.record.size >= 3 }
+        transport.awaitNextFrame("session/model.set request")
         transport.push(errorFrame(idOf(transport.record[2]), "INVALID_ARGUMENT", "model_id must be <provider>/<model>"))
         val failure = write.await().exceptionOrNull()
         assertTrue(failure is VadeException && failure.code == VadeErrorCodes.INVALID_ARGUMENT)
@@ -287,7 +306,7 @@ class ModelRealWiringTest {
             listResult(entryJson("claude-sonnet", "anthropic", "Claude Sonnet", 10), entryJson("local-qwen", "ollama", "Qwen2.5 32B", 20)),
         )
         val write = async(Dispatchers.Default) { runCatching { state.selectAwaiting("local-qwen") } }
-        waitUntil { transport.record.size >= 3 }
+        transport.awaitNextFrame("session/model.set request")
         transport.push(errorFrame(idOf(transport.record[2]), "READ_ONLY_SESSION", "session is closed"))
         write.await()
 
@@ -316,7 +335,7 @@ class ModelRealWiringTest {
     fun defaultScopeWriteIsExplicitlyUnsupportedNeverSilent() = harness { client, transport, scope ->
         val state = ModelState.forRealDefault(client, scope, autoRefresh = false)
         val pull = async(Dispatchers.Default) { state.refresh() }
-        waitUntil { transport.record.size >= 1 }
+        transport.awaitNextFrame("model/list request")
         transport.push(
             responseFrame(
                 idOf(transport.record[0]),
@@ -360,7 +379,7 @@ class ModelRealWiringTest {
 
         val start = transport.record.size
         val clear = async(Dispatchers.Default) { state.followGlobalDefaultAwaiting() }
-        waitUntil { transport.record.size >= start + 1 }
+        transport.awaitNextFrame("session/model.set request")
         val (method, params) = requestOf(transport.record[start])
         assertEquals("session/model.set", method)
         // required-with-null: the KEY EXISTS with a null value. That is precisely what core's
@@ -392,7 +411,7 @@ class ModelRealWiringTest {
         )
         val start = transport.record.size
         val clear = async(Dispatchers.Default) { runCatching { state.followGlobalDefaultAwaiting() } }
-        waitUntil { transport.record.size >= start + 1 }
+        transport.awaitNextFrame("session/model.set request")
         transport.push(errorFrame(idOf(transport.record[start]), "READ_ONLY_SESSION", "session is closed"))
         val thrown = clear.await().exceptionOrNull()
         assertTrue(thrown is VadeException && (thrown as VadeException).code == VadeErrorCodes.READ_ONLY_SESSION)
@@ -420,7 +439,7 @@ class ModelRealWiringTest {
         val state = ModelState.forRealSession(client, "s-1", scope, autoRefresh = false)
 
         val first = async(Dispatchers.Default) { state.refresh() }
-        waitUntil { transport.record.size >= 1 }
+        transport.awaitNextFrame("model/list request")
         transport.push(errorFrame(idOf(transport.record[0]), "-32601", "method not found: model/list"))
         first.await()
         assertTrue(state.readOnly)
@@ -438,16 +457,18 @@ class ModelRealWiringTest {
         assertNull(state.readOnlyReason)
         assertEquals(3, state.models?.size)
         assertTrue(state.content() is ModelPickerContent.Rows)
-        val nextFrame = transport.record.size
-        assertTrue(state.select("local-qwen"), "writes are usable again")
-        waitUntil { transport.record.size >= nextFrame + 1 }
+        // Event-driven completion: the write is awaited through its own deferred
+        // (selectAwaiting) instead of polling the fire-and-forget path's writePending flag —
+        // same optimistic flip, same writeSessionReal, same revert+writeFailure contract.
+        // The fire-and-forget adapter path stays covered by ModelActionsRealTest.
+        val write = async(Dispatchers.Default) { state.selectAwaiting("local-qwen") }
         transport.push(
             responseFrame(
-                idOf(transport.record[nextFrame]),
+                idOf(transport.awaitNextFrame("session/model.set request")),
                 """{"model_id":"local-qwen","source":"session","effective_at":"next_turn"}""",
             ),
         )
-        waitUntil { !state.writePending }
+        assertTrue(write.await(), "writes are usable again")
         assertNull(state.writeFailure)
         assertEquals("local-qwen", state.selectedId)
     }

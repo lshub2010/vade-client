@@ -1,0 +1,18 @@
+# 三目标门禁（改动后，串行各跑一次，cwd=worktree 根）
+# 命令：/d/Hermes/tools/gradle-9.6.1/bin/gradle :composeApp:<goal>（GRADLE_USER_HOME=D:/Hermes/tools/gradle-home）
+
+=== GATE1 :composeApp:desktopTest --rerun ===
+BUILD SUCCESSFUL in 2m 28s
+GATE1 exit=0
+# build/test-results/desktopTest/TEST-*.xml 求和（108 个文件）：
+#   tests=1133 failures=0 errors=0 skipped=1   （skipped=1 为 vade.ui.protocol.VadeClientSmokeTest 既有项）
+# 三目标类：ModelActionsRealTest 8/0、RealSessionLifecycleTest 6/0、ModelRealWiringTest 14/0（tests/failures）
+
+=== GATE2 :composeApp:assembleDebug ===
+BUILD SUCCESSFUL in 58s
+GATE2 exit=0
+# 产物 composeApp/build/outputs/apk/debug/composeApp-debug.apk（mtime 2026-11-15 08:59，本 worktree 首个 APK）
+
+=== GATE3 :composeApp:compileKotlinWasmJs ===
+BUILD SUCCESSFUL in 40s
+GATE3 exit=0

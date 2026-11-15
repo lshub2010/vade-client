@@ -1,0 +1,19 @@
+# 改前基线（未改任何代码，同一命令：desktopTest --rerun --tests '*<类名>*'）
+=== ModelRealWiringTest ===
+> Task :composeApp:desktopTestProcessResources
+> Task :composeApp:desktopTestClasses
+> Task :composeApp:desktopTest
+BUILD SUCCESSFUL in 1m 25s
+=== ModelRealWiringTest exit=0 ===
+=== ModelActionsRealTest ===
+> Task :composeApp:desktopTestProcessResources UP-TO-DATE
+> Task :composeApp:desktopTestClasses UP-TO-DATE
+> Task :composeApp:desktopTest
+BUILD SUCCESSFUL in 20s
+=== ModelActionsRealTest exit=0 ===
+=== RealSessionLifecycleTest ===
+> Task :composeApp:desktopTestProcessResources UP-TO-DATE
+> Task :composeApp:desktopTestClasses UP-TO-DATE
+> Task :composeApp:desktopTest
+BUILD SUCCESSFUL in 38s
+=== RealSessionLifecycleTest exit=0 ===

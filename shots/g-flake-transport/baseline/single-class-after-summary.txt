@@ -1,0 +1,19 @@
+# 改后（同命令复跑）
+=== ModelRealWiringTest ===
+> Task :composeApp:desktopTestProcessResources UP-TO-DATE
+> Task :composeApp:desktopTestClasses
+> Task :composeApp:desktopTest
+BUILD SUCCESSFUL in 56s
+=== ModelRealWiringTest exit=0 ===
+=== ModelActionsRealTest ===
+> Task :composeApp:desktopTestProcessResources UP-TO-DATE
+> Task :composeApp:desktopTestClasses UP-TO-DATE
+> Task :composeApp:desktopTest
+BUILD SUCCESSFUL in 19s
+=== ModelActionsRealTest exit=0 ===
+=== RealSessionLifecycleTest ===
+> Task :composeApp:desktopTestProcessResources UP-TO-DATE
+> Task :composeApp:desktopTestClasses UP-TO-DATE
+> Task :composeApp:desktopTest
+BUILD SUCCESSFUL in 19s
+=== RealSessionLifecycleTest exit=0 ===
