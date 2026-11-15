@@ -84,6 +84,7 @@ import vade.ui.skin.MessageView
 import vade.ui.component.insets.composerNavClearance
 import vade.ui.component.liquid.VadeShadows
 import vade.ui.component.liquid.layeredShadow
+import vade.ui.skin.cardAccentBar
 import vade.ui.skin.glass.GlassSurface
 import vade.ui.skin.glass.LocalGlassHazeState
 
@@ -583,9 +584,13 @@ private fun ToolRow(state: ChatState, call: ToolCall) {
  * Static card per §8 row 4: hairline + very light shadow + the 3dp status bar, **no** red
  * glow. Insert animation: fade + 12dp up-slide over 180ms on `Skin.motion.easing` (§7);
  * resolving only transitions colour, never position.
+ *
+ * `internal` (not `private`) only so the pixel test `CardAccentBarTest` can render this exact
+ * card standalone and read the accent strip off the frame — the seam is module-scoped, so no
+ * public API is added.
  */
 @Composable
-private fun ApprovalCardRow(state: ChatState, call: ToolCall) {
+internal fun ApprovalCardRow(state: ChatState, call: ToolCall) {
     val skin = LocalSkin.current
     val outcome = state.approvalOutcome(call.id)
     val shape = RoundedCornerShape(skin.shapes.md)
@@ -616,15 +621,19 @@ private fun ApprovalCardRow(state: ChatState, call: ToolCall) {
                 // the emulator it put 13/255 below and 3/255 ABOVE the card, a rim).
                 .layeredShadow(VadeShadows.card, shape, dark = skin.colors.isDark)
                 .clip(shape)
+                // 状态条挂在 `.background` / `.border` 之前：`Modifier.border` 画在内容之后，
+                // 竖条若挂在最后，左侧 1dp 会被发丝线盖住（实宽 3dp → 2dp 并留缝）。
+                // 顶端沿 md 圆弧走、3dp 收细到 0、65% 高度处收尖；半径取卡片的形状 token。
+                .cardAccentBar(statusColor, cornerRadius = skin.shapes.md)
                 .background(skin.colors.surface)
                 .border(1.dp, skin.colors.hairline, shape),
         ) {
-            // 左侧 3dp 状态条（§8 row 4）：warn / success / danger / muted。
-            Box(Modifier.width(3.dp).fillMaxHeight().background(statusColor))
             Column(
+                // 原来是「3dp 竖条 + 13dp 内边距」= 16dp 起排；竖条挪到卡片背景上之后，
+                // 内边距直接站在 16dp（版式逐像素不变）。
                 modifier = Modifier
                     .weight(1f)
-                    .padding(start = 13.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+                    .padding(start = 16.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
             ) {
                 // 卡头：「需要批准」+ 风险徽标；resolved 时右侧变结果态 + 时间戳。
                 Row(verticalAlignment = Alignment.CenterVertically) {
