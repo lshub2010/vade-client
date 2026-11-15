@@ -44,7 +44,7 @@ class RealModulePageSource(
     private val client: VadeClient,
     /** 声明与在线态的数据源（`data.ModuleRegistry`）；`null` = 未接线，见类 KDoc。 */
     private val registry: ModuleRegistryView? = null,
-) : ModulePageSource, ModulePageBodyFetcher {
+) : ModulePageSource, ModulePageBodyFetcher, ModulePageStateFetcher {
 
     /**
      * 声明快照：接上 [registry] 后它就是 `ui/modules` 一次拉取聚合出来的那份（模块标题 +
@@ -146,13 +146,15 @@ class RealModulePageSource(
     private class PageBody(val schema: JsonObject, val parsed: ParseResult.Ok)
 
     /**
-     * `ui/state.get` → `result.state`。[loadState] 的真实后备。
+     * `ui/state.get` → `result.state`。[loadState] 的真实后备；g-module-state 起也是
+     * [ModulePageStateFetcher] 的实现——宿主把「pageFetch 也是状态后备」当作接线信号，
+     * 绑定页据此真发这一帧（静态页在 [referencesPageState] 判据下一帧都不发）。
      *
      * state 是合法的扁平对象，**空对象也是合法状态**（模块可以合法地没有状态）——
      * 空对象照实缓存，这不是「伪装成功」；「取不到」在同步接口上表达为 [loadState]
      * 返回 null（未 fetch），两者是不同的信号，不混用。
      */
-    suspend fun fetchState(moduleId: String, instanceId: String, pageId: String): JsonObject {
+    override suspend fun fetchState(moduleId: String, instanceId: String, pageId: String): JsonObject {
         requireParams(moduleId, instanceId, pageId)
         val result = client.uiStateGet(StateGetParams(moduleId, instanceId, pageId))
         states = states + ("$moduleId/$pageId" to result.state)
