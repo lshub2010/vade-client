@@ -29,11 +29,17 @@
 Vade 客户端自己**不产生任何智能**——它必须连一个 core 才有模型、工具和会话。
 
 ```bash
-# 在内核仓库里（见 lshub2010/Vade）
-python -m vade --config core.toml
+# 在内核仓库根目录（lshub2010/Vade）
+export PYTHONPATH="core;protocol/core/python"     # Linux / macOS 用冒号分隔
+.venv/Scripts/python.exe -m vade --config core.toml
 ```
 
-core 起来后会给出一个 **8 位配对码**（2 个汉字 + 6 位 base32，**一次性、180 秒有效**）。找不到就重启 core 再看。
+> `PYTHONPATH` 里**两处都必须有**：`core`（`vade` 包本身）和 `protocol/core/python`（原生绑定 `vade_protocol`）。
+> 少了前者报 `No module named vade`，少了后者报 `protocol core python binding is not importable`。
+> 详见主仓 `docs/PAIRING.md`。
+
+core 起来后会打印一行形如 `pair_code=茶源-45JV2U purpose=browser expires_in=600s` 的配对码
+（2 个汉字 + 6 位 base32，**一次性、600 秒（10 分钟）有效**）。过期了就重启 core 拿新的。
 
 ### 2. 让客户端连上这个 core
 
