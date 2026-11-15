@@ -88,10 +88,9 @@ jobs:
           "appver=$appver" >> $env:GITHUB_OUTPUT
           Write-Host "version=$v appver=$appver"
 
-      - name: 客户端全量测试（不阻断发布）
-        continue-on-error: true
-        run: gradle :composeApp:desktopTest --rerun --console=plain
-
+      # 注意：这里**不跑** desktopTest。Compose 桌面 UI 测试在无桌面会话的 runner 上会挂住
+      # （实测 19 分钟仍在 in_progress）。测试是本机门禁的事（见 docs/DEVELOPING.md），
+      # 发布流水线只负责产出可分发文件。
       - name: 构建 APK
         run: gradle :composeApp:assembleDebug --console=plain --stacktrace
 

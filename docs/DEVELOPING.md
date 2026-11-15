@@ -109,6 +109,24 @@ done
 
 > Android 截图用 `adb -s <serial> exec-out screencap -p > shot.png`。**并行跑多个任务时不要用窗口截图脚本**。
 
+## CI（发版时出产物）
+
+`.github/workflows/release.yml`：**每次发布**（`release: published`）在 `windows-latest` 上构建一次，把产物挂到该 Release。
+
+| 产物 | 来自 |
+|---|---|
+| `vade-ui-<版本>-android.apk` | `:composeApp:assembleDebug` |
+| `vade-ui-<版本>-windows-x64.zip` | `:composeApp:createDistributable`（app-image，自带 jlink 运行时） |
+| `vade-ui-<版本>-windows-x64.msi` | `:composeApp:packageMsi`（需 WiX；runner 上没有就 choco 装，仍失败则该产物缺失、job 不红） |
+| `vade-ui-<版本>-web.zip` | `:composeApp:wasmJsBrowserDistribution` 的静态站点 |
+
+要点（都是踩过的）：
+
+- **不要把 `android-actions/setup-android` 加回来**：它内部跑 `sdkmanager tools`，该包已从 SDK 仓库移除 ⇒ 直接失败。现在改成用 runner 预装的 SDK，只补 `platforms;android-37.0` 与 `build-tools;37.0.0`。
+- **CI 里不跑 `desktopTest`**：Compose 桌面 UI 测试在无桌面会话的 runner 上会挂住（实测 19 分钟仍 `in_progress`）。测试在本地门禁跑，CI 只出产物。
+- 版本号唯一源是 `gradle.properties` 的 `vadeVersion`；MSI 的 `packageVersion` 取 `-` 之前的部分（`0.0.1-alpha` → `0.0.1`）。
+- 手动重跑：Actions → Release build → Run workflow，填一个**已存在的** tag。
+
 ## 提交约定
 
 - 提交信息：`<type>(<scope>): <中文描述>`，type ∈ `feat|fix|perf|refactor|test|docs|chore|balance`。
