@@ -37,7 +37,16 @@ import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
 import vade.ui.meta.MetaColors
 import vade.ui.meta.MetaGroup
+import vade.ui.glass.asGlassSource
+import vade.ui.skin.glass.LocalGlassHazeState
 import vade.ui.skin.LocalSkin
+import androidx.compose.ui.platform.testTag
+
+/**
+ * g-haze-structure · 本页 haze **source**（会话 LazyColumn）的 testTag ——
+ * `GlassStructureGuardTest` 在真实组合里断言搜索浮层不在该节点的语义子树内。
+ */
+internal const val GlassSourceSessionsTag = "vade.glass.source.sessionsList"
 
 /**
  * 会话 · 列表 (U1-a), v2 form (visual language §12「会话列表」row).
@@ -107,7 +116,14 @@ fun SessionsScreen(
 ) {
     val skin = LocalSkin.current
     LazyColumn(
-        modifier = modifier.fillMaxSize().background(skin.colors.canvas),
+        // g-haze-structure: this list is the page's haze **source** — rows scroll under the
+        // glass top bar / bottom pill and the search overlay (a SIBLING of the source, at
+        // the shell root) blurs them. The source used to sit on the whole ShellBody Row.
+        modifier = modifier
+            .asGlassSource(LocalGlassHazeState.current)
+            .fillMaxSize()
+            .testTag(GlassSourceSessionsTag)
+            .background(skin.colors.canvas),
         contentPadding = contentPadding,
     ) {
         // g-pair-first-run：首次运行引导卡（真源且缺配对码时）。**只加这一块** —— 现有

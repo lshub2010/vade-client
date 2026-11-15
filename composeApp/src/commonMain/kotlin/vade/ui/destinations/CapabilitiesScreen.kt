@@ -23,10 +23,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.Flow
 import vade.ui.UiText
+import vade.ui.glass.asGlassSource
+import vade.ui.skin.glass.LocalGlassHazeState
 import vade.ui.data.AdapterProvider
 import vade.ui.data.ModuleCatalog
 import vade.ui.data.ModuleCatalogState
@@ -43,6 +46,12 @@ import vade.ui.module.ModulePageHost
 import vade.ui.module.ModulePageSource
 import vade.ui.module.ModulePageSources
 import vade.ui.skin.LocalSkin
+
+/** g-haze-structure · 能力页滚动列的 haze source tag（守卫见 `GlassStructureGuardTest`）。 */
+internal const val GlassSourceCapabilitiesTag = "vade.glass.source.capabilities"
+
+/** g-haze-structure · 模块页宿主的 haze source tag（同上契约）。 */
+internal const val GlassSourceModulePageTag = "vade.glass.source.modulePage"
 
 /**
  * 能力 (U1-a skeleton), v2 form: group cards `md` + hairline + soft shadow, empty states
@@ -157,15 +166,24 @@ fun CapabilitiesScreen(
             // 宿主于是会真发 `ui/page.get`；示例树/假源不实现它 → 只读缓存，行为不变。
             pageFetch = source as? ModulePageBodyFetcher,
             onBack = { openEntry = null },
-            modifier = modifier,
+            // g-haze-structure：模块页宿主也登记为本页 haze source（宿主根 = 页面内容层），
+            // 否则模块页打开时顶栏背后没有可采样的内容层。
+            modifier = modifier
+                .asGlassSource(LocalGlassHazeState.current)
+                .testTag(GlassSourceModulePageTag),
             contentPadding = contentPadding,
         )
         return
     }
 
+    // g-haze-structure: this scroll column is the page's haze **source** (same contract as
+    // the sessions list / chat thread): content scrolls under the glass bars, and the
+    // sibling search overlay blurs it.
     Column(
         modifier
+            .asGlassSource(LocalGlassHazeState.current)
             .fillMaxSize()
+            .testTag(GlassSourceCapabilitiesTag)
             .background(skin.colors.canvas)
             .verticalScroll(rememberScrollState())
             .padding(contentPadding)

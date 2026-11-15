@@ -35,6 +35,7 @@ import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -86,13 +87,18 @@ import vade.ui.component.liquid.rememberGlassBackdrop
  *  - `≥1200`   the same two panes plus a collapsible right panel (default collapsed).
  *
  * v2 glass structure (docs/visual-language.md §5; haze 2.1.0 semantics):
- *  - One shared `HazeState` at the root ([GlassScope] / [rememberGlassState]); the backdrop
- *    Row registers on it via [asGlassSource], and every `GlassSurface` (top bar, bottom
- *    bar, search overlay) reads the same ambient state (`LocalGlassHazeState`).
- *  - **Glass layers are siblings of the backdrop source, never descendants** — haze 2.1.0
- *    refuses "effect node drawing an ancestor source" (verbatim `HazeEffectNode` error).
- *    That is why the bars are aligned over the content from *outside* the source Row
- *    instead of living inside the content Column.
+ *  - One shared `HazeState` at the root ([GlassScope] / [rememberGlassState]); the **haze
+ *    source is each page's own content layer** (g-haze-structure: ChatThread's scroll
+ *    column, the per-page scroll containers, the rail and the right panel), and every
+ *    `GlassSurface` (top bar, bottom bar, search overlay — and any page-level glass such
+ *    as the composer / model picker / image preview) reads the same ambient state
+ *    (`LocalGlassHazeState`). It used to sit on the whole ShellBody Row, which made every
+ *    page-level glass a descendant of its own backdrop — haze then refused to blur it.
+ *  - **Glass layers are siblings of the backdrop sources, never descendants** — haze 2.1.0
+ *    does not blur an effect under its own source subtree (verbatim `HazeEffectNode`
+ *    contract). That is why the bars are aligned over the content from *outside* the
+ *    content Row, and why in-page overlays (composer, preview sheet) are stacked as
+ *    siblings of the scroll column inside each page.
  *  - The floating bars are edge-to-edge glass: scrollable screens take [TOP_BAR_ZONE] /
  *    [bottomBarZone] as *content* insets (not container padding), so rows really scroll
  *    behind the glass — without that there is nothing behind the bar to blur.
@@ -141,6 +147,18 @@ internal val TOP_BAR_ZONE = 72.dp
 
 /** Window top → glass capsule gap. The status-bar inset above it is consumed at the root. */
 internal val TopBarTopGap = 8.dp
+
+/**
+ * g-haze-structure · haze **source** registration tags（运行时守卫用）。结构规则：玻璃层
+ * （顶栏胶囊/带、搜索浮层、以及页内任何 `GlassSurface`）必须是 source 的**兄弟**，绝不
+ * 是后代 —— haze 2.1.0 对「effect 画在自己 source 子树里」不模糊。守卫测试用这些 tag
+ * 在真实组合里断言浮层节点不在任何 source 节点的语义子树内；源码扫描守卫同时钉住注册
+ * 点白名单（`GlassStructureGuardTest`）。
+ */
+internal const val GlassSourceRailTag = "vade.glass.source.rail"
+
+/** 右面板的 haze source tag（与 [GlassSourceRailTag] 同一契约）。 */
+internal const val GlassSourceRightPanelTag = "vade.glass.source.rightPanel"
 
 /**
  * Bottom-bar zone **per form**. The two forms do not share a footprint, so they must not
@@ -321,26 +339,34 @@ private fun ShellBody(state: UiState) {
             bottom = contentBottomInset(showBar, navInset, state.barStyle),
         )
 
-        // --- backdrop: the ONLY haze source. Everything blurrable lives in here. ---
+        // --- backdrop (g-haze-structure): miuix-blur capture only. The HAZE source used
+        // to sit HERE — on the whole ShellBody — which made every page-level glass layer
+        // (the composer panel, the model picker, the image preview: all composed INSIDE
+        // the pages) a DESCENDANT of the source. Haze 2.1.0 does not blur for an effect
+        // under its own source subtree, so those layers silently degraded to near-solid.
+        // The source now lives on each page's own content layer (ChatThread's scroll
+        // column, the per-page scroll containers in `destinations/`, the rail and the
+        // right panel below) — every floating glass layer is a SIBLING of what it blurs.
+        // Only the miuix capture stays on the Row: the KSU pill samples the whole content
+        // area through its own layerBackdrop pipeline, no haze node involved.
         Row(
             Modifier
                 .fillMaxSize()
                 .background(skin.colors.canvas)
-                // Two independent captures of the SAME content, on purpose:
-                //  - `asGlassSource` feeds haze (glass top bar + search overlay);
-                //  - `captureGlassBackdrop` feeds miuix-blur (the KSU pill's lens/blur).
-                // Dropping the second one is what made the pill's indicator sample an
-                // unpainted surface and render as a grey smear — both must stay.
-                .asGlassSource(glass)
                 .captureGlassBackdrop(contentBackdrop),
         ) {
             if (metrics.useRail) {
-                NavRail(
-                    width = metrics.railWidth,
-                    selected = state.dest,
-                    badgeOf = state::badgeOf,
-                    onSelect = state::select,
-                )
+                // The rail is backdrop content for the search overlay / ⌘K palette, so it
+                // registers on the shared HazeState too (wrapped here because NavRail has
+                // no modifier parameter and is outside this stick's edit scope).
+                Box(Modifier.asGlassSource(glass).testTag(GlassSourceRailTag)) {
+                    NavRail(
+                        width = metrics.railWidth,
+                        selected = state.dest,
+                        badgeOf = state::badgeOf,
+                        onSelect = state::select,
+                    )
+                }
             }
 
             Column(Modifier.weight(1f).fillMaxHeight()) {
@@ -367,7 +393,11 @@ private fun ShellBody(state: UiState) {
 
             if (metrics.hasRightPanel && state.panelOpen) {
                 VerticalRule()
-                RightPanel(onClose = state::togglePanel)
+                // Same registration as the rail: the panel is backdrop content for the
+                // search overlay (its own surface is opaque; the glass above it blurs it).
+                Box(Modifier.asGlassSource(glass).testTag(GlassSourceRightPanelTag)) {
+                    RightPanel(onClose = state::togglePanel)
+                }
             }
         }
 

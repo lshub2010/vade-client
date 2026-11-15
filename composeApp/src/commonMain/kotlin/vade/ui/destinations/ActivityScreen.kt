@@ -22,9 +22,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import vade.ui.UiText
+import vade.ui.glass.asGlassSource
+import vade.ui.skin.glass.LocalGlassHazeState
 import vade.ui.data.RealSessionSource
 import vade.ui.data.SessionSource
 import vade.ui.data.SessionSummary
@@ -45,6 +48,9 @@ import vade.ui.usage.UsagePanel
 import vade.ui.usage.UsageSectionLive
 import vade.ui.usage.UsageSource
 import vade.ui.usage.UsageSourceReal
+
+/** g-haze-structure · 活动页滚动列的 haze source tag（守卫见 `GlassStructureGuardTest`）。 */
+internal const val GlassSourceActivityTag = "vade.glass.source.activity"
 
 /**
  * 活动 (C-Activity), D87 blocks + the two real data panels.
@@ -111,9 +117,14 @@ fun ActivityScreen(
 
     var scope by remember(initialScope) { mutableStateOf(initialScope) }
 
+    // g-haze-structure: this scroll column is the page's haze **source** (same contract as
+    // the sessions list / chat thread): content scrolls under the glass bars, and the
+    // sibling search overlay blurs it.
     Column(
         modifier
+            .asGlassSource(LocalGlassHazeState.current)
             .fillMaxSize()
+            .testTag(GlassSourceActivityTag)
             .background(skin.colors.canvas)
             .verticalScroll(rememberScrollState())
             .padding(contentPadding)
