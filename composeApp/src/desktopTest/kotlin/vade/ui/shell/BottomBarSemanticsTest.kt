@@ -408,19 +408,30 @@ class BottomBarSemanticsTest {
     }
 
     /**
-     * ④ 的护栏：rail 未选中槽位不许再画「等于父底色」的方块 —— 那是把 rail 的背景写死了第二遍，
+     * ④ 的护栏：未选中槽位不许画「等于父底色」的方块 —— 那是把容器背景写死了第二遍，
      * 换成 glass 底时未选中项会突然变成一块 surfaceVariant 的实心块。
+     *
+     * g-nav-selected：这条**绘制**已搬到共享渲染器 `NavSelection.kt`（三形态共用一份），所以
+     * 断言对象跟着搬；不变量一条没改（未选中必须显式透明、不许 surfaceVariant），并且对 rail
+     * 侧保留反向断言——它不许自己再画一遍。
      */
     @Test
     fun navRailUnselectedSlotPaintsNoFill() {
-        val source = src("shell/NavRail.kt").readText()
+        val shared = src("shell/NavSelection.kt")
+        assertTrue(shared.isFile, "共享选中态渲染器不在预期位置：${shared.path}")
+        val sharedSource = shared.readText()
         assertTrue(
-            source.contains("else Color.Transparent"),
-            "rail 未选中槽位必须显式无填充（否则和 rail 底色耦合）",
+            sharedSource.contains("else Color.Transparent"),
+            "未选中槽位必须显式无填充（否则和容器底色耦合）",
         )
         assertTrue(
-            !source.contains("else skin.colors.surfaceVariant"),
-            "rail 未选中槽位又画回 surfaceVariant 了",
+            !sharedSource.contains("else skin.colors.surfaceVariant"),
+            "未选中槽位又画回 surfaceVariant 了",
+        )
+        val railSource = src("shell/NavRail.kt").readText()
+        assertTrue(
+            !railSource.contains("else skin.colors.surfaceVariant"),
+            "rail 自己又画了一遍 surfaceVariant 填充",
         )
     }
 
