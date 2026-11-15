@@ -139,27 +139,33 @@ fun TopBar(
 /**
  * 顶栏的标题 + 副标题两行（[TopBar] 的内容原语）。副标题缺省时只画标题一行；
  * [onSubtitleClick] 非 null 时副标题可点（失败态的重试入口，g-topbar-usage）。
+ *
+ * **必须用 [Column] 包住两行**：AnimatedContent 的内容容器是 Box 语义，直接吐出的
+ * 兄弟 UiText 会叠在同一位置（设备实测：副标题 "6.6k tokens · 5 轮" 与标题重叠成
+ * 一团鬼影）；桌面测试的「左沿相等」断言分辨不出叠放与竖排，这道防线只能靠真机。
  */
 @Composable
 private fun TopBarTitlePair(title: String, subtitle: String?, onSubtitleClick: (() -> Unit)?) {
     val skin = LocalSkin.current
-    UiText(
-        text = title,
-        size = 15,
-        weight = FontWeight.SemiBold,
-        color = skin.colors.textOnGlass,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-    )
-    if (subtitle != null) {
+    Column {
         UiText(
-            text = subtitle,
-            modifier = if (onSubtitleClick != null) Modifier.clickable(onClick = onSubtitleClick) else Modifier,
-            size = 10,
-            color = skin.colors.onSurfaceVariant,
+            text = title,
+            size = 15,
+            weight = FontWeight.SemiBold,
+            color = skin.colors.textOnGlass,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+        if (subtitle != null) {
+            UiText(
+                text = subtitle,
+                modifier = if (onSubtitleClick != null) Modifier.clickable(onClick = onSubtitleClick) else Modifier,
+                size = 10,
+                color = skin.colors.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
