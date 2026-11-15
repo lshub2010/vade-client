@@ -254,8 +254,11 @@ internal fun adaptersOf(state: UiState): AdapterProvider? = (state.source as? Ad
  * 工厂（形参 → 适配器 → 内存假实现），失败分类、`wiringDegradation` 都在里面，这里再抄
  * 一遍等于造第二个真相。
  *
- * ## 什么时候**不**拉表（三条，都是为了不发明组名）
- *  1. `adapters == null`（假源 / 已断开）：假数据没有分组权威，表留空，行上继续显示裸 id；
+ * ## 什么时候**不**拉表（三条：两条是为了不发明组名，一条是假源根本不需要）
+ *  1. `adapters == null`（假源 / 未连接）：屏上**每一行**都是 fixture 会话，组表就是
+ *     fixture 自己的（`SessionMetaState.forAdapters(null)` 的初始值 = `FakeMetaActions`
+ *     种子：`g-1` 项目 / `g-2` 灵感）；不向 core 发请求，也不在台账里留一条假 RPC。
+ *     行与组名同源（都假），所以这不是「发明组名」，而是不再把内部 id `g-1` 塞给用户（D5）；
  *  2. `forAdapters` 退化过（`wiringDegradation != null`，即 `adapters.meta()` 抛了）：
  *     此时它跑在 [vade.ui.meta.FakeMetaActions] 上，`loadGroups()` 会吐出 fixture 的
  *     「项目/灵感」—— 把假数据当 core 的组名画到真行上，比裸 id 更糟；
@@ -272,7 +275,9 @@ internal fun metaGroupsOf(adapters: AdapterProvider?, sessionId: String): List<M
         SessionMetaState.forAdapters(adapters, sessionId)
     }
     LaunchedEffect(meta) {
-        // 见 KDoc「什么时候不拉表」① ②：二者都没有分组权威。
+        // 见 KDoc「什么时候不拉表」① ②：有适配器且没退化才去问 core。
+        // 假源（adapters == null）不发这条请求 —— 它的组表在 `forAdapters(null)` 里已经是
+        // `FakeMetaActions` 的种子（同源），再 loadGroups() 只是给自己发一条回声。
         if (adapters != null && meta.wiringDegradation == null) meta.loadGroups()
     }
     return meta.groups

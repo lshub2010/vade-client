@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -23,6 +22,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -42,7 +43,11 @@ import vade.ui.skin.LocalSkin
  * Row spec: height ≥64dp, `sm` (16dp) corners, selected = `accentSoft` fill **plus a 3dp
  * accent bar on the left edge** (the bar is the unmistakable half of the pair; the 8% fill
  * alone reads as noise on canvas), timestamp in the muted token, and **no dividers** — rows
- * separate by spacing only. The list sits on `canvas`, edge-to-edge: [contentPadding]
+ * separate by spacing only. The bar is **drawn** by [SessionRow]'s `drawBehind`, not laid
+ * out: a `Box(width = 3.dp).fillMaxHeight()` collapses to 3×0 inside a `LazyColumn` item
+ * (unbounded height on the main axis ⇒ `fillMaxHeight` falls back to `minHeight = 0`), which
+ * is exactly how D8 in `shots/g-visual-audit2` shipped a bar that nobody could see.
+ * The list sits on `canvas`, edge-to-edge: [contentPadding]
  * (the shell's floating glass bar zones) is passed straight into the `LazyColumn`, so rows
  * really scroll behind the glass bars instead of stopping short of them.
  *
@@ -169,16 +174,28 @@ private fun SessionRow(
             .heightIn(min = 64.dp)
             .clip(shape)
             .background(if (selected) accentSoft else androidx.compose.ui.graphics.Color.Transparent)
+            // 选中态的另一半（§12「`accentSoft` + 左侧 3dp 条」）：**画**，不**排**。
+            // 这里原先是一个 `Box(Modifier.width(3.dp).fillMaxHeight())`，而 `LazyColumn` 的
+            // item 在主轴上给的是**无界**高度（`maxHeight = Infinity`），`fillMaxHeight()`
+            // 对这种约束直接退化成 `minHeight`（= 0）—— 那根条被量成 3×0，静默消失。
+            // 观感上就是「选中行只有填充、没有左条」（shots/g-visual-audit2 的 D8）。
+            // `drawBehind` 用的是行**量完之后**的真实高度（≥64dp、随内容长），并且画在
+            // `.clip(shape)` 之内，两端随 `sm` 圆角自然收进去；它不占布局宽度，所以
+            // 选中/未选中切换时文字左缘不会跳。
+            .drawBehind {
+                if (selected) {
+                    drawRect(size = Size(ACCENT_BAR_WIDTH.toPx(), size.height), color = skin.colors.primary)
+                }
+            }
             .clickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // 选中态的另一半：3dp accent 条，贴行左缘（随 sm 圆角裁切）。未选中时占位同宽，
-        // 保证选中与否文字左缘对齐。
-        Box(Modifier.width(3.dp).fillMaxHeight().background(if (selected) skin.colors.primary else androidx.compose.ui.graphics.Color.Transparent))
+        // 左条由上面的 drawBehind 画在行自己的高度里，不占布局宽度（所以这里直接 16dp：
+        // 3dp 条 + 13dp 内容间距，条落在 padding 里，不压 32dp 头像）。
         Row(
             modifier = Modifier
                 .weight(1f)
-                .padding(start = 13.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+                .padding(start = 16.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
@@ -277,6 +294,13 @@ private fun SessionRow(
  * 与 UI 测试的定位点（一个字符串只写一次，避免标记和测试各说各话）。
  */
 internal const val ARCHIVED_BADGE_LABEL = "已归档"
+
+/**
+ * 选中行左侧强调条的宽度 —— `docs/visual-language.md` §12「会话列表」那一行：
+ * 「选中态 `accentSoft` + **左侧 3dp 条**」。条由 [SessionRow] 的 `drawBehind` 画，
+ * 不参与布局（见那一段注释：`fillMaxHeight()` 在 `LazyColumn` 的 item 里会塌成 0）。
+ */
+internal val ACCENT_BAR_WIDTH = 3.dp
 
 /**
  * 会话行上的「分类」展示值：组名（or 裸 id）+ 组色。
