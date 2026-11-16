@@ -56,7 +56,10 @@ fun App(
     // 未配对时 `effectiveSource` 恒等于传进来的 [source] —— 与旧行为逐字节相同。
     val paired = PairingRuntime.state as? PairingRuntimeState.Paired
     val effectiveSource = remember(source, paired) {
-        if (paired != null) sessionSourceFromEnvironment() else source
+        // P1-4 · 配对桥里的 endpoint 是用户填过的合法值，但**环境通道**可能仍然是坏的
+        // （例如应用启动后 `VADE_PORT` 被改成了 `8443x`）。这里再解析一次时不能把
+        // 组合炸掉：解析失败就沿用入口传进来的源，错误屏已经在入口渲染过了。
+        if (paired != null) runCatching { sessionSourceFromEnvironment() }.getOrElse { source } else source
     }
     // g-pair-first-run：`remember` 以 [effectiveSource] 为 key —— 源换了，UiState 一起换。
     // DisposableEffect：随源重建时把旧 UiState 的 loader/连接停掉 —— 没配上对的旧源

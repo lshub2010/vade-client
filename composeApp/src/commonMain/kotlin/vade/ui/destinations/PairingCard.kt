@@ -323,7 +323,9 @@ internal fun pairingNextStep(kind: PairingFailureKind, raw: RawSourceStrings): S
     PairingFailureKind.Network ->
         "下一步：检查地址与端口是否正确（当前目标 ${pairingEndpointOf(raw)}），稍后再点一次「配对」重试。"
     PairingFailureKind.BadConfig ->
-        "下一步：端口填 1..65535 之间的整数（默认 8443）；地址留空即 127.0.0.1，改完再点一次「配对」。"
+        "下一步：端口填 1..65535 之间的整数（默认 8443）；地址留空即 127.0.0.1。" +
+            "Android 的明文只放行本机回环/模拟器别名（10.0.2.2），连电脑上的 core 请先跑 " +
+            "`adb reverse tcp:8443 tcp:8443` 再填 127.0.0.1。改完再点一次「配对」。"
     PairingFailureKind.NotAvailableHere ->
         "下一步：在桌面应用或手机 App 里填同一个地址与配对码完成配对；浏览器版随后用 " +
             "`?source=real&host=…&port=…` 打开即可（已配对的机器上 cookie 由浏览器自己发送）。"

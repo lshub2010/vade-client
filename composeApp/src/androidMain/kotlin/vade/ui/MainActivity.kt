@@ -49,6 +49,9 @@ class MainActivity : ComponentActivity() {
             // self-rescue card copy derives from — e.g. from
             // `adb shell am start --es source real ...`.
             AndroidSourceEnv.intentExtras = intent?.extras
+            // P1-4 · 配置解析失败（`--es port 8443x` 之类）= 一张说清原因的屏，
+            // 不是启动即闪退。这里兜住解析，`App()` 只接收合法的源。
+            val booted = runCatching { sessionSourceFromEnvironment() }
             Box(
                 Modifier
                     .fillMaxSize()
@@ -58,7 +61,12 @@ class MainActivity : ComponentActivity() {
                 // Same uniform switch as desktop/wasm: FakeSessionSource() fixtures
                 // unless the intent (or env) says `real` — App()'s own default is
                 // untouched, so no intent at all keeps the pre-g-live behaviour.
-                App(source = sessionSourceFromEnvironment())
+                val source = booted.getOrNull()
+                if (source == null) {
+                    ConfigErrorScreen(booted.exceptionOrNull() ?: IllegalStateException())
+                } else {
+                    App(source = source)
+                }
             }
         }
     }

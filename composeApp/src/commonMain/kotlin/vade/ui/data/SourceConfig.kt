@@ -549,6 +549,10 @@ suspend fun firstRunPairingAttempt(
 internal fun pairingFailureKindOf(t: Throwable): PairingFailureKind = when {
     t is VadeException && t.code in PAIR_CODE_ERRORS -> PairingFailureKind.BadCode
     t is IllegalArgumentException -> PairingFailureKind.BadConfig
+    // A2 · Android 的明文策略拒绝这个地址（`CLEARTEXT communication to … not permitted`）：
+    // 这是**地址不被允许**，不是网络不通 —— 分类到 BadConfig，卡片才会让用户改地址
+    // （回环 / 模拟器别名 / `adb reverse`），而不是让他反复点「重试」。
+    t.message?.contains("CLEARTEXT", ignoreCase = true) == true -> PairingFailureKind.BadConfig
     t.message?.let { m ->
         m.contains("refused", ignoreCase = true) || m.contains("ECONNREFUSED", ignoreCase = true)
     } == true -> PairingFailureKind.ServerDown
