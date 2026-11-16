@@ -64,7 +64,7 @@ class SessionRowInfoUiTest {
         waitForIdle()
     }
 
-    private fun rowBounds(id: String): Rect = onNodeWithTag(sessionRowTag(id)).fetchSemanticsNode().boundsInRoot
+    private fun ComposeUiTest.rowBounds(id: String): Rect = onNodeWithTag(sessionRowTag(id)).fetchSemanticsNode().boundsInRoot
 
     // ------------------------------------------------------------- 1 · 行高 56dp
 
