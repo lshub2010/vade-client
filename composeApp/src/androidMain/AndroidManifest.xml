@@ -9,9 +9,19 @@
          minSdk 24; verified against miuix-shader-android 0.9.4 sources (see RESULT.md). -->
     <uses-sdk tools:overrideLibrary="top.yukonga.miuix.kmp.blur" />
 
+    <!-- A2: the whole app talks to a local core over the network (POST /ui/session +
+         ws:// upgrade). Without INTERNET every socket call fails with a SecurityException
+         and the failure surfaced as "网络不通" — the real source was dead on Android by
+         construction. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- A2: cleartext is opt-in per host, not app-wide (Android 9+ defaults to deny).
+         The allow-list — loopback, emulator host alias, .local — and the reason every
+         other host must use TLS are documented in res/xml/network_security_config.xml. -->
     <application
         android:allowBackup="false"
         android:label="Vade"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity

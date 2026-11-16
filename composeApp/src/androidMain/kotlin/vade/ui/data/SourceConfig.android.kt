@@ -42,3 +42,9 @@ actual fun rawSourceStrings(): RawSourceStrings {
     )
     return mergeRawStrings(fromExtras, fromEnv)
 }
+
+/**
+ * H4 · Android（OkHttp/JVM 栈）能读 `Set-Cookie`，可以兑换一次性码。
+ * 见 `SourceConfig.kt` 的 expect 声明。
+ */
+actual fun canBootstrapPairing(): Boolean = true

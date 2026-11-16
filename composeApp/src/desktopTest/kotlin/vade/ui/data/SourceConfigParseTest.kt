@@ -5,6 +5,7 @@ import vade.ui.protocol.VadeClientConfig
 import vade.ui.protocol.VadeErrorCodes
 import vade.ui.protocol.VadeException
 import kotlin.test.Test
+import kotlin.test.BeforeTest
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
@@ -20,6 +21,16 @@ import kotlin.test.assertTrue
  * different answers for the same input (pinned by the parameterised equality test).
  */
 class SourceConfigParseTest {
+
+    /**
+     * `sessionSourceFrom` 的 Fake 分支会读运行期配对桥（已配对 = 按桥里的 endpoint 建真源）。
+     * 桥是进程单例：别的用例留下 `Paired`，这里「默认启动 = 夹具」的断言就会凭空变红，
+     * 所以每个用例前清回 `NotBooted`。
+     */
+    @BeforeTest
+    fun resetPairingBridge() {
+        PairingRuntime.clearForTests()
+    }
 
     // ------------------------------------------------------------ mode / defaults
 

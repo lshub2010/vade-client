@@ -2,6 +2,7 @@ package vade.ui
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.remember
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
@@ -125,26 +126,35 @@ fun main(args: Array<String>) {
                     showApproval = args.has("--approval"),
                 )
             } else {
-                App(
-                    initialBar = bar,
-                    initialSkinId = skinId,
-                    initialDest = dest,
-                    initialPanelOpen = panelOpen,
-                    initialSearchQuery = searchPreset,
-                    initialSessionId = sessionId,
-                    chatPreset = chatPreset,
-                    // g-live: the source switch is UNIFORM across the three targets —
-                    // this entry reads VADE_SOURCE/VADE_HOST/VADE_PORT(+VADE_PAIR_CODE),
-                    // Android reads intent extras first (same names + vade.* extras),
-                    // wasm reads ?source=real&host=...&port=...; one shared parser
-                    // (vade.ui.data.SourceConfig) builds the same SourceSpec everywhere.
-                    // The UI DOES read the source (w-wire): a real spec drives the
-                    // loader's async path — Loading/Ready/Failed instead of fixtures,
-                    // real core rows when the pair-code bootstrap connects, a
-                    // classified failure banner when it cannot (see
-                    // shots/g-live/PLAYBOOK.md). The fake path stays byte-for-byte.
-                    source = sessionSourceFromEnvironment(),
-                )
+                // P1-4 · 配置解析失败（端口写错等）= 一张说清**具体原因**的错误屏，
+                // 而不是启动时的未捕获异常。`runCatching` 在入口这一层兜住，
+                // `App()` 只接收已经合法的源。
+                val booted = remember { runCatching { sessionSourceFromEnvironment() } }
+                val bootedSource = booted.getOrNull()
+                if (bootedSource == null) {
+                    ConfigErrorScreen(booted.exceptionOrNull() ?: IllegalStateException())
+                } else {
+                    App(
+                        initialBar = bar,
+                        initialSkinId = skinId,
+                        initialDest = dest,
+                        initialPanelOpen = panelOpen,
+                        initialSearchQuery = searchPreset,
+                        initialSessionId = sessionId,
+                        chatPreset = chatPreset,
+                        // g-live: the source switch is UNIFORM across the three targets —
+                        // this entry reads VADE_SOURCE/VADE_HOST/VADE_PORT(+VADE_PAIR_CODE),
+                        // Android reads intent extras first (same names + vade.* extras),
+                        // wasm reads ?source=real&host=...&port=...; one shared parser
+                        // (vade.ui.data.SourceConfig) builds the same SourceSpec everywhere.
+                        // The UI DOES read the source (w-wire): a real spec drives the
+                        // loader's async path — Loading/Ready/Failed instead of fixtures,
+                        // real core rows when the pair-code bootstrap connects, a
+                        // classified failure banner when it cannot (see
+                        // shots/g-live/PLAYBOOK.md). The fake path stays byte-for-byte.
+                        source = bootedSource,
+                    )
+                }
             }
         }
     }

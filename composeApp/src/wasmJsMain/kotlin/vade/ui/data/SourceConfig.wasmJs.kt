@@ -12,3 +12,10 @@ import kotlinx.browser.window
  */
 actual fun rawSourceStrings(): RawSourceStrings =
     rawStringsFromQuery(window.location.search)
+
+/**
+ * H4 · 浏览器**读不到** `Set-Cookie`：这里必须返回 false，调用方（引导卡 /
+ * `firstRunPairingAttempt`）据此**不发起** `POST /ui/session` —— 否则一次性码被烧掉，
+ * 卡片再提示「码不对，再取一个」，用户陷入死循环。
+ */
+actual fun canBootstrapPairing(): Boolean = false

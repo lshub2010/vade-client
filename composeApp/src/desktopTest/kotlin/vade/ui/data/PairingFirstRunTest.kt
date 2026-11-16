@@ -50,14 +50,30 @@ class PairingFirstRunTest {
     }
 
     // ------------------------------------------------------------- 判定
+    //
+    // H1 口径：引导卡是**启动**决定。`clearForTests()` 把桥留在 `NotBooted`（测试直构的
+    // 组合就是这种状态），`needsFirstRunPairing` 对它一律 false —— 所以每个「该出卡」的
+    // 用例都先走一次 `noteBooted()`，等价于入口的 `sessionSourceFromEnvironment()`。
+
+    /** 等价于入口启动：桥进入「已启动、未配对」。 */
+    private fun booted() = PairingRuntime.noteBooted()
+
+    @Test
+    fun notBootedNeverShowsTheCard() {
+        // 没有入口声明过本次运行 → 不出卡（否则每个渲染列表的组合/测试都会凭空长一张）。
+        assertFalse(needsFirstRunPairing(realNoCode), "NotBooted 状态下不出卡")
+        assertFalse(needsFirstRunPairing(RawSourceStrings(null, null, null, null)))
+    }
 
     @Test
     fun needsPairingRealWithoutCode() {
+        booted()
         assertTrue(needsFirstRunPairing(realNoCode), "真源 + 缺码 = 引导卡该出现")
     }
 
     @Test
     fun noPairingWhenCodePresent() {
+        booted()
         assertFalse(needsFirstRunPairing(realWithCode), "带了码（环境变量/命令行旧路径）= 不出现")
         // 只有空白也算缺 —— parse 会把空白码归一成 null。
         assertTrue(
@@ -67,12 +83,38 @@ class PairingFirstRunTest {
     }
 
     @Test
-    fun noPairingOnFakeSource() {
-        assertFalse(needsFirstRunPairing(RawSourceStrings(null, null, null, null)), "假源 = fixtures 路径，引导卡绝不出现")
+    fun defaultBootIsFirstRunAndExplicitFixturesIsNot() {
+        booted()
+        // H1：什么都不配的**默认启动**同样是首次运行 —— 新用户必须有一个填地址的地方。
+        assertTrue(
+            needsFirstRunPairing(RawSourceStrings(null, null, null, null)),
+            "默认启动（无 source）= 首次运行，引导卡该出现",
+        )
+        assertTrue(needsFirstRunPairing(RawSourceStrings("", "", "", null)), "空字符串 = 没配")
+        // 显式 `fixtures` / 其它非 real 值是开发者的逃生口：不出卡。
         assertFalse(
             needsFirstRunPairing(RawSourceStrings("fixtures", "127.0.0.1", "8443", null)),
-            "非 real 的任何值都是假源",
+            "显式 fixtures = 夹具路径，引导卡不出现",
         )
+        assertFalse(needsFirstRunPairing(RawSourceStrings("fake", null, null, null)))
+    }
+
+    @Test
+    fun pairedOrRejectedStatesFollowTheBridge() {
+        booted()
+        PairingRuntime.install(MarkerFactory(), "10.0.0.9", 19999)
+        assertFalse(needsFirstRunPairing(realNoCode), "已配对 = 不出现")
+        assertEquals("10.0.0.9:19999", PairingRuntime.pairedEndpoint)
+        // 码被 core 拒过 → 仍要出卡，用户才能重试（H2：错码不会把入口关死）。
+        PairingRuntime.clearForTests()
+        booted()
+        PairingRuntime.noteCodeRejected()
+        assertTrue(needsFirstRunPairing(realNoCode), "码被拒过 = 引导卡仍出现（可重试）")
+    }
+
+    /** 只为了把桥填到已配对态的 factory（不会被连接）。 */
+    private class MarkerFactory : VadeTransportFactory {
+        override suspend fun connect(): VadeTransport = throw IllegalStateException("marker")
     }
 
     // ------------------------------------------------------------- 一次性尝试
@@ -117,15 +159,27 @@ class PairingFirstRunTest {
         assertEquals("青松-XYZ789", config.browserSession?.pairCode, "连接尝试的参数 = 输入的码（原样，含汉字与连字符）")
         assertEquals(1, probe.closeCalls, "探活传输用完即关：cookie 已缓存在 factory，一次性码不被二次消费")
         assertTrue(connected.factory === factory, "Connected 交出的就是这次尝试用的 factory")
+        // 实际连的 endpoint 随结果一起交回：桥要按**用户填的地址**建真源，
+        // 而不是按启动时那条配置（默认启动时它甚至是空的）。
+        assertEquals("127.0.0.1", connected.host)
+        assertEquals(8443, connected.port)
     }
 
     @Test
     fun attemptFailureKindsAreClassified(): Unit = runBlocking {
-        // 码错/过期：core 拒绝 POST /ui/session → C-04 AUTH_FAILED。
+        // 码错/过期：core 拒绝 POST /ui/session → CODE_INVALID / CODE_EXPIRED / AUTH_FAILED。
         val badCode = firstRunPairingAttempt(realNoCode, "错码") { _ ->
             throw VadeException(VadeErrorCodes.AUTH_FAILED, "POST /ui/session failed with HTTP 401: bad pair code")
         }
         assertEquals(PairingFailureKind.BadCode, assertIs<PairingAttempt.Rejected>(badCode).kind)
+        val invalidCode = firstRunPairingAttempt(realNoCode, "错码") { _ ->
+            throw VadeException(VadeErrorCodes.CODE_INVALID, "CODE_INVALID: no such pair code")
+        }
+        assertEquals(PairingFailureKind.BadCode, assertIs<PairingAttempt.Rejected>(invalidCode).kind)
+        val expiredCode = firstRunPairingAttempt(realNoCode, "旧码") { _ ->
+            throw VadeException(VadeErrorCodes.CODE_EXPIRED, "CODE_EXPIRED: pair code expired")
+        }
+        assertEquals(PairingFailureKind.BadCode, assertIs<PairingAttempt.Rejected>(expiredCode).kind)
         // 服务端没起：连接被拒绝。
         val serverDown = firstRunPairingAttempt(realNoCode, "青松-XYZ789") { _ ->
             throw ConnectException("Connection refused: /127.0.0.1:8443")
@@ -136,6 +190,14 @@ class PairingFirstRunTest {
             throw SocketTimeoutException("connect timed out")
         }
         assertEquals(PairingFailureKind.Network, assertIs<PairingAttempt.Rejected>(network).kind)
+        // 地址/端口本身不合法：分类为 BadConfig，而且**一个 transport 都不许建**（不发请求）。
+        val badConfig = firstRunPairingAttempt(
+            RawSourceStrings("real", "127.0.0.1", "8443x", null),
+            "青松-XYZ789",
+        ) { _ -> throw AssertionError("配置非法时不得构造 transport（会真发一次请求）") }
+        val rejected = assertIs<PairingAttempt.Rejected>(badConfig)
+        assertEquals(PairingFailureKind.BadConfig, rejected.kind)
+        assertIs<IllegalArgumentException>(rejected.cause, "原话要交回 UI（BadConfig 的详情行）")
     }
 
     @Test
@@ -152,7 +214,7 @@ class PairingFirstRunTest {
     @Test
     fun pairedFactoryReachesTheRealChain() {
         val fake = FakeTransportFactory()
-        PairingRuntime.install(fake)
+        PairingRuntime.install(fake, "127.0.0.1", 8443)
         val source = sessionSourceFrom(realNoCode)
         val auto = assertIs<AutoConnectingSessionSource>(source)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -173,16 +235,31 @@ class PairingFirstRunTest {
 
     @Test
     fun bridgeHoldsFactoryNotTheCode() {
-        // 「码不进 SourceConfig 的任何字段」由**类型系统**承重：pairedFactory 的声明类型是
-        // `VadeTransportFactory?`，String 根本存不进去（`is String` 在编译期即恒 false，
-        // 上一版那两条断言因此被编译器打回）。声明类型本身由 enteredPairCodeHasNoPersistenceSink
-        // 的扫描断言钉住（SourceConfig.kt 唯一的 var 必须是 `mutableStateOf<VadeTransportFactory…`）。
-        // 这里只钉桥的持有语义：装进什么，拿出来就是什么。
+        // 「码不进 SourceConfig 的任何字段」由**类型系统**承重：桥的状态里唯一与凭据有关的
+        // 字段是 `Paired.factory: VadeTransportFactory`，`String` 根本存不进去
+        // （`is String` 在编译期即恒 false）。状态的声明由
+        // enteredPairCodeHasNoPersistenceSink 的扫描断言钉住（SourceConfig.kt 唯一的 var
+        // 必须是 `mutableStateOf<PairingRuntimeState…`，而 PairingRuntimeState 的字段是
+        // factory/host/port/Boolean —— 没有一个能装下输入的码）。
+        // 这里钉桥的持有语义 + 新装的 endpoint 一并生效。
         val factory = RecordingFactory { TestProbeTransport() }
-        PairingRuntime.install(factory)
+        PairingRuntime.install(factory, "10.0.0.9", 19999)
         assertTrue(PairingRuntime.pairedFactory === factory)
+        assertEquals("10.0.0.9:19999", PairingRuntime.pairedEndpoint, "install 的 host/port 就是真源要连的地址")
         PairingRuntime.clearForTests()
         assertTrue(PairingRuntime.pairedFactory == null, "clearForTests 把桥清回未配对态")
+        assertEquals(null, PairingRuntime.pairedEndpoint)
+    }
+
+    @Test
+    fun defaultStartupAfterPairingBuildsARealSourceAtThePairedEndpoint() {
+        // 默认启动（raw 里什么都没有）配好对之后，重建点必须是**真源** —— 而不是因为
+        // `source` 为空就退回夹具（H1 的落地路径：卡消失、列表开始拉真数据）。
+        val fake = FakeTransportFactory()
+        PairingRuntime.install(fake, "10.0.0.9", 19999)
+        val source = sessionSourceFrom(RawSourceStrings(null, null, null, null))
+        assertTrue(source is AutoConnectingSessionSource, "已配对 + 默认启动 = 真源，不是 FakeSessionSource")
+        assertEquals("10.0.0.9:19999", PairingRuntime.pairedEndpoint)
     }
 
     // ------------------------------------------------------------- endpoint 解析对照
@@ -246,11 +323,27 @@ class PairingFirstRunTest {
                 assertFalse(text.contains(sink), "$path 不得出现 URL 构建 `$sink`（码不拼进 URL）")
             }
         }
-        // SourceConfig 的**全部**可变字段只有一个：运行期桥，且类型是 factory 不是码 ——
+        // SourceConfig 的**全部**可变字段只有一个：运行期桥的状态 ——
         // 「输入值不进 SourceConfig 的任何持久化字段」的扫描正身。
+        val bridgeVar = Regex("""\bvar\s+state\s*:\s*PairingRuntimeState\b""")
         val mutableLines = stripped(files[0]).lines().filter { Regex("""\bvar\s""").containsMatchIn(it) }
-        val bridgeLines = mutableLines.filter { it.contains("mutableStateOf<VadeTransportFactory") }
-        assertEquals(1, bridgeLines.size, "SourceConfig.kt 里唯一的 var 就是运行期桥（factory 类型）")
+        val bridgeLines = mutableLines.filter { bridgeVar.containsMatchIn(it) }
+        assertEquals(1, bridgeLines.size, "SourceConfig.kt 里唯一的 var 就是运行期桥（PairingRuntimeState）")
         assertEquals(0, mutableLines.size - bridgeLines.size, "SourceConfig.kt 不得新增任何其它可变字段")
+        // 桥的状态形状：凭据只能以 factory 的形式存在。`Paired` 的字段就是
+        // factory/host/port —— 加一个 `code`/`pairCode` 字段会让上面那条类型论证失效，
+        // 所以这里直接钉住它的成员表。
+        val stateLines = stripped(files[0]).lines()
+        val pairedAt = stateLines.indexOfFirst { "data class Paired(" in it }
+        assertTrue(pairedAt >= 0, "PairingRuntimeState.Paired 必须存在（运行期桥的唯一凭据形态）")
+        val pairedBlock = stateLines
+            .drop(pairedAt)
+            .takeWhile { !it.trim().startsWith(") : PairingRuntimeState") }
+            .joinToString("\n")
+        assertTrue("VadeTransportFactory" in pairedBlock, "Paired 必须持有 factory")
+        assertFalse(
+            "pairCode" in pairedBlock || Regex("""\bcode\s*:""").containsMatchIn(pairedBlock),
+            "Paired 不得出现码字段（码只在 firstRunPairingAttempt 的参数里活一次）",
+        )
     }
 }

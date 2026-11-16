@@ -57,6 +57,9 @@ fun main() {
     // 不需要等 gstatic（断网也正常）。`?font=off` 跳过安装（回归/对照用，等于修复前），
     // `?font=<path>` 换一个 URL（验证失败回退路径用）。详见 VadeFontWasm.kt。
     val fontSwitch = value("font")
+    // P1-4 · `?port=8443x` 之类的配置错误 = 一块说清原因的错误屏，
+    // 而不是浏览器里一片白（未捕获异常）。解析在入口兜住，`App()` 只接收合法的源。
+    val booted = runCatching { vade.ui.data.sessionSourceFromEnvironment() }
     val startApp: () -> Unit = {
         ComposeViewport(document.body!!) {
             // 读 generation：字体若晚到，整棵树（含 remember 出来的 skin）被重建，
@@ -65,7 +68,16 @@ fun main() {
                 // g-live: same uniform switch as desktop/Android — `?source=real&host=...&
                 // port=...&pair_code=...` wires the real core through the shared parser
                 // (vade.ui.data.SourceConfig); no query keeps the fixture path byte-for-byte.
-                if (probe) MotionProbe() else App(source = vade.ui.data.sessionSourceFromEnvironment())
+                if (probe) {
+                    MotionProbe()
+                } else {
+                    val source = booted.getOrNull()
+                    if (source == null) {
+                        ConfigErrorScreen(booted.exceptionOrNull() ?: IllegalStateException())
+                    } else {
+                        App(source = source)
+                    }
+                }
             }
         }
     }

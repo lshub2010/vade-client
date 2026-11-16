@@ -13,7 +13,6 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import vade.ui.data.PairingAttempt
 import vade.ui.data.PairingFailureKind
@@ -35,7 +34,8 @@ class PairingCardUiTest {
 
     private val realNoCode = RawSourceStrings("real", "127.0.0.1", "8443", null)
     private val realWithCode = RawSourceStrings("real", "127.0.0.1", "8443", "青松-ABC123")
-    private val fake = RawSourceStrings(null, null, null, null)
+    private val nothingSet = RawSourceStrings(null, null, null, null)
+    private val explicitFixtures = RawSourceStrings("fixtures", null, null, null)
 
     /** 桥是全局单例 —— 每个用例前后清回未配对态。 */
     @BeforeTest
@@ -51,7 +51,9 @@ class PairingCardUiTest {
     // ------------------------------------------------------------- 出现 / 不出现
 
     @Test
-    fun cardAppearsOnlyForRealSourceWithoutCode() = runComposeUiTest {
+    fun cardAppearsOnlyAfterAnUnpairedBootWithoutACredential() = runComposeUiTest {
+        // H1：卡片是**启动**决定 —— 入口的 `sessionSourceFromEnvironment()` 先 noteBooted()。
+        PairingRuntime.noteBooted()
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
                 FirstRunPairingCard(raw = { realNoCode })
@@ -62,20 +64,41 @@ class PairingCardUiTest {
         onNodeWithText(PAIRING_PLACEHOLDER).assertExists()
         onNodeWithText("pair_code=", substring = true).assertExists()
 
+        // 默认启动（什么都没配）也是首次运行 → 出卡（新用户唯一的入口）。
+        setContent {
+            CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
+                FirstRunPairingCard(raw = { nothingSet })
+            }
+        }
+        waitUntil { onAllNodesWithText(PAIRING_TITLE).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText(PAIRING_TITLE).assertExists()
+
         // 有码（环境变量/命令行旧路径）→ 不出现。
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
                 FirstRunPairingCard(raw = { realWithCode })
             }
         }
+        waitForIdle()
         assertEquals(0, onAllNodesWithText(PAIRING_TITLE).fetchSemanticsNodes().size)
 
-        // 假源（fixtures）→ 不出现。
+        // 显式 fixtures（开发者的逃生口）→ 不出现。
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
-                FirstRunPairingCard(raw = { fake })
+                FirstRunPairingCard(raw = { explicitFixtures })
             }
         }
+        waitForIdle()
+        assertEquals(0, onAllNodesWithText(PAIRING_TITLE).fetchSemanticsNodes().size)
+
+        // 非入口路径（没有任何人声明过本次启动）→ 不出现。
+        PairingRuntime.clearForTests()
+        setContent {
+            CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
+                FirstRunPairingCard(raw = { realNoCode })
+            }
+        }
+        waitForIdle()
         assertEquals(0, onAllNodesWithText(PAIRING_TITLE).fetchSemanticsNodes().size)
     }
 
@@ -91,7 +114,7 @@ class PairingCardUiTest {
                     raw = { realNoCode },
                     onSubmit = { raw, code ->
                         calls.add(raw to code)
-                        PairingAttempt.Connected(marker)
+                        PairingAttempt.Connected(marker, "10.0.0.9", 19999)
                     },
                 )
             }
@@ -105,6 +128,11 @@ class PairingCardUiTest {
         assertEquals(1, calls.size, "恰好一次连接尝试")
         assertEquals("青松-WRONG1", calls.single().second, "尝试的参数 = 输入的码（原样）")
         assertTrue(PairingRuntime.pairedFactory === marker, "成功后桥里装的是这次尝试的 factory")
+        assertEquals(
+            "10.0.0.9:19999",
+            PairingRuntime.pairedEndpoint,
+            "成功结果里实际连的 endpoint 原样进桥（真源按它建，不是按启动配置）",
+        )
         // 成功 → 卡片消失（桥状态驱动，不是本地记忆）。
         assertEquals(0, onAllNodesWithText(PAIRING_TITLE).fetchSemanticsNodes().size)
         assertEquals(0, onAllNodesWithText(PAIRING_BUTTON_LABEL).fetchSemanticsNodes().size)
@@ -169,21 +197,20 @@ class PairingCardUiTest {
     @Test
     fun headlineAndNextStepArePairwiseDistinct() {
         val raw = realNoCode
-        val h1 = pairingHeadline(PairingFailureKind.BadCode, raw)
-        val h2 = pairingHeadline(PairingFailureKind.ServerDown, raw)
-        val h3 = pairingHeadline(PairingFailureKind.Network, raw)
-        assertNotEquals(h1, h2)
-        assertNotEquals(h2, h3)
-        assertNotEquals(h1, h3)
-        val n1 = pairingNextStep(PairingFailureKind.BadCode, raw)
-        val n2 = pairingNextStep(PairingFailureKind.ServerDown, raw)
-        val n3 = pairingNextStep(PairingFailureKind.Network, raw)
-        assertNotEquals(n1, n2)
-        assertNotEquals(n2, n3)
-        assertNotEquals(n1, n3)
-        // 每条下一步都有可执行动作：取码 / 启动命令 / 重试。
-        assertTrue(n1.contains("重新取一个新码"))
-        assertTrue(n2.contains("PYTHONPATH"))
-        assertTrue(n3.contains("重试"))
+        // 每加一种失败分类，标题与下一步都必须**成对**出现、且互不可替换 ——
+        // 漏一条 when 分支会在这里立刻红（不是编译错误，是文案缺失）。
+        val kinds = PairingFailureKind.entries
+        assertEquals(5, kinds.size, "失败分类数量变了：新分类必须同时补 headline / nextStep 文案")
+        val headlines = kinds.map { pairingHeadline(it, raw) }
+        assertEquals(headlines.size, headlines.toSet().size, "每种失败的标题必须互不相同：$headlines")
+        val steps = kinds.map { pairingNextStep(it, raw) }
+        assertEquals(steps.size, steps.toSet().size, "每种失败的下一步必须互不相同：$steps")
+
+        // 每条下一步都有可执行动作：取码 / 启动命令 / 重试 / 改端口 / 换设备配对。
+        assertTrue(pairingNextStep(PairingFailureKind.BadCode, raw).contains("重新取一个新码"))
+        assertTrue(pairingNextStep(PairingFailureKind.ServerDown, raw).contains("PYTHONPATH"))
+        assertTrue(pairingNextStep(PairingFailureKind.Network, raw).contains("重试"))
+        assertTrue(pairingNextStep(PairingFailureKind.BadConfig, raw).contains("端口填 1..65535"))
+        assertTrue(pairingNextStep(PairingFailureKind.NotAvailableHere, raw).contains("桌面应用或手机 App"))
     }
 }

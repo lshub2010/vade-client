@@ -12,3 +12,10 @@ actual fun rawSourceStrings(): RawSourceStrings = RawSourceStrings(
     port = System.getenv("VADE_PORT"),
     pairCode = System.getenv("VADE_PAIR_CODE"),
 )
+
+/**
+ * H4 · 桌面（JVM）能读 `Set-Cookie`，可以兑换一次性码 —— 这是配对的正路。
+ * 见 `SourceConfig.kt` 的 expect 声明。
+ */
+actual fun canBootstrapPairing(): Boolean = true
+
