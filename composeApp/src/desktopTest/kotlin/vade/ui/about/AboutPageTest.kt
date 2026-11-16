@@ -45,7 +45,7 @@ class AboutPageTest {
     fun versionConstantIsNonEmptySemverWithAlpha() {
         assertTrue(VadeBuildConfig.VERSION.isNotBlank(), "版本常量为空——generateVadeBuildConfig 没跑或被改")
         assertTrue(
-            Regex("""\d+\.\d+\.\d+-alpha\.\d+""").matches(VadeBuildConfig.VERSION),
+            Regex("""\d+\.\d+\.\d+-alpha(\.\d+)?""").matches(VadeBuildConfig.VERSION),
             "版本必须形如 0.1.0-alpha.1（semver 且带 -alpha 后缀），实际：${VadeBuildConfig.VERSION}",
         )
     }

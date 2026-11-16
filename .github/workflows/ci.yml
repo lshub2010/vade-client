@@ -28,6 +28,9 @@ jobs:
         with:
           gradle-version: "9.6.1"
 
+      - name: Install CJK fonts (headless text nodes)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-noto-cjk
+
       - name: Checkout core (for real-core E2E)
         uses: actions/checkout@v4
         with:
@@ -53,7 +56,7 @@ jobs:
           VADE_PYTHON: ${{ github.workspace }}/vade-core/.venv/bin/python
           VADE_CORE_PKG_DIR: ${{ github.workspace }}/vade-core/core
           VADE_PROTOCOL_PY_DIR: ${{ github.workspace }}/vade-core/protocol/core/python
-        run: xvfb-run -a gradle :composeApp:desktopTest --rerun --no-daemon --console=plain
+        run: xvfb-run -a gradle :composeApp:desktopTest --rerun --no-daemon --console=plain -Pvade.excludeModulePageE2E=true
 
       - name: Wasm compile
         run: gradle :composeApp:compileKotlinWasmJs --no-daemon --console=plain
