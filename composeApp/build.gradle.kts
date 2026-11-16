@@ -20,6 +20,16 @@ plugins {
     id("com.android.application")
 }
 
+// CI runs against the public repos only; the module-page E2E needs the
+// private `vade-module-echo` checkout, so it is opt-out there (never silently
+// skipped locally: the property is set only by the CI workflow).
+tasks.withType<Test>().configureEach {
+    if (providers.gradleProperty("vade.excludeModulePageE2E").orNull == "true") {
+        filter { excludeTestsMatching("*RealCoreModulePageE2ETest*") }
+    }
+}
+
+
 // --- A5 · version single source ------------------------------------------------
 // `vadeVersion` in the repo-root gradle.properties is the ONLY place the version is
 // written. Everything else derives from it:

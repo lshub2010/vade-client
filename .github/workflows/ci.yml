@@ -1,0 +1,105 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.6.1"
+
+      - name: Install CJK fonts (headless text nodes)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-noto-cjk
+
+      - name: Checkout core (for real-core E2E)
+        uses: actions/checkout@v4
+        with:
+          repository: lshub2010/Vade
+          ref: debug
+          path: vade-core
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build protocol .so
+        run: |
+          cd vade-core/protocol/core
+          CARGO_PROFILE_DEV_DEBUG=0 cargo build --features uniffi --lib -j 2
+          cp target/debug/libvade_protocol.so python/
+
+      - name: Install core deps
+        run: |
+          python3 -m venv vade-core/.venv
+          vade-core/.venv/bin/pip install -q -r vade-core/requirements-dev.txt
+
+      - name: Desktop tests (xvfb + real core)
+        env:
+          VADE_PYTHON: ${{ github.workspace }}/vade-core/.venv/bin/python
+          VADE_CORE_PKG_DIR: ${{ github.workspace }}/vade-core/core
+          VADE_PROTOCOL_PY_DIR: ${{ github.workspace }}/vade-core/protocol/core/python
+        run: xvfb-run -a gradle :composeApp:desktopTest --rerun --no-daemon --console=plain -Pvade.excludeModulePageE2E=true
+
+      - name: Wasm compile
+        run: gradle :composeApp:compileKotlinWasmJs --no-daemon --console=plain
+
+      - name: Test report summary
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          files = glob.glob("composeApp/build/test-results/desktopTest/TEST-*.xml")
+          tests = failures = errors = skipped = 0
+          for f in files:
+              r = ET.parse(f).getroot()
+              tests += int(r.get("tests", 0)); failures += int(r.get("failures", 0))
+              errors += int(r.get("errors", 0)); skipped += int(r.get("skipped", 0))
+          print(f"files={len(files)} tests={tests} failures={failures} errors={errors} skipped={skipped}")
+          PY
+
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Non-blocking until SDK 37 is generally available on the runner image.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.6.1"
+
+      - name: Install Android SDK 37 (preview)
+        run: |
+          SDKMANAGER=$(command -v sdkmanager || echo "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager")
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" --channel=3 "platforms;android-37.0" "build-tools;37.0.0" >/dev/null
+          ls "$ANDROID_HOME/platforms" | tail -3
+
+      - name: Assemble debug APK
+        run: gradle :composeApp:assembleDebug --no-daemon --console=plain
