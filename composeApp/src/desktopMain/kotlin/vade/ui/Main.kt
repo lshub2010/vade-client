@@ -15,6 +15,7 @@ import vade.ui.skin.glass.MotionBlurKernel
 import vade.ui.destinations.Destination
 import vade.ui.data.sessionSourceFromEnvironment
 import vade.ui.skin.BottomBarStyle
+import vade.ui.skin.ReduceMotion
 import kotlin.system.exitProcess
 
 /**
@@ -60,6 +61,13 @@ import kotlin.system.exitProcess
  *                                  the §2 dark canvas) instead of the app shell. `--light`
  *                                  flips it to the §2 light canvas. Screenshot-only branch.
  *   --light                        with --gallery: use the light token set.
+ *   --reduce-motion                K1: install reduced motion (`ReduceMotion`) before
+ *                                  composition — durations capped at 100ms and travel set to
+ *                                  0, the same degradation Android/wasm read from the OS
+ *                                  (animator scale 0 / `prefers-reduced-motion`). The desktop
+ *                                  has no system-level media query to read, so the flag *is*
+ *                                  the host signal; used for the reduced-motion frames and by
+ *                                  accessibility testers.
  *
  * Default size is deliberately phone-shaped: the U1-a acceptance screenshots are the three
  * bottom-bar forms at 466×893, and a phone-shaped window is the only way to see the
@@ -71,6 +79,12 @@ fun main(args: Array<String>) {
         runMotionProbe(args)
         return
     }
+
+    // K1 · reduced-motion 的三端入口之一：桌面没有系统级的媒体查询可读，`--reduce-motion`
+    // 就是宿主信号。必须在 `application {}` 组合之前安装：`ReduceMotion.enabled` 是可观察
+    // 状态，晚装会让首帧先播满速动画再降级。`--motion-probe` 已在上面返回——探针只量模糊
+    // 半径，不读动效 token。
+    ReduceMotion.install(args.has("--reduce-motion"))
 
     val bar = args.flag("--bar=")?.let(::parseBar) ?: vade.ui.skin.Skins.bootBottomBar()
     val dest = args.flag("--dest=")?.let { Destination.fromId(it) } ?: Destination.Sessions
