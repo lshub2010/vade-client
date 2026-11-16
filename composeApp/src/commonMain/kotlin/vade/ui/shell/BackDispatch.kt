@@ -32,20 +32,24 @@ import androidx.compose.runtime.staticCompositionLocalOf
  * 「Esc 优先交给返回栈」一行 —— 栈顶浮层先关，栈空回落到既有 Esc 语义
  * （关搜索 / 关会话详情），桌面行为不变。
  *
- * 抽屉（会话列表抽屉，另一批在建）接入只需一行，与浮层同构：
+ * 页面 / 浮层接入只需一行，与抽屉同构：在自己的组合里登记，开着时入栈、关掉或离开
+ * 组合自动出栈；不要另起第二套返回机制。栈序 = 组合序 = 视觉层叠（后组成的在上面）。
  *
  * ```
  * BackLayer(enabled = drawerOpen, onBack = { drawerOpen = false })
  * ```
  *
- * 放在抽屉自己的组合里即可（开着时入栈、关掉/离开组合自动出栈，与下面各浮层
- * 完全一样）。不要另起第二套返回机制。
+ * 已接清单（g-nav-stack / c2-nav 收口）：
+ *  - 搜索浮层（`SearchOverlay`）、附件预览（`ChatThread`）、模型选择浮层
+ *    （`ModelPickerSheet`）；
+ *  - 会话抽屉 + 详情：手机单栏由 `SessionsDrawerHost` 登记一层（抽屉开着 → 收抽屉；
+ *    收着 → `state.back()` 清选中回列表根），≥600dp 的双栏 / rail 详情由
+ *    `DestinationHost` 登记同一个 `state.back()` 动作；
+ *  - 模块页（`ModulePageHost`）：返回退一层 —— 面包屑 >1 退回上一页，深度 1 退出模块页
+ *    回能力页，与顶栏返回按钮同一个动作；
+ *  - 关于子页（`ProfileScreen`）：返回关子页回我的页。
  *
- * 待接清单（本批不做，接口已留好）：
- *  - 模型选择浮层（另一棒在建；落地处同上加一行 [BackLayer]）；
- *  - 会话列表抽屉（同上）；
- *  - 会话详情的系统返回（桌面 Esc 已有 `state.back()`；Android 返回目前仍会退出，
- *    若要改为「返回关会话」，在详情屏注册一层 `BackLayer(enabled = selectedSessionId != null, …)`）。
+ * 新浮层 / 新子页照上面加一层即可；「没登记」的页面按返回仍会直接退出 App。
  */
 class BackDispatcher {
 

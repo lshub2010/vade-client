@@ -118,25 +118,21 @@ fun AppShell(state: UiState) {
     // v2 §5: one shared HazeState per window — backdrop and all glass layers sample it.
     val glass = rememberGlassState()
     GlassScope(state = glass) {
-        // g-route-transition：Esc 的抽屉语义需要知道断点（双栏没有抽屉），而 handleShellKeys
-        // 挂在根部——这里用一个不含布局副作用的外层 BoxWithConstraints 把 twoPane 读出来。
-        // g-back-handler：返回栈 provider 仍在组合根，两个参数都要传。
-        BoxWithConstraints(Modifier.fillMaxSize()) {
-            val twoPane = metricsFor(maxWidth).twoPane
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .onPreviewKeyEvent { event ->
-                        handleShellKeys(event, state, twoPane = twoPane, backDispatcher = backDispatcher)
-                    }
-                    .focusRequester(rootFocus)
-                    .focusable(),
-            ) {
-                ShellBody(state)
-                // U1-c: phone glass overlay card below 600dp, ⌘K palette above it. Also a
-                // glass layer — sibling of the backdrop source.
-                SearchHost(state)
-            }
+        // g-nav-stack：Esc 与系统返回同源 —— `handleShellKeys` 唯一的分支是「先问返回栈」，
+        // 栈里装的是每一层自己登记的那一层（抽屉 / 详情 / 模块页 / 关于 / 浮层）。
+        // 这里不再读断点：返回语义不再按 twoPane 分叉（旧实现为那条分叉才包了一层
+        // BoxWithConstraints，已随分叉一起删除）。
+        Box(
+            Modifier
+                .fillMaxSize()
+                .onPreviewKeyEvent { event -> handleShellKeys(event, state, backDispatcher = backDispatcher) }
+                .focusRequester(rootFocus)
+                .focusable(),
+        ) {
+            ShellBody(state)
+            // U1-c: phone glass overlay card below 600dp, ⌘K palette above it. Also a
+            // glass layer — sibling of the backdrop source.
+            SearchHost(state)
         }
     }
 }
@@ -441,7 +437,9 @@ private fun ShellBody(state: UiState) {
                 else -> rememberSessionUsageSubtitleLine(state.source, session.id)
             }
             val detailLeading: (@Composable () -> Unit)? = if (detailVisible) {
-                { TopBarButton(VadeIcons.Back, onClick = { sessionDetailBack(state, metrics.useRail) }, contentDescription = "返回") }
+                // g-nav-stack：返回 = `state.back()`（清选中）。手机单栏上它会带回列表抽屉，
+                // 双栏/rail 上它退出右栏详情 —— 三端同一个动作，不再有 sessionDetailBack 分叉。
+                { TopBarButton(VadeIcons.Back, onClick = state::back, contentDescription = "返回") }
             } else null
             // 显式类型：if-表达式里的 @Composable lambda 经参数位推断不过（实测），声明处钉住。
             val listActions: (@Composable RowScope.() -> Unit)? = if (detailVisible) null else {
@@ -642,6 +640,15 @@ private fun DestinationHost(
 ) {
     // 接线（g-activate）：与 [ShellBody] 同一处推导，四处屏幕共用这一个值。
     val adapters = adaptersOf(state)
+    // g-nav-stack · ≥600dp 的详情也是一层返回（G1：页面级 push 在 Android 上按返回会直接
+    // 退出应用）：双栏右栏与 600–719 rail 单栏的详情都由这里登记，返回 = `state.back()`
+    // 清选中 —— 与手机单栏抽屉里那一层、与顶栏「返回」按钮完全同一个动作。
+    // 手机单栏（<600dp）走 `SessionsDrawerHost`，不经过本函数，那一层由它自己登记。
+    // 放在 when 之前：栈序 = 组合序，页面层必须先于详情屏内部的浮层（模型选择）入栈。
+    BackLayer(
+        enabled = state.dest == Destination.Sessions && state.selectedSessionId != null,
+        onBack = state::back,
+    )
     // B2（s-meta-host）：一个元数据宿主喂两处 —— 会话行上的「组名」（g-meta-groups）
     // 与行**长按**菜单 / 分组管理（本棒挂载）。构造与「什么时候不拉表」的规则在
     // meta/SessionMetaOverlay.kt；动作成功后经 `retrySessions` 重拉权威列表收敛。
@@ -877,8 +884,11 @@ private fun navItems(): List<BottomBarItem> = Destination.entries.map {
  *
  *  - `⌘K` / `Ctrl+K`: toggle the command palette (desktop shape of search).
  *  - `↑` / `↓`: move the selection (wraps), `Enter`: open the selected session.
- *  - `Esc`: close the palette; when it is closed, leave an open session detail (FR-8.72's
- *    back layering, the part that overlaps U1-c).
+ *  - `Esc`: 「返回」的桌面形态。g-nav-stack：**先交给返回栈**（[BackDispatcher.dispatch]），
+ *    栈顶那一层消费它（浮层 / 模块页 / 关于 / 抽屉 / 详情）；只有栈空时才回落本函数的
+ *    兜底分支 —— 而现在兜底也只有一句话：有选中会话就 `state.back()`，与栈里那一层
+ *    完全同一个动作（孤立调用、或组合根没 provide provider 时才会走到）。
+ *    这也意味着 Esc 不再按断点分叉（旧的「双栏退详情 / 单栏 toggle 抽屉」已删除）。
  *
  * `⌘N`, `⌘1–4`, `⌘B`, `⌘,`, `⌘\` deliberately stay with U1-g: this handler does not touch
  * them, and they still do nothing.
@@ -886,7 +896,6 @@ private fun navItems(): List<BottomBarItem> = Destination.entries.map {
 internal fun handleShellKeys(
     event: KeyEvent,
     state: UiState,
-    twoPane: Boolean = true,
     backDispatcher: BackDispatcher? = null,
 ): Boolean {
     if (event.type != KeyEventType.KeyDown) return false
@@ -899,18 +908,16 @@ internal fun handleShellKeys(
     }
 
     // g-back-handler: Esc is the desktop shape of "back" — give the back stack first
-    // claim. The topmost overlay (search / attachment preview / …) closes; when the
-    // stack is empty (dispatch() == false) the legacy semantics below stay untouched
-    // (close the palette / leave the session detail / not ours).
+    // claim. The topmost overlay (search / attachment preview / model picker / a page)
+    // closes; when the stack is empty (dispatch() == false) the fallback below stays.
     if (event.key == Key.Escape && backDispatcher?.dispatch() == true) {
         return true
     }
 
     if (!search.open) {
         if (event.key == Key.Escape && state.selectedSessionId != null) {
-            // g-route-transition：双栏没有抽屉——Esc 仍是「退出详情」（FR-8.72 原行为）；
-            // 手机单栏抽屉上 Esc 在「列表/详情」之间切换（详情常驻底层，不销毁）。
-            if (twoPane) state.back() else state.toggleSessionsDrawer()
+            // 栈空的兜底：与返回栈里「详情那一层」同一个动作（清选中回列表）。
+            state.back()
             return true
         }
         return false

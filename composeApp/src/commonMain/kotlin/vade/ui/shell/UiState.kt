@@ -89,7 +89,10 @@ class UiState(
     var sessionsDrawerOpen by mutableStateOf(initialSessionId == null)
         private set
 
-    /** 返回/Esc（单栏抽屉上）的入口：滑出列表抽屉，**详情保留在底层不销毁**。 */
+    /**
+     * 滑出列表抽屉（测试 / 程序化入口）。返回路径**不经过这里** —— 返回栈在详情层
+     * `state.back()` 清选中，抽屉按「会话页 + 无选中 ⇒ 开」的规则自己滑出。
+     */
     fun openSessionsDrawer() {
         sessionsDrawerOpen = true
     }
@@ -97,11 +100,6 @@ class UiState(
     /** 返回键（抽屉开着时）/点遮罩的入口：收回抽屉，露出底下完好的详情。 */
     fun closeSessionsDrawer() {
         sessionsDrawerOpen = false
-    }
-
-    /** Esc（单栏抽屉）在「列表/详情」之间的切换入口。 */
-    fun toggleSessionsDrawer() {
-        sessionsDrawerOpen = !sessionsDrawerOpen
     }
 
     /** Approvals are a U1-d feature; kept at 0 so no badge is faked. */
