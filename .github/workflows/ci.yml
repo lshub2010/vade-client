@@ -28,8 +28,32 @@ jobs:
         with:
           gradle-version: "9.6.1"
 
-      - name: Desktop tests
-        run: gradle :composeApp:desktopTest --rerun --no-daemon --console=plain
+      - name: Checkout core (for real-core E2E)
+        uses: actions/checkout@v4
+        with:
+          repository: lshub2010/Vade
+          ref: debug
+          path: vade-core
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build protocol .so
+        run: |
+          cd vade-core/protocol/core
+          CARGO_PROFILE_DEV_DEBUG=0 cargo build --features uniffi --lib -j 2
+          cp target/debug/libvade_protocol.so python/
+
+      - name: Install core deps
+        run: |
+          python3 -m venv vade-core/.venv
+          vade-core/.venv/bin/pip install -q -r vade-core/requirements-dev.txt
+
+      - name: Desktop tests (xvfb + real core)
+        env:
+          VADE_PYTHON: ${{ github.workspace }}/vade-core/.venv/bin/python
+          VADE_CORE_PKG_DIR: ${{ github.workspace }}/vade-core/core
+          VADE_PROTOCOL_PY_DIR: ${{ github.workspace }}/vade-core/protocol/core/python
+        run: xvfb-run -a gradle :composeApp:desktopTest --rerun --no-daemon --console=plain
 
       - name: Wasm compile
         run: gradle :composeApp:compileKotlinWasmJs --no-daemon --console=plain
