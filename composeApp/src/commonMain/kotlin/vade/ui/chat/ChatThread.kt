@@ -6,9 +6,11 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -337,6 +339,7 @@ private fun PhaseRow(
 
 // --- one message -------------------------------------------------------------
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MessageRow(state: ChatState, message: ChatMessage) {
     val skin = LocalSkin.current
@@ -390,18 +393,33 @@ private fun MessageRow(state: ChatState, message: ChatMessage) {
             // 编辑重发（v1.1）：内联编辑卡**替换**气泡本身 — 不是弹窗（任务书 #1）。
             InlineEditCard(state)
         } else {
-            // 编辑入口只挂在可编辑的行上（最后一条用户消息，见 canEditMessage）；
-            // hover 显示铅笔图标按钮。hoverable 包住整行，按钮出现不丢 hover。
+            // 编辑入口只挂在可编辑的行上（最后一条用户消息，见 canEditMessage）。
+            // 两条入口，覆盖两种输入形态（c2-nav）：
+            //  - 桌面：hover 显示铅笔图标按钮；长按（按住鼠标）同一个动作；
+            //  - 触屏：没有 hover —— 铅笔**常显**（`hovered || isTouchPlatform`），长按消息
+            //    是主入口。旧实现只认 hover，编辑重发在手机上永远出不来。
+            // 外层 combinedClickable 的 onClick 是空动作：只借它的长按通道，不给整行加点击语义。
             val editable = isUser && state.canEditMessage(message.id)
             val hoverInteraction = remember { MutableInteractionSource() }
             val hovered by hoverInteraction.collectIsHoveredAsState()
             // 旧版本灰化保留（turn/regenerate）：同一行、降透明度、不删除。
             Row(
-                modifier = Modifier.then(if (editable) Modifier.hoverable(hoverInteraction) else Modifier),
+                modifier = Modifier
+                    .then(if (editable) Modifier.hoverable(hoverInteraction) else Modifier)
+                    .then(
+                        if (editable) {
+                            Modifier.combinedClickable(
+                                onClick = {},
+                                onLongClick = { state.startEdit(message.id) },
+                            )
+                        } else {
+                            Modifier
+                        },
+                    ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (editable) {
-                    androidx.compose.animation.AnimatedVisibility(visible = hovered) {
+                    androidx.compose.animation.AnimatedVisibility(visible = hovered || isTouchPlatform) {
                         ChatVectorIconButton(
                             vector = VadeIcons.Compose,
                             contentDescription = "编辑这条消息并重发",
@@ -505,7 +523,13 @@ private fun InlineEditCard(state: ChatState) {
         Spacer(Modifier.height(6.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             BasicText(
-                text = "⌘/Ctrl+Enter 重发 · Esc 取消",
+                // 键盘提示只在有硬件键盘的平台成立：触屏上没有 Esc / Ctrl+Enter，
+                // 照抄桌面文案会指向不存在的操作，所以按平台分支（c2-nav）。
+                text = if (isTouchPlatform) {
+                    "✓ 重发 · ✕ 取消"
+                } else {
+                    "⌘/Ctrl+Enter 重发 · Esc 取消"
+                },
                 style = skin.typography.caption.copy(color = skin.colors.onSurfaceVariant),
                 modifier = Modifier.weight(1f),
             )

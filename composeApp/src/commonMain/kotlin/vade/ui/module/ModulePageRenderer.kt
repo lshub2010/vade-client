@@ -54,6 +54,7 @@ import vade.ui.skin.BtnStyle
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.ToolCardState
 import vade.ui.skin.ToolCallView
+import vade.ui.shell.BackLayer
 
 /**
  * C-19 模块页面的原生渲染层：解析校验（[ModulePageParser]，fail-closed）→ 绑定解析
@@ -241,6 +242,19 @@ fun ModulePageHost(
     val current = stack.last()
     var refresh by remember(current.pageId) { mutableIntStateOf(0) }
 
+    /**
+     * g-nav-stack（c2-nav）· 模块页是返回栈里的一层：Esc / 系统返回**退一层**——
+     * 面包屑深度 > 1 时退回上一页，深度 1 时退出模块页回能力页；与顶栏返回按钮
+     * （[HostHeader]）完全同一个动作，不会穿过能力页直接退出 App。
+     *
+     * 本宿主只在页面打开时组合 ⇒ `enabled = true`；页面关掉后组合离开，层自动出栈。
+     * 放在页面内容之前：栈序 = 组合序，页面层必须先于它内部的浮层入栈。
+     */
+    val goBack: () -> Unit = {
+        if (stack.size > 1) stack.removeAt(stack.lastIndex) else onBack()
+    }
+    BackLayer(enabled = true, onBack = goBack)
+
     // `$input` 只存客户端内存（§5.3）：不进快照、不同步、不落盘，页面销毁即丢。
     val inputs = remember(current.pageId) { mutableStateMapOf<String, String>() }
     val tabSelections = remember(current.pageId) { mutableStateMapOf<String, Int>() }
@@ -405,7 +419,7 @@ fun ModulePageHost(
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        HostHeader(stack, onBack = { if (stack.size > 1) stack.removeAt(stack.lastIndex) else onBack() })
+        HostHeader(stack, onBack = goBack)
         BannerRow(status, banner, onRetry = retry)
         when {
             // 异步路的三态：失败 → 带 C-04 名的可重试卡；还没结果 → 「正在取回」卡。

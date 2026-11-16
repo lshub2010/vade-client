@@ -47,7 +47,8 @@ import kotlin.test.assertTrue
  * g-route-transition · 手机单栏抽屉的验收钉子（2026-11-15 口径变更）：
  *
  *  1. **转场配置**：`animate = true` → 时长 220–300ms、非线性缓动；`animate = false` → 0ms；
- *  2. **开合状态**：点行收抽屉露出详情；返回/Esc 在「列表/详情」间切换且**永不销毁详情**；
+ *  2. **开合状态**：点行收抽屉露出详情；返回 = 收抽屉（详情还在）→ 清选中（回列表根，
+ *     抽屉重新滑出）→ 列表根交还系统（不吞返回、允许退出 App）；详情始终不销毁；
  *  3. **遮罩存在**：抽屉开着有遮罩（点它收抽屉），收起后消失；
  *  4. **不重复组合**：两层内容跨开合是**同一个组合实例**（探针计数）——这正是列表滚动
  *     位置保留的机制；
@@ -126,20 +127,58 @@ class SessionsDrawerTest {
     }
 
     @Test
-    fun escTogglesTheDrawerOnSinglePaneAndStillExitsDetailOnTwoPane() {
+    fun backClosesTheDrawerThenClearsSelectionThenGoesBackToTheSystem() = runComposeUiTest {
         val ui = uiState()
-        ui.open("s-u1a") // 抽屉收起（详情可见）
-        assertTrue(handleShellKeys(keyDown(Key.Escape), ui, twoPane = false))
-        assertTrue(ui.sessionsDrawerOpen, "单栏 Esc：详情 → 列表抽屉")
-        assertNotNull(ui.selectedSessionId, "Esc 切换不销毁详情")
+        val dispatcher = BackDispatcher()
+        setContent {
+            CompositionLocalProvider(LocalBackDispatcher provides dispatcher) {
+                SessionsDrawerHost(
+                    state = ui,
+                    adapters = null,
+                    contentInsets = PaddingValues(0.dp),
+                    animate = false,
+                    base = {},
+                    drawer = {},
+                )
+            }
+        }
+        waitForIdle()
 
-        assertTrue(handleShellKeys(keyDown(Key.Escape), ui, twoPane = false))
-        assertFalse(ui.sessionsDrawerOpen, "单栏 Esc：列表抽屉 → 详情（收抽屉）")
-        assertNotNull(ui.selectedSessionId)
+        // 列表根（无选中）：抽屉开着，但没有可退的页面层 —— 返回交还系统（允许退出 App）。
+        assertTrue(ui.sessionsDrawerOpen, "初始（无深链）列表根：抽屉开着")
+        assertEquals(0, dispatcher.depth, "列表根不登记返回层")
+        var consumed = true
+        runOnIdle { consumed = handleShellKeys(keyDown(Key.Escape), ui, backDispatcher = dispatcher) }
+        assertFalse(consumed, "栈空 ⇒ Esc 未消费，交还系统")
 
-        // 双栏没有抽屉：Esc 仍是「退出详情」（FR-8.72 原行为）。
-        assertTrue(handleShellKeys(keyDown(Key.Escape), ui, twoPane = true))
-        assertNull(ui.selectedSessionId, "双栏 Esc 必须保持退出详情的原语义")
+        // 点开一条会话 = 抽屉收回、详情在底层 ⇒ 恰好一层。
+        runOnIdle { ui.open("s-u1a") }
+        waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 1 }
+        assertFalse(ui.sessionsDrawerOpen)
+
+        // 返回 #1（抽屉收着）：清选中回列表根 —— 不是 toggle 抽屉、更不是退 App。
+        runOnIdle { consumed = handleShellKeys(keyDown(Key.Escape), ui, backDispatcher = dispatcher) }
+        assertTrue(consumed)
+        waitUntil(timeoutMillis = 5_000) { ui.selectedSessionId == null }
+        assertTrue(ui.sessionsDrawerOpen, "清选中后回到列表根 ⇒ 抽屉开着")
+        // 没有选中 ⇒ 详情那一层自动出栈（开关不泄漏）。
+        waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 0 }
+
+        // 返回 #2（列表根）：栈空 ⇒ 交还系统。
+        runOnIdle { consumed = handleShellKeys(keyDown(Key.Escape), ui, backDispatcher = dispatcher) }
+        assertFalse(consumed, "列表根再次返回 ⇒ 未消费（Android 允许退出）")
+
+        // 抽屉开着 + 详情在底层：返回只收抽屉，详情不销毁。
+        runOnIdle { ui.open("s-u1a") }
+        waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 1 }
+        runOnIdle { ui.openSessionsDrawer() }
+        waitForIdle()
+        runOnIdle { consumed = handleShellKeys(keyDown(Key.Escape), ui, backDispatcher = dispatcher) }
+        assertTrue(consumed)
+        waitForIdle()
+        assertFalse(ui.sessionsDrawerOpen, "抽屉开着时返回 = 收回抽屉")
+        assertNotNull(ui.selectedSessionId, "收抽屉不销毁详情")
+        assertEquals(1, dispatcher.depth, "详情层仍在栈里")
     }
 
     // ------------------------------------------------------------ 3. UI：开合 / 遮罩 / 预览消失 / 色点仍在

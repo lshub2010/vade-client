@@ -46,6 +46,7 @@ import vade.ui.skin.LocalSkin
 import vade.ui.skin.ThemeController
 import vade.ui.skin.ThemeMode
 import vade.ui.skin.glass.LocalGlassHazeState
+import vade.ui.shell.BackLayer
 
 /**
  * g-haze-structure · 我的页（主滚动列 + 关于子页滚动列）的 haze source tag ——
@@ -257,6 +258,10 @@ fun ProfileScreen(
             Spacer(Modifier.padding(bottom = 8.dp))
         }
         if (showAbout) {
+            // g-nav-stack（c2-nav）：关于子页也是返回栈的一层 —— Esc / 系统返回先退子页，
+            // 回到我的页，不会退出 App。关掉（showAbout=false）后本层随组合离开自动出栈；
+            // 与顶栏「返回」按钮同一个动作。
+            BackLayer(enabled = showAbout, onBack = { showAbout = false })
             AboutPage(onBack = { showAbout = false }, contentPadding = contentPadding)
         }
     }
@@ -410,7 +415,8 @@ internal fun AboutPage(
         ) {
             Box(
                 Modifier
-                    .size(32.dp)
+                    // c2-nav：返回热区 ≥44dp（v2 §3 触摸目标），图标仍 20dp 居中。
+                    .size(44.dp)
                     .clickable(onClickLabel = "返回") { onBack() },
                 contentAlignment = Alignment.Center,
             ) {
