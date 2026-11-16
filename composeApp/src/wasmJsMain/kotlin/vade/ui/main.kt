@@ -5,6 +5,10 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.window.ComposeViewport
 import kotlinx.browser.document
 import kotlinx.browser.window
+import org.w3c.dom.Element
+import org.w3c.dom.HTMLElement
+import org.w3c.dom.NodeList
+import org.w3c.dom.events.Event
 import vade.ui.demo.MotionProbe
 import vade.ui.demo.MotionProbeConfig
 import vade.ui.demo.ProbeContent
@@ -80,6 +84,8 @@ fun main() {
                 }
             }
         }
+        // c7-wasm：canvas 建好之后立刻把键盘焦点交给它（见 installCanvasFocus 的注释）。
+        installCanvasFocus()
     }
 
     when {
@@ -87,4 +93,77 @@ fun main() {
         fontSwitch.isNullOrEmpty() -> installVadeSans(VADE_SANS_URL, startApp)
         else -> installVadeSans(fontSwitch, startApp)
     }
+}
+
+/**
+ * c7-wasm · 把键盘焦点交给 Compose 的 canvas（否则 `⌘K` / `Esc` / `Tab` 一个都到不了应用）。
+ *
+ * 根因：CMP 1.12 的 `ComposeViewport` 不在 body 里直接放 canvas —— 它先建一个宿主 `<div>`，
+ * canvas 在**该 div 的 shadow root 内**：
+ *
+ * ```
+ * body > div > div.shadowRoot > div > canvas
+ * ```
+ *
+ * 于是 `document.querySelector('canvas')` 恒为 null（shadow 边界挡住了选择器），而 Compose
+ * 的键鼠监听挂在 canvas 上、canvas 又带 `tabindex=0`；页面加载后**没有人 focus 它**，
+ * 焦点留在 `document.body`，keydown 根本到不了 Compose 的焦点树 —— 表现就是「快捷键全哑」，
+ * 用户必须先用鼠标点一下画布。
+ *
+ * 所以先按普通选择器找（未来 CMP 若改回 light DOM，这段仍然对），再穿透 shadow root 找。
+ */
+private fun findComposeCanvas(): HTMLElement? {
+    val body = document.body ?: return null
+    (body.querySelector("canvas") as? HTMLElement)?.let { return it }
+    val hosts: NodeList = body.querySelectorAll("div")
+    for (i in 0 until hosts.length) {
+        val host = hosts.item(i) as? Element ?: continue
+        val root = host.shadowRoot ?: continue
+        (root.querySelector("canvas") as? HTMLElement)?.let { return it }
+    }
+    return null
+}
+
+/** 找到 canvas 并 focus；返回「焦点是否真的落在 canvas 上」。 */
+private fun focusComposeCanvas(): Boolean {
+    val canvas = findComposeCanvas() ?: return false
+    // canvas 自带 tabindex，这里补一次只是为了不被宿主页面改掉（CMP 版本差异的兜底）。
+    if (canvas.tabIndex != 0) canvas.tabIndex = 0
+    runCatching { canvas.focus() }
+    val active = document.activeElement
+    // shadow root 里的元素不是 document.activeElement（那是宿主 div），所以再看 :focus。
+    return active == canvas || runCatching { canvas.matches(":focus") }.getOrDefault(false)
+}
+
+/** 首次指针交互的兜底监听（只挂一次；用完自己摘掉）。 */
+private var pointerFocusFallback: ((Event) -> Unit)? = null
+
+/**
+ * 排一串帧等 canvas 出现再 focus —— `ComposeViewport` 是异步建 canvas 的（首帧才 attach），
+ * 入口处同步调用时它可能还不存在。
+ *
+ * 为什么还要指针兜底：部分浏览器/嵌入环境下「没有用户手势的 `element.focus()`」会被忽略
+ * （焦点不落到 canvas 上），此时用户第一次点画布就该恢复。兜底**只在页面还没有焦点归属时**
+ * 才动手（`activeElement` 是 body/html），绝不从输入框手里抢焦点 —— Compose 的文本输入
+ * 靠它自己的隐藏输入元素，抢走会让「第一次点输入框就打不了字」。
+ */
+private fun installCanvasFocus() {
+    var frames = 0
+    fun attempt() {
+        if (focusComposeCanvas()) return
+        frames++
+        if (frames < 60) window.requestAnimationFrame { attempt() }
+    }
+    attempt()
+
+    if (pointerFocusFallback != null) return
+    val listener: (Event) -> Unit = { _: Event ->
+        pointerFocusFallback?.let { document.removeEventListener("pointerdown", it) }
+        pointerFocusFallback = null
+        val active = document.activeElement
+        val idle = active == null || active == document.body || active == document.documentElement
+        if (idle) window.requestAnimationFrame { focusComposeCanvas() }
+    }
+    pointerFocusFallback = listener
+    document.addEventListener("pointerdown", listener)
 }
