@@ -1,5 +1,6 @@
 package vade.ui.destinations
 
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -278,7 +279,7 @@ private fun SessionRow(
             // J2：行高 56dp（单选行摘要规格；Q2-B 的 48dp 已被 alpha 审查裁决覆盖）。
             .height(SESSION_ROW_HEIGHT)
             .onGloballyPositioned { coords ->
-                val origin = coords.positionInRoot()
+                val origin = coords.localToRoot(Offset.Zero)
                 bounds = IntRect(
                     left = origin.x,
                     top = origin.y,

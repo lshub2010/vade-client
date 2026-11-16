@@ -1,5 +1,6 @@
 package vade.ui.meta
 
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
@@ -304,11 +305,11 @@ fun SessionMetaOverlayHost(
     // 抽屉/双栏里宿主不贴在 (0,0) 时也不会偏。
     var hostOrigin by remember { mutableStateOf(IntOffset.Zero) }
 
-    Box(modifier.fillMaxSize().onGloballyPositioned { hostOrigin = it.positionInRoot() }) {
+    Box(modifier.fillMaxSize().onGloballyPositioned { hostOrigin = it.localToRoot(Offset.Zero) }) {
         // 行上下文菜单（alpha J3）：**跟行**，不再钉在列表窗格右上角。
         // 做法 = 在行下方的落点放一个零尺寸锚点 Box，Popup 以它为父布局（TopStart + 0）。
         meta.menuFor?.let { sessionId ->
-            val anchor = meta.menuAnchor
+            val anchor = overlay.menuAnchor
             val placement = anchor?.let {
                 menuPlacementPx(
                     anchor = it,
