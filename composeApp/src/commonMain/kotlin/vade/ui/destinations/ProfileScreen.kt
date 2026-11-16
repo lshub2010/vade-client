@@ -185,7 +185,7 @@ fun ProfileScreen(
                     color = skin.colors.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(2.dp))
-                // g-dark-follow · 主题：跟随系统（默认）/ 亮 / 暗。写入 ThemeController.setOverride；
+                // g-dark-follow · 主题：跟随系统（默认）/ 亮 / 暗。写入 ThemeController.choose；
                 // 解析与即时切换的机制见 skin/ThemeMode.kt 的类 KDoc（remember key → 只换 LocalSkin）。
                 UiText("主题", size = 13, weight = FontWeight.SemiBold)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -375,7 +375,7 @@ private fun BarChip(
 private fun ThemeChip(mode: ThemeMode) {
     LocalSkin.current.Button(
         text = mode.label,
-        onClick = { ThemeController.override = mode },
+        onClick = { ThemeController.choose(mode) },
         style = if (ThemeController.override == mode) BtnStyle.Primary else BtnStyle.Secondary,
     )
 }

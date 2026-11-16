@@ -65,7 +65,7 @@ object ThemeController {
      * 本地偏好里取回来（[AppearancePrefs.theme]），所以**重启后第一帧**就是用户选的那一档，
      * 不会先亮一下再翻暗。取不到 / 存的值不认识 ⇒ 保持跟随系统。
      *
-     * 直接给这个 var 赋值只改本轮进程；要「选了还记得」，走 [setOverride]。
+     * 直接给这个 var 赋值只改本轮进程；要「选了还记得」，走 [choose]。
      */
     var override by mutableStateOf(ThemeMode.FollowSystem)
 
@@ -80,7 +80,7 @@ object ThemeController {
      * （桌面入口的 `--dark` 直接赋值），那条路径不该把命令行旗标写进用户偏好里——
      * 截图环跑一次 `--dark` 就永久改掉用户主题是不可接受的。
      */
-    fun setOverride(mode: ThemeMode) {
+    fun choose(mode: ThemeMode) {
         override = mode
         AppearancePrefs.storeTheme(mode)
     }
