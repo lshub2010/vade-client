@@ -252,7 +252,7 @@ class VectorIconSwapTest {
         onNodeWithText("经典").assertExists()
         onNodeWithText("Miuix").assertExists()
         onNodeWithText("玻璃").assertExists()
-        onNodeWithText("fixed").assertExists()
+        onNodeWithText("停靠").assertExists()
         bannedGlyphs.forEach { glyph ->
             assertEquals(0, onAllNodesWithText(glyph.toString()).fetchSemanticsNodes().size, "字符图标 '$glyph' 不应再渲出")
         }

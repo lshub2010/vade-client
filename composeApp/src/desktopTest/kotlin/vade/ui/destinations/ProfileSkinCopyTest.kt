@@ -71,33 +71,37 @@ class ProfileSkinCopyTest {
             "设置页还在说 miuix 是占位实现（D9 过期文案）：\n$joined",
         )
         assertTrue(
-            texts.any { "miuix 是完整实现" in it },
-            "设置页没有说清 miuix 已是真实现（真 token / 字体缝 / C-09 组件）：\n$joined",
+            texts.any { "Miuix 更圆更重" in it },
+            "设置页没有用人话说清 Miuix 的观感（I4：内部实现词不是用户文案）：\n$joined",
         )
-        // glass 仍是占位，这一句不能一起被删掉 —— 反过来撒谎同样是缺陷。
+        // glass 本轮不可选，但必须说清楚原因 —— 删掉这句同样是撒谎。
         assertTrue(
-            texts.any { "glass" in it && "占位" in it },
-            "glass 仍是占位，文案不得把它写成已安装：\n$joined",
+            texts.any { "玻璃" in it && ("还没做完" in it || "不能选" in it) },
+            "glass 不可选，文案必须给出原因：\n$joined",
         )
     }
 
     @Test
-    fun skinListShowsReadableNamesAndTheInternalIdsAsSecondaryCopy() {
+    fun skinListShowsReadableNamesWithoutInternalIds() {
         var texts: List<String> = emptyList()
         runComposeUiTest {
             setProfile()
             waitForIdle()
             texts = collectTexts()
         }
-        listOf("经典", "Miuix", "玻璃").forEach { name ->
+        listOf("经典", "Miuix").forEach { name ->
             assertTrue(
                 texts.any { it.trim() == name },
                 "皮肤选择器没有用户可读名「$name」：\n" + texts.joinToString("\n") { "    · $it" },
             )
         }
         assertTrue(
-            texts.any { "内部 id" in it && "material" in it && "miuix" in it && "glass" in it },
-            "内部 id 没有退到次级文案里（SkinRegistry 主键要可查）：\n" +
+            texts.any { "玻璃（待安装）" in it },
+            "未安装的 glass 必须把状态写进标签：\n" + texts.joinToString("\n") { "    · $it" },
+        )
+        assertTrue(
+            texts.none { "内部 id" in it },
+            "I4：内部 id 不是用户文案，不应再出现在设置页：\n" +
                 texts.joinToString("\n") { "    · $it" },
         )
     }
