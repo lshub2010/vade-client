@@ -9,6 +9,7 @@
 
 package vade.ui.model
 
+import kotlin.concurrent.Volatile
 import vade.ui.protocol.ModelEntry
 
 /**
@@ -74,6 +75,35 @@ class InMemoryModelActions(
 
     override fun setDefaultModel(modelId: String?) {
         defaultModelId = modelId
+    }
+}
+
+/**
+ * I3 · 设置页「默认模型」的进程级 seam。
+ *
+ * 症状：`ProfileScreen` 的回退分支原来**每次进页都 new 一个** [InMemoryModelActions]，
+ * 切一次 tab 回来就重置成出厂默认（用户以为选上了，其实只是那一帧的局部变量）。
+ * 默认模型是**全局**层（D101），它的内存承载必须比任何一屏活得久 —— 所以提到模块级：
+ * 一屏销毁、另一屏重建，读到的是同一份选择。
+ *
+ * 为什么不是 `by lazy` 的 `val`：测试需要把进程内状态丢回出厂值（`resetForTest`），
+ * 而 `lazy` 一旦算过就再也回不去，那会让测试互相污染。语义上就是「有就拿、没有就建」。
+ *
+ * 真适配器（[vade.ui.data.ModelActionsReal]）不走这里：接线后 `resolveProfileModelActions`
+ * 返回的是 adapter，本单例只在假数据 / 预览 / 未接线的路径上当值。
+ */
+object DefaultModelActions {
+
+    @Volatile
+    private var instance: InMemoryModelActions? = null
+
+    /** 进程内唯一的内存假实现（首次访问时创建）。 */
+    fun inMemory(): InMemoryModelActions =
+        instance ?: InMemoryModelActions().also { created -> instance = created }
+
+    /** 测试钩子：丢掉进程内状态，下一次 [inMemory] 回到出厂 fixture。 */
+    internal fun resetForTest() {
+        instance = null
     }
 }
 

@@ -36,13 +36,16 @@ import vade.ui.data.AdapterProvider
 import vade.ui.glass.asGlassSource
 import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
-import vade.ui.model.InMemoryModelActions
+import vade.ui.model.DefaultModelActions
 import vade.ui.model.ModelActions
 import vade.ui.model.ModelPickerCard
 import vade.ui.model.ModelState
+import vade.ui.skin.AppearancePrefs
 import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.BtnStyle
 import vade.ui.skin.LocalSkin
+import vade.ui.skin.SkinRegistry
+import vade.ui.skin.Skins
 import vade.ui.skin.ThemeController
 import vade.ui.skin.ThemeMode
 import vade.ui.skin.glass.LocalGlassHazeState
@@ -62,16 +65,23 @@ internal const val GlassSourceProfileTag = "vade.glass.source.profile"
  * Group cards are [GroupCard] (`md` + hairline + soft shadow); the 其它 block keeps the
  * disabled `Skin.ListItem` rows, labelled not faked (devices / manage-core stay U1-f/T5b).
  *
+ * I4 · 外观卡的文案是**给用户看的**，不是实现文档：三项各一句人话，不出现注册表主键、
+ * 组件编号、模糊半径/染色百分比这类内部参数。以前那一大段实现说明把三项设置全推到了首屏
+ * 之外，用户为了改个主题要先读三百字的架构注解。
+ *
+ * I1 · 三项（皮肤 / 主题 / 底栏）都记得住：写入走 [AppearancePrefs]（三端各自的本地存储），
+ * 读取在启动时（皮肤 / 底栏见 [Skins.bootSkinId] / [Skins.bootBottomBar]，主题见
+ * [ThemeController] 的初始化）。所以 chip 点了不只是这一帧生效，重启回来还在。
+ *
+ * I2 · 玻璃皮肤本轮**不可选**：chip 写「玻璃（待安装）」并置灰，不再拿 material 换 id 冒充。
+ * 可选项与标签都由 [SkinRegistry.installed] 推导 —— U3 真注册了 glass，chip 自己就变回可选。
+ *
  * U1-model · the old disabled 「模型」 placeholder row is retired: the 默认模型 section below
  * hosts the real picker (global-default layer of D101). Reads/writes go through the injected
- * [modelActions] seam — unwired (this round), an in-memory fixture implementation keeps it
- * interactive and labelled.
+ * [modelActions] seam — unwired (this round), the process-wide in-memory fixture
+ * ([DefaultModelActions]) keeps it interactive, labelled, and stable across tab switches (I3).
  * A5 · the 关于 row is wired: it opens [AboutPage] as a full-screen subpage (D91) showing
  * the injected version / build time / licence list.
- *
- * The 底栏 copy is updated for v2: the shell no longer calls the skin's gradient BottomBar
- * at all — all three forms are real `GlassSurface` glass; the style picks docking vs the
- * floating capsule (see `shell/GlassNavBar.kt`).
  *
  * [contentPadding] is the shell's floating glass bar zones (see `shell/AppShell.kt`).
  */
@@ -79,6 +89,11 @@ internal const val GlassSourceProfileTag = "vade.glass.source.profile"
 fun ProfileScreen(
     skinId: String,
     barStyle: BottomBarStyle,
+    /**
+     * 保留形参：shell 仍按断点算出容器说明交下来，但 I4 之后本页不再把它当用户文案渲染
+     * （「NavigationRail 72dp · 双栏」是实现术语，不是用户要知道的事）。删参数要动
+     * `shell/AppShell.kt` 与八处调用点，属于另一批的改动面，这里先留在签名上。
+     */
     containerLabel: String,
     onSkinChange: (String) -> Unit,
     onBarChange: (BottomBarStyle) -> Unit,
@@ -86,15 +101,15 @@ fun ProfileScreen(
     contentPadding: PaddingValues = PaddingValues(0.dp),
     /**
      * The model seam (RFC-0005): `model/list` / `session/model.get` / `session/model.set`.
-     * Null = use the in-memory fixture (假数据) — see `vade.ui.model.ModelActions` for the
-     * one-object wiring path.
+     * Null = use the process-wide in-memory fixture (假数据) — [DefaultModelActions].
      */
     modelActions: ModelActions? = null,
     /**
      * 组合根交下来的适配器包（`data/AdapterProvider`）。默认 null ⇒ 走到内存假实现，
      * 行为与接线前逐字节相同（`AppShell` 这一轮还没接线）。
      *
-     * 三段回退：[modelActions]（形参）> [adapters] > `InMemoryModelActions()`。
+     * 三段回退：[modelActions]（形参）> [adapters] > [DefaultModelActions]（I3：进程级单例，
+     * 不是每次进页 new 一个 —— 那正是「切 tab 默认模型就回退」的病因）。
      * 设置页要的是**全局默认**视图，所以取的是 `modelDefault()` 而**不是** `model("")`：
      * `AdapterProvider` 把两者刻意分成两个方法，用错一个就会拿到「没有会话上下文」的
      * 会话级适配器（`model(sessionId)` 的语义是某个会话的覆盖值）。
@@ -102,6 +117,24 @@ fun ProfileScreen(
     adapters: AdapterProvider? = null,
 ) {
     val skin = LocalSkin.current
+    // I2 · 「能选哪些皮肤」只有注册表一个答案：装了什么就列什么，没装的一律置灰。
+    // 本页可能先于 App 的 installBuiltIns 被单独组合（预览 / 渲染测试），这里补一次幂等安装，
+    // 页面就不依赖调用顺序了。
+    Skins.installBuiltIns()
+    val installedSkins = remember { SkinRegistry.installed() }
+    // I1 · chip 干两件事：改本轮状态（shell 的 UiState 随之翻，App 的 remember key 变 →
+    // 只换 LocalSkin）+ 落盘（下次启动由 Skins.bootSkinId / Skins.bootBottomBar 恢复）。
+    // 没装的皮肤连「点了没反应」都不该发生：chip 已置灰，这里再挡一道程序化调用。
+    val selectSkin: (String) -> Unit = { id ->
+        if (id in installedSkins) {
+            onSkinChange(id)
+            AppearancePrefs.storeSkin(id)
+        }
+    }
+    val selectBar: (BottomBarStyle) -> Unit = { style ->
+        onBarChange(style)
+        AppearancePrefs.storeBottomBar(style)
+    }
     // ② 形参 > adapters.modelDefault() > 内存假实现；适配器查找异常时退回假实现并显示原因。
     val seam = remember(modelActions, adapters) {
         resolveProfileModelActions(modelActions, adapters)
@@ -139,26 +172,20 @@ fun ProfileScreen(
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 UiText("皮肤", size = 13, weight = FontWeight.SemiBold)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SkinChip("material", "经典", skinId, onSkinChange)
-                    SkinChip("miuix", "Miuix", skinId, onSkinChange)
-                    SkinChip("glass", "玻璃", skinId, onSkinChange)
+                    SkinChip("material", "经典", skinId, installedSkins, selectSkin)
+                    SkinChip("miuix", "Miuix", skinId, installedSkins, selectSkin)
+                    // I2 · 玻璃本轮只有「待安装」这一种状态：没注册 = 置灰 + 标签带后缀，
+                    // 不再拿 material 换 id 冒充（点选像素不变、暗色还会掉回亮色的那个缺陷）。
+                    SkinChip("glass", "玻璃", skinId, installedSkins, selectSkin)
                 }
-                // 用户可读名在按钮上，内部 id 退到下一行次级位置（SkinRegistry 的主键是
-                // material / miuix / glass —— 开发要看得到，用户不该被这串小写英文拦下）。
                 UiText(
-                    text = "miuix 是完整实现：自有 token、真字体缝（VadeFonts，Web 也走同一族）" +
-                        "与 12 个 C-09 组件，不是 material 换色；glass 仍是占位（复用 material token，" +
-                        "行内标「glass 未安装」），U3 注册真实现后自动可用。",
-                    size = 11,
-                    color = skin.colors.onSurfaceVariant,
-                )
-                UiText(
-                    text = "内部 id：material · miuix · glass（皮肤注册表主键；当前 $skinId）",
+                    text = "经典是默认外观；Miuix 更圆更重，接近手机系统。" +
+                        (if ("glass" in installedSkins) "" else "玻璃皮肤还没做完，暂时不能选。"),
                     size = 11,
                     color = skin.colors.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(2.dp))
-                // g-dark-follow · 主题：跟随系统（默认）/ 亮 / 暗。写入 ThemeController.override；
+                // g-dark-follow · 主题：跟随系统（默认）/ 亮 / 暗。写入 ThemeController.setOverride；
                 // 解析与即时切换的机制见 skin/ThemeMode.kt 的类 KDoc（remember key → 只换 LocalSkin）。
                 UiText("主题", size = 13, weight = FontWeight.SemiBold)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -167,27 +194,31 @@ fun ProfileScreen(
                     ThemeChip(ThemeMode.Dark)
                 }
                 UiText(
-                    text = "默认跟随系统：Android 监听 uiMode、Web 读 prefers-color-scheme、桌面跟系统主题" +
-                        "（取不到保持亮色）；手选后覆盖系统。切换只换 LocalSkin 的值，不重建整棵树——" +
-                        "当前会话与滚动位置保留。",
+                    text = "默认跟随系统；想固定亮色或暗色就手选，手选会覆盖系统设置。",
                     size = 11,
                     color = skin.colors.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(2.dp))
+                // 底栏文案与实现一致（shell/BottomBar.kt）：Fixed = 贴底整条 + 真模糊；
+                // Floating = 悬浮胶囊、不模糊；FloatingBlur = 同一胶囊 + 真模糊。
                 UiText("底栏", size = 13, weight = FontWeight.SemiBold)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    BarChip("fixed", BottomBarStyle.Fixed, barStyle, onBarChange)
-                    BarChip("floating", BottomBarStyle.Floating, barStyle, onBarChange)
-                    BarChip("floating+blur", BottomBarStyle.FloatingBlur, barStyle, onBarChange)
+                    BarChip("停靠", BottomBarStyle.Fixed, barStyle, selectBar)
+                    BarChip("悬浮", BottomBarStyle.Floating, barStyle, selectBar)
+                    BarChip("悬浮 + 模糊", BottomBarStyle.FloatingBlur, barStyle, selectBar)
                 }
                 UiText(
-                    text = "v2：底栏由 shell 直接渲染为 GlassSurface 真模糊（haze 24dp + 26%/34% 染色），" +
-                        "样式只切换停靠 / 悬浮胶囊形态；旧「半透明渐变假模糊」已弃用。",
+                    text = "停靠贴住屏幕底边；悬浮是离底边留空的胶囊；悬浮 + 模糊的胶囊底下会透出模糊的内容。",
                     size = 11,
                     color = skin.colors.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(2.dp))
-                UiText("当前容器：$containerLabel", size = 11, color = skin.colors.onSurfaceVariant)
+                // I1 · 这三项都真的存下来了，所以敢这么写；存不住就不许写。
+                UiText(
+                    text = "这三项会记住，下次打开还是这个外观。",
+                    size = 11,
+                    color = skin.colors.onSurfaceVariant,
+                )
             }
         }
 
@@ -206,6 +237,12 @@ fun ProfileScreen(
                     ) +
                 seam.degraded?.let { " · $it" }.orEmpty(),
         )
+        // I3 · 写成功要看得见：卡本身只画选中态，没有一句「已设为…」的确认，用户点完
+        // 不知道到底有没有生效。这条提示就是 ModelState.lastNotice（内存路径与真适配器
+        // 路径都会填），出现即代表这一笔写入走完了。
+        modelState.lastNotice?.let { notice ->
+            UiText(notice, size = 11, color = skin.colors.onSurfaceVariant)
+        }
         // G · 拉取失败的可重试出口：ModelPickerCard 的 LoadFailed 文案承诺「重试后再判断」，
         // 但卡内没有重试钮（model/ 包本棒不可改），这里补上它。refresh() 就是既有的拉取
         // 入口（不是第二套重试）；点击后 loadFailure 清空、loadInFlight 点亮，卡片回到
@@ -268,12 +305,15 @@ fun ProfileScreen(
 }
 
 /**
- * ② 设置页的模型 seam：**形参 > `adapters.modelDefault()` > 内存假实现**。
+ * ② 设置页的模型 seam：**形参 > `adapters.modelDefault()` > 进程级内存假实现**。
  *
  * 设置页要的是**全局默认**视图，所以取 `modelDefault()` 而**不是** `model("")`：
  * `AdapterProvider` 刻意把两者分成两个方法，`model(sessionId)` 的语义是「某个会话的覆盖值」，
  * 拿它冒充全局默认会让设置页显示一个不属于任何会话的覆盖值。独立成函数是为了让屏幕与
  * 测试跑同一段代码（把这一行改成 `model("")`，`profileAsksForTheGlobalDefault…` 必红）。
+ *
+ * I3 · 最后一段回退是 [DefaultModelActions] 而不是 `InMemoryModelActions()`：新建的假实现
+ * 活不过一次 tab 切换，用户刚选好的默认模型会在下一次进页时静默回退。
  */
 internal fun resolveProfileModelActions(
     explicit: ModelActions?,
@@ -282,23 +322,31 @@ internal fun resolveProfileModelActions(
     explicit = explicit,
     adapters = adapters,
     lookup = { modelDefault() },
-) { InMemoryModelActions() }
+) { DefaultModelActions.inMemory() }
 
+/**
+ * 皮肤 chip。
+ *
+ * [name] 是用户可读名（经典 / Miuix / 玻璃），[id] 是 `SkinRegistry` 主键——页面上只出现
+ * 前者（I4：内部 id 不是用户文案）。**没装**的皮肤一律置灰并把状态写进标签
+ * （「玻璃（待安装）」）：能点却什么都不发生，比看不到这个选项更糟（I2）。
+ */
 @Composable
 private fun SkinChip(
     id: String,
-    label: String,
+    name: String,
     current: String,
+    installed: Set<String>,
     onSelect: (String) -> Unit,
 ) {
     // w-g-icons：选中标记不再往文字里塞 `●` 字符（v2 §3 禁字符图标）——选中态已由
     // BtnStyle.Primary（accent 实底）与 Secondary 的对比表达，重复标记只会加噪音。
-    // [label] 是用户可读名（经典 / Miuix / 玻璃），[id] 是 SkinRegistry 主键；列表里只
-    // 显示前者，后者退到下面那行 11sp 的「内部 id」。
+    val selectable = id in installed
     LocalSkin.current.Button(
-        text = label,
+        text = if (selectable) name else "$name（待安装）",
         onClick = { onSelect(id) },
         style = if (id == current) BtnStyle.Primary else BtnStyle.Secondary,
+        enabled = selectable,
     )
 }
 
