@@ -63,8 +63,8 @@ internal fun parsePairingErrorBody(body: String): Pair<String, String>? {
     val obj = runCatching { VadeJson.default.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject }
         .getOrNull() ?: return null
     val err = (obj["error"] as? kotlinx.serialization.json.JsonObject) ?: obj
-    val code = err.str("code")?.takeIf { it.isNotBlank() } ?: return null
-    return code to (err.str("message")?.takeIf { it.isNotBlank() } ?: code)
+    val code = err.strStrict("code")?.takeIf { it.isNotBlank() } ?: return null
+    return code to (err.strStrict("message")?.takeIf { it.isNotBlank() } ?: code)
 }
 
 /**
