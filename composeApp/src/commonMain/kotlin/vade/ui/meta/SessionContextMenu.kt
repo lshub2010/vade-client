@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -30,6 +31,8 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
@@ -56,14 +59,20 @@ import vade.ui.skin.LocalSkin
  * 触发 —— 长按菜单不只有触屏一条路。系统返回键尚未接管（g-back-handler 未合入，
  * 待接一行：宿主 `BackHandler { state.closeSessionMenu() }`）。
  *
- * 本组合项渲染在**会话行内部**（[Popup] 以行右上角为锚），由 [SessionMetaHost]
- * 与挂载面 `SessionMetaOverlayHost` 在 `state.menuFor == session.id` 时挂载。
+ * ## 锚点（alpha 审查 J3，2026-11-16）
+ * 菜单曾经**固定**以列表窗格右上角为锚（`Popup(alignment = TopEnd, offset = 48dp)`），
+ * 桌面按第 25 行时菜单弹在屏幕顶部 —— 用户看不出自己在改哪一条。现在由宿主
+ * `SessionMetaOverlayHost` 在行下方放一个零尺寸锚点，[placement] 就是那个锚点的父坐标
+ * 落点（[IntOffset.Zero]）；**头部再加一行会话标题**，让「改的是哪条」一眼可认。
+ * [placement] 为 null 时退回旧行为，只有拿不到行矩形的老调用点会走。
  */
 @Composable
 internal fun SessionContextMenu(
     state: SessionMetaState,
     sessionId: String,
     onDispatch: (SessionMenuItem) -> Unit,
+    /** 菜单左上角在父布局坐标里的落点（px）；null = 旧行为（父布局右上角、下移 48dp）。 */
+    placement: IntOffset? = null,
 ) {
     val skin = LocalSkin.current
     val density = LocalDensity.current
@@ -72,15 +81,15 @@ internal fun SessionContextMenu(
     // 系统 Popup 的初始焦点落点。
     val menuFocus = remember { FocusRequester() }
     Popup(
-        alignment = Alignment.TopEnd,
-        offset = IntOffset(x = with(density) { 0.dp.roundToPx() }, y = with(density) { 48.dp.roundToPx() }),
+        alignment = if (placement != null) Alignment.TopStart else Alignment.TopEnd,
+        offset = placement ?: IntOffset(x = 0, y = with(density) { LegacyMenuTopGap.roundToPx() }),
         onDismissRequest = { state.closeSessionMenu() },
         properties = PopupProperties(focusable = true),
     ) {
         val shape = RoundedCornerShape(skin.shapes.lg)
         Column(
             Modifier
-                .width(220.dp)
+                .width(MenuWidth)
                 .layeredShadow(VadeShadows.float, shape, dark = skin.colors.isDark)
                 .clip(shape)
                 .background(skin.colors.surface)
@@ -98,6 +107,25 @@ internal fun SessionContextMenu(
                 }
                 .padding(vertical = 6.dp),
         ) {
+            // J3 · 头部：会话标题（单行省略）。长按菜单必须先回答「我改的是哪一条」——
+            // 只列「重命名/置顶/归档…」而不说是哪个会话，用户只能凭记忆猜。
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                UiText(
+                    text = session.title,
+                    size = 13,
+                    weight = FontWeight.SemiBold,
+                    color = skin.colors.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Box(Modifier.fillMaxWidth().height(1.dp).background(skin.colors.hairline))
             state.menuItems().forEach { item ->
                 MenuRow(
                     label = item.label(session),
@@ -113,6 +141,18 @@ internal fun SessionContextMenu(
         LaunchedEffect(Unit) { runCatching { menuFocus.requestFocus() } }
     }
 }
+
+/**
+ * 菜单卡宽度：**固定 220dp**。宿主（`SessionMetaOverlayHost`）靠它把菜单右缘对齐到
+ * 行右缘 —— 宽度在这里只有一份，改宽度不会让锚点算错。
+ */
+internal val MenuWidth = 220.dp
+
+/** 菜单贴在行下方时的垂直呼吸（行底 + 4dp）。 */
+internal val MenuRowGap = 4.dp
+
+/** 没有行锚点（旧调用点）时菜单下移的距离：父布局右上角 + 48dp，与本棒之前逐像素相同。 */
+internal val LegacyMenuTopGap = 48.dp
 
 /** 菜单行图标随会话当前态翻转：置顶→[VadeIcons.PinOff]，归档→[VadeIcons.ArchiveOff]。 */
 private fun SessionMenuItem.icon(session: MetaSession): ImageVector = when (this) {

@@ -30,6 +30,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.invisibleToUser
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import vade.ui.data.AdapterProvider
 import vade.ui.data.FakeSessionSource
@@ -139,7 +140,11 @@ internal fun SessionsDrawerHost(
      * 默认空表 + 空回调 = 只画裸 id、无长按（测试与旧调用点行为不变）。
      */
     metaGroups: List<MetaGroup> = emptyList(),
-    onLongPress: (SessionSummary) -> Unit = {},
+    /**
+     * 行**长按**入口（alpha J3 起带锚点）：第二个参数 = 该行此刻在窗口里的矩形，菜单
+     * 贴行渲染而不是钉在窗格右上角。默认空回调 = 无长按（测试与旧调用点行为不变）。
+     */
+    onLongPress: (SessionSummary, IntRect) -> Unit = { _, _ -> },
     /** 同上：列表要画的是**投影后**的分组（乐观改名/置顶/归档立刻可见）。 */
     groups: List<SessionGroup>? = null,
     /**
@@ -297,7 +302,7 @@ private fun DrawerSessionList(
     contentInsets: PaddingValues,
     rowFocus: FocusRequester,
     metaGroups: List<MetaGroup>,
-    onLongPress: (SessionSummary) -> Unit,
+    onLongPress: (SessionSummary, IntRect) -> Unit,
     groups: List<SessionGroup>?,
 ) {
     val sessionListBanner: (@Composable () -> Unit)? =
@@ -328,6 +333,8 @@ private fun DrawerSessionList(
         contentPadding = contentInsets,
         metaGroups = metaGroups,
         onLongPress = onLongPress,
+        // J1 · 空态卡上的唯一主行动 —— 与顶栏 ✎ 同一个入口。
+        onNewSession = { state.newSession() },
         banner = sessionListBanner,
         status = status,
         // 抽屉重新滑出时焦点回到原来那一行（无障碍口径）。

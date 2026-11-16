@@ -2,17 +2,15 @@ package vade.ui.destinations
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,30 +19,36 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import vade.ui.UiText
 import vade.ui.data.RawSourceStrings
 import vade.ui.data.SessionGroup
 import vade.ui.data.SessionSummary
 import vade.ui.data.rawSourceStrings
+import vade.ui.glass.asGlassSource
 import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
 import vade.ui.meta.MetaColors
 import vade.ui.meta.MetaGroup
-import vade.ui.glass.asGlassSource
-import vade.ui.skin.glass.LocalGlassHazeState
 import vade.ui.skin.LocalSkin
-import androidx.compose.ui.platform.testTag
+import vade.ui.skin.glass.LocalGlassHazeState
 
 /**
  * g-haze-structure · 本页 haze **source**（会话 LazyColumn）的 testTag ——
@@ -53,19 +57,42 @@ import androidx.compose.ui.platform.testTag
 internal const val GlassSourceSessionsTag = "vade.glass.source.sessionsList"
 
 /**
- * 会话 · 列表 (U1-a), Q2-B 单行形态（g-route-transition 口径变更，2026-11-15）。
+ * 会话 · 列表 (U1-a)。
  *
- * Row spec（Q2-B 覆盖 §12 旧行）：**单行条目 = 组色点 + 标题（单行省略）**——
- * 预览行、右侧时间戳/置顶/未读/模型列、行头像全部移除；分组色点保留（分类是刚接通的），
- * 组名移到色点的读屏语义里。行块左右内缩 8dp；选中态 = 带圆角的强调色块
- * （见 [SELECTED_BLOCK_CORNER] 一组常量），不再是「accentSoft + 左侧 3dp 条」。
- * 列表仍靠间距分层、没有分隔线。The list sits on `canvas`, edge-to-edge: [contentPadding]
- * (the shell's floating glass bar zones) is passed straight into the `LazyColumn`, so rows
- * really scroll behind the glass bars instead of stopping short of them.
+ * ## 行形态（alpha 审查 J2 裁决，2026-11-16）
  *
- * In scope here: grouping + ordering, the row's information shape, and opening a
- * session (the ✎ button lives in the shell top bar; `⌘K` search is U1-c). Out of scope:
- * message tree, streaming — nothing here talks to core.
+ * 单行条目，**行高 56dp**（[SESSION_ROW_HEIGHT]），信息顺序固定为
+ * **未读/置顶 > 标题 > 时间**（[SessionRow]，`SessionRowInfoUiTest` 逐项量 x 坐标）：
+ *  - 组色点（24dp 槽位，让有组/无组行的标题起点对齐；组名在色点的读屏语义里）；
+ *  - 置顶 → 13dp `primary` [VadeIcons.Pin] + 「已置顶」语义；
+ *  - 已归档 → 13dp muted [VadeIcons.Archive] + [ARCHIVED_BADGE_LABEL]（绝不用字符当图标）；
+ *  - 未读 → 6dp `primary` 圆点 + [UNREAD_BADGE_LABEL] 语义；
+ *  - 标题（单行省略，吃掉剩余宽度）；
+ *  - 时间 = `SessionSummary.updatedLabel`（右对齐，11sp muted；空串不占位 —— 真源缺
+ *    `updated_at` 时不编一个时间出来，见 `SessionRowMapping`）。
+ *
+ * 预览行与行模型列仍不画：`session/list` 行不带 preview/messages（"content belongs to
+ * ui/attach"，core models.py），`SessionRowMapping` 把它投影成空串 —— 画一条空白预览就是
+ * 凭空造内容。
+ *
+ * 选中态 = 带圆角的强调色块（[SELECTED_BLOCK_CORNER] 一组常量），左右各内缩 8dp，
+ * 不是通栏满矩形、也没有 §12 旧口径的 3dp 左条。列表靠间距分层、没有分隔线。
+ *
+ * ## 空态（alpha 审查 J1）
+ *
+ * `groups.isEmpty()` 且**不在加载中**（`status !is ListStatus.Connecting`）时插一张
+ * [EmptyStateCard]：标题 [SESSIONS_EMPTY_TITLE] + 唯一主行动 [SESSIONS_EMPTY_ACTION]
+ * （回调 [onNewSession]，与顶栏 ✎ 同一个动作）。同一包里的空态卡早就存在，缺的只是接线。
+ * 失败态（[ListStatus.Failed]）同样保留这张卡：上面的失败横幅说真话（为什么没读到），
+ * 卡上的新建按钮是用户此刻唯一能做的事 —— 比整页只剩一条错误更像一个能操作的界面。
+ *
+ * The list sits on `canvas`, edge-to-edge: [contentPadding] (the shell's floating glass bar
+ * zones) is passed straight into the `LazyColumn`, so rows really scroll behind the glass
+ * bars instead of stopping short of them.
+ *
+ * In scope here: grouping + ordering, the row's information shape, the empty state, and
+ * opening a session (the ✎ button lives in the shell top bar; `⌘K` search is U1-c). Out of
+ * scope: message tree, streaming — nothing here talks to core.
  *
  * g-first-run: 顶部那行不再硬编码「假数据 · 未连接 core」。屏幕不知道 `SessionSource`，
  * 它只画调用方给的 [status]（判定在 `vade.ui.shell.listStatusOf`）：假源 → 「假数据」，
@@ -74,19 +101,14 @@ internal const val GlassSourceSessionsTag = "vade.glass.source.sessionsList"
  * ## 分类 / 归档在行上可见（g-archive-ui）
  * 数据层早已把 `SessionSummary.archived` / `groupId` 投影出来（`SessionRowMapping`），
  * 但界面上一个都看不见 —— 分类等于不存在。这里只做**展示**：
- *  - 归档行：标题前一枚 13dp、`onSurfaceVariant` 的 [VadeIcons.Archive]（矢量图标，绝不用
- *    字符/汉字当图标）+ `contentDescription = "已归档"`。刻意用最小尺寸与 muted 色：
- *    明确可辨，但不跟标题抢注意力。
- *  - 有组的行：标题/预览下面一行「组色点 + 组名」。组名从 [metaGroups] 查（调用方传
- *    `MetaGroup` 列表）；查不到就把 `groupId` 原样显示 —— 显示一个裸 id 也比假装未分组
- *    诚实。组色同理：`colorHex` 缺失或非法（`MetaColors.isValid` 为 false）时点用
- *    muted 色，不编一个颜色出来。
+ *  - 归档行：标题前一枚 13dp、`onSurfaceVariant` 的 [VadeIcons.Archive] + [ARCHIVED_BADGE_LABEL]。
+ *    刻意用最小尺寸与 muted 色：明确可辨，但不跟标题抢注意力。
+ *  - 有组的行：组色点（颜色只认合法 `#RRGGBB`；缺省/非法 → muted，不编颜色）。
  *  - 未归档且未分组：**一行都不多**（两个新块都在 `if` 里，不占位、不留空白）。
  *
  * [metaGroups] 的默认空表是刻意的最小侵入：测试与任何新调用点可以只画「裸 id」这一层
  * （`sessionGroupTag` 规则 3）。**生产调用点两个都必须显式传** —— `shell/AppShell.kt` 的
  * 宽屏两栏与窄屏单栏各一处，值来自 `metaGroupsOf(state)`（`session/group.list` 经适配器包）。
- * 只给其中一处赋值是本族缺陷最常见的复发形态（g-meta-groups 之前，行上一直显示裸 `g-1`）。
  *
  * [banner] is the shell's load-failure slot (g-error-retry): the session-list read failing
  * must be visible *here*, above the rows, together with its retry entry. It is a slot and
@@ -102,10 +124,18 @@ fun SessionsScreen(
     contentPadding: PaddingValues = PaddingValues(0.dp),
     metaGroups: List<MetaGroup> = emptyList(),
     /**
-     * 行**长按**回调（B2 s-meta-host）：非 null 才有菜单入口 —— 默认 no-op 与
-     * 既有调用点/测试逐字节兼容。菜单本体在 `meta/SessionMetaOverlay.kt`。
+     * 行**长按**回调（B2 s-meta-host，alpha J3 起带锚点）：第二个参数是**该行此刻在窗口里的
+     * 矩形**（根坐标，px），菜单 Popup 用它贴在行下方而不是钉在列表窗格右上角。
+     *
+     * 默认 no-op 与既有调用点/测试逐字节兼容（不传就没有菜单）。菜单本体在
+     * `meta/SessionContextMenu.kt`，状态机在 `meta/SessionMetaOverlay.kt`。
      */
-    onLongPress: (SessionSummary) -> Unit = {},
+    onLongPress: (SessionSummary, IntRect) -> Unit = { _, _ -> },
+    /**
+     * 空态卡上的「新建会话」动作（J1）—— 与顶栏 ✎ 同一个入口（`UiState.newSession()`）。
+     * 默认 no-op：没有接线能力的调用点（测试 / 预览）不会因此崩，只是按钮什么都不做。
+     */
+    onNewSession: () -> Unit = {},
     /** Shell-owned failure banner (see `shell/LoadErrorBanner.kt`); null = nothing to say. */
     banner: (@Composable () -> Unit)? = null,
     /**
@@ -163,6 +193,21 @@ fun SessionsScreen(
             }
         }
 
+        // J1 · 空态：一个会话都没有、且首读不在飞 —— 铺一张卡，给出唯一主行动。
+        // 为什么不是「画一行灰字」：空白页面上用户既不知道发生了什么，也没有任何入口
+        // （这正是审查里 J1 的原话）。加载中不画：那时说「还没有会话」是假的。
+        if (groups.isEmpty() && status !is ListStatus.Connecting) {
+            item(key = "sessions-empty") {
+                EmptyStateCard(
+                    title = SESSIONS_EMPTY_TITLE,
+                    body = SESSIONS_EMPTY_BODY,
+                    icon = VadeIcons.Compose,
+                    action = { skin.Button(SESSIONS_EMPTY_ACTION, onNewSession) },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                )
+            }
+        }
+
         groups.forEach { group ->
             item(key = "hdr-${group.bucket.name}") {
                 // 分组头：只有文字标签 + 数量，没有 1px 规则线——§12 要求列表靠间距分层。
@@ -197,7 +242,7 @@ fun SessionsScreen(
                     } else {
                         Modifier
                     },
-                    onLongPress = { onLongPress(session) },
+                    onLongPress = onLongPress,
                 )
             }
         }
@@ -205,6 +250,12 @@ fun SessionsScreen(
     }
 }
 
+/**
+ * 单行会话条目（J2 裁决：56dp、未读/置顶 > 标题 > 时间）。
+ *
+ * 长按把**这一行自己的矩形**（根坐标）交给 [onLongPress]：菜单 Popup 因此跟在行下方，
+ * 而不是永远出现在列表窗格右上角（J3 原缺陷：桌面按第 25 行，菜单弹在屏幕顶部）。
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SessionRow(
@@ -213,19 +264,30 @@ private fun SessionRow(
     onClick: () -> Unit,
     groupTag: SessionGroupTag?,
     modifier: Modifier = Modifier,
-    onLongPress: () -> Unit = {},
+    onLongPress: (SessionSummary, IntRect) -> Unit = { _, _ -> },
 ) {
     val skin = LocalSkin.current
+    // 长按瞬间的窗口矩形：`onGloballyPositioned` 在布局后写、长按一定发生在布局之后，
+    // 所以取到的就是用户手指/指针按下的那一行（滚动后也会随重组更新）。
+    var bounds by remember { mutableStateOf(IntRect.Zero) }
     Row(
         modifier = modifier
             .fillMaxWidth()
-            // Q2-B（g-route-transition 口径变更）：行块**左右内缩 8dp**——选中态不是通栏
-            // 满宽矩形，而是一块带圆角的强调色块。
-            .padding(horizontal = 8.dp, vertical = 3.dp)
-            .heightIn(min = SELECTED_BLOCK_MIN_HEIGHT)
+            // 行块**左右内缩 8dp**——选中态不是通栏满宽矩形，而是一块带圆角的强调色块。
+            .padding(horizontal = 8.dp)
+            // J2：行高 56dp（单选行摘要规格；Q2-B 的 48dp 已被 alpha 审查裁决覆盖）。
+            .height(SESSION_ROW_HEIGHT)
+            .onGloballyPositioned { coords ->
+                val origin = coords.positionInRoot()
+                bounds = IntRect(
+                    left = origin.x,
+                    top = origin.y,
+                    right = origin.x + coords.size.width,
+                    bottom = origin.y + coords.size.height,
+                )
+            }
             .clip(RoundedCornerShape(if (selected) SELECTED_BLOCK_CORNER else skin.shapes.sm))
             // 选中态 = **带圆角的强调色块**（accent 淡染，亮 12% / 暗 16%，都在 10–16% 口径内）。
-            // 旧 §12 的「左侧 3dp 条」随 Q2-B 一并废除（口径变更覆盖视觉语言那一行）。
             .background(
                 if (selected) {
                     skin.colors.primary.copy(
@@ -236,14 +298,17 @@ private fun SessionRow(
                 },
             )
             // B2（s-meta-host）：长按 = 同一手势的第二个动作（combinedClickable），
-            // onClick 语义/涟漪/选中态全部保持原样 —— 这是本文件唯一的渲染改动。
-            .combinedClickable(onClick = onClick, onLongClick = onLongPress),
+            // onClick 语义/涟漪/选中态全部保持原样；长按带上行矩形（J3 锚点）。
+            .combinedClickable(onClick = onClick, onLongClick = { onLongPress(session, bounds) })
+            // 行的 testTag 挂在**块**上（内边距之前）：行高 / 信息顺序的断言都量这个节点。
+            .testTag(sessionRowTag(session.id))
+            .padding(start = 4.dp, end = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // 组色点槽位：固定宽度让「有组/无组」行的标题起点对齐；点 8dp、查不到合法色时
         // 退化 muted（sessionGroupTag 的既有规则 3/4，不动）。
         Box(
-            Modifier.width(24.dp).height(SELECTED_BLOCK_MIN_HEIGHT),
+            Modifier.width(24.dp).fillMaxHeight(),
             contentAlignment = Alignment.Center,
         ) {
             if (groupTag != null) {
@@ -252,11 +317,20 @@ private fun SessionRow(
                         .size(8.dp)
                         .clip(CircleShape)
                         .background(groupTag.color ?: skin.colors.onSurfaceVariant)
-                        // Q2-B 只留色点不留组名文字（单行化）：组名移到读屏语义里，
-                        // 同时是 UI 测试定位「分组色点仍在」的锚点。
+                        // 组名只走读屏语义（单行化），同时是 UI 测试定位「分组色点仍在」的锚点。
                         .semantics { contentDescription = "分组：${groupTag.label}" },
                 )
             }
+        }
+        // 未读/置顶在标题**之前**（J2 的信息顺序）。
+        if (session.pinned) {
+            VadeIcon(
+                vector = VadeIcons.Pin,
+                contentDescription = PINNED_BADGE_LABEL,
+                size = 13.dp,
+                tint = skin.colors.primary,
+            )
+            Spacer(Modifier.width(4.dp))
         }
         if (session.archived) {
             // 「已归档」标记（g-archive-ui 原样保留）：矢量图标 13dp + muted 色。
@@ -268,16 +342,42 @@ private fun SessionRow(
             )
             Spacer(Modifier.width(4.dp))
         }
+        if (session.unread) {
+            Box(
+                Modifier
+                    .size(UNREAD_DOT_SIZE)
+                    .clip(CircleShape)
+                    .background(skin.colors.primary)
+                    .semantics { contentDescription = UNREAD_BADGE_LABEL },
+            )
+            Spacer(Modifier.width(6.dp))
+        }
         UiText(
             text = session.title,
-            modifier = Modifier.weight(1f).padding(end = 12.dp),
+            modifier = Modifier.weight(1f).padding(end = 8.dp),
             size = 15,
             weight = FontWeight.SemiBold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+        // 时间在标题**之后**、贴行尾。空串不占位（真源缺 `updated_at` 时映射层给空串，
+        // 不编一个「1970 天前」出来）。
+        if (session.updatedLabel.isNotEmpty()) {
+            UiText(
+                text = session.updatedLabel,
+                size = 11,
+                color = skin.colors.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
     }
 }
+
+/**
+ * 行节点的 testTag —— 测试量「行高 56dp」「未读/置顶在标题左、时间在标题右」时唯一的锚点
+ * （按标题找节点会落到合并后的文本语义上，量不到块）。
+ */
+internal fun sessionRowTag(sessionId: String): String = "vade.sessionRow.$sessionId"
 
 /**
  * 「已归档」标记的无障碍文案 —— 同时是 [VadeIcons.Archive] 的 `contentDescription`
@@ -285,20 +385,39 @@ private fun SessionRow(
  */
 internal const val ARCHIVED_BADGE_LABEL = "已归档"
 
+/** 置顶/未读标记的语义文案（图标与圆点的 `contentDescription`，也是测试定位点）。 */
+internal const val PINNED_BADGE_LABEL = "已置顶"
+internal const val UNREAD_BADGE_LABEL = "未读"
+
+/** 空态文案（J1）：标题、正文、唯一主行动的按钮文字 —— 测试与画面共用这一份。 */
+internal const val SESSIONS_EMPTY_TITLE = "还没有会话"
+internal const val SESSIONS_EMPTY_BODY = "新建一个会话，开始第一轮对话"
+internal const val SESSIONS_EMPTY_ACTION = "新建会话"
+
+/** 未读点直径（6dp：足够可辨，又不跟置顶图标抢注意力）。 */
+internal val UNREAD_DOT_SIZE = 6.dp
+
 /**
- * Q2-B 选中块的**可断言几何/色值常量**（g-route-transition 口径变更）：选中行是
- * 「带圆角的强调色块」，不是通栏满宽矩形——
+ * Q2-B 选中块的**可断言几何/色值常量**（g-route-transition 口径变更）：
  *  - 圆角 [SELECTED_BLOCK_CORNER]，落在口径要求的 12–16dp 里；
  *  - accent 淡染透明度亮/暗两档（[SELECTED_BLOCK_ALPHA_LIGHT] / [SELECTED_BLOCK_ALPHA_DARK]），
  *    都落在口径要求的 10–16% 里，文字对比不受影响（底色只被染了这么一点）；
  *  - 行块左右各内缩 8dp（`SessionRow` 的 `padding(horizontal = 8.dp)`，测试量像素）；
- *  - 「已选中」语义（`selected = true` 的行）不再有 §12 的 3dp 左条——那根条随 Q2-B
- *    单行化一并废除，`SessionRowSelectedBlockTest` 用像素断言接住新形态。
+ *  - 「已选中」语义（`selected = true` 的行）没有 §12 的 3dp 左条——那根条已废除，
+ *    `SessionRowSelectedBlockTest` 用像素断言接住新形态。
  */
 internal val SELECTED_BLOCK_CORNER = 14.dp
 internal const val SELECTED_BLOCK_ALPHA_LIGHT = 0.12f
 internal const val SELECTED_BLOCK_ALPHA_DARK = 0.16f
-internal val SELECTED_BLOCK_MIN_HEIGHT = 48.dp
+
+/**
+ * 会话行高 = **56dp**（alpha 审查 J2 裁决，2026-11-16）。
+ *
+ * 取代 Q2-B 的 48dp：单行摘要要塞进「未读 + 置顶 + 标题 + 时间」四件事，48dp 下 15sp 标题
+ * 与 11sp 时间几乎贴边；56dp 是「一行仍是一行」与「信息不挤」的平衡点。`SessionRowInfoUiTest`
+ * 逐像素断言这个高度，改数字必须同时改测试（否则「行高被悄悄改回去」无人接住）。
+ */
+internal val SESSION_ROW_HEIGHT = 56.dp
 
 /**
  * 会话行上的「分类」展示值：组名（or 裸 id）+ 组色。

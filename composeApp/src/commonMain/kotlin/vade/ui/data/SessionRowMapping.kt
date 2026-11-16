@@ -35,6 +35,8 @@ internal fun epochNowMs(): Long = Clock.System.now().toEpochMilliseconds()
  * - `groupId` ← `group_id: string|null`。单归属列（§1 #1 文件夹语义，不是 `groups[]`），
  *   缺键 / 显式 null 都投影成 null（未分组）；类型不对同样落 null —— 与 [str] 在
  *   本文件其余字段上的宽松口径一致，宁可「未分组」也不要为一个畸形行炸掉整页。
+ * - `updated_at` 是契约必填；缺键时 [SessionSummary.updatedLabel] 留空（行上不画时间）、
+ *   桶落「更早」。绝不拿 `0L` 去算相对时间 —— 那会画出「20670 天前」。
  *
  * ## [includeArchived]
  * 默认 `false` 保持既有行为：`sessions()` 不传 `archived`，core 按契约默认只回未归档行，
@@ -51,14 +53,19 @@ internal fun sessionRowToSummary(
     val archivedAt = row.lng("archived_at")
     // Archived rows never reach the default (archived=false) list even if a core sent them anyway.
     if (archivedAt != null && !includeArchived) return null
-    val updatedAt = row.lng("updated_at") ?: 0L
+    // 契约里 `updated_at` 是**必填**（`SessionRow.updatedAt` = `mustLng`）。真缺了就是回包畸形，
+    // 但列表不能因为一行畸形整页炸掉 —— 于是：桶落「更早」、时间标签**留空**。
+    // 以前这里默认 0L，行上会显示「20670 天前」（1970 到现在）：一个凭空编出来的时间。
+    // 行现在真的画时间（alpha J2），所以这条必须诚实 —— 没有就说没有，不编。
+    val updatedAtRow = row.lng("updated_at")
+    val updatedAt = updatedAtRow ?: 0L
     return SessionSummary(
         id = id,
         title = row.str("title") ?: "（无标题）",
         preview = "",
         bucket = bucketFor(updatedAtMs = updatedAt, pinned = pinned, nowMs = nowMs),
         updatedAt = updatedAt,
-        updatedLabel = relativeLabel(updatedAtMs = updatedAt, nowMs = nowMs),
+        updatedLabel = updatedAtRow?.let { relativeLabel(updatedAtMs = it, nowMs = nowMs) }.orEmpty(),
         pinned = pinned,
         unread = (row.lng("unread") ?: 0L) > 0,
         model = null,
