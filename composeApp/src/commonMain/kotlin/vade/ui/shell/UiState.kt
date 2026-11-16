@@ -286,7 +286,31 @@ class UiState(
         return sessionGroups(ldr.rows + drafts)
     }
 
+    /**
+     * Tab / rail entry point（`NavRail` 与底栏三个形态都落到这里）。
+     *
+     * **重复点当前 tab**（审查 P2-1）：旧实现把「再点一次」当普通重选处理 —— `dest` 不变、
+     * 选中原样、抽屉重算成同一个值，于是**屏幕上什么都没发生**。现在：
+     *  - 已在会话详情（`dest == Sessions && selectedSessionId != null`）⇒ [back]：手机端
+     *    抽屉滑出、双栏清空选中，露出列表根。「退一层」与系统返回是同一个动作，不是第二
+     *    套返回语义；
+     *  - 已是列表根 ⇒ no-op（也不再重算抽屉 —— 那会把手机抽屉莫名开合）；
+     *  - 其他目的地 ⇒ 保留旧行为（离开会话页 ⇒ 选中清空），逐字节不变。
+     *
+     * 另一半（在列表根重复点 ⇒ 列表滚到顶）**本批没做**：滚动位置属于 `SessionsScreen`
+     * 内部的 `LazyListState`，那个文件不在本批可改范围。要做就需要把它上提成一个由这里
+     * 递增的 token（`LaunchedEffect(tick) { animateScrollToItem(0) }`），而不是在这里假装
+     * 已经实现。
+     */
     fun select(destination: Destination) {
+        if (destination == dest) {
+            if (destination == Destination.Sessions) {
+                if (selectedSessionId != null) back()
+            } else {
+                selectedSessionId = null
+            }
+            return
+        }
         dest = destination
         if (destination != Destination.Sessions) selectedSessionId = null
         // g-route-transition：抽屉跟随目的地——落在会话页且没有选中会话 ⇒ 抽屉必须开着
