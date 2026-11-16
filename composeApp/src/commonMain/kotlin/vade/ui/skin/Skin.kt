@@ -7,6 +7,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
@@ -443,7 +444,74 @@ data class SkinMotion(
 
     /** Velocity (dp/s) at which the radius reaches [motionBlurMaxRadiusDp] (§11). */
     val motionBlurFullVelocity: Float = 6000f,
-)
+) {
+    /**
+     * K1 · 这套时长在 reduced-motion 下的**实际值**：封顶 [REDUCE_MOTION_MAX_MS]，不是归零。
+     *
+     * 归零会让状态变化失去因果感（卡片「凭空出现」、按压缩放跳变），压到 100ms 既尊重
+     * 「减少动效」也保留「我点到了」的反馈。所有读 `motion.*Ms` 的动画都应该经过这里，
+     * 而不是直接 `tween(durationMillis = motion.standardMs)`。
+     */
+    fun durationMs(requestedMs: Int, reduceMotion: Boolean): Int =
+        reducedDurationMs(requestedMs, reduceMotion)
+
+    /**
+     * K1 · 位移量：reduced-motion 下位移类动画改成**纯淡入**（返回 0）。
+     *
+     * 前庭敏感的读者被「滑动」冒犯，而不是被「淡入」冒犯 —— 所以淡入保留，位移归零。
+     */
+    fun travelPx(requestedPx: Int, reduceMotion: Boolean): Int =
+        reducedTravelPx(requestedPx, reduceMotion)
+}
+
+// --- reduced motion (K1) ------------------------------------------------------
+
+/**
+ * K1 · 「减少动效」的读取点：`true` = 降级（时长封顶 100ms、位移改纯淡入）。
+ *
+ * 两个安装点，任一为 `true` 就降级（OR，不是覆盖）：
+ *  - 宿主在组合前调 [ReduceMotion.install]（桌面启动参数 / Android
+ *    `Settings.Global.ANIMATOR_DURATION_SCALE == 0` / Wasm `prefers-reduced-motion`）；
+ *  - 组合里 `CompositionLocalProvider(LocalReduceMotion provides true)`（设置页开关、测试）。
+ *
+ * 读法：`val reduce = LocalReduceMotion.current || ReduceMotion.enabled`。**不能**只读
+ * CompositionLocal：它默认 false，而 `staticCompositionLocalOf` 的默认值不会随宿主开关
+ * 失效，无 provider 的宿主会永远看到 false。
+ */
+val LocalReduceMotion = staticCompositionLocalOf { false }
+
+/**
+ * K1 · 宿主级「减少动效」开关（可观察）。
+ *
+ * 桌面入口在组合前 `ReduceMotion.install(hasFlag("--reduce-motion"))`；Android 读系统动画
+ * 缩放；两者都是「平台告诉我少动」，不是应用内偏好。设置页将来的开关走
+ * [LocalReduceMotion] provider，不要写这个对象（系统偏好不该被应用内开关关掉）。
+ */
+object ReduceMotion {
+    var enabled: Boolean by mutableStateOf(false)
+        private set
+
+    fun install(enabled: Boolean) {
+        this.enabled = enabled
+    }
+}
+
+/** K1 · 降级后的动画时长上限（ms）。100ms 仍能读出「发生过」的因果，又不构成动效。 */
+const val REDUCE_MOTION_MAX_MS = 100
+
+/** K1 · 时长封顶（纯函数，`ChatMotionTest` 直接钉住；见 [SkinMotion.durationMs]）。 */
+fun reducedDurationMs(requestedMs: Int, reduceMotion: Boolean): Int =
+    if (reduceMotion) requestedMs.coerceAtMost(REDUCE_MOTION_MAX_MS) else requestedMs
+
+/** K1 · 位移归零（纯函数；见 [SkinMotion.travelPx]）。 */
+fun reducedTravelPx(requestedPx: Int, reduceMotion: Boolean): Int =
+    if (reduceMotion) 0 else requestedPx
+
+/**
+ * K2 · 图标按钮的统一按压缩放 —— 与 [SkinOrb.pressScale] 是同一个数（0.92，§2/§7）。
+ * 一屏不许出现两种按压比：批准/拒绝/重试/停止/编辑 与发送球一致。
+ */
+const val ICON_PRESS_SCALE = 0.92f
 
 /**
  * v2 glass tokens (visual language §5/§9) — the numbers a glass layer needs: how hard to

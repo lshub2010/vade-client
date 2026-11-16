@@ -2,8 +2,11 @@ package vade.ui.chat
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -14,6 +17,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -40,10 +44,12 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -60,6 +66,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -81,8 +88,10 @@ import vade.ui.chat.ApprovalOutcome
 import vade.ui.icon.VadeIcons
 import vade.ui.shell.BackLayer
 import vade.ui.skin.AttachmentState
+import vade.ui.skin.LocalReduceMotion
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.MessageView
+import vade.ui.skin.ReduceMotion
 import vade.ui.component.insets.composerNavClearance
 import vade.ui.component.liquid.VadeShadows
 import vade.ui.component.liquid.layeredShadow
@@ -171,16 +180,24 @@ fun ChatThread(
         state.loadHistory()
     }
 
-    // Pin the thread to its newest row (FR-8.35: a streaming reply must stay visible).
+    // K4 · 跟随滚动（FR-8.35）：**只在贴近底部时**新内容才把视图带到最新一行。
     //
-    // With `reverseScrolling = true` the newest row is already on screen at offset 0 from the
-    // first frame; this writer only re-asserts it when content/the composer changes (e.g.
-    // after the reader scrolled up). A `snapshotFlow`, not a keyed `LaunchedEffect`: content
-    // length and the composer's animated height change at frame rate, and a keyed effect
-    // **cancels the in-flight scroll on every key change** — the write never lands. Here every
-    // emission completes before the next one is processed, and the write itself is a plain
-    // (non-suspending) `value` assignment so a stalled frame clock can't leave it half-done.
+    // `reverseScrolling = true` 让 offset 0 就是内容末端 —— 最新一行从第一帧起就在屏上，
+    // 且 `scroll.value` 天然等于「离底距离」。所以：
+    //  - 贴底（≤ [FollowThreshold]）时内容 / 列表底部内边距变了 → `scrollTo(0)`，最新行保持可见；
+    //  - 用户上滚（> 阈值）→ **一次都不许拽回**。旧实现每 45ms 无条件 `scrollTo(0)`，把正在
+    //    读历史的人永久拖回底部（K4）。现在只在屏幕底部举一枚「新内容」胶囊，点它才回底。
+    //
+    // 用一个 `snapshotFlow` 而不是 keyed `LaunchedEffect`：内容长度与 composer 的动画高度按
+    // 帧变化，keyed effect 会在每次 key 变更时**取消在途滚动**，写永远落不了地；这里每次发射
+    // 都被处理完，写本身是普通（非挂起）赋值。
+    val density = LocalDensity.current
+    val nearBottomPx = with(density) { FollowThreshold.roundToPx() }
+    val follower = remember(nearBottomPx) { FollowScrollGate(nearBottomPx) }
+    val reduceMotion = LocalReduceMotion.current || ReduceMotion.enabled
+    val capsuleMs = skin.motion.durationMs(skin.motion.quickMs, reduceMotion)
     var composerHeightPx by remember { mutableStateOf(0) }
+
     LaunchedEffect(animate) {
         if (!animate) return@LaunchedEffect
         snapshotFlow {
@@ -189,8 +206,17 @@ fun ChatThread(
                 state.messages.lastOrNull()?.bodyText?.length ?: 0,
                 composerHeightPx,
             )
-        }.collect { scroll.scrollTo(0) }
+        }.collect { if (follower.onContentChanged(scroll.value)) scroll.scrollTo(0) }
     }
+
+    // 用户自己回到底部（滚轮 / 触摸）→ 胶囊收起、跟随恢复。`scroll.value` 每像素一发，
+    // 但 `onScroll` 只在贴底时才写状态，静止时没有额外失效。
+    LaunchedEffect(animate) {
+        if (!animate) return@LaunchedEffect
+        snapshotFlow { scroll.value }.collect { follower.onScroll(it) }
+    }
+
+    val pageScope = rememberCoroutineScope()
 
     BoxWithConstraints(modifier.fillMaxSize().background(skin.colors.canvas)) {
         // 页面左右边距：手机 16 / 桌面 24（视觉规范 §4）。
@@ -252,7 +278,6 @@ fun ChatThread(
             // 实测高度含 composer 自身的 padding（onSizeChanged 挂在 .padding 外侧），g-inset2
             // 给 composer 底部叠了导航条 clearance 后，spacer 会 1:1 跟涨——最后一条消息
             // 始终滚出 composer + 导航条区域。公式提成 [composerListSpacer] 供测试钉住。
-            val density = LocalDensity.current
             Spacer(Modifier.height(with(density) { composerListSpacer(composerHeightPx.toDp()) }))
         }
 
@@ -263,6 +288,31 @@ fun ChatThread(
             onHeightChanged = { composerHeightPx = it },
             inputLeading = inputLeading,
         )
+
+        // K4 · 「新内容」胶囊：只在**上滚且有新内容落地**时出现，贴在输入区上沿。入场是
+        // 淡入 + 0.92 缩放（不是位移 —— reduced-motion 下位移类一律改纯淡入，K1）。
+        AnimatedVisibility(
+            visible = follower.unseenBelow,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = with(density) { composerHeightPx.toDp() } + 8.dp),
+            enter = fadeIn(tween(durationMillis = capsuleMs, easing = skin.motion.easing)) +
+                scaleIn(
+                    initialScale = 0.92f,
+                    animationSpec = tween(durationMillis = capsuleMs, easing = skin.motion.easing),
+                ),
+            exit = fadeOut(tween(durationMillis = capsuleMs, easing = skin.motion.easing)),
+        ) {
+            NewContentCapsule(
+                onClick = {
+                    follower.onJumpToBottom()
+                    // reduced-motion 下不做「飞回去」的滚动动画：一帧到位。
+                    pageScope.launch {
+                        if (reduceMotion) scroll.scrollTo(0) else scroll.animateScrollTo(0)
+                    }
+                },
+            )
+        }
 
         // Fullscreen preview is an overlay of the page, not a platform dialog: the skin must
         // not decide windowing (same reasoning as the approval card above).
@@ -346,6 +396,10 @@ private fun MessageRow(state: ChatState, message: ChatMessage) {
     val scope = rememberCoroutineScope()
     val view: MessageView = message.toView()
     val isUser = message.role == ChatRole.User
+    // K3 · 流式回合的正文按 16ms 合帧：一帧只取一次最新值，delta 的中间态不再各画一遍
+    // （见 [rememberCoalescedStreamText]）。收尾后的行一个字都不多付。
+    val bodySource =
+        if (message.isStreaming) rememberCoalescedStreamText(message.bodyText) else message.bodyText
 
     Column(Modifier.fillMaxWidth(), horizontalAlignment = if (isUser) Alignment.End else Alignment.Start) {
         // Queue badge (FR-8.36) sits on the user bubble it belongs to, not in a global list.
@@ -438,7 +492,7 @@ private fun MessageRow(state: ChatState, message: ChatMessage) {
                         maxWidth = 760.dp,
                         body = {
                             MarkdownText(
-                                source = message.bodyText,
+                                source = bodySource,
                                 color = if (message.state == MessageState.Failed) skin.colors.error else skin.colors.onSurface,
                             )
                         },
@@ -660,14 +714,18 @@ internal fun ApprovalCardRow(state: ChatState, call: ToolCall) {
     }
 
     // §7：fade + 12dp 上滑，180ms。进场只跑一次；结果态不改位移。
+    // K1 · reduced-motion：位移归零（纯淡入）、时长封顶 100ms —— 淡入保留因果感，位移去掉。
     val density = LocalDensity.current
+    val reduceMotion = LocalReduceMotion.current || ReduceMotion.enabled
+    val enterMs = skin.motion.durationMs(skin.motion.standardMs, reduceMotion)
+    val travelPx = skin.motion.travelPx(with(density) { 12.dp.roundToPx() }, reduceMotion)
     val visible = remember { MutableTransitionState(false) }.apply { targetState = true }
     AnimatedVisibility(
         visibleState = visible,
-        enter = fadeIn(tween(durationMillis = skin.motion.standardMs, easing = skin.motion.easing)) +
+        enter = fadeIn(tween(durationMillis = enterMs, easing = skin.motion.easing)) +
             slideInVertically(
-                animationSpec = tween(durationMillis = skin.motion.standardMs, easing = skin.motion.easing),
-            ) { with(density) { 12.dp.roundToPx() } },
+                animationSpec = tween(durationMillis = enterMs, easing = skin.motion.easing),
+            ) { travelPx },
     ) {
         Row(
             modifier = Modifier
@@ -1071,6 +1129,151 @@ internal fun handleComposerKeys(
     if (!primary || !enter) return false
     state.submit()
     return true
+}
+
+// --- K3 · 流式合帧 -------------------------------------------------------------
+
+/**
+ * K3 · 合帧窗口 = 60Hz 一帧（16ms）。
+ *
+ * 为什么是「按窗口取样」而不是 debounce：debounce 会在**每一条**新 delta 到来时重置计时器，
+ * 持续流式时就永远不输出 —— 正文会卡在开头不动。取样是「窗口到点就取当前值」，延迟上界
+ * 恒为 16ms，与流有多快无关。
+ */
+internal const val StreamCoalesceMs = 16L
+
+/**
+ * K3 · 流式正文的合帧器。
+ *
+ * 一条回复在流式期间每几十毫秒换一次全文；core 的 coalesced 帧还能在一帧里塞进十几条
+ * `turn.delta`，而每条 delta 都会就地替换同一行 → 页面在一帧里要把**同一段全文**画十几遍
+ * （每遍一次 `Markdown.parse(全文)` + 一份 `AnnotatedString`），这是「流式抖动」的成本来源。
+ *
+ * 这里只让**最新值**过帧：窗口内被覆盖的中间态直接跳过（它们本来就是要被下一条替换掉的
+ * 半成品）。与 `MarkdownText` 的 `remember(source)` 配合之后，一帧最多解析一次全文。
+ *
+ * 诚实边界：`items` 的写入仍由 [ChatState] 逐条完成（本批的改动范围不含它，见
+ * `batch-results/c5-motion.md`）；合帧发生在**渲染写入口**，也就是成本真正产生的地方。
+ *
+ * 只给 [ChatMessage.isStreaming] 的行用；收尾后由调用方直接取原文，最后一个 token 不会
+ * 留在窗口里丢掉。
+ */
+@Composable
+private fun rememberCoalescedStreamText(raw: String): String {
+    val latest by rememberUpdatedState(raw)
+    var framed by remember { mutableStateOf(raw) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(StreamCoalesceMs)
+            // 引用比较：流式文本只会追加，同一份 String 实例没被换过就什么都不做。
+            if (framed !== latest) framed = latest
+        }
+    }
+    return framed
+}
+
+// --- K4 · 跟随滚动 -------------------------------------------------------------
+
+/**
+ * K4 · 「贴近底部」的判定半径：最后 96dp 之内仍算贴底。
+ *
+ * 不能取 0：`reverseScrolling` 下滚动位置是浮点/像素级量，一次轻微的惯性回弹就会让
+ * `scroll.value` 离开 0，若阈值取 0，读者「没动」也会被判定成上滚，胶囊会误报。
+ */
+internal val FollowThreshold = 96.dp
+
+/** K4 · 「新内容」胶囊的 testTag（`ChatFollowScrollTest` 用它断言出现 / 消失）。 */
+internal const val NewContentCapsuleTag = "vade.chat.newContentCapsule"
+
+/**
+ * K4 · 跟随滚动的决策 —— **纯状态机**（无窗口、无时钟、无副作用），因此测试可以逐帧推进
+ * 而不需要真的滚动一次。
+ *
+ * 时刻表（`scroll.value` = 离底距离，0 = 贴底）：
+ *  - 内容变了 + 贴底 → 返回 `true`（调用方 `scrollTo(0)`），胶囊不举；
+ *  - 内容变了 + 不贴底 → 返回 `false`（**一个像素都不许动**），胶囊举起；
+ *  - 用户自己滚回底部 → 胶囊收起，跟随恢复；
+ *  - 点了胶囊 → 立刻收起（滚动由调用方发起）。
+ *
+ * 「上滚后不拽回」是这里的核心不变式：跟随只在贴底时成立，不是「永远跟随」。
+ */
+internal class FollowScrollGate(private val nearBottomPx: Int) {
+
+    /** 上滚期间有新内容落地 —— 底部胶囊的可见性。 */
+    var unseenBelow by mutableStateOf(false)
+        private set
+
+    fun isAtBottom(valuePx: Int): Boolean = valuePx <= nearBottomPx
+
+    /** 滚动位置变了：回到贴底区间就清掉提示（拖回去读新内容 = 用户已经看到它了）。 */
+    fun onScroll(valuePx: Int) {
+        if (unseenBelow && isAtBottom(valuePx)) unseenBelow = false
+    }
+
+    /** 内容 / 列表底部内边距变了：`true` = 调用方应该 `scrollTo(0)`。 */
+    fun onContentChanged(valuePx: Int): Boolean {
+        val atBottom = isAtBottom(valuePx)
+        if (!atBottom && !unseenBelow) unseenBelow = true
+        return atBottom
+    }
+
+    /** 点了胶囊 / 程序性回底：先把提示收掉，避免回滚动画期间还挂着。 */
+    fun onJumpToBottom() {
+        unseenBelow = false
+    }
+}
+
+/**
+ * K4 · 「新内容」胶囊 —— 贴在上滚期间的底部，点一下回到最新一行。
+ *
+ * `↓` 不用字符字形（v2 §3.1 与 `IconGuardTest` 都禁止字符图标）：用页面自己的
+ * [ChatIcon.ChevronDown] 描边，与卡尾 ⏷ 同一套线宽。按压反馈与图标按钮同源（0.92 scale，
+ * 见 [iconPressSpec]），时长读 [vade.ui.skin.SkinMotion] 并受 reduced-motion 封顶。
+ */
+@Composable
+private fun NewContentCapsule(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val skin = LocalSkin.current
+    val shape = RoundedCornerShape(skin.shapes.pill)
+    val reduceMotion = LocalReduceMotion.current || ReduceMotion.enabled
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) skin.orb.pressScale else 1f,
+        animationSpec = tween(
+            durationMillis = skin.motion.durationMs(skin.motion.quickMs, reduceMotion),
+            easing = skin.motion.easing,
+        ),
+        label = "newContentCapsulePress",
+    )
+    Row(
+        modifier = modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .layeredShadow(shadow = VadeShadows.float, shape = shape, dark = skin.colors.isDark)
+            .clip(shape)
+            .background(skin.colors.surface)
+            .border(1.dp, skin.colors.hairline, shape)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp)
+            .semantics { contentDescription = "跳到最新内容" }
+            .testTag(NewContentCapsuleTag),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ChatIconGlyph(icon = ChatIcon.ChevronDown, tint = skin.colors.primary, iconSize = 14.dp)
+        Spacer(Modifier.width(4.dp))
+        BasicText(
+            text = "新内容",
+            style = skin.typography.caption.copy(
+                color = skin.colors.primary,
+                fontWeight = FontWeight.SemiBold,
+            ),
+        )
+    }
 }
 
 // --- §9 floating image-preview sheet ------------------------------------------

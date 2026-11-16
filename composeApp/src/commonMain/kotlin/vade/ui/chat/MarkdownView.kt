@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -22,6 +23,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -46,7 +48,10 @@ fun MarkdownText(
     color: Color = LocalSkin.current.colors.onSurface,
     baseSize: Int = 15,
 ) {
-    val blocks = Markdown.parse(source)
+    // K3 · 解析结果按正文缓存。流式时整列每帧都会重组（一个 delta 就换一次 `items`），
+    // 没有这一层的话**每一行**每次重组都把全文重新 parse 一遍 —— O(全文) × 行数 × 帧率，
+    // 这正是「流式抖动」的算法根因。source 没变就复用同一份 blocks。
+    val blocks = remember(source) { Markdown.parse(source) }
     MarkdownBlocks(blocks, modifier, color, baseSize)
 }
 
@@ -60,16 +65,27 @@ fun MarkdownBlocks(
     val skin = LocalSkin.current
     // 视觉规范 §4：正文 15sp / 行高 1.55。行高按正文尺寸现算，避免小字号继承大行高。
     val body = skin.typography.body.copy(fontSize = baseSize.sp, lineHeight = (baseSize * 1.55f).sp)
+    // K3 · 这三个 token 每帧都一样，取一次；`rememberRuns` 拿它们当 remember 的 key。
+    val mono = skin.typography.mono.fontFamily
+    val codeBackground = skin.colors.surfaceVariant
+    val linkColor = skin.colors.primary
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         blocks.forEach { block ->
             when (block) {
                 is MdBlock.Paragraph -> BasicText(
-                    text = annotated(block.runs, color, baseSize),
+                    text = rememberRuns(block, color, baseSize, mono, codeBackground, linkColor),
                     style = body,
                 )
 
                 is MdBlock.Heading -> BasicText(
-                    text = annotated(block.runs, color, baseSize + (5 - block.level).coerceAtLeast(1)),
+                    text = rememberRuns(
+                        runs = block.runs,
+                        color = color,
+                        size = baseSize + (5 - block.level).coerceAtLeast(1),
+                        mono = mono,
+                        codeBackground = codeBackground,
+                        linkColor = linkColor,
+                    ),
                     style = skin.typography.title.copy(
                         fontSize = (baseSize + (5 - block.level).coerceAtLeast(1)).sp,
                         lineHeight = (baseSize * 1.35f).sp,
@@ -86,7 +102,7 @@ fun MarkdownBlocks(
                                 modifier = Modifier.width(22.dp),
                             )
                             BasicText(
-                                text = annotated(runs, color, baseSize),
+                                text = rememberRuns(runs, color, baseSize, mono, codeBackground, linkColor),
                                 style = body,
                             )
                         }
@@ -131,33 +147,57 @@ fun MarkdownBlocks(
     }
 }
 
+/**
+ * K3 · 一份 [AnnotatedString] 的缓存层：块的 runs / 颜色 / 字号 / 皮肤 token 都没变时复用
+ * 上一次构造的那一份。
+ *
+ * 为什么不只缓存 `parse`：`buildAnnotatedString` 也是 O(全文)（每个 run 一段 SpanStyle），
+ * 流式时整列每次重组都会为**每一行**重建一遍。缓存键是这些真实输入，皮肤换主题（mono /
+ * surfaceVariant / primary 变了）会自然失效，不需要手动清。
+ */
 @Composable
-private fun annotated(runs: List<MdRun>, color: Color, size: Int): AnnotatedString {
-    val skin = LocalSkin.current
-    val mono = skin.typography.mono.fontFamily
-    val codeBackground = skin.colors.surfaceVariant
-    val linkColor = skin.colors.primary
-    return buildAnnotatedString {
-        runs.forEach { run ->
-            val start = length
-            append(run.text)
-            val end = length
-            if (start == end) return@forEach
-            val styles = mutableListOf<SpanStyle>()
-            if (run.bold) styles += SpanStyle(fontWeight = FontWeight.SemiBold)
-            if (run.italic) styles += SpanStyle(fontStyle = FontStyle.Italic)
-            if (run.code) {
-                styles += SpanStyle(
-                    fontFamily = mono,
-                    fontSize = (size - 1).sp,
-                    background = codeBackground,
-                )
-            }
-            if (run.link != null) {
-                styles += SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)
-            }
-            styles.forEach { addStyle(it, start, end) }
+private fun rememberRuns(
+    runs: List<MdRun>,
+    color: Color,
+    size: Int,
+    mono: FontFamily,
+    codeBackground: Color,
+    linkColor: Color,
+): AnnotatedString = remember(runs, color, size, mono, codeBackground, linkColor) {
+    annotated(runs, color, size, mono, codeBackground, linkColor)
+}
+
+/**
+ * The inline subset → `AnnotatedString`. Pure (no composition reads): the skin tokens it
+ * needs are passed in, which is what lets [rememberRuns] cache the result.
+ */
+private fun annotated(
+    runs: List<MdRun>,
+    color: Color,
+    size: Int,
+    mono: FontFamily,
+    codeBackground: Color,
+    linkColor: Color,
+): AnnotatedString = buildAnnotatedString {
+    runs.forEach { run ->
+        val start = length
+        append(run.text)
+        val end = length
+        if (start == end) return@forEach
+        val styles = mutableListOf<SpanStyle>()
+        if (run.bold) styles += SpanStyle(fontWeight = FontWeight.SemiBold)
+        if (run.italic) styles += SpanStyle(fontStyle = FontStyle.Italic)
+        if (run.code) {
+            styles += SpanStyle(
+                fontFamily = mono,
+                fontSize = (size - 1).sp,
+                background = codeBackground,
+            )
         }
+        if (run.link != null) {
+            styles += SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)
+        }
+        styles.forEach { addStyle(it, start, end) }
     }
 }
 
