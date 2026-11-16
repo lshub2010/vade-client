@@ -42,23 +42,21 @@ import vade.ui.meta.MetaGroup
 import vade.ui.skin.LocalSkin
 
 /**
- * 系统/手势返回的三端接缝。Android：activity-compose 的 `BackHandler`（注册进
- * OnBackPressedDispatcher，predictive back 与旧键路径都覆盖）；桌面/wasm：空实现。
- */
-@Composable
-internal expect fun DrawerSystemBackHandler(enabled: Boolean, onBack: () -> Unit)
-
-/**
  * g-route-transition · 手机单栏（<600dp）会话页的「抽屉模型」转场（2026-11-15 口径变更，
  * 覆盖此前任务书里的 push 方案）：
  *
  *  - **会话详情是常驻底层**：一旦有选中会话就持续组合，抽屉开合期间**绝不重建**——
- *    聊天流的滚动位置、每会话的 `ChatState` 都跨开合存活（「不是退出详情页」）；
+ *    聊天流的滚动位置、每会话的 `ChatState` 都跨开合存活（「拉开抽屉看一眼列表」不等于
+ *    退出详情页；真正退出详情是返回 → `state.back()`，见下一条）。
  *  - **会话列表是盖在上面的一层抽屉**：宽 80%、右缘 28dp 两个大圆角、自带浮层阴影，
  *    从**左侧**滑出/收回；抽屉与详情之间是遮罩（内容被压暗），点遮罩 = 收抽屉；
  *  - 点一条会话 → 抽屉收回（`UiState.selectSession` 里自动收）、详情露出来；
- *  - 返回键/返回手势（Android `BackHandler`）/Esc/顶栏返回 = 在「列表/详情」之间切换：
- *    抽屉开着 → 收回（露出底下完好的详情）；抽屉收着 → 滑出列表。**永不销毁详情**；
+ *  - **返回只有一条路**（g-nav-stack，见下方 [SessionsDrawerHost] 里的 `BackLayer`）：
+ *    系统返回键 / 返回手势 / Esc / 顶栏返回全部由返回栈派发，本页只登记一层 ——
+ *    抽屉开着 → 收回（露出底下完好的详情）；抽屉收着 → `state.back()` 清选中回到列表根；
+ *    列表根（没有选中会话）不登记层，返回交还系统（允许退出 App）。
+ *    旧实现是一条独立的 Android `BackHandler`（`DrawerSystemBackHandler`）+ `if/else` 开关，
+ *    按返回在「列表/详情」之间来回 toggle、永远退不出也永远清不掉选中；那条路已删除。
  *  - **双栏（≥600dp）与 600–719（rail 单栏）完全不经过本文件**：`ShellBody` 只在
  *    `!useRail && dest == Sessions` 时组合本宿主，其余断点维持原有行为——不加位移、
  *    不加遮罩（由 `ShellMetrics.useRail` 判定，测试钉死）。
@@ -117,15 +115,6 @@ internal fun sessionsDrawerSpec(animate: Boolean): SessionsDrawerSpec =
     }
 
 /**
- * 顶栏返回按钮与 Esc 在「详情可见」时的行为分叉：
- * 双栏/600–719（rail）没有抽屉——返回 = 退出详情（`UiState.back()`，FR-8.72 原行为）；
- * 手机单栏有抽屉——返回 = 滑出列表抽屉，**详情保留在底层**（口径变更：不是退出详情页）。
- */
-internal fun sessionDetailBack(state: UiState, useRail: Boolean) {
-    if (useRail) state.back() else state.openSessionsDrawer()
-}
-
-/**
  * 手机单栏会话页宿主：常驻详情（底层）+ 遮罩 + 左滑列表抽屉（顶层）。
  *
  * 参数就是 `ShellBody` 手里已有的三样东西，宿主内部自行完成列表/详情的接线
@@ -165,6 +154,20 @@ internal fun SessionsDrawerHost(
     val expanded = state.sessionsDrawerOpen
     val skin = LocalSkin.current
 
+    // g-nav-stack · 本页在返回栈里**恰好一层**，三端一条路（系统返回 / 手势 / Esc / 顶栏返回
+    // 都落到这里；不再有第二条 `BackHandler`）：
+    //  - 有选中会话（详情在底层）时登记：
+    //      抽屉开着 → 收抽屉，详情原样露出来（不销毁）；
+    //      抽屉收着 → `state.back()` 清选中，回到列表根（与顶栏「返回」同一动作）。
+    //  - 没有选中会话（列表根）→ 不登记：`dispatch()` 返回 false，返回交还系统（可退出 App）。
+    //    旧实现在这里会 toggle 抽屉，把用户关进「无详情 + 抽屉收起」的死路（G2）。
+    //
+    // 位置在 Box **之前**很重要：栈序 = 组合序，页面层必须先于它内部的浮层（模型选择 /
+    // 附件预览 / 搜索）入栈，那些浮层才能是 topmost 先被消费。
+    BackLayer(enabled = state.selectedSessionId != null) {
+        if (state.sessionsDrawerOpen) state.closeSessionsDrawer() else state.back()
+    }
+
     // 转场进度：1 = 抽屉全开，0 = 收起。初值取当前状态，深链直进详情不会播一段开场动画。
     val progress = remember { Animatable(if (expanded) 1f else 0f) }
     LaunchedEffect(expanded) {
@@ -174,15 +177,6 @@ internal fun SessionsDrawerHost(
         } else {
             progress.animateTo(target, tween(durationMillis = spec.durationMillis, easing = spec.easing))
         }
-    }
-
-    // 返回键/返回手势。androidx.compose.ui.backhandler 在 desktop 类路径不可见（ui-desktop
-    // 只把它列为 implementation），所以走三端 expect/actual 的 [DrawerSystemBackHandler]：
-    // Android 用 activity-compose 的 BackHandler（同时兼容 predictive back 与旧键路径），
-    // 桌面/wasm 没有系统返回——Esc / 顶栏返回见 sessionDetailBack。
-    // 抽屉开着但没有选中会话时不拦截：底下没有可「露出来」的详情，返回应交给系统（退出应用）。
-    DrawerSystemBackHandler(enabled = !expanded || state.selectedSessionId != null) {
-        if (expanded) state.closeSessionsDrawer() else state.openSessionsDrawer()
     }
 
     // 无障碍焦点（口径：进出抽屉后焦点能回到原来那一行 / 不丢到无处）。
@@ -217,13 +211,20 @@ internal fun SessionsDrawerHost(
 
         // --- 遮罩：常驻但收起后 alpha=0 且不可点；点它 = 收抽屉。 ---
         // alpha 在 graphicsLayer 块里延迟读取 progress——动画期间这棵子树零重组。
+        //
+        // J5：可点判据带 `selectedSessionId != null` —— 底下没有详情时点遮罩只会把抽屉收起，
+        // 露出手机上没有出路的「在左侧选择一个会话」（无左侧、列表也收走了）。那种状态下
+        // 遮罩保持纯视觉压暗，不做「关掉唯一入口」的动作；返回同样不登记层（见上面的 BackLayer）。
         Box(
             Modifier
                 .fillMaxSize()
                 .testTag(DRAWER_SCRIM_TAG)
                 .graphicsLayer { alpha = spec.scrimAlpha * progress.value }
                 .background(Color.Black)
-                .clickable(enabled = expanded, onClick = state::closeSessionsDrawer)
+                .clickable(
+                    enabled = expanded && state.selectedSessionId != null,
+                    onClick = state::closeSessionsDrawer,
+                )
                 .semantics { if (!expanded) invisibleToUser() },
         )
 

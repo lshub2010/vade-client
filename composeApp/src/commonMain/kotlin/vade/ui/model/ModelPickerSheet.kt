@@ -10,7 +10,10 @@
 //    tint + hairline + float shadow), never edge-to-edge, never full-width;
 //  - carries the 36×4dp grabber 8dp under the card top — the only job is "this can be
 //    dragged/closed";
-//  - closes on mask tap, ✕, and `Esc` (the card takes focus so the key reaches the page);
+//  - closes on mask tap, ✕, `Esc`, and the **system back** — g-nav-stack: the sheet itself
+//    registers one `BackLayer` while it is composed, so Android's back / gesture closes only
+//    this overlay instead of the session under it (G3), and on desktop `Esc` is claimed by
+//    the same stack before the shell's "leave the session" fallback can see it;
 //  - body = the SAME row rendering `ModelPickerCard` uses (`PickerRows` / `PickerEmptyState`
 //    / notices — widened to `internal`, not duplicated): the honest tri-states (loading /
 //    load-failed / no-models / read-only) and the write-failure lines all live here too.
@@ -108,6 +111,11 @@ fun ModelPickerSheet(
 
     // The card takes focus so Esc reaches this hierarchy (a modal sheet owns the keyboard).
     LaunchedEffect(state, title) { runCatching { focusRequester.requestFocus() } }
+
+    // g-nav-stack（G3）· 浮层就是返回栈的一层：系统返回 / 返回手势 / 桌面 Esc 只关这张卡，
+    // 不会穿透到下面的会话（旧行为：返回栈里没有这一层，Esc 落到「退出详情」→ 整个会话被关）。
+    // 本组合存在 ⟺ 浮层开着 ⇒ `enabled = true`；关掉后组合离开，层自动出栈。
+    BackLayer(enabled = true, onBack = onClose)
 
     Box(
         modifier
