@@ -3,7 +3,9 @@ package vade.ui.destinations
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -108,6 +110,10 @@ class PairingCardUiTest {
     fun submitMakesExactlyOneAttemptWithEnteredCodeAndHidesOnSuccess() = runComposeUiTest {
         val marker = MarkerFactory()
         val calls = mutableListOf<Pair<RawSourceStrings, String>>()
+        // H1 契约：卡片是**启动**决定 —— 只有入口（`sessionSourceFromEnvironment`）声明过
+        // 「本次启动没有凭据」（`noteBooted()`）才出卡。这两个用例从前省了这一步，等于在
+        // 一个永不出现的卡上等占位文案（ComposeTimeoutException）。
+        PairingRuntime.noteBooted()
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
                 FirstRunPairingCard(
@@ -120,7 +126,7 @@ class PairingCardUiTest {
             }
         }
         waitUntil { onAllNodesWithText(PAIRING_PLACEHOLDER).fetchSemanticsNodes().isNotEmpty() }
-        onNode(hasSetTextAction()).performTextInput("青松-WRONG1")
+        onNode(codeField()).performTextInput("青松-WRONG1")
         onNodeWithText(PAIRING_BUTTON_LABEL).performClick()
         waitUntil { calls.isNotEmpty() }
         waitForIdle()
@@ -179,6 +185,8 @@ class PairingCardUiTest {
 
     /** 组一张卡，输入一个码并点「配对」，提交按 kind 失败。 */
     private fun androidx.compose.ui.test.ComposeUiTest.failingCard(kind: PairingFailureKind, cause: Throwable) {
+        // 同 submitMakes…：卡只在「入口声明过本次启动」后出现（H1）。
+        PairingRuntime.noteBooted()
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
                 FirstRunPairingCard(
@@ -188,9 +196,16 @@ class PairingCardUiTest {
             }
         }
         waitUntil { onAllNodesWithText(PAIRING_PLACEHOLDER).fetchSemanticsNodes().isNotEmpty() }
-        onNode(hasSetTextAction()).performTextInput("青松-WRONG1")
+        onNode(codeField()).performTextInput("青松-WRONG1")
         onNodeWithText(PAIRING_BUTTON_LABEL).performClick()
     }
+
+    /**
+     * 码输入框的匹配器。卡上现在有三个可输入框（host / port / 码），语义树上都只有
+     * 「可输入文本」这一条 —— host/port 的值非空、占位永不显示，所以只能靠
+     * [PAIRING_CODE_FIELD_TAG] 这个 tag 定位码框（`hasSetTextAction()` 单独用会撞 3 个节点）。
+     */
+    private fun codeField() = hasSetTextAction() and hasAnyAncestor(hasTestTag(PAIRING_CODE_FIELD_TAG))
 
     // ------------------------------------------------------------- 纯文案
 

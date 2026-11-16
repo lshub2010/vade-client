@@ -6,6 +6,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
@@ -269,14 +270,21 @@ class AppShellAdapterWiringTest {
         runOnIdle { ui.open(sessionId) }
         waitForIdle()
 
-        // Which code path ran: only the pushed-detail branch puts the **usage subtitle**
-        // (g-topbar-usage: «量» tokens · «轮» 轮) on the top bar — the list top bar's
-        // subtitle is the tier label (会话 · N 个会话), so a "tokens" node proves that
-        // `ShellBody`'s own SessionDetailScreen was the one rendered. (It used to pin the
-        // stale "会话详情 · 消息流 / 工具卡为假数据" sentence, which the usage batch deleted.)
+        // 分支证据 1（同步、不依赖网络状态）：详情顶栏的 leading 是「返回」——列表 chrome
+        // 没有这个按钮（列表只有搜索/新建），所以它的出现就证明 `ShellBody` 的 pushed-detail
+        // 分支真的组合了（`DestinationHost` 的详情不画顶栏）。
         waitUntil(timeoutMillis = 10_000) {
-            onAllNodesWithText("tokens", substring = true).fetchSemanticsNodes().isNotEmpty()
+            onAllNodesWithContentDescription("返回").fetchSemanticsNodes().isNotEmpty()
         }
+        // 分支证据 2：只有 pushed-detail 分支会给这个会话配用量副标题（列表顶栏的副标题是
+        // 层级标签「会话 · N 个会话」）。A3 之后这条证据的形状变了：这个宿主源**没有接活动
+        // 读取口**（`HostSource` 只实现 `AdapterHost`），`ActivitySeams.unavailable()` 让
+        // `session/usage.get` 立刻 UNAVAILABLE ⇒ 副标题是「点按重试」而不是编造的 token 数字。
+        // 旧断言等 "tokens" 就是等一个按契约**不该出现**的东西（假数字正是 A3 修的 bug）。
+        waitUntil(timeoutMillis = 10_000) {
+            onAllNodesWithText(USAGE_RETRY_LABEL).fetchSemanticsNodes().isNotEmpty()
+        }
+        onAllNodesWithText("tokens", substring = true).assertCountEquals(0)
         // Collapsed picker header prints currentLabel(): the probe name only exists if the
         // pushed detail got the provider.
         // g-model-chip：会话详情上模型名由 header 行与 composer chip 共同承载（设置页仍只有

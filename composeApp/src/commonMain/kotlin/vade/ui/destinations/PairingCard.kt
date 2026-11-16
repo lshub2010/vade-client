@@ -14,6 +14,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -154,7 +155,15 @@ internal fun FirstRunPairingCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Box(modifier = Modifier.weight(1f)) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        // 三个输入框（host / port / 码）在语义树上都只表现为「可输入文本」，
+                        // 没有可区分的文案（前两个的占位永远不显示：值非空）——测试无法只
+                        // 凭 `hasSetTextAction()` 选中码框。给码框一个稳定的 tag，测试用
+                        // `hasAnyAncestor(hasTestTag(...))` 定位；生产行为零变化。
+                        .testTag(PAIRING_CODE_FIELD_TAG),
+                ) {
                     skin.TextField(
                         value = code,
                         onValueChange = {
@@ -276,6 +285,9 @@ internal const val PAIRING_WHERE =
 
 /** 输入框占位。 */
 internal const val PAIRING_PLACEHOLDER = "一次性配对码"
+
+/** 配对码输入框的测试 tag（三个输入框里唯一可区分的一个；见组合处的注释）。 */
+internal const val PAIRING_CODE_FIELD_TAG = "pairing-code-field"
 
 /** host / port 输入框占位（默认值本身就是值，占位只在清空后提示）。 */
 internal const val PAIRING_HOST_PLACEHOLDER = "host（默认 127.0.0.1）"

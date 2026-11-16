@@ -375,7 +375,7 @@ class RealCoreE2ETest {
     }
 
     @Test
-    fun wrongPairCodeSurfacesAuthFailedFromUiSession() {
+    fun wrongPairCodeSurfacesTheCoreCodeFromUiSession() {
         val handle = bootCore(echoText = "unused")
         runBlocking {
             // 直接打引导层：client.connect() 会把错误吞进重试循环，这里要求错误原地浮出
@@ -389,7 +389,16 @@ class RealCoreE2ETest {
             )
             try {
                 val err = assertFailsWith<VadeException> { factory.connect() }
-                assertEquals(VadeErrorCodes.AUTH_FAILED, err.code, "pair-code rejection maps to AUTH_FAILED")
+                // 契约变更（c1-connect）：`KtorTransportFactory` 不再把一切拒绝压成
+                // AUTH_FAILED —— core 的 `{"code","message"}` 原码透传（VadeTransport.kt
+                // 的 `parsePairingErrorBody`），这样「码错/过期」才能在引导卡上与
+                // 「没配对」区分开（core/vade/identity/pairing.py 对未知码回 CODE_INVALID）。
+                // 旧断言写的是压缩后的 AUTH_FAILED，属于已废弃的行为。
+                assertEquals(
+                    VadeErrorCodes.CODE_INVALID,
+                    err.code,
+                    "core 的原码必须原样浮出（未知配对码 = CODE_INVALID），不得压成 AUTH_FAILED",
+                )
                 assertTrue("HTTP" in err.message!!, "error carries the HTTP status: ${err.message}")
             } finally {
                 runCatching { factory.dispose() }

@@ -131,7 +131,13 @@ class SessionsDrawerTest {
         val ui = uiState()
         val dispatcher = BackDispatcher()
         setContent {
-            CompositionLocalProvider(LocalBackDispatcher provides dispatcher) {
+            // 抽屉层现在用自己的 surface 色画底（`skin.colors.surface`）——`LocalSkin` 的
+            // 默认值是 error("LocalSkin not provided")，生产由 `App` 提供，本用例也必须提供
+            // （同文件其它用例早已 provides MaterialSkin()）。
+            CompositionLocalProvider(
+                LocalSkin provides MaterialSkin(),
+                LocalBackDispatcher provides dispatcher,
+            ) {
                 SessionsDrawerHost(
                     state = ui,
                     adapters = null,
