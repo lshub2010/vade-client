@@ -78,6 +78,16 @@ object SourceKeys {
 expect fun rawSourceStrings(): RawSourceStrings
 
 /**
+ * H4 · 本平台能否真的兑换一次性配对码。
+ *
+ * `POST /ui/session` 的成功凭据是 `Set-Cookie: __Host-ac_ui`，而浏览器运行时**读不到**
+ * 它 —— 在 Wasm 上发起这次 POST 只会把用户的一次性码烧掉，然后提示「码不对，再取一个」
+ * （死循环）。所以能力是 `expect` 的：JVM/Android = true，浏览器 = false，调用方据此
+ * 根本不发请求、直接给「请用桌面/手机配对」的文案。
+ */
+expect fun canBootstrapPairing(): Boolean
+
+/**
  * The parsed result of the switch. [Fake] is the fixture path (byte-identical to the
  * pre-w-wire behaviour); [Real] wires the protocol-backed source.
  */
@@ -169,14 +179,32 @@ fun sourceSpecFromEnvironment(): SourceSpec = SourceConfig.parse(rawSourceString
  * The [SessionSource] this run should use — the ONE construction point the three
  * entry points share. `Fake` keeps today's fixture behaviour byte-for-byte; `Real`
  * returns the protocol-backed source wrapped in [AutoConnectingSessionSource].
+ *
+ * H1 · 入口还要声明「本次启动没有任何可用的配对凭据」（[PairingRuntime.noteBooted]）：
+ * 引导卡的可见性以这次启动为准，而不是以「谁组合了会话列表」为准 —— 否则每个渲染列表的
+ * 组合/测试都会凭空长出一张配对卡。
  */
-fun sessionSourceFromEnvironment(): SessionSource =
-    sessionSourceFrom(rawSourceStrings())
+fun sessionSourceFromEnvironment(): SessionSource {
+    PairingRuntime.noteBooted()
+    return sessionSourceFrom(rawSourceStrings())
+}
 
-/** Testable core of [sessionSourceFromEnvironment]: explicit raw strings in. */
+/**
+ * Testable core of [sessionSourceFromEnvironment]: explicit raw strings in.
+ *
+ * [SourceSpec.Fake] + 已配对（[PairingRuntime] 里装着 factory）= **默认启动配对成功之后**
+ * 的重建点：真源要按用户输入的 host/port 建，而不是按空配置。`Fake` 且未配对仍是夹具。
+ */
 fun sessionSourceFrom(raw: RawSourceStrings): SessionSource =
     when (val spec = SourceConfig.parse(raw)) {
-        is SourceSpec.Fake -> FakeSessionSource()
+        is SourceSpec.Fake -> {
+            val paired = PairingRuntime.state as? PairingRuntimeState.Paired
+            if (paired != null) {
+                realAutoConnecting(paired.host, paired.port, paired.factory)
+            } else {
+                FakeSessionSource()
+            }
+        }
         is SourceSpec.Real -> {
             val config = if (spec.pairCode != null) {
                 VadeClientConfig(
@@ -191,16 +219,23 @@ fun sessionSourceFrom(raw: RawSourceStrings): SessionSource =
             // cookie 的 transport factory」装进 [PairingRuntime]，这里用它建
             // [RealSessionSource] —— 同一条链、同一次配对（一次性码不会被第二次兑换）。
             // `null`（默认）= 今天的逐字节行为。
-            AutoConnectingSessionSource(
-                RealSessionSource(config, PairingRuntime.pairedFactory),
-                spec.host,
-                spec.port,
-            )
+            realAutoConnecting(spec.host, spec.port, PairingRuntime.pairedFactory)
         }
     }
 
 /** Budget for the runtime auto-connect wait (the loader's Failed banner shows past it). */
 internal const val AUTO_CONNECT_TIMEOUT_MS = 15_000L
+
+/** 真源装配的唯一形状：shim 包住真源，host/port 只用于报错文案。 */
+private fun realAutoConnecting(
+    host: String,
+    port: Int,
+    factory: VadeTransportFactory?,
+): SessionSource = AutoConnectingSessionSource(
+    RealSessionSource(VadeClientConfig(host = host, port = port), factory),
+    host,
+    port,
+)
 
 /**
  * Runtime shim between the switch and [RealSessionSource]'s contract: the real
@@ -209,13 +244,29 @@ internal const val AUTO_CONNECT_TIMEOUT_MS = 15_000L
  * lazily on the first read — idempotent and concurrency-safe underneath — and
  * bounds the wait; a core that never comes up surfaces as a classified
  * [VadeException] (the loader's Failed banner), never a hang, never fixtures.
+ *
+ * ## A1 · 它必须实现 [AdapterHost]（和 [ActivitySeamHost]）
+ * 组合根建出来的**唯一**生产形态就是本类；`AppShell.adaptersOf` 用
+ * `(state.source as? AdapterHost)?.adapters` 取适配器包。只要本类不实现它，真源下
+ * 聊天/元数据/模型/上传/能力页会全部静默退回 fixtures —— 那是「真模式是假的」，
+ * 三份审查独立命中的 A1。透传而不是缓存：适配器包随连接存在（断开即 null），
+ * 由 [RealSessionSource] 自己管生命周期。
  */
 internal class AutoConnectingSessionSource(
     private val real: RealSessionSource,
     private val host: String,
     private val port: Int,
     private val connectTimeoutMs: Long = AUTO_CONNECT_TIMEOUT_MS,
-) : SessionSource, ModuleCatalogProvider {
+) : SessionSource, AdapterHost, ActivitySeamHost, ModuleCatalogProvider {
+
+    /** A1 · 适配器包透传（未连接 = null，与 `RealSessionSource` 的契约逐字一致）。 */
+    override val adapters: AdapterProvider? get() = real.adapters
+
+    /**
+     * A3 · 活动页读取窄口透传：**恒非空**（晚绑定 client）。缺了它，顶栏在真源（本 shim）
+     * 下会走 `activitySourcesOf` 的"未接线"分支并显示**编造的 fixture token 数**。
+     */
+    override val activitySeams: ActivitySeams get() = real.activitySeams
 
     /**
      * 模块清单的能力透传：组合根只有这个 shim 与 [RealSessionSource]，两者都要能回答
@@ -260,18 +311,73 @@ internal class AutoConnectingSessionSource(
     /** Test/diagnostic access: the wrapped real source (g-pair-first-run wiring tests). */
     internal val delegate: RealSessionSource get() = real
 
+    /**
+     * 等到连上为止，并把**真实原因**带回去（H3）。
+     *
+     * 以前这里只会等 15 秒然后统一报「core 没起/端口不对」—— 码错、码过期、401 全被
+     * 协议 runner 的无限重连吞掉，用户看到的是错误诊断。现在：
+     *  - 连接尝试抛出**不可重试**的错误（`CODE_INVALID` / `CODE_EXPIRED` / `AUTH_FAILED` /
+     *    绑定类）→ **立刻**把原异常抛给上层（列表横幅显示分类 + 原码），并把「码被拒过」
+     *    记进 [PairingRuntime]，让引导卡重新出现可重试；
+     *  - 超时（core 真没起来 / 网络不通）→ 抛 `UNAVAILABLE`，但把 runner 记下的最后一条
+     *    原话拼进 message，横幅不再撒谎。
+     */
     private suspend fun awaitConnected() {
         real.connect() // idempotent; the protocol client owns the reconnect loop
-        val reached = withTimeoutOrNull(connectTimeoutMs) {
-            real.state.first { it is RealSessionState.Connected }
+        val outcome = withTimeoutOrNull(connectTimeoutMs) {
+            real.state.first { state ->
+                state is RealSessionState.Connected ||
+                    (state is RealSessionState.Reconnecting && isPermanentConnectFailure(real.lastConnectFailure))
+            }
         }
-        if (reached == null) {
-            throw VadeException(
-                VadeErrorCodes.UNAVAILABLE,
-                "core at $host:$port not reachable within ${connectTimeoutMs}ms (auto-connect)",
-            )
+        if (outcome is RealSessionState.Connected) return
+
+        val cause = real.lastConnectFailure
+        if (outcome != null && cause != null) {
+            // 不可重试：带着原码/原话立刻失败，不再空转。
+            if (isPairCodeRejection(cause)) PairingRuntime.noteCodeRejected()
+            throw cause
         }
+        val lastWords = cause?.message?.takeIf { it.isNotBlank() }?.let { "；最后一次失败：$it" } ?: ""
+        throw VadeException(
+            VadeErrorCodes.UNAVAILABLE,
+            "core at $host:$port not reachable within ${connectTimeoutMs}ms (auto-connect)$lastWords",
+        )
     }
+}
+
+/**
+ * 重试**不可能**修好的连接失败（码错/过期、认证、身份或协议不匹配）：立即失败。
+ * 传输层错误（拒绝连接、超时、DNS）不在此列 —— core 可能只是还没起来，继续等。
+ */
+internal fun isPermanentConnectFailure(t: Throwable?): Boolean {
+    val code = (t as? VadeException)?.code ?: return false
+    return code in PERMANENT_CONNECT_FAILURES
+}
+
+private val PERMANENT_CONNECT_FAILURES: Set<String> = setOf(
+    VadeErrorCodes.CODE_INVALID,
+    VadeErrorCodes.CODE_EXPIRED,
+    VadeErrorCodes.AUTH_FAILED,
+    VadeErrorCodes.ORIGIN_MISMATCH,
+    VadeErrorCodes.PROTOCOL_MISMATCH,
+    VadeErrorCodes.MANIFEST_INVALID,
+    VadeErrorCodes.SETUP_UNAUTHORIZED,
+    VadeErrorCodes.BIND_UNAUTHORIZED,
+    VadeErrorCodes.BIND_FINGERPRINT_MISMATCH,
+    VadeErrorCodes.BIND_HELLO_SIG_INVALID,
+    VadeErrorCodes.BIND_KEY_UNSUPPORTED,
+    VadeErrorCodes.BIND_DEVICE_LIMIT,
+    VadeErrorCodes.BIND_CLOCK_SKEW,
+    VadeErrorCodes.BIND_SETUP_LOCKED,
+)
+
+/** 这次失败是不是「配对码被 core 拒了」（引导卡要重新出现让用户重试）。 */
+internal fun isPairCodeRejection(t: Throwable): Boolean {
+    val ex = t as? VadeException ?: return false
+    return ex.code == VadeErrorCodes.CODE_INVALID ||
+        ex.code == VadeErrorCodes.CODE_EXPIRED ||
+        (ex.code == VadeErrorCodes.AUTH_FAILED && ex.message?.contains("/ui/session") == true)
 }
 
 // =============================================================================
@@ -289,7 +395,13 @@ internal class AutoConnectingSessionSource(
 //  桌面 / Android / Wasm 的环境变量与 intent extras / URL query 旧路径一字未动。
 // =============================================================================
 
-/** 首次运行引导卡的三种失败 —— 文案一一对应，互不可替换（见 `destinations/PairingCard.kt`）。 */
+/**
+ * 首次运行引导卡的失败分类 —— 文案一一对应，互不可替换（见 `destinations/PairingCard.kt`）。
+ *
+ * 与 `data/VadeErrorCategory` 的分工：那张表是**协议码 → UI 桶**（横幅用），这里是
+ * **引导卡的下一步**（卡片用，带可照抄的动作）。[BadCode] 现在同时覆盖
+ * `CODE_INVALID` / `CODE_EXPIRED` / `AUTH_FAILED` —— core 的原码会原样出现在详情行里。
+ */
 enum class PairingFailureKind {
     /** 码错 / 过期 / 已被用掉：需要用户重新取码再输一次。 */
     BadCode,
@@ -299,6 +411,15 @@ enum class PairingFailureKind {
 
     /** 网络不通（DNS / 超时 / 中途断开）：检查地址端口后可重试。 */
     Network,
+
+    /** 地址/端口本身不合法（端口越界、空 host）：卡片内直接改，不发一次网络请求。 */
+    BadConfig,
+
+    /**
+     * H4 · 本平台**不能**兑换一次性码（浏览器/Wasm 读不到 `Set-Cookie`）：不发
+     * `POST /ui/session`，直接给「请用桌面/手机配对」的可行动文案。
+     */
+    NotAvailableHere,
 }
 
 /** 一次首次运行配对尝试的结局。 */
@@ -307,19 +428,45 @@ sealed interface PairingAttempt {
     /**
      * 配对成功：[factory] 里已缓存 `__Host-ac_ui` cookie（码已被消费一次）。交给
      * [PairingRuntime] 后，[sessionSourceFrom] 用它建真源 —— 列表随即开始拉真数据。
+     *
+     * [host] / [port] 是这次尝试**实际连的**地址（用户可能在卡里改过），配对成功后
+     * [PairingRuntime] 要按它建真源，而不是按启动时那条空配置。
      */
-    data class Connected(val factory: VadeTransportFactory) : PairingAttempt
+    data class Connected(
+        val factory: VadeTransportFactory,
+        val host: String = SourceConfig.DEFAULT_HOST,
+        val port: Int = SourceConfig.DEFAULT_PORT,
+    ) : PairingAttempt
 
     /** 配对失败：[kind] 选文案，[cause] 是传输原话（引导卡原样展示、不二次加工）。 */
     data class Rejected(val kind: PairingFailureKind, val cause: Throwable) : PairingAttempt
 }
 
-/** 首次运行判据：真源且没带配对码 = 引导卡该出现。纯函数，码与假源都不触发。 */
+/**
+ * 首次运行判据（H1/H2 的口径）：**未配对**就该出卡，而不再是「真源且缺码」。
+ *
+ *  - [PairingRuntimeState.NotBooted]（测试直构的组合 / 非入口路径）→ 不出现：引导卡是
+ *    **启动**决定，不是「谁组合了会话列表」决定；
+ *  - [PairingRuntimeState.Paired] → 不出现；
+ *  - 上一次尝试的码被 core 拒了（[PairingRuntimeState.Unpaired.codeRejected]）→ 仍出现，
+ *    可重试（错码/过期码不会把入口关死）；
+ *  - 否则：真源缺码 → 出现；**什么都没配**（默认启动）→ 出现；显式 `source=fixtures` /
+ *    `source=fake` → 不出现（夹具是开发者显式选择的逃生口）。
+ *
+ * 端口写错时 [SourceConfig.parse] 抛 `IllegalArgumentException` —— 引导卡不因配置错误
+ * 出现，那条错误由入口的可读错误屏负责（P1-4）。
+ */
 fun needsFirstRunPairing(raw: RawSourceStrings): Boolean {
-    // 端口写错时 parse 抛 IllegalArgumentException —— 引导卡不因配置错误出现，
-    // 那条错误由启动通道自己的报错负责。
+    when (val runtime = PairingRuntime.state) {
+        is PairingRuntimeState.Paired -> return false
+        is PairingRuntimeState.NotBooted -> return false
+        is PairingRuntimeState.Unpaired -> if (runtime.codeRejected) return true
+    }
     val spec = runCatching { SourceConfig.parse(raw) }.getOrNull() ?: return false
-    return spec is SourceSpec.Real && spec.pairCode == null
+    return when (spec) {
+        is SourceSpec.Real -> spec.pairCode == null
+        is SourceSpec.Fake -> raw.source.isNullOrBlank()
+    }
 }
 
 /** 与 `shell/hostOf` / `shell/portOf` 同一条解析规则（同一默认值常量），两处由测试互相对照。 */
@@ -336,8 +483,15 @@ internal fun pairingEndpointOf(raw: RawSourceStrings): String {
  * `__Host-ac_ui` cookie）+ 一次 WS 升级 —— 与 runner 每次重连带的是同一个入口。探活的
  * 传输随即关闭：cookie 已缓存在 factory 里，链路重连时复用，一次性码不会被二次兑换。
  *
- * 失败在**这里**直接分类（不走 runner —— runner 把一切异常吞掉换成无限重试，三种失败
- * 在那条路上不可区分）：`AUTH_FAILED` = 码错/过期；"refused" = 服务端没起；其余 = 网络。
+ * 失败在**这里**直接分类（不走 runner —— runner 把一切异常吞掉换成无限重试，几种失败
+ * 在那条路上不可区分）：
+ *  - `CODE_INVALID` / `CODE_EXPIRED` / `AUTH_FAILED` = 码错/过期（core 的原码透传到这里）；
+ *  - 端口/地址不合法 = [PairingFailureKind.BadConfig]，**一次网络请求都不发**；
+ *  - "refused" = 服务端没起；其余 = 网络。
+ *
+ * H4 · 本平台不能兑换码（[canBootstrapPairing] = false，浏览器/Wasm）时直接返回
+ * [PairingFailureKind.NotAvailableHere] —— 不烧掉用户的一次性码。
+ *
  * 码只走函数参数与进程内存 —— 不写盘、不拼进 URL、不进日志。
  */
 suspend fun firstRunPairingAttempt(
@@ -345,10 +499,22 @@ suspend fun firstRunPairingAttempt(
     enteredCode: String,
     transportFactory: (VadeClientConfig) -> VadeTransportFactory = { config -> KtorTransportFactory(config) },
 ): PairingAttempt {
+    if (!canBootstrapPairing()) {
+        return PairingAttempt.Rejected(
+            PairingFailureKind.NotAvailableHere,
+            VadeException(
+                VadeErrorCodes.UNSUPPORTED,
+                "this build cannot bootstrap a browser session: the browser runtime cannot read the " +
+                    "Set-Cookie header from POST /ui/session, so no request was sent (the one-time " +
+                    "code was NOT consumed) — pair on desktop or mobile instead",
+            ),
+        )
+    }
     val code = enteredCode.trim()
-    val spec = runCatching { SourceConfig.parse(raw.source, raw.host, raw.port, code) }.getOrNull()
+    val spec = runCatching { SourceConfig.parse(raw.source, raw.host, raw.port, code) }
+        .getOrElse { return PairingAttempt.Rejected(PairingFailureKind.BadConfig, it) }
     if (spec !is SourceSpec.Real || spec.pairCode == null) {
-        // 引导卡只在「真源且缺码」时出现；走到这里说明运行形态变了（如运行期切了假源）。
+        // 引导卡只在「未配对」时出现；走到这里说明运行形态变了（如运行期切了假源）。
         return PairingAttempt.Rejected(
             PairingFailureKind.BadCode,
             VadeException(
@@ -364,12 +530,11 @@ suspend fun firstRunPairingAttempt(
         browserSession = BrowserPairing(spec.pairCode),
     )
     return try {
-        // factory 构造也在尝试之内：任何环节的失败都要被分类成三种之一，
-        // 而不是把原话裸抛给 UI。
+        // factory 构造也在尝试之内：任何环节的失败都要被分类，而不是把原话裸抛给 UI。
         val factory = transportFactory(config)
         val probe = factory.connect()
         runCatching { probe.close() }
-        PairingAttempt.Connected(factory)
+        PairingAttempt.Connected(factory, spec.host, spec.port)
     } catch (ce: CancellationException) {
         throw ce
     } catch (t: Throwable) {
@@ -377,34 +542,94 @@ suspend fun firstRunPairingAttempt(
     }
 }
 
-/** 三种失败的分类：C-04 `AUTH_FAILED` = 码错；"refused" = 服务端没起；其余 = 网络。 */
+/**
+ * 失败的分类。码类错误优先看 **core 回的原码**（`CODE_INVALID` / `CODE_EXPIRED`），
+ * 不再把所有 `AUTH_FAILED` 笼统说成「配对码不对」；配置解析错误单独一类，不发网络请求。
+ */
 internal fun pairingFailureKindOf(t: Throwable): PairingFailureKind = when {
-    t is VadeException && t.code == VadeErrorCodes.AUTH_FAILED -> PairingFailureKind.BadCode
+    t is VadeException && t.code in PAIR_CODE_ERRORS -> PairingFailureKind.BadCode
+    t is IllegalArgumentException -> PairingFailureKind.BadConfig
     t.message?.let { m ->
         m.contains("refused", ignoreCase = true) || m.contains("ECONNREFUSED", ignoreCase = true)
     } == true -> PairingFailureKind.ServerDown
     else -> PairingFailureKind.Network
 }
 
+private val PAIR_CODE_ERRORS: Set<String> = setOf(
+    VadeErrorCodes.CODE_INVALID,
+    VadeErrorCodes.CODE_EXPIRED,
+    VadeErrorCodes.AUTH_FAILED,
+)
+
 /**
- * 运行期配对桥：引导卡成功后交出的 factory，[sessionSourceFrom] 的 Real 分支读它。
+ * 运行期配对桥：已经换到 cookie 的 factory + 用户实际连的 endpoint，
+ * [sessionSourceFrom] 读它建真源。
  *
  * 进程内存 state（`mutableStateOf`）—— 三端都没有可写的持久层入口，且桥里装的是
  * **factory 而不是码**：码在配对成功的那一刻已被消费，进程里此后不该再留它。
+ *
+ * 三个状态的意义：
+ *  - [PairingRuntimeState.NotBooted]：还没有任何入口声明过本次运行（测试直构、纯数据
+ *    用例）→ 引导卡不出现；
+ *  - [PairingRuntimeState.Unpaired]：入口已启动但没有可用凭据 → 引导卡出现；
+ *  - [PairingRuntimeState.Paired]：已配对，真源按 [PairingRuntimeState.Paired.host]/[port]
+ *    建，界面随 state 刷新（compose state）。
  */
+sealed interface PairingRuntimeState {
+
+    /** 默认：入口还没声明本次运行（夹具/测试路径），也不是已配对。 */
+    data object NotBooted : PairingRuntimeState
+
+    /**
+     * 入口已启动、尚未配对。[codeRejected] = 上一次码被 core 拒过（错码/过期码/启动参数里
+     * 带的码失效）→ 引导卡必须仍然出现，用户才能重试（H2）。
+     */
+    data class Unpaired(val codeRejected: Boolean = false) : PairingRuntimeState
+
+    /** 已配对：factory 里已有 `__Host-ac_ui` cookie，真源按 [host]:[port] 建。 */
+    data class Paired(
+        val factory: VadeTransportFactory,
+        val host: String,
+        val port: Int,
+    ) : PairingRuntimeState
+}
+
 object PairingRuntime {
 
-    /** `null`（默认）= 未配对/非引导路径 —— [sessionSourceFrom] 保持今天的逐字节行为。 */
-    var pairedFactory by mutableStateOf<VadeTransportFactory?>(null)
+    /** 桥的唯一可变字段（守卫测试钉住「码不进任何字段」：类型里没有 String 码）。 */
+    var state: PairingRuntimeState by mutableStateOf<PairingRuntimeState>(PairingRuntimeState.NotBooted)
         private set
 
-    /** 引导卡成功后调用；compose state —— 读取它的组合（入口源构造、引导卡可见性）会跟着刷新。 */
-    fun install(factory: VadeTransportFactory) {
-        pairedFactory = factory
+    /** 已配对时的 factory；`null` = 未配对/未启动。 */
+    val pairedFactory: VadeTransportFactory? get() = (state as? PairingRuntimeState.Paired)?.factory
+
+    /** 已配对时的 `host:port`（文案用）；`null` = 未配对。 */
+    val pairedEndpoint: String? get() = (state as? PairingRuntimeState.Paired)?.let { "${it.host}:${it.port}" }
+
+    /** 入口（[sessionSourceFromEnvironment]）调用：本次启动没有任何可用凭据 → 允许出卡。 */
+    fun noteBooted() {
+        if (state is PairingRuntimeState.NotBooted) state = PairingRuntimeState.Unpaired()
     }
 
-    /** 测试专用：把桥清回未配对态（桥是全局单例，用例之间必须互不污染）。 */
+    /** 引导卡成功后调用；compose state —— 读取它的组合（入口源构造、引导卡可见性）会跟着刷新。 */
+    fun install(
+        factory: VadeTransportFactory,
+        host: String = SourceConfig.DEFAULT_HOST,
+        port: Int = SourceConfig.DEFAULT_PORT,
+    ) {
+        state = PairingRuntimeState.Paired(factory, host, port)
+    }
+
+    /**
+     * 一次配对码被 core 拒绝（错码/过期码，或启动参数里带的码失效）：桥回到「未配对 +
+     * 码被拒过」，引导卡因此重新出现 —— 而不是把用户关在「一直重连」的黑箱里（H2/H3）。
+     */
+    fun noteCodeRejected() {
+        if (state !is PairingRuntimeState.Paired) state = PairingRuntimeState.Unpaired(codeRejected = true)
+    }
+
+    /** 测试专用：把桥清回「未启动」（桥是全局单例，用例之间必须互不污染）。 */
     internal fun clearForTests() {
-        pairedFactory = null
+        state = PairingRuntimeState.NotBooted
     }
 }

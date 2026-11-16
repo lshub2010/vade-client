@@ -78,7 +78,7 @@ import vade.ui.protocol.ContentPart as ProtocolContentPart
 class RealSessionSource(
     private val config: VadeClientConfig,
     transportFactory: VadeTransportFactory? = null,
-) : SessionSource, AdapterHost, ModuleCatalogProvider {
+) : SessionSource, AdapterHost, ActivitySeamHost, ModuleCatalogProvider {
 
     /**
      * 模块清单通道：**连接期非空、断开后回到 `null`**（`connect()` 建，`disconnect()` dispose）。
@@ -133,6 +133,23 @@ class RealSessionSource(
 
     @Volatile
     private var _adapters: AdapterProvider? = null
+
+    /**
+     * A5 · 活动页读取窄口：**恒非空、对象身份恒定**（每次调用才去取当前 client，见
+     * [ActivitySeams]）。未连接时读取以 `UNAVAILABLE` 明确失败 —— 于是顶栏/活动页在
+     * 真源下永远不会退回夹具数字（A3）。
+     */
+    override val activitySeams: ActivitySeams = ActivitySeams(
+        usage = LateBoundUsageSource { _client },
+        subagents = LateBoundSubagentSource { _client },
+    )
+
+    /**
+     * 最近一次**连接尝试**失败的原因（含 `POST /ui/session` 的 `CODE_INVALID` /
+     * `AUTH_FAILED`）。协议 runner 会把异常吞掉换成无限重连，这个字段是唯一能让上层
+     * 说清「为什么连不上」的出口（H3：不再一律报「core 没起/端口不对」）。
+     */
+    val lastConnectFailure: Throwable? get() = _client?.lastConnectFailure
 
     private var collectorJobs: List<Job> = emptyList()
     private var scope: CoroutineScope? = null

@@ -31,15 +31,15 @@ import androidx.compose.ui.unit.dp
 import vade.ui.UiText
 import vade.ui.glass.asGlassSource
 import vade.ui.skin.glass.LocalGlassHazeState
-import vade.ui.data.RealSessionSource
+import vade.ui.data.ActivitySeamHost
+import vade.ui.data.ActivitySeams
+import vade.ui.data.AdapterHost
 import vade.ui.data.SessionSource
 import vade.ui.data.SessionSummary
 import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
 import vade.ui.protocol.SessionUsageGetResult
 import vade.ui.protocol.UsageBudgetPayload
-import vade.ui.protocol.VadeErrorCodes
-import vade.ui.protocol.VadeException
 import vade.ui.protocol.VadeUsage
 import vade.ui.skin.LocalSkin
 import vade.ui.subagent.SubagentLoadState
@@ -48,13 +48,11 @@ import vade.ui.subagent.SubagentPanel
 import vade.ui.subagent.SubagentRunView
 import vade.ui.subagent.SubagentSection
 import vade.ui.subagent.SubagentSource
-import vade.ui.subagent.SubagentSourceReal
 import vade.ui.usage.UsageLoadState
 import vade.ui.usage.UsageLoader
 import vade.ui.usage.UsagePanel
 import vade.ui.usage.UsageSection
 import vade.ui.usage.UsageSource
-import vade.ui.usage.UsageSourceReal
 
 /** g-haze-structure · 活动页滚动列的 haze source tag（守卫见 `GlassStructureGuardTest`）。 */
 internal const val GlassSourceActivityTag = "vade.glass.source.activity"
@@ -243,46 +241,18 @@ data class ActivitySources(
 /**
  * 组合根粘合：`SessionSource` → 活动页的两个窄口。
  *
- * 只有真的 `RealSessionSource` 才有协议客户端；[vade.ui.data.FakeSessionSource] 不是
- * `RealSessionSource`，于是**两个窄口都是 `null`** —— 假数据源绝不会拿到假读取口，
- * 页面回到接线前的快照路径（`VadeAdaptersTest` 守着同一条规矩）。
- *
- * 客户端是**晚绑定**的（[LateBoundUsageSource] 每次调用才去取 `source.client`）：
- * `RealSessionSource` 断线重连会换一个全新的 client，晚绑定让窄口对象身份保持稳定，
- * 页面 `remember(source)` 持有的 loader 不会被重建，也不会拿着已经 close 的 client 重试。
- *
- * **这层该搬家**：`AdapterProvider`（`data/VadeAdapters.kt`）是项目里「UI 拿窄接口」的
- * 正规入口，加 `fun usage(): UsageSource` / `fun subagents(): SubagentSource` 两个方法
- * （实现就是 `UsageSourceReal(client)` / `SubagentSourceReal(client)`）之后，本函数改成
- * 读 `adapters` 即可，页面与测试一行都不用改。本轮不改 `data/` 目录，所以粘合暂放这里。
+ * A3 · 判据是**能力接口**，不是具体类型：`source is RealSessionSource` 在真源的生产形态
+ * （`AutoConnectingSessionSource`）下恒为 false —— 于是顶栏显示的是**编造的 fixture token
+ * 数**（三份审查独立命中的 A3）。现在：
+ *  - 不是 [AdapterHost]（假源）→ 两个窄口都是 `null`，页面回到接线前的快照路径；
+ *  - 是 [AdapterHost] → **一定**交出非空窄口：先看 [ActivitySeamHost]（真源恒非空、晚绑定
+ *    client），没有就交「读取即 UNAVAILABLE」的诚实占位 —— 绝不让调用方把「没有 seam」
+ *    当成「夹具模式」而编数字。
  */
-fun activitySourcesOf(source: SessionSource): ActivitySources = when (source) {
-    is RealSessionSource -> ActivitySources(
-        usage = LateBoundUsageSource(source),
-        subagents = LateBoundSubagentSource(source),
-    )
-    else -> ActivitySources()
-}
-
-/** 未连接时读取的统一说法（可重试分类由 UNAVAILABLE 决定）。 */
-private const val NOT_CONNECTED: String =
-    "活动页未连接：RealSessionSource 还没有 client（连接建立后才能读），" +
-        "不显示任何占位数字。请恢复连接后重试。"
-
-/** [UsageSource] 的晚绑定实现：每次 `load` 取当前 client，走带强校验的 [UsageSourceReal]。 */
-private class LateBoundUsageSource(private val source: RealSessionSource) : UsageSource {
-    override suspend fun load(sessionId: String): SessionUsageGetResult {
-        val client = source.client
-            ?: throw VadeException(VadeErrorCodes.UNAVAILABLE, NOT_CONNECTED)
-        return UsageSourceReal(client).load(sessionId)
-    }
-}
-
-/** [SubagentSource] 的晚绑定实现；`sessionId = null` 就是契约的跨会话列出。 */
-private class LateBoundSubagentSource(private val source: RealSessionSource) : SubagentSource {
-    override suspend fun list(sessionId: String?) =
-        source.client?.let { SubagentSourceReal(it).list(sessionId) }
-            ?: throw VadeException(VadeErrorCodes.UNAVAILABLE, NOT_CONNECTED)
+fun activitySourcesOf(source: SessionSource): ActivitySources {
+    source as? AdapterHost ?: return ActivitySources()
+    val seams = (source as? ActivitySeamHost)?.activitySeams ?: ActivitySeams.unavailable()
+    return ActivitySources(usage = seams.usage, subagents = seams.subagents)
 }
 
 /**

@@ -15,7 +15,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
-import vade.ui.data.RealSessionSource
+import vade.ui.data.AdapterHost
 import vade.ui.data.SessionSource
 import vade.ui.data.TurnCompletedEvent
 import vade.ui.data.VadeEvent
@@ -32,8 +32,8 @@ import vade.ui.usage.UsageSource
  *
  * ## 数据通路（与 `UiState` 的 loader/夹具二分同构）
  *
- *  - **真源**（`RealSessionSource`）：窄口复用 `destinations` 的
- *    [activitySourcesOf]（晚绑定 client —— 断线重连换 client 不换对象），经
+ *  - **真源**（实现 `AdapterHost` 的源，生产形态是 `AutoConnectingSessionSource`）：窄口复用
+ *    `destinations` 的 [activitySourcesOf]（晚绑定 client —— 断线重连换 client 不换对象），经
  *    `usage/UsageLoader`（g-usage-wire 交付的三态 + 代数守卫 + retry + dispose）拉取；
  *    事件流收集 `turn.completed` 作**失效信号**（见 [SessionUsageBarLoader.onTurnCompleted]
  *    的契约引文：事件 usage 是单轮的，不能拿来改写会话总量）。
@@ -162,9 +162,14 @@ internal class SessionUsageBarLoader(
     /**
      * 真源窄口（晚绑定 client：断线重连换 client 不换对象 —— `activitySourcesOf`
      * 的既有语义）；`null` = 夹具路径。
+     *
+     * A3 · 判据是 [AdapterHost]（能力接口），不是 `source is RealSessionSource`：
+     * 真源在生产形态下是 `AutoConnectingSessionSource`，具体类型判断恒 false —— 顶栏于是
+     * 退回夹具数字（编造的 token 数）。凡是 AdapterHost，`activitySourcesOf` **一定**交出
+     * 非空窄口（真 seam，或读取即 UNAVAILABLE 的诚实占位），夹具数字永远出不来。
      */
     private val realSeam: UsageSource? = seamOverride
-        ?: if (source is RealSessionSource) activitySourcesOf(source).usage else null
+        ?: (source as? AdapterHost)?.let { activitySourcesOf(source).usage }
 
     private val loader: UsageLoader? = realSeam?.let {
         UsageLoader(it, requireNotNull(scope) { "真源路径必须提供执行作用域（只有夹具路径允许 null）" })

@@ -217,6 +217,18 @@ class VadeClient(
     @Volatile
     private var closed = false
 
+    /**
+     * B1/H3 · 最近一次**连接尝试**抛出的异常（原样，含 `POST /ui/session` 的
+     * `CODE_INVALID` / `CODE_EXPIRED` / `AUTH_FAILED`）。
+     *
+     * [runLoop] 把异常吞掉换成指数退避重试 —— 对连接本身是对的，但上层于是只能看到
+     * 「一直没连上」。这个字段让上层（`AutoConnectingSessionSource` / 引导卡 / 列表横幅）
+     * 能说出**真实原因**，并对不可重试的码错误立即失败而不是等 15 秒。
+     */
+    @Volatile
+    var lastConnectFailure: Throwable? = null
+        private set
+
     private val sessionMutex = Mutex()
 
     @Volatile
@@ -292,7 +304,9 @@ class VadeClient(
                 factory.connect()
             } catch (ce: CancellationException) {
                 throw ce
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                // H3 · 保留原话：上层要能说出「码错了」而不是「core 没起」。
+                lastConnectFailure = e
                 attempt += 1
                 continue
             }
@@ -301,6 +315,7 @@ class VadeClient(
                 break
             }
             attempt = 0
+            lastConnectFailure = null
             _state.value = VadeConnectionState.Connected
             transport = newTransport
             val reader = scope.launch { readLoop(newTransport) }

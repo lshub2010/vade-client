@@ -53,6 +53,21 @@ interface VadeTransportFactory {
 }
 
 /**
+ * `/ui/session` 的拒绝体 → `(code, message)`。
+ *
+ * core 的配对端点回的是**扁平**体 `{"code": "CODE_INVALID", "message": "..."}`
+ * （`core/vade/transport/server.py`），不是 rpc 信封；这里也容忍 `{"error": {...}}`
+ * 多包一层。解析不出来返回 `null` —— 调用方退回「HTTP 状态 + 原文」，绝不编造码。
+ */
+internal fun parsePairingErrorBody(body: String): Pair<String, String>? {
+    val obj = runCatching { VadeJson.default.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject }
+        .getOrNull() ?: return null
+    val err = (obj["error"] as? kotlinx.serialization.json.JsonObject) ?: obj
+    val code = err.str("code")?.takeIf { it.isNotBlank() } ?: return null
+    return code to (err.str("message")?.takeIf { it.isNotBlank() } ?: code)
+}
+
+/**
  * Browser-session transport factory (RFC-0004 §8.2, the "pairing" path).
  *
  * 1. `POST /ui/session` with `{pair_code, client_name}` — mints the `__Host-ac_ui`
@@ -104,9 +119,16 @@ class KtorTransportFactory(
                 )
             }
             if (response.status != HttpStatusCode.OK) {
+                // H3 · core 的拒绝体是 `{"code": "CODE_INVALID", "message": "..."}`
+                // （`core/vade/transport/server.py` 的 `_json(400, {...})`）。以前把整段
+                // body 塞进一个 AUTH_FAILED —— 于是「码过期」和「码抄错」与「没配对」
+                // 在 UI 上不可区分。这里原码透传，码缺失时才退回 AUTH_FAILED。
+                val body = response.bodyAsText()
+                val coreError = parsePairingErrorBody(body)
                 throw VadeException(
-                    code = VadeErrorCodes.AUTH_FAILED,
-                    message = "POST /ui/session failed with HTTP ${response.status.value}: ${response.bodyAsText().take(200)}",
+                    code = coreError?.first ?: VadeErrorCodes.AUTH_FAILED,
+                    message = "POST /ui/session failed with HTTP ${response.status.value}: " +
+                        (coreError?.second ?: body.take(200)),
                 )
             }
             val token = response.headers.getAll(HttpHeaders.SetCookie).orEmpty()
