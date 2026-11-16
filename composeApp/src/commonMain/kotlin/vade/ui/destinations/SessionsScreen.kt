@@ -50,6 +50,7 @@ import vade.ui.meta.MetaColors
 import vade.ui.meta.MetaGroup
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.glass.LocalGlassHazeState
+import kotlin.math.roundToInt
 
 /**
  * g-haze-structure · 本页 haze **source**（会话 LazyColumn）的 testTag ——
@@ -281,10 +282,10 @@ private fun SessionRow(
             .onGloballyPositioned { coords ->
                 val origin = coords.localToRoot(Offset.Zero)
                 bounds = IntRect(
-                    left = origin.x,
-                    top = origin.y,
-                    right = origin.x + coords.size.width,
-                    bottom = origin.y + coords.size.height,
+                    left = origin.x.roundToInt(),
+                    top = origin.y.roundToInt(),
+                    right = (origin.x + coords.size.width).roundToInt(),
+                    bottom = (origin.y + coords.size.height).roundToInt(),
                 )
             }
             .clip(RoundedCornerShape(if (selected) SELECTED_BLOCK_CORNER else skin.shapes.sm))

@@ -28,6 +28,7 @@ import vade.ui.data.SessionSummary
 import vade.ui.data.bucketFor
 import vade.ui.data.epochNowMs
 import vade.ui.data.sessionGroups
+import kotlin.math.roundToInt
 
 /**
  * B2（s-meta-host）· 把 `SessionMetaState` 的菜单/弹层/失败横条**真正挂到壳层的会话列表上**。
@@ -305,7 +306,10 @@ fun SessionMetaOverlayHost(
     // 抽屉/双栏里宿主不贴在 (0,0) 时也不会偏。
     var hostOrigin by remember { mutableStateOf(IntOffset.Zero) }
 
-    Box(modifier.fillMaxSize().onGloballyPositioned { hostOrigin = it.localToRoot(Offset.Zero) }) {
+    Box(modifier.fillMaxSize().onGloballyPositioned {
+        val o = it.localToRoot(Offset.Zero)
+        hostOrigin = IntOffset(o.x.roundToInt(), o.y.roundToInt())
+    }) {
         // 行上下文菜单（alpha J3）：**跟行**，不再钉在列表窗格右上角。
         // 做法 = 在行下方的落点放一个零尺寸锚点 Box，Popup 以它为父布局（TopStart + 0）。
         meta.menuFor?.let { sessionId ->
