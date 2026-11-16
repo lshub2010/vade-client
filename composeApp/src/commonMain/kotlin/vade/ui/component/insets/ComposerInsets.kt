@@ -25,7 +25,6 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 
 /**
  * Pure decision the composable below feeds: extra bottom clearance the composer
@@ -33,9 +32,14 @@ import androidx.compose.ui.unit.dp
  * (0 dp when the keyboard is closed), [navInset] the navigation-bar bottom
  * inset. Both resolve to 0 dp on desktop and wasm, so the result is
  * `(0 − 0).coerceAtLeast(0)` = 0 dp there and today's geometry is untouched.
+ *
+ * c6-insets: the formula now lives in [bottomSafeClearance] — the composer and
+ * the bottom-docked overlays (model sheet, search card, rename popup) must never
+ * drift apart. Kept as the composer-side name so the existing call sites/tests
+ * read the same.
  */
 fun composerNavClearance(imeBottom: Dp, navInset: Dp): Dp =
-    (navInset - imeBottom).coerceAtLeast(0.dp)
+    bottomSafeClearance(imeBottom, navInset)
 
 /**
  * The composer's live nav-bar clearance: [composerNavClearance] fed by CMP's
