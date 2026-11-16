@@ -156,9 +156,10 @@ class PairingCardUiTest {
         // 另两种文案不在场。
         assertEquals(0, onAllNodesWithText("core 没有在", substring = true).fetchSemanticsNodes().size)
         assertEquals(0, onAllNodesWithText("网络不通", substring = true).fetchSemanticsNodes().size)
-        // 失败后输入与按钮仍可用 —— 重试就是再点一次。
+        // 失败后输入与按钮仍可用 —— 重试就是再点一次。三个输入框都还在（码框用 tag 定位：
+        // `hasSetTextAction()` 在卡上撞 3 个节点）。
         onNodeWithText(PAIRING_BUTTON_LABEL).assertIsEnabled()
-        onNode(hasSetTextAction()).assertExists()
+        onNode(codeField()).assertExists()
     }
 
     @Test
