@@ -66,14 +66,14 @@ fun MarkdownBlocks(
     // 视觉规范 §4：正文 15sp / 行高 1.55。行高按正文尺寸现算，避免小字号继承大行高。
     val body = skin.typography.body.copy(fontSize = baseSize.sp, lineHeight = (baseSize * 1.55f).sp)
     // K3 · 这三个 token 每帧都一样，取一次；`rememberRuns` 拿它们当 remember 的 key。
-    val mono = skin.typography.mono.fontFamily
+    val mono = skin.typography.mono.fontFamily ?: FontFamily.Monospace
     val codeBackground = skin.colors.surfaceVariant
     val linkColor = skin.colors.primary
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         blocks.forEach { block ->
             when (block) {
                 is MdBlock.Paragraph -> BasicText(
-                    text = rememberRuns(block, color, baseSize, mono, codeBackground, linkColor),
+                    text = rememberRuns(block.runs, color, baseSize, mono, codeBackground, linkColor),
                     style = body,
                 )
 
