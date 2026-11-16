@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 夜间档：DeviceDefault 的暗色底（无 ActionBar）。与 values/themes.xml 同名同结构，
+     资源限定符选择，manifest 只引用 @style/Theme.Vade。 -->
+<resources>
+    <style name="Theme.Vade" parent="@android:style/Theme.DeviceDefault.NoActionBar">
+        <item name="android:windowBackground">@color/vade_window_background</item>
+    </style>
+</resources>

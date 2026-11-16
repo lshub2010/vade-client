@@ -48,6 +48,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import vade.ui.UiText
+import vade.ui.component.insets.bottomSafeClearance
 import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
 import vade.ui.shell.BackLayer
@@ -140,7 +141,15 @@ private fun CompactSearchOverlay(state: UiState, onPick: (SearchHit) -> Unit) {
             .pointerInput(Unit) { detectTapGestures { state.closeSearch() } },
     ) {
         // 12dp side/bottom insets (§9 gap discipline); top clears the floating shell top bar.
-        Box(Modifier.fillMaxSize().padding(start = 12.dp, end = 12.dp, top = 80.dp, bottom = 12.dp)) {
+        // c6-insets · L4：底部再叠导航条余量 —— 固定 12dp 时手势胶囊盖住结果区最后一行。
+        Box(
+            Modifier.fillMaxSize().padding(
+                start = 12.dp,
+                end = 12.dp,
+                top = 80.dp,
+                bottom = 12.dp + bottomSafeClearance(),
+            ),
+        ) {
             GlassSurface(
                 modifier = Modifier.fillMaxWidth().fillMaxHeight(),
                 shape = RoundedCornerShape(skin.shapes.xl),

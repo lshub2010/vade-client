@@ -276,8 +276,9 @@ fun ChatThread(
                 Spacer(Modifier.height(2.dp))
             }
             // v2 §1：列表底部内边距 = composer 实测高度 + 24dp（滚到底时最后一条不被遮）。
-            // 实测高度含 composer 自身的 padding（onSizeChanged 挂在 .padding 外侧），g-inset2
-            // 给 composer 底部叠了导航条 clearance 后，spacer 会 1:1 跟涨——最后一条消息
+            // 实测高度含 composer 自身的 padding —— 前提是 `onSizeChanged` 挂在链首
+            // （见 [ComposerOverlay]；c6-insets 把原先挂在 `.padding` 后面的量法修了），
+            // 所以 g-inset2 给 composer 底部叠的导航条 clearance 也 1:1 算进来：最后一条
             // 始终滚出 composer + 导航条区域。公式提成 [composerListSpacer] 供测试钉住。
             Spacer(Modifier.height(with(density) { composerListSpacer(composerHeightPx.toDp()) }))
         }
@@ -943,6 +944,12 @@ private fun BoxScope.ComposerOverlay(
         modifier = Modifier
             .align(Alignment.BottomCenter)
             .fillMaxWidth()
+            // c6-insets (P1-3)：高度必须在 padding 的**外侧**量。`onSizeChanged` 报的是
+            // 它之后那条 modifier 链的尺寸——挂在 `.padding` 后面只能拿到内容高度，
+            // 列表尾距因此少了 `16dp + 导航条 clearance`，最后一条被胶囊压住。
+            // 放在链首后测得的是浮层整高（含 imePadding 与底部 padding），
+            // `composerListSpacer()` 的「实测高度 + 24dp」才真的把整块浮层让出来。
+            .onSizeChanged { onHeightChanged(it.height) }
             // 键盘弹出时浮层整体上移（§1；桌面 inset 为 0，此 modifier 无副作用）。
             // g-inset2 (P1-1)：键盘收起时胶囊底部叠上导航条 clearance——真机 API 30 三键条
             // 直接画在胶囊上、输入热区被吞。桌面/Wasm 两个 inset 都读到 0 → 布局与原来
@@ -951,8 +958,7 @@ private fun BoxScope.ComposerOverlay(
             // ComposerInsetsTest 钉住）。
             .imePadding()
             .onPreviewKeyEvent { event -> handleComposerKeys(event, state) }
-            .padding(start = gutter, end = gutter, bottom = 16.dp + composerNavClearance())
-            .onSizeChanged { onHeightChanged(it.height) },
+            .padding(start = gutter, end = gutter, bottom = 16.dp + composerNavClearance()),
     ) {
         Column(
             modifier = Modifier.widthIn(max = 760.dp).fillMaxWidth(),

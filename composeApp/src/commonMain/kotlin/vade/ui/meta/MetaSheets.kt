@@ -3,6 +3,8 @@ package vade.ui.meta
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -41,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import vade.ui.UiText
+import vade.ui.component.insets.bottomSafeClearance
 import vade.ui.component.liquid.VadeShadows
 import vade.ui.component.liquid.layeredShadow
 import vade.ui.icon.MetaIcons
@@ -56,6 +60,12 @@ import vade.ui.skin.LocalSkin
  *
  * 键盘/无障碍（B2 s-meta-host）：focusable Popup 抓住焦点，**Esc 关闭弹层**
  * （与点遮罩同一条 onClose 路径，绝不悄悄丢草稿之外的副作用）。
+ *
+ * c6-insets · L4/P1-2 —— Popup 是**独立 window**：根布局的 `statusBarsPadding()` /
+ * `imePadding()` 抬不到它。所以底部不只是 §9 的 12dp，而是 `12dp + 导航条余量`
+ * （余量在主窗口里读：Popup 自己的 window insets 在 Android 上不保证有值；键盘弹起时
+ * 余量为 0，与 IME 不相加），再加上内容自身的 `.imePadding()` 处理键盘那一段；
+ * 内容列可滚动，键盘把可视区压扁时不会把按钮挤出屏幕（重命名/分组编辑都够用）。
  */
 
 /** §9 卡片骨架：grabber → 标题行（图标 + 标题 + 关闭）→ 内容。 */
@@ -69,6 +79,8 @@ private fun MetaSheetScaffold(
     val skin = LocalSkin.current
     val shape = RoundedCornerShape(skin.shapes.sheet) // 32dp：全局弹窗档
     val sheetFocus = remember { FocusRequester() }
+    // 导航条余量在主窗口里读一次带进 Popup（见文件头 KDoc：Popup 的 window insets 不保证有值）。
+    val bottomClearance = bottomSafeClearance()
     Popup(
         alignment = Alignment.Center,
         onDismissRequest = onClose,
@@ -76,12 +88,18 @@ private fun MetaSheetScaffold(
     ) {
         Column(
             Modifier
-                .padding(12.dp) // §9：四周 12dp 空隙，永不贴边
+                // §9：四周 12dp 空隙，永不贴边；底部再加导航条余量 —— 三键条 / 手势胶囊
+                // 压在操作按钮上曾是真机可见缺陷（L4）。
+                .padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 12.dp + bottomClearance)
+                // 键盘：Popup 有自己的 window，根布局的 imePadding 抬不到它，只能自己让。
+                .imePadding()
                 .widthIn(max = 460.dp)
                 .layeredShadow(VadeShadows.float, shape, dark = skin.colors.isDark)
                 .clip(shape)
                 .background(skin.colors.surface)
                 .border(1.dp, skin.colors.hairline, shape)
+                // 内容可滚：键盘把可视区压扁时，「保存/删除」不会被挤出屏幕外。
+                .verticalScroll(rememberScrollState())
                 .focusRequester(sheetFocus)
                 .focusable()
                 .onPreviewKeyEvent { event ->

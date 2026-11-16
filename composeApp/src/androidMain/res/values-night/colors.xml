@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 夜间档：与 MaterialTokens.dark.canvas 同值。 -->
+<resources>
+    <color name="vade_window_background">#FF0E0E10</color>
+</resources>
