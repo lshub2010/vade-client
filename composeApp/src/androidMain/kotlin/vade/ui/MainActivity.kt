@@ -35,6 +35,7 @@ import vade.ui.data.sessionSourceFromEnvironment
  */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        vade.ui.skin.VadePreferenceContext.install(applicationContext)
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),

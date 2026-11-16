@@ -72,7 +72,7 @@ fun main(args: Array<String>) {
         return
     }
 
-    val bar = args.flag("--bar=")?.let(::parseBar) ?: BottomBarStyle.Fixed
+    val bar = args.flag("--bar=")?.let(::parseBar) ?: vade.ui.skin.Skins.bootBottomBar()
     val dest = args.flag("--dest=")?.let { Destination.fromId(it) } ?: Destination.Sessions
     val (width, height) = args.flag("--size=")?.let(::parseSize) ?: (466 to 893)
     // w2-icons: IconGallery acceptance page (--gallery), dark §2 canvas unless --light.
@@ -81,15 +81,16 @@ fun main(args: Array<String>) {
     // U2: skin selection. `--skin=miuix` (or `VADE_SKIN=miuix`, so a shell can pin it without
     // touching the app) selects the Miuix skin; `--dark` / `VADE_DARK=1` picks its dark tokens.
     // The flag starts the real `App()` — not the showcase — so the shots are the product.
-    val skinId = args.flag("--skin=") ?: System.getenv("VADE_SKIN") ?: "material"
+    val skinId = args.flag("--skin=") ?: System.getenv("VADE_SKIN") ?: vade.ui.skin.Skins.bootSkinId()
     val dark = args.has("--dark") || System.getenv("VADE_DARK") == "1"
     // g-dark-follow · the `--dark` prior becomes a ThemeController override (手选暗) instead of
     // writing the skin factories' plain vars directly: without `--dark` the app now follows the
     // system theme via the desktop actual (能取到就跟，取不到=false 保持亮色现行为). The factory
     // vars (MiuixSkinEntry.dark / MaterialSkinEntry.dark) are synced by ThemeController in
     // composition (App.kt's remember key) — single source, same seam as the settings page.
-    vade.ui.skin.ThemeController.override =
-        if (dark) vade.ui.skin.ThemeMode.Dark else vade.ui.skin.ThemeMode.FollowSystem
+    if (dark) vade.ui.skin.ThemeController.override = vade.ui.skin.ThemeMode.Dark
+    // Without --dark the restored preference (ThemeMode.init) stays in force; forcing
+    // FollowSystem here would clobber the user's saved light/dark choice on every launch.
     // Kept out of `App()` on purpose: U1-b has no chat page yet, so the message-bubble /
     // tool-card / input-bar shots come from the skin's own page (see MiuixShowcase.kt).
     val showcase = args.has("--showcase")

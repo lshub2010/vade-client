@@ -32,8 +32,8 @@ import vade.ui.skin.Skins
  */
 @Composable
 fun App(
-    initialBar: BottomBarStyle = BottomBarStyle.Fixed,
-    initialSkinId: String = "material",
+    initialBar: BottomBarStyle = Skins.bootBottomBar(),
+    initialSkinId: String = Skins.bootSkinId(),
     initialDest: Destination = Destination.Sessions,
     initialPanelOpen: Boolean = false,
     initialSearchQuery: String? = null,
