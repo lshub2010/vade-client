@@ -124,6 +124,13 @@ fun SessionDetailScreen(
     val modelState = remember(actions, session.id) { ModelState.forSession(actions, session.id) }
     var modelPickerOpen by remember(session.id) { mutableStateOf(false) }
 
+    // J4（alpha 审查）· 「假数据」只由**数据来源**决定，与布局无关：
+    //  - 没有适配器包 = 三段回退落到内存假实现（`pickScreenSeam`）；
+    //  - 适配器查找抛过异常 = 已退回假实现（`degraded` 非 null）。
+    // 以前这句话挂在 `showTitle` 上（手机 pushed detail 传 false）→ 真源也显示、
+    // 手机反而不显示，正好与事实相反。现在标题仍受 showTitle 控制，事实行不受。
+    val fixtureData = adapters == null || modelSeam.degraded != null || chatSeam.degraded != null
+
     // Full-bleed stack: the thread spans the whole window (scrolling under glass bar and
     // header alike); the header floats *below* the glass bar zone as the later sibling and
     // stays opaque, so its own content remains readable while rows slide under it.
@@ -147,6 +154,7 @@ fun SessionDetailScreen(
                 session = session,
                 chat = chat,
                 showTitle = showTitle,
+                fixtureData = fixtureData,
                 modelState = modelState,
                 degraded = modelSeam.degraded ?: chatSeam.degraded,
             )
@@ -177,19 +185,25 @@ fun SessionDetailScreen(
 
 /**
  * Title + the two facts a chat header owes the reader in this slice: which model would answer
- * (D101 — read from [modelState], so a picker switch updates the line immediately) and that
+ * (D101 — read from [modelState], so a picker switch updates the line immediately) and whether
  * the data is fake. No 「已连接」 badge — U1-b has no socket, and a green dot
  * that means nothing is exactly the kind of lie §8.5 forbids.
  *
  * g-model-chip: the model line is INFORMATION again — the switcher affordance moved into the
  * composer chip (`ModelComposerChip`), so this row is no longer clickable and carries no
  * chevron (a tap affordance on a row that no longer toggles anything would be a lie).
+ *
+ * J4（alpha 审查）：[fixtureData] **只**由数据来源决定（`adapters == null` 或适配器查找
+ * 退回过），与 [showTitle] 无关 —— 布局参数曾经兼职当「假数据」的判据，于是真源也显示、
+ * 手机 pushed detail 反而静默。
  */
 @Composable
 private fun DetailHeader(
     session: SessionSummary,
     chat: ChatState,
     showTitle: Boolean,
+    /** 本页是否真的跑在内存假实现上（判据在 [SessionDetailScreen]，不看布局）。 */
+    fixtureData: Boolean,
     modelState: ModelState,
     /** 非 null = 适配器查找失败、本页已退回内存假实现；直接拼进模型行（不静默吞）。 */
     degraded: String? = null,
@@ -197,11 +211,10 @@ private fun DetailHeader(
     val skin = LocalSkin.current
     // With the shell top bar already naming the session, a second 15sp copy of the same
     // title 80dp lower reads as a rendering bug — so the compact form keeps the avatar and
-    // one metadata line, and the 「假数据」 fact is stated once (it is in the top bar
-    // subtitle there).
+    // one metadata line.
     val modelLine = buildString {
         append("模型 ${modelState.currentLabel()}")
-        if (showTitle) append(" · 假数据（未接 core）")
+        if (fixtureData) append(" · 假数据（未接 core）")
         append(" · ${chat.messages.size} 条消息")
         if (degraded != null) append(" · $degraded")
     }

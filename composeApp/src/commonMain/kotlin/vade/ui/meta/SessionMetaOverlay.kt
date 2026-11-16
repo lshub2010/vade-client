@@ -2,7 +2,9 @@ package vade.ui.meta
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -12,6 +14,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import vade.ui.data.AdapterProvider
@@ -83,6 +90,14 @@ class SessionMetaOverlay(
     private var lastSynced by mutableStateOf(emptyMap<String, MetaSession>())
 
     /**
+     * 长按那一刻**该行在窗口里的矩形**（根坐标，px）。菜单 Popup 靠它贴在行下方
+     * （alpha 审查 J3）。null = 没有锚点（旧调用点 / 状态机被直接打开），宿主退回
+     * 旧行为（窗格右上角）—— 位置退步但不崩。
+     */
+    var menuAnchor by mutableStateOf<IntRect?>(null)
+        private set
+
+    /**
      * 是否**至少同步过一次**权威行。没同步过时 [projectGroups] 原样返回 ——
      * 投影的唯一职责是「覆盖乐观值 / 藏掉乐观归档的行」，不是「过滤掉所有我不认识的行」。
      * 少了这道闸，没接适配器的壳（测试、或首帧还没回包）会投影出一份**空列表**，
@@ -133,13 +148,17 @@ class SessionMetaOverlay(
      * 行长按 → 打开上下文菜单。草稿行没有服务端实体（不会真调适配器），
      * 直接忽略 —— 这是「不出现任何菜单入口」规则的一半，另一半（零会话）
      * 由「没有行就没有长按目标」保证。
+     *
+     * [anchor] = 该行此刻在窗口里的矩形（`SessionsScreen` 的 `onGloballyPositioned`）；
+     * 菜单贴在它下方而不是列表窗格右上角。不传 = 没有锚点（测试 / 旧调用点）。
      */
-    fun openSessionMenu(summary: SessionSummary) {
+    fun openSessionMenu(summary: SessionSummary, anchor: IntRect? = null) {
         if (summary.isDraft) return
         if (summary.id !in removedIds && meta.sessions.none { it.id == summary.id }) {
             meta.applyProjection(meta.sessions + summary.toMetaSession(), newGroups = null)
             lastSynced = lastSynced + (summary.id to summary.toMetaSession())
         }
+        menuAnchor = anchor
         meta.openSessionMenu(summary.id)
     }
 
@@ -234,6 +253,34 @@ fun rememberSessionMetaOverlay(
 }
 
 /**
+ * 菜单锚点 Box 的 testTag（alpha J3）。
+ *
+ * 宿主在行下方放一个**零尺寸** Box，Popup 以它为父布局。Popup 自身渲染在独立窗口里，
+ * 语义 bounds 量不到「贴行」这件事；测试量这个锚点节点的位置（主窗口坐标）即可证明
+ * 菜单跟行，而不是钉在列表窗格右上角。
+ */
+internal const val MenuAnchorTag = "vade.meta.menuAnchor"
+
+/**
+ * 菜单 Popup 的**父坐标**落点（px，alpha J3）：
+ *  - `y = 行底 + [gapPx]` —— 贴在行下方，用户一眼看出改的是哪一条；
+ *  - `x = 行右缘 - 菜单宽`（右缘对齐行右缘），且不小于 0（窄窗格时贴左缘，交给
+ *    Popup 自己的窗口内钳制）；
+ *  - 减去 [hostOrigin]：宿主不在根原点时（抽屉/双栏 pane）换成相对宿主的坐标，仍然贴行。
+ *
+ * 纯函数 —— `SessionMetaMenuAnchorTest` 直接断言，不需要弹层真的出现在窗口里。
+ */
+internal fun menuPlacementPx(
+    anchor: IntRect,
+    menuWidthPx: Int,
+    gapPx: Int,
+    hostOrigin: IntOffset = IntOffset.Zero,
+): IntOffset = IntOffset(
+    x = (anchor.right - menuWidthPx).coerceAtLeast(0) - hostOrigin.x,
+    y = anchor.bottom + gapPx - hostOrigin.y,
+)
+
+/**
  * 元数据宿主的**悬浮面**：菜单（长按触发）、编辑弹层、失败横条。渲染在
  * 会话列表 pane 的上层（调用方把列表与宿主放进同一个 `Box`），自身不消费
  * 点击 —— 没有菜单/弹层/横条时对列表零干扰。
@@ -249,17 +296,51 @@ fun SessionMetaOverlayHost(
 ) {
     val meta = overlay.meta
     val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
     LaunchedEffect(overlay) { overlay.bootstrap() }
     LaunchedEffect(rows) { overlay.syncFrom(rows) }
 
-    Box(modifier.fillMaxSize()) {
-        // 行上下文菜单：Popup 锚在本 Box（= 列表 pane）右上角。
+    // 宿主自己在根窗口里的原点。行矩形也是根坐标：两者相减 = 相对父布局的落点，
+    // 抽屉/双栏里宿主不贴在 (0,0) 时也不会偏。
+    var hostOrigin by remember { mutableStateOf(IntOffset.Zero) }
+
+    Box(modifier.fillMaxSize().onGloballyPositioned { hostOrigin = it.positionInRoot() }) {
+        // 行上下文菜单（alpha J3）：**跟行**，不再钉在列表窗格右上角。
+        // 做法 = 在行下方的落点放一个零尺寸锚点 Box，Popup 以它为父布局（TopStart + 0）。
         meta.menuFor?.let { sessionId ->
-            SessionContextMenu(
-                state = meta,
-                sessionId = sessionId,
-                onDispatch = { item -> scope.launch { overlay.dispatch(sessionId, item) } },
-            )
+            val anchor = meta.menuAnchor
+            val placement = anchor?.let {
+                menuPlacementPx(
+                    anchor = it,
+                    menuWidthPx = with(density) { MenuWidth.roundToPx() },
+                    gapPx = with(density) { MenuRowGap.roundToPx() },
+                    hostOrigin = hostOrigin,
+                )
+            }
+            if (placement != null) {
+                Box(
+                    Modifier
+                        .offset { placement }
+                        // 1dp 而非 0dp：零尺寸节点在部分平台上没有可量的 bounds，
+                        // 测试要靠这个节点的位置证明「菜单跟行」。无背景、无手势，像素上不可见。
+                        .size(1.dp)
+                        .testTag(MenuAnchorTag),
+                ) {
+                    SessionContextMenu(
+                        state = meta,
+                        sessionId = sessionId,
+                        onDispatch = { item -> scope.launch { overlay.dispatch(sessionId, item) } },
+                        placement = IntOffset.Zero,
+                    )
+                }
+            } else {
+                // 没有行矩形（旧调用点）：退回本 Box 右上角 + 48dp，与本棒之前一致。
+                SessionContextMenu(
+                    state = meta,
+                    sessionId = sessionId,
+                    onDispatch = { item -> scope.launch { overlay.dispatch(sessionId, item) } },
+                )
+            }
         }
 
         // 编辑弹层（同一时刻至多一个，editor 互斥保证）。

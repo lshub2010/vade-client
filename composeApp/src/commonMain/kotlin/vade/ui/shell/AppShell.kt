@@ -358,7 +358,7 @@ private fun ShellBody(state: UiState) {
                         animate = state.chatPreset == vade.ui.chat.ChatPreset.Live,
                         // B2：分组真相在 state 机（含乐观投影），长按开菜单。
                         metaGroups = drawerMetaOverlay.meta.groups,
-                        onLongPress = { drawerMetaOverlay.openSessionMenu(it) },
+                        onLongPress = { session, anchor -> drawerMetaOverlay.openSessionMenu(session, anchor) },
                         groups = drawerMetaOverlay.projectGroups(state.groups()),
                         overlayHost = {
                             SessionMetaOverlayHost(
@@ -724,7 +724,8 @@ private fun DestinationHost(
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(top = TOP_BAR_ZONE),
                             metaGroups = metaOverlay.meta.groups,
-                            onLongPress = { metaOverlay.openSessionMenu(it) },
+                            onLongPress = { session, anchor -> metaOverlay.openSessionMenu(session, anchor) },
+                            onNewSession = { state.newSession() },
                             banner = sessionListBanner,
                             status = status,
                         )
@@ -762,7 +763,8 @@ private fun DestinationHost(
                         onOpen = { state.open(it.id) },
                         contentPadding = contentInsets,
                         metaGroups = metaOverlay.meta.groups,
-                        onLongPress = { metaOverlay.openSessionMenu(it) },
+                        onLongPress = { session, anchor -> metaOverlay.openSessionMenu(session, anchor) },
+                        onNewSession = { state.newSession() },
                         banner = sessionListBanner,
                         status = status,
                     )
