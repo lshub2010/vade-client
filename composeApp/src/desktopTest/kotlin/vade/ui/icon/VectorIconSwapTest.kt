@@ -251,7 +251,7 @@ class VectorIconSwapTest {
         // 下一行 11sp 的「内部 id」次级文案里 —— 两样都得在，且都不许带 ● 前缀。
         onNodeWithText("经典").assertExists()
         onNodeWithText("Miuix").assertExists()
-        onNodeWithText("玻璃").assertExists()
+        onNodeWithText("玻璃（待安装）").assertExists()
         onNodeWithText("停靠").assertExists()
         bannedGlyphs.forEach { glyph ->
             assertEquals(0, onAllNodesWithText(glyph.toString()).fetchSemanticsNodes().size, "字符图标 '$glyph' 不应再渲出")
