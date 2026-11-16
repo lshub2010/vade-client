@@ -6,7 +6,7 @@ import vade.ui.protocol.VadeException
 import vade.ui.subagent.SubagentPage
 import vade.ui.subagent.SubagentSource
 import vade.ui.subagent.SubagentSourceReal
-import vade.ui.usage.SessionUsageGetResult
+import vade.ui.protocol.SessionUsageGetResult
 import vade.ui.usage.UsageSource
 import vade.ui.usage.UsageSourceReal
 

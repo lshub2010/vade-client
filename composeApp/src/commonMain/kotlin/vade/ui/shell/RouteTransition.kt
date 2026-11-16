@@ -164,9 +164,12 @@ internal fun SessionsDrawerHost(
     //
     // 位置在 Box **之前**很重要：栈序 = 组合序，页面层必须先于它内部的浮层（模型选择 /
     // 附件预览 / 搜索）入栈，那些浮层才能是 topmost 先被消费。
-    BackLayer(enabled = state.selectedSessionId != null) {
-        if (state.sessionsDrawerOpen) state.closeSessionsDrawer() else state.back()
-    }
+    BackLayer(
+        enabled = state.selectedSessionId != null,
+        onBack = {
+            if (state.sessionsDrawerOpen) state.closeSessionsDrawer() else state.back()
+        },
+    )
 
     // 转场进度：1 = 抽屉全开，0 = 收起。初值取当前状态，深链直进详情不会播一段开场动画。
     val progress = remember { Animatable(if (expanded) 1f else 0f) }
