@@ -8,6 +8,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -30,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -68,8 +70,9 @@ import vade.ui.skin.material.MaterialSkin
  * 本批（T1 + 4 组件）交付的是**玻璃材质本身**，不是"另一套配色"：
  *
  *  1. 四个组件真做玻璃：[Button]（胶囊）、[Card]（玻璃边缘 + 近不透明内容底）、
- *     [InputBar]（悬浮 composer 面板）、[MessageBubble]（用户气泡是玻璃，助手/系统
- *     按 §5 无气泡）。它们全部走 [GlassSurface]，所以模糊/染色/描边/高光只有一份实现。
+ *     [InputBar]（悬浮 composer 面板 + 内容底）、[MessageBubble]（用户气泡是玻璃 + 内容底，
+ *     助手/系统按 §5 无气泡）。它们全部走 [GlassSurface]，所以模糊/染色/描边/高光只有一份
+ *     实现；三处长文本层共用 [ContentBase]，正文在任何背景下都 ≥4.5:1（审查 P1-4）。
  *  2. **其余 8 个组件原样转发给 `material`**（[TextField]/[ListItem]/[Switch]/
  *     [BottomBar]/[ApprovalDialog]/[AttachmentChip]/[ToolCallCard]/[SendOrb]）。这是任务书
  *     给的"先用 material token 回退"，不是空实现、更不是抛异常 —— 一个皮肤少画一个组件，
@@ -78,10 +81,11 @@ import vade.ui.skin.material.MaterialSkin
  *     区别必须是「半透明/模糊」，验收里那条盲测要指出的正是它。换一套紫色 accent 只会让
  *     盲测变成"颜色不一样"。
  *
- * 跨端强度不是这里决定的，而是 [GlassCapability] 决定的：Android 12- / Desktop / Wasm
- * 都是 `Blur`（模糊 + 描边 + 高光，**没有折射**，D22）；Android 13+ 的 AGSL 折射属 T3；
- * 采不到背景时降到 `TintStroke`，仍然是完整可读的一层。这条阶梯让"不崩、不白屏"成为
- * 结构事实，而不是每个组件的 try/catch。
+ * 跨端强度不是这里决定的，而是 [GlassCapability] 决定的：Desktop / Wasm 是 `Blur`（模糊 +
+ * 描边 + 高光，**没有折射**，D22）；Android **API 31（12）及以上**才是 `Blur`，24–30 降到
+ * `TintStroke`（`Modifier.blur` / `RenderEffect` 在那之前不可用，谎报模糊就是审查 P1-1）；
+ * Android 13+ 的 AGSL 折射属 T3；采不到背景时也降到 `TintStroke`，仍然是完整可读的一层。
+ * 这条阶梯让"不崩、不白屏"成为结构事实，而不是每个组件的 try/catch。
  *
  * 注册：本类**不自动启用**。[GlassSkinEntry.register] 必须由宿主显式调用
  * （与 U2 的 `MiuixSkinEntry` 同一手法），`Skins.installBuiltIns()` 不碰 `glass`。
@@ -105,27 +109,38 @@ class GlassSkin(
     override val orb: SkinOrb = base.orb
 
     /** 本皮肤的玻璃 token 投影回冻结的 [SkinGlass]（单一真相，见 [GlassTokens.skinGlass]）。 */
-    override val glass: SkinGlass = GlassTokens.skinGlass()
+    override val glass: SkinGlass = GlassTokens.skinGlass(dark)
 
     // --- 1 · Button ------------------------------------------------------------
 
     /**
      * 胶囊玻璃按钮。
      *
-     * 三种 intent 的玻璃底座不同，因为"玻璃"对它们的影响不一样：
+     * 三种 intent 的底座不同，因为"玻璃"对它们的影响不一样：
      *
-     *  - `Primary` —— accent 主导的 tint（88%）。玻璃不该把主行动洗淡：主行动是屏幕上唯一
-     *    该被一眼找到的东西，42% 的白 tint 叠上去会让它和次要操作一个重量。
-     *  - `Danger` —— **红主导**（92%）。这是任务书 §T2 点名的：白 tint 会把 `colors.error`
-     *    冲成粉色，危险操作就失去了警告的含义。高光仍在（它只压上沿），但底色是红的。
-     *  - `Secondary` —— 纯玻璃（`SkinGlass` 的 tint）+ 1dp 描边，是"玻璃"最本色的形态。
+     *  - `Primary` —— **实心** accent（[actionFill]）。玻璃不该把主行动洗淡，而且半透明的
+     *    accent 会被背后的浅卡**提亮**：白字从 5.37:1 跌到 4.24:1（审查 P1-2 实测 4.29）。
+     *  - `Danger` —— **实心**红（[actionFill]，亮色再压深 10%）。半透明 92% 时白字只有
+     *    3.88:1；白 tint 更会把 `colors.error` 冲成粉色，危险操作就失去了警告的含义。
+     *  - `Secondary` —— 纯玻璃（`SkinGlass` 的 tint）+ 1dp 描边 + 顶部高光，
+     *    是"玻璃"最本色的形态。
      *  - `Text` —— 不画玻璃，只留文字（与 material 同义：无底的第三级操作）。
      *
+     * **Primary / Danger 不画顶部高光**：实心底座上还有一层 34% 白的话，白字在 label 上沿
+     * 那一带会再掉 ~0.7 个比值（[actionLabelContrast] 能把这个假设算出来）。高光是
+     * 「玻璃」的语言，实心按钮不是玻璃。
+     *
      * 尺寸沿用 material 的语义：44dp 见方最小点击区，单字形按 20dp 级图标渲染（§3）。
+     *
+     * **点击在 `clip` 之内**（审查 P1 顺手项）：`clickable` 必须挂在一个已经被裁成胶囊的
+     * 节点上，否则水波纹是矩形 —— Compose 的 indication 画在它所在的那一层，链上更晚的
+     * `clip` 裁不到它。这里把 `clickable` 放进玻璃的内容里（内容本来就被 GlassSurface
+     * `clip(shape)`），而不是留在外层 modifier 链的最前面。
      */
     @Composable
     override fun Button(text: String, onClick: () -> Unit, style: BtnStyle, enabled: Boolean) {
         val isGlyph = text.length == 1
+        val pill = RoundedCornerShape(shapes.pill)
         val labelColor = when {
             !enabled -> colors.onSurfaceVariant
             style == BtnStyle.Primary -> colors.onPrimary
@@ -135,16 +150,14 @@ class GlassSkin(
         }
         // null = 用皮肤自己的 tint（GlassSurface 按亮/暗取 GlassTokens.tintLight/Dark）。
         val tintForStyle = when (style) {
-            BtnStyle.Primary -> colors.primary.copy(alpha = 0.88f)
-            BtnStyle.Danger -> colors.error.copy(alpha = 0.92f)
-            BtnStyle.Secondary -> null
-            BtnStyle.Text -> null
+            BtnStyle.Primary -> actionFill(colors, danger = false)
+            BtnStyle.Danger -> actionFill(colors, danger = true)
+            BtnStyle.Secondary, BtnStyle.Text -> null
         }
         val frame = Modifier
             .heightIn(min = 44.dp)
             .widthIn(min = if (isGlyph) 44.dp else 64.dp)
             .alpha(if (enabled) 1f else 0.5f)
-            .clickable(enabled = enabled, onClick = onClick)
 
         val label: @Composable () -> Unit = {
             Text(
@@ -159,18 +172,28 @@ class GlassSkin(
         }
 
         if (style == BtnStyle.Text) {
-            Box(frame, contentAlignment = Alignment.Center) { label() }
+            // 无底按钮同样要裁一次：水波纹是唯一的反馈，矩形波纹看着像 bug。
+            Box(
+                frame.clip(pill).clickable(enabled = enabled, onClick = onClick),
+                contentAlignment = Alignment.Center,
+            ) { label() }
         } else {
             GlassSurface(
-                degradeWithoutBackdrop = true,
+                backdropPolicy = GlassBackdropPolicy.DegradeWithoutBackdrop,
                 modifier = frame,
-                shape = RoundedCornerShape(shapes.pill),
+                shape = pill,
                 skin = this@GlassSkin,
                 tintOverride = tintForStyle,
-                highlight = if (enabled) GlassTokens.highlight else null,
+                highlight = if (style == BtnStyle.Secondary && enabled) GlassTokens.highlight else null,
                 contentAlignment = Alignment.Center,
             ) {
-                label()
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .clip(pill)
+                        .clickable(enabled = enabled, onClick = onClick),
+                    contentAlignment = Alignment.Center,
+                ) { label() }
             }
         }
     }
@@ -180,9 +203,10 @@ class GlassSkin(
     /**
      * 玻璃卡：**玻璃只做边缘，内容区近不透明**（任务书 §T2 的可读性硬指标）。
      *
-     * 内层 `surface @ 0.88` 不是装饰：玻璃背后的内容可能是深色图片或红字工具卡，正文压在
-     * 半透明底上就必然掉到 4.5:1 以下。0.88 让最坏情况（背后纯黑）仍有 ≈13:1
-     * （[worstCaseCardContrast] 计算、测试断言）。1dp 的 inset 正好露出玻璃的一圈边 ——
+     * 内层 [ContentBase]（`surface @ 0.88`）不是装饰：玻璃背后的内容可能是深色图片或红字
+     * 工具卡，正文压在半透明底上就必然掉到 4.5:1 以下。0.88 让两种极端（背后纯黑 / 纯白）
+     * 都有余量 —— 亮色 13.6:1 / 17.4:1、暗色 15.8:1 / 10.6:1，由 [worstCaseContentContrast]
+     * 计算、`GlassTokensContrastTest` 断言。1dp 的 inset 正好露出玻璃的一圈边 ——
      * 玻璃在这里是"材质提示"，不是背景。
      *
      * 阴影用 `VadeShadows.card`（§8 静态卡 hairline-first，阴影极浅）而不是浮层 shadow2：
@@ -193,28 +217,38 @@ class GlassSkin(
         val outer = RoundedCornerShape(shapes.md)
         val inner = RoundedCornerShape(shapes.sm)
         GlassSurface(
-                degradeWithoutBackdrop = true,
+            backdropPolicy = GlassBackdropPolicy.DegradeWithoutBackdrop,
             modifier = modifier,
             shape = outer,
             skin = this@GlassSkin,
             highlight = GlassTokens.highlight,
             shadow = VadeShadows.card,
         ) {
-            // 内容底铺满整张卡（`matchParentSize` 跟着玻璃的最终尺寸走，不参与测量），
-            // 再 inset 1dp 露出玻璃的一圈边。如果改成"垫在内容下面按内容宽度走"，
-            // 短文本 + fillMaxWidth 的卡右侧会剩下一片纯玻璃 —— 那不是"只做边缘"。
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .padding(GlassTokens.strokeWidth)
-                    .clip(inner)
-                    .background(
-                        colors.surface.copy(alpha = GlassTokens.CARD_CONTENT_ALPHA),
-                        inner,
-                    ),
-            )
+            ContentBase(inner)
             content()
         }
+    }
+
+    /**
+     * 玻璃层上的近不透明内容底 —— Card / InputBar / 用户气泡**共用这一个实现**。
+     *
+     * 为什么三处必须是同一个：这三处都承载正文，正文的可读性不该取决于"这次背后恰好是
+     * 什么"。共用一个 [contentBase] 才可能用一条断言钉住三处（`GlassTokensContrastTest`
+     * 的 `contentBaseSurvivesBlackAndWhiteBackdrops` + 源码守卫的三处调用点）。
+     *
+     * `matchParentSize()` 跟着玻璃的最终尺寸走、不参与测量（不会撑大组件），再 inset 1dp
+     * 露出玻璃的一圈边。铺满整张卡而不是"按内容宽度"是必须的：短文本 + fillMaxWidth 的卡
+     * 右侧会剩一片纯玻璃 —— 那不是"只做边缘"。
+     */
+    @Composable
+    private fun BoxScope.ContentBase(inner: Shape) {
+        Box(
+            Modifier
+                .matchParentSize()
+                .padding(GlassTokens.strokeWidth)
+                .clip(inner)
+                .background(contentBase(colors), inner),
+        )
     }
 
     // --- 11 · InputBar ---------------------------------------------------------
@@ -232,6 +266,12 @@ class GlassSkin(
      *
      * [mode] 在这里不参与绘制：发送/停止已经移出框外成 `SendOrb`（RFC-0011），面板的形状
      * 与状态无关。保留形参是为了满足冻结的 C-09 签名。
+     *
+     * **内容底**（审查 P1-4）：输入的文字是这一屏里最需要稳定的东西，而面板本身是玻璃。
+     * 与 Card 同一个 [ContentBase]（`surface @ 0.88`）压在内容之下 —— 没有它，输入的文字
+     * 直接压在 `tint ⊕ 背后消息列表` 上：亮色白底 17:1 看着没问题，但背后是深色图片时
+     * 会掉到 3:1 以下（玻璃背后的内容不受皮肤控制）。[worstCaseContentContrast] 钉的是
+     * 黑底与白底两种极端都 ≥4.5:1。
      */
     @Composable
     override fun InputBar(
@@ -248,7 +288,7 @@ class GlassSkin(
         val focused by interaction.collectIsFocusedAsState()
         val panelShape = RoundedCornerShape(shapes.xl)
         GlassSurface(
-                degradeWithoutBackdrop = true,
+            backdropPolicy = GlassBackdropPolicy.DegradeWithoutBackdrop,
             modifier = Modifier.fillMaxWidth(),
             shape = panelShape,
             skin = this@GlassSkin,
@@ -256,6 +296,7 @@ class GlassSkin(
             strokeWidth = if (focused) 2.dp else GlassTokens.strokeWidth,
             highlight = GlassTokens.highlight,
         ) {
+            ContentBase(RoundedCornerShape(shapes.xl - GlassTokens.strokeWidth))
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -394,12 +435,15 @@ class GlassSkin(
                     }
 
                     else -> GlassSurface(
-                degradeWithoutBackdrop = true,
+                        backdropPolicy = GlassBackdropPolicy.DegradeWithoutBackdrop,
                         modifier = Modifier.widthIn(max = minOf(container * 0.78f, maxWidth)),
                         shape = bubbleShape,
                         skin = this@GlassSkin,
                         highlight = GlassTokens.highlight,
                     ) {
+                        // 用户气泡与 Card / InputBar 共用同一个内容底（审查 P1-4）：气泡里是
+                        // 用户自己打的正文，不能因为背后恰好是一张图就读不清。
+                        ContentBase(bubbleShape)
                         Box(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) { content() }
                     }
                 }

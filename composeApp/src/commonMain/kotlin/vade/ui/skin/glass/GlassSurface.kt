@@ -97,13 +97,18 @@ val LocalGlassHazeState = staticCompositionLocalOf<HazeState?> { null }
  *
  * ### Degradation (D22 / FR-8.23) — 不崩、不白屏
  *
- * [glassCapability] 决定这条链上到底画什么：
+ * 两个**正交**的输入决定这条链上画什么，绝不互相冒充：
  *
- *  - `Blur`（Android / Desktop / Wasm，且页面接了 `GlassScope`）：今天这条 haze 链；
- *  - `TintStroke`（没接背景 / 探测失败）：**根本不建 haze 节点**，直接
- *    `background(tint, shape)` + 描边 + 高光。旧实现会拿一个空的 `HazeState` 硬跑
- *    `hazeBlur`，采不到背景时整层什么都不画 —— 一个"看不见的玻璃"比没有玻璃更糟，
- *    而且与本文档写的"degrade to tint + hairline + shadow"不符。
+ *  - [glassCapability] 只看真实的背景（`LocalGlassHazeState` 是否由页面提供）：给了就是
+ *    平台档位（[GlassCapability.blurs]），没给就是 [GlassCapability.TintStroke]；
+ *  - [backdropPolicy] 决定「没有背景时还建不建 haze 节点」：默认
+ *    [GlassBackdropPolicy.HazeAlwaysCompat] 保留 U3 之前共享调用点的像素，
+ *    [GlassBackdropPolicy.DegradeWithoutBackdrop] 是 glass 皮肤组件用的诚实降级。
+ *
+ * 降级到 `TintStroke` 时**根本不建 haze 节点**，直接 `background(tint, shape)` + 描边 +
+ * 高光。旧实现会拿一个空的 `HazeState` 硬跑 `hazeBlur`，采不到背景时整层什么都不画 ——
+ * 一个"看不见的玻璃"比没有玻璃更糟，而且与本文档写的"degrade to tint + hairline + shadow"
+ * 不符。（共享调用点仍然走那条老路，但它们是有意保留的兼容像素，见 [backdropPolicy]。）
  *
  * 折射（Android 13+ AGSL）**不在本文件**：它要求背景单独成层，属任务书 §五 T3，且本批
  * 无法上机验证。阶梯已经能表达 `Refraction`（见 [GlassCapability]），但没有平台返回它，
@@ -127,16 +132,23 @@ fun GlassSurface(
     contentAlignment: Alignment = Alignment.TopStart,
     shadow: LayeredShadow = VadeShadows.float,
     /**
-     * 只在 glass 皮肤自己的组件上传 true：没有背景可采时跳过 haze 节点、直接染色。
-     * 共享调用点（material 的 FloatingBlur 等）保持默认 false —— 它们历史上一直用的是
-     * 「私有空 state + 无背景模糊」路径，像素与 shipped 版本一致，不能因本批改变。
+     * 没有真实背景可采时怎么办 —— 一个**语义诚实**的策略，而不是给 `hasBackdrop` 传假值。
+     *
+     * 默认 [GlassBackdropPolicy.HazeAlwaysCompat]：共享调用点（material 的 FloatingBlur 底栏、
+     * TopBar、GlassNavBar、SearchOverlay、ChatThread、模型选择卡）在 U3 之前一直是用
+     * 「私有空 state + 无条件 haze 节点」绘制的，CI 的像素钉钉的就是这套像素，本批不能动。
+     * glass 皮肤自己的组件显式传 [GlassBackdropPolicy.DegradeWithoutBackdrop]：采不到背景时
+     * 不建 haze 节点，直接染色 + 描边 + 高光。
      */
-    degradeWithoutBackdrop: Boolean = false,
+    backdropPolicy: GlassBackdropPolicy = GlassBackdropPolicy.HazeAlwaysCompat,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val ambient = LocalGlassHazeState.current
     val state = ambient ?: rememberHazeState()
-    val capability = glassCapability(hasBackdrop = ambient != null || !degradeWithoutBackdrop)
+    // 能力只看**真实**背景：`ambient != null`。共享调用点靠上面的策略保住历史像素，
+    // 不再靠往这里塞一个 `true`（审查 P1-5）。
+    val capability = glassCapability(hasBackdrop = ambient != null)
+    val drawsHaze = drawsHazeLayer(capability, backdropPolicy)
     val tint = tintOverride ?: if (skin.colors.isDark) skin.glass.tintDark else skin.glass.tintLight
     val strokeColor = stroke ?: skin.glass.hairlineOnGlass
 
@@ -160,7 +172,7 @@ fun GlassSurface(
         dark = skin.colors.isDark,
     )
 
-    val backdrop = if (capability.blurs) {
+    val backdrop = if (drawsHaze) {
         Modifier.hazeBlur(
             input = HazeInput.Sources(state = state),
             style = HazeBlurStyle {

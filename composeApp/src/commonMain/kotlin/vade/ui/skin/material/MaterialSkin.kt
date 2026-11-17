@@ -40,6 +40,7 @@ import vade.ui.icon.VadeIcons
 import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.BtnStyle
 import vade.ui.skin.NavItem
+import vade.ui.skin.glass.GlassBackdropPolicy
 import vade.ui.skin.glass.GlassSurface
 
 /**
@@ -439,7 +440,13 @@ class MaterialSkin(
                 // 由 shell/ 接线；未接线时按其文档降级为 hairline + 阴影，绝不用垂直
                 // alpha 渐变假装模糊 —— v2 明令禁止）。
                 Box(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp)) {
-                    GlassSurface(shape = pillShape, skin = this@MaterialSkin) { row() }
+                    GlassSurface(
+                        shape = pillShape,
+                        skin = this@MaterialSkin,
+                        // U3 之前这条底栏就是「私有空 state + 无条件 haze 节点」，像素钉钉的是它；
+                        // 显式写出来，不让读代码的人以为这里"真的能模糊"。
+                        backdropPolicy = GlassBackdropPolicy.HazeAlwaysCompat,
+                    ) { row() }
                 }
             }
         }

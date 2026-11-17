@@ -14,18 +14,22 @@ import kotlin.math.pow
  *
  * 为什么单独有这个对象，而不是直接读 [SkinGlass]：`SkinGlass` 是 C-09 冻结的**跨皮肤**
  * 接口（material 的 FloatingBlur 也在用，值钉在 docs/visual-language.md §5 的探针实测上）。
- * 玻璃皮肤需要比它多三个字段 —— 描边色（[stroke]）、顶部高光（[highlight]）、折射带宽
- * （[refractionWidth]）—— 而 `SkinGlass` 不能改。所以这里放**本皮肤自己的**一套，
- * 再把与冻结字段重叠的三个值投影回去（[skinGlass]），保证「皮肤看到的」和「GlassSurface
- * 读到的」是同一个数，不出现两份会漂移的 tint。
+ * 玻璃皮肤需要比它多三个字段 —— 描边色、顶部高光、折射带宽 —— 而 `SkinGlass` 不能加字段。
+ * 所以这里放**本皮肤自己的**一套，再把与冻结字段重叠的三个值投影回去（[skinGlass]），
+ * 保证「皮肤看到的」和「GlassSurface 读到的」是同一个数，不出现两份会漂移的 tint。
  *
  * **tint 为什么比 §5 的 26% / 34% 厚**：§5 的 tint 是给「页面上只有一两块浮层」算的，
  * 玻璃背后永远有一大片不透明画布；这套皮肤连卡片、气泡、输入框都是玻璃，文字可能落在
  * 任意背景上。任务书 T1 给的 42% / 38% 仍在 §5 的 ≤45% 上限内，且把玻璃底从「半透明」
  * 推到「近实」—— 正文对比度因此只由 tint 决定，不再取决于背后恰好是什么。可验证的部分
- * 写成了数：[contrastOnCanvas] 与 [worstCaseCardContrast] 由
- * `GlassTokensContrastTest` 钉住；任意照片级背景下的 4.5:1 是**任何**半透明层都做不到的，
- * 那正是承载长文本的层（Card）必须再垫一层近不透明内容底（[CARD_CONTENT_ALPHA]）的原因。
+ * 写成了数：[contrastOnCanvas] 由 `GlassSkinTest` 钉住；任意照片级背景下的 4.5:1 是
+ * **任何**半透明层都做不到的，那正是承载长文本的层（Card / InputBar / 气泡）必须再垫一层
+ * 近不透明内容底（[CARD_CONTENT_ALPHA]，见 [contentBase]）的原因。
+ *
+ * 每一个数字都有对应的断言，测试在 `GlassTokensContrastTest` / `GlassSkinTest`：
+ *  - 描边可见性 —— [strokeLight] / [strokeDark] 与 [stroke]；
+ *  - 正文对比度 —— [contrastOnCanvas]（自家画布）、[worstCaseContentContrast]（纯黑/纯白两种极端）；
+ *  - 按钮文字 —— [actionFill] / [actionLabelContrast]（Primary 与 Danger 各一种底座）。
  */
 object GlassTokens {
 
@@ -35,12 +39,31 @@ object GlassTokens {
     /** 暗色 tint：黑 38%（任务书 T1）。暗画布上白 tint 会把界面洗成灰。 */
     val tintDark: Color = Color.Black.copy(alpha = 0.38f)
 
-    /** 1dp 描边色：白 35% —— 让玻璃层在任何画布上都有可见的边（"不是贴上去的"）。 */
-    val stroke: Color = Color.White.copy(alpha = 0.35f)
+    /**
+     * 亮色描边：**黑** 26%。
+     *
+     * 白 35% 在亮色玻璃上等于没画 —— 它压在「白 42% ⊕ 浅画布」上只差 1.02:1，肉眼分不出
+     * 边界（审查 P1 的原话是「不可见」）。亮色玻璃的底被 tint 提到了近白，只有**深色**描边
+     * 能勾出轮廓：黑 26% 压在同样的底上 ≈1.7:1，压在纯白卡片上 ≈1.8:1 —— 发丝线该有的
+     * 强度（§5 的 hairline 语义），不是 0。上限 30%：再深就变成 material 的实心边框。
+     */
+    val strokeLight: Color = Color.Black.copy(alpha = 0.26f)
+
+    /** 暗色描边：白 35%（暗底上白线是唯二看得见的方向之一）。 */
+    val strokeDark: Color = Color.White.copy(alpha = 0.35f)
+
+    /**
+     * 当前主题的描边色。
+     *
+     * 描边必须按主题分两支，不能学 tint 那样「一个值通用」：tint 是叠在背景上的**颜色**，
+     * 描边是勾在玻璃**边缘**的线，同一个 alpha 在亮底与暗底上的可见度差 3 倍以上
+     * （白 35% 在暗底 3.1:1，在亮底 1.02:1）。
+     */
+    fun stroke(dark: Boolean): Color = if (dark) strokeDark else strokeLight
 
     /**
      * 描边宽度。固定 1dp：玻璃层的尺寸由内容决定，描边必须画在**内侧**（`Modifier.border`
-     * 后在 `clip` 内），否则悬停/聚焦换描边宽度会让元素抖动 1px。
+     * 在 `clip` 之前、内容之上），否则悬停/聚焦换描边宽度会让元素抖动 1px。
      */
     val strokeWidth = 1.dp
 
@@ -57,8 +80,14 @@ object GlassTokens {
      */
     const val HIGHLIGHT_PEAK_ALPHA: Float = 0.34f
 
+    /** 高光在 35% 高度处只剩 5%（[highlight] 的第二个 stop，[highlightAlphaAt] 同步）。 */
+    const val HIGHLIGHT_MID_ALPHA: Float = 0.05f
+
+    /** 高光第二个 stop 的位置（占形状高度）。 */
+    const val HIGHLIGHT_MID_STOP: Float = 0.35f
+
     /**
-     * 顶部高光：从顶边 [HIGHLIGHT_PEAK_ALPHA] 的白，到 35% 处只剩 5%，再归零。
+     * 顶部高光：从顶边 [HIGHLIGHT_PEAK_ALPHA] 的白，到 35% 处只剩 [HIGHLIGHT_MID_ALPHA]，再归零。
      *
      * 只在**上沿**留一层很薄的光 —— 整层均匀加白会变成"磨砂白板"，把 §5 的 blur 视觉压掉。
      * 用 [Brush.verticalGradient] 且不给 startY/endY：默认按被绘制形状的高度铺满，所以
@@ -66,19 +95,28 @@ object GlassTokens {
      */
     val highlight: Brush = Brush.verticalGradient(
         0f to Color.White.copy(alpha = HIGHLIGHT_PEAK_ALPHA),
-        0.35f to Color.White.copy(alpha = 0.05f),
+        HIGHLIGHT_MID_STOP to Color.White.copy(alpha = HIGHLIGHT_MID_ALPHA),
         1f to Color.Transparent,
     )
 
     /**
-     * 承载长文本的玻璃层（Card / 气泡）在玻璃之上再垫的内容底不透明度。
+     * 承载长文本的玻璃层（Card / InputBar / 用户气泡）在玻璃之上再垫的内容底不透明度。
      *
      * 0.88 不是审美选择：玻璃后面的内容可以是任何东西，而正文必须 ≥4.5:1。把内容底做成
-     * 0.88 的 `surface` 之后，**最坏情况**（背后纯黑）亮色卡片底仍落在 sRGB 0.88（L≈0.75），
-     * 与 `onSurface` 的对比度实测 13.6:1；暗色卡片底 15.8:1。这条由
-     * [worstCaseCardContrast] 计算、`GlassTokensContrastTest` 断言 —— 不是"看起来还行"。
+     * 0.88 的 `surface` 之后，**两种极端背景**（纯黑 / 纯白）下正文对比度都还有余量 ——
+     * 亮色 13.6:1 / 17.4:1，暗色 15.8:1 / 10.6:1。这条由 [worstCaseContentContrast] 计算、
+     * `GlassTokensContrastTest` 断言 —— 不是"看起来还行"。
      */
     const val CARD_CONTENT_ALPHA: Float = 0.88f
+
+    /**
+     * 亮色 Danger 实心填充的压深比例（见 [actionFill]）。
+     *
+     * `colors.error`(#D93A3A) 配白字本身 4.55:1，余量薄到一次调色就会破线；压深 10%
+     * 之后 5.42:1。**material 的 error token 不动**（亮色是截图基线），只有玻璃皮肤的
+     * 大面积实心按钮走这条推导。
+     */
+    const val DANGER_LIGHT_SHADE: Float = 0.90f
 
     /** Android 13+ 折射带宽度：只扰动边缘 8dp，中心不动（否则文字发虚，任务书 §T3）。 */
     val refractionWidth = 8.dp
@@ -95,12 +133,16 @@ object GlassTokens {
      * 这一步是"单一真相"的关键：`GlassSurface` 只读 [vade.ui.skin.Skin.glass]，而玻璃皮肤
      * 的 tint 只在这里定义一次。任何人改 [tintLight]/[stroke]/[blurRadius]，`GlassSurface`
      * 立刻跟着变；不存在第二份需要同步的数字。
+     *
+     * [dark] 只决定 `hairlineOnGlass` 取哪一支描边 —— `SkinGlass` 的描边是**单值**字段
+     * （C-09 冻结，不能加字段），而 `Skin` 实例本身是分主题构造的，所以「按实例取一支」
+     * 既是唯一能表达分主题描边的位置，也不会让 material/miuix 少读到任何东西。
      */
-    fun skinGlass(): SkinGlass = SkinGlass(
+    fun skinGlass(dark: Boolean = false): SkinGlass = SkinGlass(
         blurRadiusDp = blurRadius.value,
         tintLight = tintLight,
         tintDark = tintDark,
-        hairlineOnGlass = stroke,
+        hairlineOnGlass = stroke(dark),
     )
 
     /**
@@ -112,6 +154,89 @@ object GlassTokens {
      */
     fun colorsFrom(base: SkinColors): SkinColors =
         base.copy(surfaceGlass = tint(base.isDark))
+}
+
+// --- 实心填充 / 内容底（P1：按钮与长文本层的可读性）----------------------------
+
+/**
+ * Primary / Danger 按钮的**实心**底座。
+ *
+ * 为什么必须不透明：这两档曾经用 `colors.primary @88%` / `colors.error @92%` 当玻璃 tint，
+ * 半透明会被**背后的浅底提亮** —— 玻璃皮肤里按钮几乎都长在白卡上，于是白字跌到
+ * 4.24:1 / 3.88:1（审查 P1 实测 4.29 / 4.14）。实心之后 Primary 5.37:1、Danger 5.42:1。
+ *
+ * Danger 在亮色下再压深 [DANGER_LIGHT_SHADE]：`colors.error` 配白字本身只有 4.55:1，
+ * 余量薄到一次调色就破线。暗色不压 —— 暗色的 error 是浅底配深字（6.6:1），压深只会
+ * 把它变成第二种红。material 的 `primary/error` **不动**（亮色是截图基线）。
+ */
+fun actionFill(colors: SkinColors, danger: Boolean = false): Color = when {
+    !danger -> colors.primary
+    colors.isDark -> colors.error
+    else -> colors.error.darkened(GlassTokens.DANGER_LIGHT_SHADE)
+}
+
+/** 按通道压深（sRGB 编码值上乘一个系数 —— 与视觉稿「加深一档」同一个操作）。 */
+private fun Color.darkened(factor: Float): Color =
+    Color(red = red * factor, green = green * factor, blue = blue * factor, alpha = alpha)
+
+/**
+ * [GlassTokens.highlight] 在形状竖直 [fraction]（0 = 顶边，1 = 底边）处的白覆盖量。
+ *
+ * 供对比度测试使用：按钮 label 不是压在「底座」上，而是压在「底座 ⊕ 高光」上。用一个
+ * 与 brush 的 stops 同步的解析式，才能算「label 上沿」这种具体位置，而不是每次都假设
+ * 高光为 0 把风险算漏（实测 label 上沿处仍有 ~8% 白，把 Danger 从 4.55 拖到 4.09）。
+ */
+fun highlightAlphaAt(fraction: Float): Float = when {
+    fraction <= 0f -> GlassTokens.HIGHLIGHT_PEAK_ALPHA
+    fraction < GlassTokens.HIGHLIGHT_MID_STOP ->
+        GlassTokens.HIGHLIGHT_PEAK_ALPHA +
+            (GlassTokens.HIGHLIGHT_MID_ALPHA - GlassTokens.HIGHLIGHT_PEAK_ALPHA) *
+            (fraction / GlassTokens.HIGHLIGHT_MID_STOP)
+    fraction < 1f ->
+        GlassTokens.HIGHLIGHT_MID_ALPHA * (1f - (fraction - GlassTokens.HIGHLIGHT_MID_STOP) / (1f - GlassTokens.HIGHLIGHT_MID_STOP))
+    else -> 0f
+}
+
+/** 玻璃层上的近不透明内容底（Card / InputBar / 用户气泡共用同一个数）。 */
+fun contentBase(colors: SkinColors): Color =
+    colors.surface.copy(alpha = GlassTokens.CARD_CONTENT_ALPHA)
+
+/**
+ * 内容底压在 [backdrop] 上时，[fg]（默认正文色）与它的对比度。
+ *
+ * [backdrop] 用**不透明**色：内容底永远压在「玻璃背后那一层」上，而玻璃背后可能是
+ * 纯黑图片也可能是纯白卡片，所以两种极端都要各算一次（[worstCaseContentContrast]）。
+ */
+fun contentBaseContrast(
+    colors: SkinColors,
+    backdrop: Color,
+    fg: Color = colors.onSurface,
+): Double = contrastRatio(fg, contentBase(colors).over(backdrop))
+
+/**
+ * 内容底在**两种极端背景**（纯黑 / 纯白）里更差的那一个。
+ *
+ * 这才是「承载长文本的层」该过的线：不是"在自家画布上好看"，而是"背后是视频帧也一样"。
+ */
+fun worstCaseContentContrast(colors: SkinColors, fg: Color = colors.onSurface): Double =
+    min(contentBaseContrast(colors, Color.Black, fg), contentBaseContrast(colors, Color.White, fg))
+
+/**
+ * 实心按钮 label 的对比度：`[actionFill] ⊕ 高光([highlightAt]) ⊕ [backdrop]` 与 [fg] 相比。
+ *
+ * Primary/Danger **不画**高光（见 `GlassSkin.Button` 的 KDoc），所以默认 `highlightAt = 0`；
+ * 参数留着是为了让测试能把「如果哪天又把高光加回来」这个假设也钉成一个数。
+ */
+fun actionLabelContrast(
+    colors: SkinColors,
+    danger: Boolean,
+    backdrop: Color,
+    fg: Color,
+    highlightAt: Float = 0f,
+): Double {
+    val fill = actionFill(colors, danger)
+    val sheen = if (highlightAt > 0f) Color.White.copy(alpha = highlightAt).over(fill) else fill
+    return contrastRatio(fg, sheen.over(backdrop))
 }
 
 // --- WCAG 计算（§T2 的 4.5:1 硬指标：用公式算，不靠眼睛）-----------------------
@@ -174,13 +299,10 @@ fun contrastOnCanvas(colors: SkinColors, dark: Boolean = colors.isDark): Double 
 }
 
 /**
- * 卡片内容底在**最坏背景**（纯黑）上的对比度。
+ * 卡片内容底在**两种极端背景**上的最差对比度（纯黑 / 纯白）。
  *
- * 玻璃后面可能是深色图片、深色工具卡、甚至视频帧；只有把内容底做到
- * [GlassTokens.CARD_CONTENT_ALPHA] 才与背景无关。这条算的就是"背景全黑"时的值 —— 它达标，
- * 任何更亮的背景只会更安全。
+ * 历史名字：Card 是第一个垫内容底的组件，现在 InputBar 与用户气泡共用同一个
+ * [contentBase]，所以真正的公式在 [worstCaseContentContrast]；这里保留别名，是因为
+ * 「卡片在纯黑背景下也达标」这条断言在测试与 KDoc 里被引用过。
  */
-fun worstCaseCardContrast(colors: SkinColors): Double {
-    val panel = colors.surface.copy(alpha = GlassTokens.CARD_CONTENT_ALPHA).over(Color.Black)
-    return contrastRatio(colors.onSurface, panel)
-}
+fun worstCaseCardContrast(colors: SkinColors): Double = worstCaseContentContrast(colors)

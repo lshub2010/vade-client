@@ -65,6 +65,7 @@ import vade.ui.component.insets.bottomSafeClearance
 import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
 import vade.ui.skin.LocalSkin
+import vade.ui.skin.glass.GlassBackdropPolicy
 import vade.ui.skin.glass.GlassSurface
 
 /** Esc policy of the sheet, pure so the UI test can drive the real predicate. */
@@ -143,6 +144,8 @@ fun ModelPickerSheet(
                 .semantics { contentDescription = "模型选择遮罩" },
             shape = RectangleShape,
             skin = skin,
+            // 共享调用点：恒建 haze 节点（U3 之前的像素）。
+            backdropPolicy = GlassBackdropPolicy.HazeAlwaysCompat,
         ) {
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.24f)))
         }

@@ -260,7 +260,21 @@ class GlassSkinTest {
             GlassTokens.skinGlass().tintLight,
             "SkinGlass 必须是 GlassTokens 的投影，不是第二份会漂移的数",
         )
-        assertEquals(GlassTokens.stroke, GlassTokens.skinGlass().hairlineOnGlass)
+        assertEquals(
+            GlassTokens.stroke(dark = false),
+            GlassTokens.skinGlass(dark = false).hairlineOnGlass,
+            "亮色实例必须投影亮色描边（黑 26%）—— 白 35% 在亮玻璃上不可见（审查 P1-3）",
+        )
+        assertEquals(
+            GlassTokens.stroke(dark = true),
+            GlassTokens.skinGlass(dark = true).hairlineOnGlass,
+            "暗色实例必须投影暗色描边 —— SkinGlass 只有单值字段，所以只能按实例取一支",
+        )
+        assertEquals(
+            GlassTokens.stroke(dark = true),
+            GlassSkin(dark = true).glass.hairlineOnGlass,
+            "Skin.glass 是 SkinGlass 的投影：暗色玻璃皮肤的描边必须是暗色那一支",
+        )
         assertTrue(
             GlassTokens.tintLight.alpha <= 0.45f && GlassTokens.tintDark.alpha <= 0.45f,
             "§5 上限 45%：tint 再厚就不是玻璃了",
