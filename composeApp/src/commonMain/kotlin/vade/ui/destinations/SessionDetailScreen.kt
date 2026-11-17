@@ -32,6 +32,7 @@ import vade.ui.chat.InMemoryAttachmentUploader
 import vade.ui.chat.InMemoryTurnGateway
 import vade.ui.chat.StatusPill
 import vade.ui.chat.Tone
+import vade.ui.chat.observePointerTap
 import vade.ui.data.AdapterProvider
 import vade.ui.data.SessionSummary
 import vade.ui.model.InMemoryModelActions
@@ -69,12 +70,20 @@ internal val LocalSessionListOpener = staticCompositionLocalOf<(() -> Unit)?> { 
  *
  * U1-model → g-model-chip · the model switcher moved OUT of the page flow: the header model
  * line is plain information again (what would answer, message count, degraded reason), the
- * TRIGGER is the [ModelComposerChip] inside the composer's bottom row (same line as the send
- * orb, via `ChatThread(inputLeading = …)` → `Skin.InputBar(leading = …)`), and tapping it
- * opens the [ModelPickerSheet] — the §9 floating sheet card — over the whole screen. Nothing
- * pushes the transcript anymore. All model reads/writes go through the injected [modelActions]
- * seam; when the shell has not wired one yet (this round), an in-memory fixture implementation
- * keeps the picker fully interactive and honestly labelled.
+ * TRIGGER is the [ModelComposerChip] the composer hosts in a **second row** (see
+ * g-composer-2row below), and tapping it opens the [ModelPickerSheet] — the §9 floating
+ * sheet card — over the whole screen. Nothing pushes the transcript anymore. All model
+ * reads/writes go through the injected [modelActions] seam; when the shell has not wired
+ * one yet (this round), an in-memory fixture implementation keeps the picker fully
+ * interactive and honestly labelled.
+ *
+ * g-composer-2row · the second composer row is **collapsed by default** and only appears
+ * once the reader touches the composer: the page owns the `composerExpanded` flag (reset on
+ * every session entry / switch), `ChatThread` reports a completed tap inside the composer and
+ * the page root reports taps outside it — both by observing a pointer tap (press + release
+ * within touch slop) in the Initial pass without consuming (the frozen `Skin.InputBar` has no
+ * focus/modifier slot, so a real focus signal is not available; see
+ * `vade.ui.chat.observePointerTap` for the approximation and its limits).
  */
 @Composable
 fun SessionDetailScreen(
@@ -164,6 +173,12 @@ fun SessionDetailScreen(
     val actions = modelSeam.value
     val modelState = remember(actions, session.id) { ModelState.forSession(actions, session.id) }
     var modelPickerOpen by remember(session.id) { mutableStateOf(false) }
+    // g-composer-2row · 第二行（模型 chip）的展开态，**本页持有**：
+    //  - 进会话默认收起（`remember(session.id)` 的初始值就是 false）；
+    //  - 切会话收起（key 换了 = 新一份记忆，不会把上一个会话的展开态带过去）；
+    //  - 发送后保持展开（本页只在「点外部」与「切会话」两处写 false）；
+    //  - 点输入区展开：由 `ChatThread(onComposerFocusChange = …)` 从指针近似焦点报上来。
+    var composerExpanded by remember(session.id) { mutableStateOf(false) }
 
     // J4（alpha 审查）· 「假数据」只由**数据来源**决定，与布局无关：
     //  - 没有适配器包 = 三段回退落到内存假实现（`pickScreenSeam`）；
@@ -177,18 +192,34 @@ fun SessionDetailScreen(
     // stays opaque, so its own content remains readable while rows slide under it.
     // g-model-chip: the model sheet is the TOPMOST sibling — an overlay over everything
     // (header, thread, composer), never an inline block in the header column.
-    Box(modifier.fillMaxSize()) {
+    Box(
+        modifier
+            .fillMaxSize()
+            // g-composer-2row · 「点 composer 外部收回」。与 composer 内部用的是同一个
+            // 观察者（Initial、观察一次点击、不消费），差别只在位置：这里是页面根，因此
+            // **任何**一次点击都会先把展开态置 false —— 同一次手势里 composer 自己随后
+            // 再置 true（父 → 子的 Initial 顺序），于是「点输入区」= 展开、「点别处」= 收起。
+            // 不包 `clickable`：那会吃掉 header / 消息列表自己的点击。
+            //
+            // 例外：模型浮层（[ModelPickerSheet]）打开期间不收回。那张卡是模态的，点它
+            // 是在**用浮层**，不是在把 composer 让出去；否则关掉浮层后模型行无声消失。
+            .observePointerTap { if (!modelPickerOpen) composerExpanded = false },
+    ) {
         ChatThread(
             state = chat,
             modifier = Modifier.fillMaxSize(),
             animate = animate,
-            inputLeading = {
+            // g-composer-2row：模型 chip 从 `inputLeading`（面板底行）搬进第二行。
+            // 第二行默认收起，点输入区才出现 —— 会话页一进来就是干净的一行 composer。
+            modelRow = {
                 ModelComposerChip(
                     state = modelState,
                     expanded = modelPickerOpen,
                     onClick = { modelPickerOpen = true },
                 )
             },
+            expanded = composerExpanded,
+            onComposerFocusChange = { focused -> if (focused) composerExpanded = true },
         )
         Column(Modifier.padding(top = contentPadding.calculateTopPadding())) {
             DetailHeader(
