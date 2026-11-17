@@ -56,6 +56,10 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.draw.alpha
@@ -356,6 +360,10 @@ fun ChatThread(
             expanded = expanded,
             // 只把「点了 composer」这一路送上去；页面自己的根节点负责「点外部」。
             onComposerTap = onComposerFocusChange?.let { report -> { report(true) } },
+            // 键盘/读屏进入不了「点输入区」这条指针路径；给 composer 一个无障碍动作，
+            // 否则模型切换退化成仅指针可达（审查 P1-2）。
+            onExpandRequest = onComposerFocusChange?.takeIf { modelRow != null && !expanded }
+                ?.let { report -> { report(true) } },
         )
 
         // K4 · 「新内容」胶囊：只在**上滚且有新内容落地**时出现，贴在输入区上沿。入场是
@@ -990,6 +998,8 @@ private fun BoxScope.ComposerOverlay(
     expanded: Boolean = false,
     /** g-composer-2row：在浮层里点一下（抬起）→ 页面把 [expanded] 置 true；null = 不观察指针。 */
     onComposerTap: (() -> Unit)? = null,
+    /** 非指针入口（读屏自定义动作）：展开第二行；null = 已展开 / 没有第二行。 */
+    onExpandRequest: (() -> Unit)? = null,
 ) {
     val skin = LocalSkin.current
     val uploadScope = rememberCoroutineScope()
@@ -1017,6 +1027,19 @@ private fun BoxScope.ComposerOverlay(
         modifier = Modifier
             .align(Alignment.BottomCenter)
             .fillMaxWidth()
+            // 非指针入口：读屏用户可以把「显示模型选项」当自定义动作触发，
+            // 与点输入区展开走同一个回调（审查 P1-2）。
+            .semantics {
+                val action = onExpandRequest
+                if (action != null) {
+                    customActions = listOf(
+                        CustomAccessibilityAction("显示模型选项") {
+                            action()
+                            true
+                        },
+                    )
+                }
+            }
             // g-composer-2row：整块浮层（队列条 / 输入行 / 第二行 / 底部留白）都算
             // 「composer 区域」。Initial 观察一次点击（按下+抬起、位移在 slop 内）、不消费
             // ⇒ 输入框焦点与点击不受影响；
@@ -1136,8 +1159,18 @@ private fun BoxScope.ComposerOverlay(
             // 同一档（队列条、暂存附件都是 8dp），不新造数。
             if (expanded && modelRow != null) {
                 Spacer(Modifier.height(8.dp))
+                // 第二行必须有**实体底**：它已经不在输入面板内，半透明 chip 直接浮在
+                // 消息列上，滚动时正文会从 chip 底下穿过（审查 P1-1）。这里用皮肤的不透明
+                // surface + hairline + pill 圆角，和输入面板同一套质感，但不引入玻璃。
+                val rowShape = RoundedCornerShape(skin.shapes.pill)
                 Row(
-                    modifier = Modifier.fillMaxWidth().testTag(ComposerModelRowTag),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag(ComposerModelRowTag)
+                        .clip(rowShape)
+                        .background(skin.colors.surface)
+                        .border(1.dp, skin.colors.hairline, rowShape)
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
                     // 行首对齐：chip 与原来的 `leading` 槽同一侧，不随宽度漂到中间。
                 ) {
                     modelRow()
@@ -1181,29 +1214,41 @@ internal fun Modifier.observePointerTap(onTap: () -> Unit): Modifier {
     // 回调每帧都可能是新 lambda：用 rememberUpdatedState 钉住，pointerInput 不因此重启
     // （重启会丢掉进行中的手势状态）。
     val latest by rememberUpdatedState(onTap)
-    return pointerInput(Unit) {
-        awaitPointerEventScope {
-            var downPosition: Offset? = null
-            while (true) {
-                val event = awaitPointerEvent(PointerEventPass.Initial)
-                val change = event.changes.firstOrNull() ?: continue
-                when (event.type) {
-                    PointerEventType.Press -> downPosition = change.position
-                    PointerEventType.Release -> {
-                        val down = downPosition
+    // 位移必须在**窗口坐标**里比：Android 上 IME 弹起时整个 composer 会随根布局上移，
+    // 局部坐标里同一根手指的 Press/Release 会差出一个 IME 高度，被判成拖拽 —— 首点
+    // 输入框时「键盘弹了但第二行没出来」正是这条（审查 P0）。多指手势一律作废。
+    var coordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    return this
+        .onGloballyPositioned { coordinates = it }
+        .pointerInput(Unit) {
+            awaitPointerEventScope {
+                var downPosition: Offset? = null
+                fun windowOf(local: Offset): Offset =
+                    coordinates?.localToWindow(local) ?: local
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    val change = event.changes.singleOrNull()
+                    if (change == null) {
                         downPosition = null
-                        // 位移 ≤ touch slop 才算「点在这里」；更大 = 拖拽（滚动 / 圈选）。
-                        if (down != null &&
-                            (change.position - down).getDistance() <= viewConfiguration.touchSlop
-                        ) {
-                            latest()
-                        }
+                        continue
                     }
-                    else -> Unit
+                    when (event.type) {
+                        PointerEventType.Press -> downPosition = windowOf(change.position)
+                        PointerEventType.Release -> {
+                            val down = downPosition
+                            downPosition = null
+                            // 位移 ≤ touch slop 才算「点在这里」；更大 = 拖拽（滚动 / 圈选）。
+                            if (down != null &&
+                                (windowOf(change.position) - down).getDistance() <= viewConfiguration.touchSlop
+                            ) {
+                                latest()
+                            }
+                        }
+                        else -> Unit
+                    }
                 }
             }
         }
-    }
 }
 
 /**

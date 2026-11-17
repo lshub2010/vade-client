@@ -33,6 +33,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import kotlin.test.Test
@@ -171,6 +172,22 @@ class ComposerTwoRowTest {
 
         onNodeWithTag(ComposerModelRowTag).assertDoesNotExist()
         onNodeWithContentDescription("更改会话模型").assertDoesNotExist()
+    }
+
+    /**
+     * 滚列表不许收起：位移远超 touch slop 的手势是滚动，不是「点外部」。
+     */
+    @Test
+    fun swipingTheThreadKeepsTheModelRowExpanded() = runPage { _ ->
+        onNodeWithText("输入消息…").performClick()
+        waitForIdle()
+        onNodeWithTag(ComposerModelRowTag).assertExists()
+
+        onRoot().performTouchInput { swipeUp() }
+        waitForIdle()
+
+        onNodeWithTag(ComposerModelRowTag).assertExists()
+        onNodeWithContentDescription("更改会话模型").assertExists()
     }
 
     /**
