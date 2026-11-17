@@ -55,10 +55,11 @@ import vade.ui.skin.SkinMotion
  *  - **会话列表是盖在上面的一层抽屉**：宽 80%、右缘 28dp 两个大圆角、自带浮层阴影，
  *    从**左侧**滑出/收回；抽屉与详情之间是遮罩（内容被压暗），点遮罩 = 收抽屉；
  *  - 点一条会话 → 抽屉收回（`UiState.selectSession` 里自动收）、详情露出来；
- *  - **返回只有一条路**（g-nav-stack，见下方 [SessionsDrawerHost] 里的 `BackLayer`）：
- *    系统返回键 / 返回手势 / Esc / 顶栏返回全部由返回栈派发，本页只登记一层 ——
- *    抽屉开着 → 收回（露出底下完好的详情）；抽屉收着 → `state.back()` 清选中回到列表根；
- *    列表根（没有选中会话）不登记层，返回交还系统（允许退出 App）。
+ *  - **返回只有一条路**（g-nav-stack，见下方 [SessionsDrawerHost] 里的**两层** `BackLayer`）：
+ *    系统返回键 / 返回手势 / Esc / 顶栏返回全部由返回栈派发，层数 = 此刻可退的层级数
+ *    （抽屉 + 详情各一层）：抽屉开着 → 收回（露出底下完好的详情）；抽屉收着 → `state.back()`
+ *    清选中回到列表根；列表根（没有选中会话）不登记层，返回交还系统（允许退出 App）。
+ *    一次 dispatch 恰好减一层 —— 层数与「能关几次」严格相等。
  *    旧实现是一条独立的 Android `BackHandler`（`DrawerSystemBackHandler`）+ `if/else` 开关，
  *    按返回在「列表/详情」之间来回 toggle、永远退不出也永远清不掉选中；那条路已删除。
  *  - **双栏（≥600dp）与 600–719（rail 单栏）完全不经过本文件**：`ShellBody` 只在
@@ -195,21 +196,23 @@ internal fun SessionsDrawerHost(
         motion = skin.motion,
     )
 
-    // g-nav-stack · 本页在返回栈里**恰好一层**，三端一条路（系统返回 / 手势 / Esc / 顶栏返回
-    // 都落到这里；不再有第二条 `BackHandler`）：
-    //  - 有选中会话（详情在底层）时登记：
-    //      抽屉开着 → 收抽屉，详情原样露出来（不销毁）；
-    //      抽屉收着 → `state.back()` 清选中，回到列表根（与顶栏「返回」同一动作）。
-    //  - 没有选中会话（列表根）→ 不登记：`dispatch()` 返回 false，返回交还系统（可退出 App）。
-    //    旧实现在这里会 toggle 抽屉，把用户关进「无详情 + 抽屉收起」的死路（G2）。
+    // g-nav-stack · 「能关几次 = 注册几层」：本页拆成**两层**登记，层数恒等于此刻可退的
+    // 层级数，一次 dispatch 恰好减一层（旧实现只有一层，onBack 里按 `drawerOpen` 二选一：
+    // 收完抽屉栈深不减 —— 第二次返回才是关详情，层数与可退次数对不上）。
+    //  - 常驻详情层（先登记 ⇒ 在下）：有选中会话（详情在底层）时登记，返回 = `state.back()`
+    //    清选中回列表根，与顶栏「返回」同一动作；没有选中（列表根）⇒ 不登记。
+    //  - 抽屉层（后登记 ⇒ topmost）：抽屉开着**且底层有详情**时登记，返回 = 收抽屉，
+    //    详情原样露出来（不销毁）。抽屉开着而没有详情（J5）时**不登记**：那时收抽屉只会
+    //    露出手机上没有出路的空详情（G2 死路），返回应当交还系统。
+    // 抽屉层在详情层之后 ⇒ topmost 是抽屉；抽屉收起后这一层自己出栈，栈深随之减一，
+    // 下一次返回落到详情层。没有选中会话（列表根）时两层都不在，`dispatch()` 返回 false。
     //
     // 位置在 Box **之前**很重要：栈序 = 组合序，页面层必须先于它内部的浮层（模型选择 /
     // 附件预览 / 搜索）入栈，那些浮层才能是 topmost 先被消费。
+    BackLayer(enabled = state.selectedSessionId != null, onBack = state::back)
     BackLayer(
-        enabled = state.selectedSessionId != null,
-        onBack = {
-            if (state.sessionsDrawerOpen) state.closeSessionsDrawer() else state.back()
-        },
+        enabled = state.sessionsDrawerOpen && state.selectedSessionId != null,
+        onBack = state::closeSessionsDrawer,
     )
 
     // 转场进度：1 = 抽屉全开，0 = 收起。初值取当前状态，深链直进详情不会播一段开场动画。
@@ -260,7 +263,8 @@ internal fun SessionsDrawerHost(
         //
         // J5：可点判据带 `selectedSessionId != null` —— 底下没有详情时点遮罩只会把抽屉收起，
         // 露出手机上没有出路的「在左侧选择一个会话」（无左侧、列表也收走了）。那种状态下
-        // 遮罩保持纯视觉压暗，不做「关掉唯一入口」的动作；返回同样不登记层（见上面的 BackLayer）。
+        // 遮罩保持纯视觉压暗，不做「关掉唯一入口」的动作；返回同样不登记层（见上面两层
+        // BackLayer 的 enabled：抽屉层要求底层有详情）。
         Box(
             Modifier
                 .fillMaxSize()
