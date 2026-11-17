@@ -193,13 +193,13 @@ class GlassTokensContrastTest {
                 val body = contentBaseContrast(colors, backdrop)
                 assertTrue(
                     body >= 4.5,
-                    "$theme 内容底压在$name上正文只有 ${body.rounded()}:1 —— " +
+                    "$theme 内容底压在${name}上正文只有 ${body.rounded()}:1 —— " +
                         "（alpha ${GlassTokens.CARD_CONTENT_ALPHA}）",
                 )
                 val secondary = contentBaseContrast(colors, backdrop, fg = colors.onSurfaceVariant)
                 assertTrue(
                     secondary >= 3.0,
-                    "$theme 内容底压在$name上次要文字只有 ${secondary.rounded()}:1 —— " +
+                    "$theme 内容底压在${name}上次要文字只有 ${secondary.rounded()}:1 —— " +
                         "占位符/徽标/动作行读不出来（阈值 3.0：非正文）",
                 )
             }
