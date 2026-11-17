@@ -7,13 +7,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -40,11 +40,12 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import vade.ui.UiText
-import vade.ui.component.insets.bottomSafeClearance
+import vade.ui.component.insets.LocalOverlayInsets
 import vade.ui.component.liquid.VadeShadows
 import vade.ui.component.liquid.layeredShadow
 import vade.ui.icon.MetaIcons
@@ -62,10 +63,15 @@ import vade.ui.skin.LocalSkin
  * （与点遮罩同一条 onClose 路径，绝不悄悄丢草稿之外的副作用）。
  *
  * c6-insets · L4/P1-2 —— Popup 是**独立 window**：根布局的 `statusBarsPadding()` /
- * `imePadding()` 抬不到它。所以底部不只是 §9 的 12dp，而是 `12dp + 导航条余量`
- * （余量在主窗口里读：Popup 自己的 window insets 在 Android 上不保证有值；键盘弹起时
- * 余量为 0，与 IME 不相加），再加上内容自身的 `.imePadding()` 处理键盘那一段；
- * 内容列可滚动，键盘把可视区压扁时不会把按钮挤出屏幕（重命名/分组编辑都够用）。
+ * `imePadding()` 抬不到它，Popup 自己的 window insets 在 Android 上也不保证有值。
+ * 所以底部间距 = `12dp + 导航条余量 + IME 高度`，两个读数都在**主窗口的根节点**读好
+ * （`LocalOverlayInsets`，见 `OverlayInsets.kt`）后带进来，不在 Popup 里读
+ * `WindowInsets`、也不在 Popup 上挂 `imePadding()`（f4-insets · P1-7/P1-8）。
+ * 键盘弹起时余量为 0，所以 `余量 + IME` 恒等于 `max(nav, ime)`，不会相加。
+ *
+ * 卡片本身限高在「窗口高度 − 上下 12dp − 底部安全区」之内，标题行（grabber + 图标 +
+ * 标题 + 关闭）固定在卡片顶部，只有 `content()` 滚动 —— 长内容（分组编辑器）滚动时
+ * 标题和关闭按钮不会跟着滚走（P1-7）。
  */
 
 /** §9 卡片骨架：grabber → 标题行（图标 + 标题 + 关闭）→ 内容。 */
@@ -79,72 +85,87 @@ private fun MetaSheetScaffold(
     val skin = LocalSkin.current
     val shape = RoundedCornerShape(skin.shapes.sheet) // 32dp：全局弹窗档
     val sheetFocus = remember { FocusRequester() }
-    // 导航条余量在主窗口里读一次带进 Popup（见文件头 KDoc：Popup 的 window insets 不保证有值）。
-    val bottomClearance = bottomSafeClearance()
+    // 原始读数由主窗口根节点读好下传（Popup 自己的 window insets 在 Android 上不保证有值）。
+    val overlay = LocalOverlayInsets.current
     Popup(
         alignment = Alignment.Center,
         onDismissRequest = onClose,
         properties = PopupProperties(focusable = true),
     ) {
-        Column(
-            Modifier
-                // §9：四周 12dp 空隙，永不贴边；底部再加导航条余量 —— 三键条 / 手势胶囊
-                // 压在操作按钮上曾是真机可见缺陷（L4）。
-                .padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 12.dp + bottomClearance)
-                // 键盘：Popup 有自己的 window，根布局的 imePadding 抬不到它，只能自己让。
-                .imePadding()
-                .widthIn(max = 460.dp)
-                .layeredShadow(VadeShadows.float, shape, dark = skin.colors.isDark)
-                .clip(shape)
-                .background(skin.colors.surface)
-                .border(1.dp, skin.colors.hairline, shape)
-                // 内容可滚：键盘把可视区压扁时，「保存/删除」不会被挤出屏幕外。
-                .verticalScroll(rememberScrollState())
-                .focusRequester(sheetFocus)
-                .focusable()
-                .onPreviewKeyEvent { event ->
-                    // Esc 关闭弹层：与 onDismissRequest 同一条 onClose 路。
-                    if (event.type == KeyEventType.KeyUp && event.key == Key.Escape) {
-                        onClose()
-                        true
-                    } else {
-                        false
-                    }
-                }
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-        ) {
-            // grabber：36×4dp、距顶 8dp，唯一职责是"可下拉关闭"的暗示（§9）。
-            Box(
+        // Popup 窗口的可用高度（Android 上是屏幕高度）。用它把卡片限高：内容超高时
+        // 只有正文滚动。desktop 的 popup 无界（maxHeight = Infinity）时退回内容自适应，
+        // 几何与原来完全一致。
+        BoxWithConstraints {
+            val bounded = maxHeight != Dp.Infinity
+            Column(
                 Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .padding(top = 2.dp)
-                    .size(width = 36.dp, height = 4.dp)
-                    .clip(RoundedCornerShape(skin.shapes.xs))
-                    .background(if (skin.colors.isDark) androidx.compose.ui.graphics.Color.White.copy(alpha = 0.70f) else androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.24f)),
-            )
-            Spacer(Modifier.height(12.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (icon != null) {
-                    VadeIcon(icon, contentDescription = null, size = 20.dp, tint = skin.colors.primary)
-                    Spacer(Modifier.width(8.dp))
-                }
-                UiText(text = title, size = 18, weight = androidx.compose.ui.text.font.FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                // 纯图标关闭按钮：44dp 触摸区 + contentDescription（§3.4）。
+                    // §9：四周 12dp 空隙，永不贴边；底部再加「导航条余量 + IME 高度」——
+                    // 三键条 / 手势胶囊（L4）与键盘（P1-7）都压过操作按钮。
+                    // 余量 = max(0, nav − ime)，所以两者之和恒等于 max(nav, ime)，不相加。
+                    .padding(
+                        start = 12.dp,
+                        end = 12.dp,
+                        top = 12.dp,
+                        bottom = 12.dp + overlay.bottomClearance + overlay.imeBottom,
+                    )
+                    .widthIn(max = 460.dp)
+                    .layeredShadow(VadeShadows.float, shape, dark = skin.colors.isDark)
+                    .clip(shape)
+                    .background(skin.colors.surface)
+                    .border(1.dp, skin.colors.hairline, shape)
+                    .focusRequester(sheetFocus)
+                    .focusable()
+                    .onPreviewKeyEvent { event ->
+                        // Esc 关闭弹层：与 onDismissRequest 同一条 onClose 路。
+                        if (event.type == KeyEventType.KeyUp && event.key == Key.Escape) {
+                            onClose()
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+            ) {
+                // grabber：36×4dp、距顶 8dp，唯一职责是"可下拉关闭"的暗示（§9）。
                 Box(
                     Modifier
-                        .size(44.dp)
+                        .align(Alignment.CenterHorizontally)
+                        .padding(top = 2.dp)
+                        .size(width = 36.dp, height = 4.dp)
                         .clip(RoundedCornerShape(skin.shapes.xs))
-                        .clickable(onClick = onClose),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    VadeIcon(VadeIcons.Close, contentDescription = "关闭", size = 18.dp, tint = skin.colors.onSurfaceVariant)
+                        .background(if (skin.colors.isDark) androidx.compose.ui.graphics.Color.White.copy(alpha = 0.70f) else androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.24f)),
+                )
+                Spacer(Modifier.height(12.dp))
+                // 标题 / 关闭按钮固定在滚动区**之外**（P1-7）：长内容滚动时它们不滚走，
+                // 关闭按钮始终可达。
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (icon != null) {
+                        VadeIcon(icon, contentDescription = null, size = 20.dp, tint = skin.colors.primary)
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    UiText(text = title, size = 18, weight = androidx.compose.ui.text.font.FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    // 纯图标关闭按钮：44dp 触摸区 + contentDescription（§3.4）。
+                    Box(
+                        Modifier
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(skin.shapes.xs))
+                            .clickable(onClick = onClose),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        VadeIcon(VadeIcons.Close, contentDescription = "关闭", size = 18.dp, tint = skin.colors.onSurfaceVariant)
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                // 正文可滚：键盘把可视区压扁时，「保存/删除」不会被挤出屏幕外。
+                // 只有有界高度能拿 weight（Android popup）；无界时按内容高度，不挂 weight。
+                val bodyModifier = if (bounded) Modifier.weight(1f, fill = false) else Modifier
+                Column(bodyModifier.verticalScroll(rememberScrollState())) {
+                    content()
                 }
             }
-            Spacer(Modifier.height(8.dp))
-            content()
+            // 弹层卡自己抓焦点：Esc 立即可用；点进输入框后焦点移走，Esc 走祖先预览链仍然生效。
+            LaunchedEffect(Unit) { runCatching { sheetFocus.requestFocus() } }
         }
-        // 弹层卡自己抓焦点：Esc 立即可用；点进输入框后焦点移走，Esc 走祖先预览链仍然生效。
-        LaunchedEffect(Unit) { runCatching { sheetFocus.requestFocus() } }
     }
 }
 

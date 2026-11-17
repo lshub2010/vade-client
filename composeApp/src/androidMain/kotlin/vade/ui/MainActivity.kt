@@ -7,14 +7,21 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import vade.ui.component.insets.LocalOverlayInsets
+import vade.ui.component.insets.rememberRawOverlayInsets
 import vade.ui.data.AndroidSourceEnv
 import vade.ui.data.sessionSourceFromEnvironment
+import vade.ui.skin.SkinRegistry
+import vade.ui.skin.Skins
 import vade.ui.skin.ThemeController
 
 /**
@@ -45,9 +52,12 @@ import vade.ui.skin.ThemeController
  * the **first** frame is already edge-to-edge with the right icon colour (otherwise API < 35
  * would draw one frame non-edge-to-edge and visibly jump).
  *
- * The manifest theme is day/night (`Theme.Vade`, values + values-night), so pre-composition
- * chrome — including the cold-start window background — matches the system: dark devices
- * get dark chrome instead of the white band.
+ * The status-bar strip is painted with **the current skin's `canvas`** at the Compose root
+ * (f4-insets · P2) — the window background XML is only the pre-first-frame chrome. Hard-coding
+ * the material canvas there (`#F7F7F8` / `#0E0E10`) left a band of the wrong colour above the
+ * content whenever a non-material skin was selected, because the strip was never repainted by
+ * Compose. The manifest theme stays day/night (`Theme.Vade`, values + values-night) so the
+ * cold-start frame still matches the system instead of flashing white on a dark device.
  */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -73,20 +83,36 @@ class MainActivity : ComponentActivity() {
             // P1-4 · 配置解析失败（`--es port 8443x` 之类）= 一张说清原因的屏，
             // 不是启动即闪退。这里兜住解析，`App()` 只接收合法的源。
             val booted = runCatching { sessionSourceFromEnvironment() }
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .statusBarsPadding()
-                    .imePadding(),
-            ) {
-                // Same uniform switch as desktop/wasm: FakeSessionSource() fixtures
-                // unless the intent (or env) says `real` — App()'s own default is
-                // untouched, so no intent at all keeps the pre-g-live behaviour.
-                val source = booted.getOrNull()
-                if (source == null) {
-                    ConfigErrorScreen(booted.exceptionOrNull() ?: IllegalStateException())
-                } else {
-                    App(source = source)
+            // P1-8 · 原始 inset 只在根节点读一次 —— 必须在这两个 padding **之前**，
+            // 否则子树里读到的是被消费后的值（浮层会拿 0 IME 再叠一遍导航条）。
+            // 下传走 LocalOverlayInsets，叶子不再自己读 WindowInsets。
+            val overlayInsets = rememberRawOverlayInsets()
+            // P2 · 状态栏条带画皮肤的 canvas（不是主题里写死的 material 值）。App() 内部
+            // 才提供 LocalSkin，这里按「启动皮肤 + 当前主题」解析同一件皮肤；主题是 Compose
+            // 状态（isDark 变 → 重新解析），皮肤选择在下次启动由偏好读回。
+            val chromeSkin = remember(isDark) {
+                Skins.installBuiltIns()
+                val id = Skins.bootSkinId()
+                runCatching { SkinRegistry.get(id) }.getOrElse { SkinRegistry.get(Skins.DEFAULT_SKIN) }
+            }
+            CompositionLocalProvider(LocalOverlayInsets provides overlayInsets) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        // 全出血：background 在 padding 之前 → 状态栏 / 系统栏后面也是皮肤 canvas。
+                        .background(chromeSkin.colors.canvas)
+                        .statusBarsPadding()
+                        .imePadding(),
+                ) {
+                    // Same uniform switch as desktop/wasm: FakeSessionSource() fixtures
+                    // unless the intent (or env) says `real` — App()'s own default is
+                    // untouched, so no intent at all keeps the pre-g-live behaviour.
+                    val source = booted.getOrNull()
+                    if (source == null) {
+                        ConfigErrorScreen(booted.exceptionOrNull() ?: IllegalStateException())
+                    } else {
+                        App(source = source)
+                    }
                 }
             }
         }

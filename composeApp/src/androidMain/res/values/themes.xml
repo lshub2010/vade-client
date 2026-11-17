@@ -8,8 +8,11 @@
   DeviceDefault.DayNight 等价，且 minSdk 24 全程可用。两个变体都 **没有 ActionBar**：
   这是纯 Compose 应用，页面标题由 shell 自己画。
 
-  windowBackground 与 material 皮肤的 canvas 同值（亮 #F7F7F8 / 暗 #0E0E10），
-  所以状态栏条带、冷启动那一帧与首帧画布无缝。
+  windowBackground **只服务冷启动的第一帧**（Compose 还没画之前的那一瞬间），取值是
+  material 皮肤 canvas 的近似（亮 #F7F7F8 / 暗 #0E0E10）。运行期的状态栏条带**不再**
+  由它上色：`MainActivity` 在根节点用当前皮肤的 `skin.colors.canvas` 全出血铺底
+  （f4-insets · P2），所以换到 miuix 等非 material 皮肤时条带跟着皮肤走，而不是留一条
+  写死的 material 色带。
 -->
 <resources>
     <style name="Theme.Vade" parent="@android:style/Theme.DeviceDefault.Light.NoActionBar">
