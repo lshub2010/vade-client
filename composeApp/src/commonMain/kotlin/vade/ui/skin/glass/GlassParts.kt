@@ -914,10 +914,11 @@ internal fun orbPressScale(pressed: Boolean, pressScale: Float): Float =
  *    在纯黑/纯白/画布三种背后都过图形的 3:1 —— 实测值见
  *    `GlassComponentContrastTest.sendOrbGlyphStaysLegibleOnAnyBackdrop`，不要在注释里
  *    另抄一份数字（抄错的那版把 `onSurface` 的 17.7:1 当成了实际图标对比度）；
- *  - `Composing`：实心 accent + 12dp glow（§8 row 3 辉光不是阴影），图标 `onPrimary`
- *    5.37 / 6.44；
- *  - `Streaming`：同一球位变 ■，只把图标与 1.5dp 环染成 [errorInk]（3.89 → 4.99），
- *    球本身**不变红**（§2）；`enabled=false` 时仍然可点 —— 中断生成永远可用。
+ *  - `Composing`：实心 accent + 12dp glow（§8 row 3 辉光不是阴影），图标 `onPrimary`；
+ *  - `Streaming`：同一球位变 ■，只把图标与 1.5dp 环染成 [errorInk]，球本身**不变红**
+ *    （§2）；`Streaming` 恒可点（中断生成永远可用），其余状态听页面传入的 `enabled`。
+ *    三个态的实际对比度一律以 `GlassComponentContrastTest` 的断言为准，注释不再抄数字
+ *    （球面没有 tint 层，抄来的 `3.89 → 4.99` 是 `inkOnGlassBase` 那一层的数）。
  *
  * 玻璃质感的三件事：1dp [GlassTokens.stroke] 描边、浮层阴影、以及 12% 的透光。**不画
  * 顶部高光**：球面染色已经是近不透明的底，34% 白纱压在球的上沿会把图标洗淡（与 Button
