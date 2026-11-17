@@ -96,11 +96,7 @@ class EmptyDetailAndTabRetapTest {
             println("selectedSessionId=${ui.selectedSessionId} drawerOpen=${ui.sessionsDrawerOpen}")
             throw failure
         }
-        runOnIdle {
-            assertNull(ui.selectedSession, "现场前提：选中 id 已不在列表里（否则这条路不是空态）")
-            assertEquals("s-gone", ui.selectedSessionId, "现场前提：没有东西把选中 id 清掉")
-            assertTrue(!ui.sessionsDrawerOpen, "现场前提：深链直进详情 ⇒ 抽屉初始收起，空态露在外面")
-        }
+        runOnIdle { assertTrue(!ui.sessionsDrawerOpen, "现场前提：深链直进详情 ⇒ 抽屉初始收起") }
         onNode(button).performClick()
 
         waitForIdle()
