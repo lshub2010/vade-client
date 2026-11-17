@@ -39,9 +39,22 @@ import kotlin.test.assertTrue
  * 常驻底层里（`DrawerDetailBase`）。它唯一的出路就是**同一宿主里那层列表抽屉** ——
  * 动作由 `AppShell` 的手机分支用 `LocalSessionListOpener` provide（见该 local 的 KDoc）。
  *
+ * 整条链因此有四段，缺任何一段按钮都点不出东西：
+ *
+ * 1. `AppShell` 的手机分支 `LocalSessionListOpener provides state::openSessionsDrawer`；
+ * 2. `SessionsDrawerHost` → 常驻底层 `DrawerDetailBase`（拿不到 `UiState`，只能靠 local）；
+ * 3. `SessionDetailScreen` 的 `onOpenList ?: LocalSessionListOpener.current`；
+ * 4. 按钮 → `UiState.openSessionsDrawer()` → 抽屉层的转场进度。
+ *
  * 现场怎么造：深链到一个**已不存在**的会话（`initialSessionId = "s-gone"`）——
  * `selectedSessionId != null` 但 `selectedSession == null`，抽屉初始收起（深链语义），
  * 于是屏上真的是空态、按钮是唯一的出路。这正是审查说的「点了没闭路」的那个状态。
+ *
+ * 这个现场是**稳定**的：`selectedSessionId` 只在 `UiState.select()`（离开会话页）与
+ * `UiState.back()` 里被清，组合期没有任何一处会清它 —— 空态那份详情拿到的
+ * `session` 恒为 null，不会「顺手退回列表根」。（上一版误以为 id 不在列表里就会被清掉，
+ * 把这条端到端用例换成了 `source.contains(...)` 源码字符串钉：字符串在、接线可以照样断，
+ * 等于零覆盖 —— 审查 P2-4。）
  *
  * 断言：按钮存在 → 点它 → `sessionsDrawerOpen` 变 true **且**抽屉层真的滑回屏内
  * （量几何，不看语义树里有没有：抽屉收起时内容照样组合着，只是在屏外）。
@@ -55,12 +68,56 @@ import kotlin.test.assertTrue
 class EmptyDetailAndTabRetapTest {
 
     /**
-     * 手机空态的按钮必须真的可点，且点击调到宿主动作。
+     * 手机空态的按钮必须真的把列表抽屉滑出来 —— 覆盖 P1-11 整条接线（四条缺一不可）。
      *
-     * 为什么不再从 411dp 深链造现场：`UiState` 发现 id 不在列表里会把它清掉，屏上
-     * 退回列表根，根本到不了空态（上一版用例因此一直是假红）。这里直接钉屏幕契约：
-     * 在 `LocalSessionListOpener` 提供的子树里，按钮存在、可点、调用的就是那个动作；
-     * AppShell 是否真的 provide 由下一条源码钉子管。
+     * 突变对应：删掉 `AppShell` 手机分支的 `CompositionLocalProvider`（或把动作换成空
+     * lambda）→ 本用例在「按钮出现」那步超时；把 `UiState.openSessionsDrawer()` 改成
+     * no-op → `sessionsDrawerOpen` 与抽屉几何两条同时红。这两件都只有真组合才看得见，
+     * 源码扫描看不出来。
+     */
+    @Test
+    fun thePhoneEmptyStateButtonOpensTheSessionDrawer() = runComposeUiTest {
+        // 深链到一条不存在的会话：手机单栏、抽屉初始收起、底层是空态。
+        val ui = uiState(initialSessionId = "s-gone")
+        shell(ui, width = 411.dp, height = 760.dp)
+
+        val button = hasText("打开会话列表") and hasClickAction()
+        waitUntil(timeoutMillis = 10_000) {
+            onAllNodes(button).fetchSemanticsNodes().isNotEmpty()
+        }
+        runOnIdle {
+            assertNull(ui.selectedSession, "现场前提：选中 id 已不在列表里（否则这条路不是空态）")
+            assertEquals("s-gone", ui.selectedSessionId, "现场前提：没有东西把选中 id 清掉")
+            assertTrue(!ui.sessionsDrawerOpen, "现场前提：深链直进详情 ⇒ 抽屉初始收起，空态露在外面")
+        }
+        // 收起态的几何前提：抽屉层**在**组合里、但完全平移到屏外（否则「滑回屏内」无从断言）。
+        waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithTag(DRAWER_TAG)) }
+        waitUntil(timeoutMillis = 5_000) { drawerLeft() < -1f }
+
+        onNode(button).performClick()
+
+        waitUntil(timeoutMillis = 5_000) { ui.sessionsDrawerOpen }
+        // 几何判据：抽屉层真的滑回屏内（收起时它只是被平移到左边，语义树里一直在）。
+        waitUntil(timeoutMillis = 10_000) { drawerLeft() >= -1f }
+        waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithText(ROW_TITLE)) }
+        // 行也真的落在屏内 —— 比「语义树里有它」硬：抽屉收起时它同样在树里。
+        val rowLeft = onAllNodesWithText(ROW_TITLE).fetchSemanticsNodes()
+            .map { it.boundsInRoot.left }
+            .maxOrNull()
+        assertTrue(
+            rowLeft != null && rowLeft >= 0f,
+            "抽屉滑回屏内后列表行必须落在屏内（实测 left=$rowLeft）",
+        )
+    }
+
+    /**
+     * 屏幕层的解析顺序：形参没给时，空态按钮走宿主 provide 的 [LocalSessionListOpener]
+     * （手机抽屉宿主就走这条），并且真的把动作调出去。
+     *
+     * 这条只钉屏幕契约（`SessionDetailScreen` 自己不认得 `UiState`，也不会去猜布局）；
+     * 「`AppShell` 到底有没有 provide、点了抽屉到底开不开」由上一条端到端用例负责 ——
+     * 两条各管一层：删掉 provide ⇒ 端到端红、本条仍绿；删掉 `onOpenList ?: Local…`
+     * 的回落 ⇒ 本条红。
      */
     @Test
     fun thePhoneEmptyStateButtonCallsTheHostProvidedOpener() = runComposeUiTest {
@@ -80,16 +137,6 @@ class EmptyDetailAndTabRetapTest {
         waitForIdle()
         onNode(hasText("打开会话列表") and hasClickAction()).performClick()
         runOnIdle { assertEquals(1, opened, "空态按钮必须调用宿主给的出口") }
-    }
-
-    /** AppShell 的手机抽屉分支必须 provide 这个出口（否则上一条永远拿不到动作）。 */
-    @Test
-    fun thePhoneDrawerBranchProvidesTheListOpener() {
-        val source = java.io.File("src/commonMain/kotlin/vade/ui/shell/AppShell.kt").readText()
-        assertTrue(
-            source.contains("LocalSessionListOpener provides state::openSessionsDrawer"),
-            "AppShell 手机分支必须 provide 列表出口（P1-11 的接线点）",
-        )
     }
 
     @Test
