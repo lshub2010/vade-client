@@ -9,6 +9,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
 import vade.ui.protocol.VadeJson
 import vade.ui.shell.BackDispatcher
 import vade.ui.shell.LocalBackDispatcher
@@ -153,4 +154,4 @@ class ModulePageBackLayersTest {
 }
 
 /** 测试内构造页面 JSON（顶层，嵌套类也能用）。 */
-private fun json(text: String): JsonObject = VadeJson.decodeFromString(text)
+private fun json(text: String): JsonObject = VadeJson.default.parseToJsonElement(text).jsonObject
