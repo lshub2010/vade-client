@@ -170,21 +170,51 @@ class GlassCapabilityGateTest {
         )
     }
 
-    /** glass 皮肤自己的四个组件必须显式声明诚实策略，三处长文本层必须真的垫内容底。 */
+    /**
+     * glass 皮肤**全部 11 个**玻璃组件必须显式声明诚实策略，承载文字/图标的层必须真的垫内容底。
+     *
+     * 52-U3 · T2 起组件的画法搬到 `GlassParts.kt`（7 个）与 `GlassSkin.kt`（4 个）两个文件，
+     * 所以这里按**两个文件合起来**数，而不是数某一个文件的 4 处：
+     *
+     *  - 11 处 `GlassSurface(` ↔ 11 处 `DegradeWithoutBackdrop`：少一处就退回「玻璃层采不到
+     *    背景时什么都不画」；
+     *  - 12 个 C-09 组件里 `TextField` 仍转发 material（玻璃版留给下一批），所以是 11 而不是 12；
+     *  - 8 处 `GlassContentBase(`：Card / InputBar / 用户气泡 / 行 / 底栏 / 弹层 / 芯片 / 工具卡
+     *    共用同一个内容底（审查 P1-4 的口径）。`SendOrb` 不在此列 —— 48dp 的球上放不下第二层
+     *    1dp inset 的底，它的**染色本身**就是内容底，对比度由 `GlassComponentContrastTest`
+     *    按 `contentBaseContrast` 单独钉住。
+     */
     @Test
     fun glassComponentsUseTheHonestPolicyAndABase() {
-        val glass = codeOf(src("commonMain/kotlin/vade/ui/skin/glass/GlassSkin.kt"))
+        val root = src("commonMain/kotlin/vade/ui/skin/glass")
+        val code = listOf("GlassSkin.kt", "GlassParts.kt")
+            .joinToString("\n") { codeOf(File(root, it)) }
+
         assertEquals(
-            4,
-            count(glass, """backdropPolicy = GlassBackdropPolicy\.DegradeWithoutBackdrop"""),
-            "Button / Card / InputBar / 用户气泡四处都要显式声明诚实策略 —— " +
-                "少一处就退回到「玻璃层采不到背景时什么都不画」",
+            11,
+            count(code, """GlassSurface\("""),
+            "玻璃皮肤的 11 个组件 = 12 个 C-09 组件 − 仍转发 material 的 TextField；" +
+                "数字对不上说明有人新增/删掉了组件，或把某个组件退回给 material",
         )
         assertEquals(
-            3,
-            count(glass, """(?m)^\s+ContentBase\("""),
-            "Card / InputBar / 用户气泡三处必须共用同一个内容底（审查 P1-4）；" +
-                "只给 Card 垫、让输入栏与气泡直接压在玻璃上，就是审查说的「没有内容底」",
+            11,
+            count(code, """backdropPolicy = GlassBackdropPolicy\.DegradeWithoutBackdrop"""),
+            "每一处 GlassSurface 都要显式声明诚实降级 —— 少一处就退回「采不到背景时什么都不画」",
         )
+        assertEquals(
+            8,
+            count(code, """(?m)^\s+GlassContentBase\("""),
+            "8 个承载文字/图标的玻璃层必须垫同一个内容底（Card/InputBar/气泡/行/底栏/弹层/芯片/工具卡）；" +
+                "少一处就是审查说的「没有内容底」",
+        )
+        // 7 个 T2 组件不许再转发 material（与 `GlassPartsTest` 的同名守卫互为交叉验证）。
+        listOf("ListItem", "Switch", "BottomBar", "ApprovalDialog", "AttachmentChip", "ToolCallCard", "SendOrb")
+            .forEach { name ->
+                assertEquals(
+                    0,
+                    count(code, """= base\.$name\("""),
+                    "$name 又变回 `= base.$name(...)` —— 玻璃皮肤转发 material 就等于没做（I2）",
+                )
+            }
     }
 }

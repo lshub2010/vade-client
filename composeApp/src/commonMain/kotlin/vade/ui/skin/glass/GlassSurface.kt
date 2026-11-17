@@ -93,7 +93,12 @@ val LocalGlassHazeState = staticCompositionLocalOf<HazeState?> { null }
  *  - [contentAlignment] — 玻璃容器是个 `Box`，但按钮这类内容必须在玻璃里居中；默认
  *    `TopStart` 保持既有调用的布局不变。
  *  - [shadow] — 浮层阴影的档位。默认 §8.2 `shadow2`（浮层）；静态卡（玻璃 `Card`）传
- *    `VadeShadows.card`，因为 §8 的静态卡是 hairline-first、阴影只允许极浅。
+ *    `VadeShadows.card`，因为 §8 的静态卡是 hairline-first、阴影只允许极浅。空层
+ *    （`LayeredShadow(emptyList())`）表示「这一层不投阴影」—— 开关轨道、贴底底栏用得上。
+ *  - [blurBackdrop] — 是否真的采样背景。默认 `true` 保住所有既有调用点的像素；玻璃皮肤的
+ *    `BottomBar` 用它表达 §9.3 的 `floating`（悬浮但**不**采样）与 `floating+blur` 两态，
+ *    `Switch` 的开态（实心 accent 染色）也直接关掉 —— 不透明的染色后面再去模糊一次，
+ *    只是白花 GPU。
  *
  * ### Degradation (D22 / FR-8.23) — 不崩、不白屏
  *
@@ -142,6 +147,12 @@ fun GlassSurface(
      */
     backdropPolicy: GlassBackdropPolicy = GlassBackdropPolicy.HazeAlwaysCompat,
     /**
+     * 是否采样背景（默认 `true`）。`false` 时**根本不建 haze 节点**，但仍画染色 + 描边 +
+     * 高光 + 阴影 —— 这就是 §9.3 里 `floating`（悬浮、不采样）与 `floating+blur` 的区别，
+     * 也是「染色已经不透明了就别再模糊一次」的开关。
+     */
+    blurBackdrop: Boolean = true,
+    /**
      * 挂在 `clip(shape)` **之后**的交互 modifier（clickable 等）：水波纹被胶囊裁切，
      * 同时不占内容槽 —— 内容仍参与测量，按钮不会被 `matchParentSize` 压成最小尺寸。
      */
@@ -153,7 +164,7 @@ fun GlassSurface(
     // 能力只看**真实**背景：`ambient != null`。共享调用点靠上面的策略保住历史像素，
     // 不再靠往这里塞一个 `true`（审查 P1-5）。
     val capability = glassCapability(hasBackdrop = ambient != null)
-    val drawsHaze = drawsHazeLayer(capability, backdropPolicy)
+    val drawsHaze = drawsHazeLayer(capability, backdropPolicy) && blurBackdrop
     val tint = tintOverride ?: if (skin.colors.isDark) skin.glass.tintDark else skin.glass.tintLight
     val strokeColor = stroke ?: skin.glass.hairlineOnGlass
 
