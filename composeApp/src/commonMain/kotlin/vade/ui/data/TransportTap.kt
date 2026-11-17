@@ -57,6 +57,17 @@ internal class TeeTransport(private val inner: VadeTransport) : VadeTransport {
  * CURRENT one reachable for raw calls ([RealSessionSource.rawRpc]). [reset] is used
  * between `disconnect()` and the next successful connect so a raw call cannot target
  * a dead transport.
+ *
+ * ## Ownership: the inner factory is never disposed here
+ * [vade.ui.protocol.VadeClient.close] disposes the factory it was handed — that is
+ * THIS tee, not the transport implementation. An injected factory
+ * (`PairingRuntime.pairedFactory`) is **shared**: it caches the `__Host-ac_ui` cookie
+ * (pair codes are single-use, so re-bootstrapping per drop burns one code each time)
+ * and the very next `connect()` plus the pairing bridge keep using it. Disposing it
+ * here closed the shared `HttpClient` for the whole process: after a `disconnect()`
+ * every later connection failed at `connect()` and the client retried forever — the
+ * permanent disconnect. Lifetime of the inner belongs to whoever built it:
+ * [RealSessionSource] disposes only the factory IT built, in its own `disconnect()`.
  */
 internal class TeeTransportFactory(private val inner: VadeTransportFactory) : VadeTransportFactory {
 
@@ -67,8 +78,10 @@ internal class TeeTransportFactory(private val inner: VadeTransportFactory) : Va
     override suspend fun connect(): VadeTransport =
         TeeTransport(inner.connect()).also { current = it }
 
-    override suspend fun dispose() = inner.dispose()
+    /** Only the tee is dropped; the inner factory is NOT disposed (see the class KDoc). */
+    override suspend fun dispose() = reset()
 
+    /** 摘下当前 tee 连接（原始帧通道）；下一次 `connect()` 会装一条新的。 */
     fun reset() {
         current = null
     }

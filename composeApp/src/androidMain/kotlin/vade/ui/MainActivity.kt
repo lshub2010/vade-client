@@ -84,9 +84,14 @@ class MainActivity : ComponentActivity() {
             // self-rescue card copy derives from — e.g. from
             // `adb shell am start --es source real ...`.
             AndroidSourceEnv.intentExtras = intent?.extras
-            // P1-4 · 配置解析失败（`--es port 8443x` 之类）= 一张说清原因的屏，
-            // 不是启动即闪退。这里兜住解析，`App()` 只接收合法的源。
-            val booted = runCatching { sessionSourceFromEnvironment() }
+            // P0 · 源必须**组合期一次**：这一行曾丢了 `remember`，于是每个重组
+            // （主题暗色切换、IME/inset 变化、任何 state 读取）都新建一个
+            // `RealSessionSource` → `App(source=…)` 的 `remember(effectiveSource)` 换 key →
+            // 新 `UiState` → 新 `VadeClient`。旧 client 的 runner 没人关，按退避无限重连；
+            // 新 client 又从头连一次 —— 看起来就是「界面自己把连接掐了又接」。
+            // 参数解析失败（`--es port 8443x` 之类）= 一张说清原因的屏，不是启动即闪退
+            // （P1-4）：兜在这里，`App()` 只接收合法的源。
+            val booted = remember { runCatching { sessionSourceFromEnvironment() } }
             // P1-8 · 原始 inset 只在根节点读一次 —— 必须在这两个 padding **之前**，
             // 否则子树里读到的是被消费后的值（浮层会拿 0 IME 再叠一遍导航条）。
             // 下传走 LocalOverlayInsets，叶子不再自己读 WindowInsets。

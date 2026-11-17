@@ -74,6 +74,11 @@ import vade.ui.protocol.ContentPart as ProtocolContentPart
  * Reconnects after a transport death are handled inside the protocol client; this
  * class exposes the wait sequence through [state].
  *
+ * The factory follows the same rule, with one ownership split: the tee and a
+ * SOURCE-BUILT [KtorTransportFactory] die with the connection and are rebuilt on the
+ * next [connect]; an INJECTED factory (`PairingRuntime.pairedFactory`, cookie cache
+ * and all) outlives every connection and is never disposed here. See [disconnect].
+ *
  * ## Errors
  * Any [VadeException] from the protocol layer propagates to the caller with its C-04
  * `code` intact — classify with [VadeErrorMapping.categoryOf] before showing it.
@@ -84,7 +89,24 @@ class RealSessionSource(
      * 公开形状。配置本身不可变，连接期不会换。
      */
     internal val config: VadeClientConfig,
-    transportFactory: VadeTransportFactory? = null,
+    /**
+     * 注入的 transport factory。`null` = 本类自建 [KtorTransportFactory]。
+     *
+     * **所有权决定谁 dispose 它**（P1-5）：非 null 时是**共享**实例 ——
+     * `PairingRuntime.pairedFactory` 里缓存着 `__Host-ac_ui` cookie，配对桥与下一次
+     * `connect()` 都要继续用它，所以 `disconnect()` 只摘 tee、不碰它；`null` 时工厂是
+     * 本类自建的，`disconnect()` 负责 dispose，且下一次 `connect()` 必须重新建一个
+     * （关掉的 `HttpClient` 不可复用 —— 见 [ownedFactoryProvider]）。
+     */
+    private val transportFactory: VadeTransportFactory? = null,
+    /**
+     * 自建工厂的构造口；`null` = 生产形态 [KtorTransportFactory]。
+     *
+     * 只在 `transportFactory == null` 时被调用。抽出来是为了让「自建的工厂关过就必须
+     * 重建」这条在没有 socket 的情况下可测（注入一个 dispose 后真的关门的假工厂），
+     * 生产路径不经过任何分支差异。
+     */
+    private val ownedFactoryProvider: (() -> VadeTransportFactory)? = null,
 ) : SessionSource, AdapterHost, ActivitySeamHost, ModuleCatalogProvider, DisconnectableSource {
 
     /**
@@ -113,10 +135,22 @@ class RealSessionSource(
         null,
     )
 
-    private val innerFactory: VadeTransportFactory by lazy {
-        transportFactory ?: KtorTransportFactory(config)
-    }
-    private val tapFactory: TeeTransportFactory by lazy { TeeTransportFactory(innerFactory) }
+    /**
+     * 当前连接的 tee（原始帧通道，[rawRpc] 用它）。**不是 `by lazy`**：`disconnect()`
+     * 把它连同自建的工厂一起摘下，下一次 `connect()` 重新装一条。
+     *
+     * `by lazy` 的旧形态在断开后仍握着上一次的 inner —— 若那个 inner 是自建的
+     * `KtorTransportFactory`，它的 `HttpClient` 已经随 `disconnect()` 关掉，于是
+     * 第二次 `connect()` 每次都在 `factory.connect()` 里抛、按退避无限重试：永久断连。
+     */
+    @Volatile
+    private var tapFactory: TeeTransportFactory? = null
+
+    /**
+     * 本次连接由本类**自建**的工厂（`null` = 用的是注入的共享工厂）。
+     * 只有它会在 [disconnect] 里被 dispose —— 注入的那个归持有者（配对桥）所有。
+     */
+    private var ownedFactory: VadeTransportFactory? = null
 
     private val lifecycle = Mutex()
     private val rawIdMutex = Mutex()
@@ -196,7 +230,7 @@ class RealSessionSource(
      */
     suspend fun connect() = lifecycle.withLock {
         if (_client == null) {
-            val created = VadeClient(config, tapFactory)
+            val created = VadeClient(config, connectFactory())
             _client = created
             val s = scope ?: CoroutineScope(SupervisorJob() + Dispatchers.Default).also { scope = it }
             // A3 · 模块清单（C-05 1.6.0 `ui/modules`）。与 client 同生命周期：断开后 client
@@ -257,8 +291,17 @@ class RealSessionSource(
      * event can be dispatched and raw calls fail fast with UNAVAILABLE. Idempotent.
      *
      * P1-3 · 组合根（`UiState.dispose()`）经 [DisconnectableSource] 调到这里。只关
-     * **本次连接**：注入的 transport factory 不关、不清 —— cookie 缓存在它里面，配对桥
-     * 与下一次 `connect()` 还要用它（`tapFactory.reset()` 只摘掉当前这条 tee 连接）。
+     * **本次连接**：
+     *  - **注入的**共享 factory 不关、不清 —— cookie 缓存在它里面，配对桥与下一次
+     *    `connect()` 还要用它（[vade.ui.protocol.VadeClient.close] 只 dispose 到
+     *    tee，`TeeTransportFactory.dispose()` 不再往 inner 传）；
+     *  - **自建的**工厂在这里 dispose（它的 `HttpClient` 只服务这一次连接，没人会替
+     *    我们关），关掉后不可复用 ⇒ 下一次 `connect()` 重建一个（见 [connectFactory]）。
+     *
+     * 这条区别是「断开一次 = 永久断连」的根因：旧实现让 `VadeClient.close()` →
+     * `TeeTransportFactory.dispose()` → 共享 `HttpClient.close()`，于是配对桥里那个
+     * factory 被第一次 `disconnect()` 打死，之后每次连接都在 `connect()` 抛错、按退避
+     * 无限重试，而 UI 只看到「一直连不上」。
      */
     override suspend fun disconnect() = lifecycle.withLock {
         collectorJobs.forEach { it.cancel() }
@@ -269,7 +312,11 @@ class RealSessionSource(
         _adapters = null
         (_moduleCatalog as? ModulesLoader)?.dispose()
         _moduleCatalog = null
-        tapFactory.reset()
+        // 先摘 tee（raw 调用不得再指向死连接），再关自建的工厂。
+        tapFactory?.reset()
+        tapFactory = null
+        ownedFactory?.let { owned -> runCatching { owned.dispose() } }
+        ownedFactory = null
         _state.value = RealSessionState.Disconnected
     }
 
@@ -394,6 +441,22 @@ class RealSessionSource(
 
     // ------------------------------------------------------------------ internals
 
+    /**
+     * 本次连接的工厂（tee 包装）。**每次连接都重新判断**，绝不复用上一次的：
+     *
+     *  - 有注入的共享 factory → 原样用它（幂等：`connect()` 被重复调用时不会再建第二个）；
+     *  - 没有 → 自建一个（[ownedFactory]）并记在名下，[disconnect] 才能只关它。
+     *
+     * 断开后 [tapFactory] 与 [ownedFactory] 都是 `null`，所以这里不存在「把已经 dispose 的
+     * 工厂再拿出来用」—— 那正是 `by lazy` 旧实现的永久断连。
+     */
+    private fun connectFactory(): TeeTransportFactory {
+        tapFactory?.let { return it }
+        val inner = transportFactory
+            ?: (ownedFactoryProvider?.invoke() ?: KtorTransportFactory(config)).also { ownedFactory = it }
+        return TeeTransportFactory(inner).also { tapFactory = it }
+    }
+
     private fun attachedClient(): VadeClient =
         _client ?: throw VadeException(VadeErrorCodes.UNAVAILABLE, "source is disconnected")
 
@@ -466,7 +529,7 @@ class RealSessionSource(
      * its C-04 code, a timeout maps onto TIMEOUT.
      */
     private suspend fun rawRpc(method: String, paramsJson: JsonObject): JsonObject? {
-        val transport = tapFactory.current
+        val transport = tapFactory?.current
             ?: throw VadeException(VadeErrorCodes.UNAVAILABLE, "not connected (raw $method)")
         val id = rawIdMutex.withLock { rawIdNext++ }
         val reply = CompletableDeferred<JsonObject?>()
