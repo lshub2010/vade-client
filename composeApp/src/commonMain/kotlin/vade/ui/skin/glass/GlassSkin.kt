@@ -8,7 +8,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -31,7 +30,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -67,16 +65,18 @@ import vade.ui.skin.material.MaterialSkin
 /**
  * `glass` 皮肤 —— 任务书 52-U3（D93 / D22 / FR-8.23）。
  *
- * 本批（T1 + 4 组件）交付的是**玻璃材质本身**，不是"另一套配色"：
+ * 本批（T1 + T2）交付的是**玻璃材质本身**，不是"另一套配色"：
  *
- *  1. 四个组件真做玻璃：[Button]（胶囊）、[Card]（玻璃边缘 + 近不透明内容底）、
+ *  1. 十一个组件真做玻璃：[Button]（胶囊）、[Card]（玻璃边缘 + 近不透明内容底）、
  *     [InputBar]（悬浮 composer 面板 + 内容底）、[MessageBubble]（用户气泡是玻璃 + 内容底，
- *     助手/系统按 §5 无气泡）。它们全部走 [GlassSurface]，所以模糊/染色/描边/高光只有一份
- *     实现；三处长文本层共用 [ContentBase]，正文在任何背景下都 ≥4.5:1（审查 P1-4）。
- *  2. **其余 8 个组件原样转发给 `material`**（[TextField]/[ListItem]/[Switch]/
- *     [BottomBar]/[ApprovalDialog]/[AttachmentChip]/[ToolCallCard]/[SendOrb]）。这是任务书
- *     给的"先用 material token 回退"，不是空实现、更不是抛异常 —— 一个皮肤少画一个组件，
- *     页面上就是一块空白，那比"不够玻璃"严重得多。
+ *     助手/系统按 §5 无气泡），以及 T2 的七个 —— [ListItem]（hover/选中态玻璃行）、
+ *     [Switch]（玻璃轨道 + 实心滑块）、[BottomBar]（玻璃底栏三态）、[ApprovalDialog]
+ *     （深遮罩 + 高不透明面板）、[AttachmentChip]、[ToolCallCard]、[SendOrb]（玻璃球 +
+ *     按压缩放）。它们全部走 [GlassSurface]，所以模糊/染色/描边/高光只有一份实现；
+ *     每一个承载文字或图标的层共用 [GlassContentBase]，正文在任何背景下都 ≥4.5:1。
+ *  2. 十二个里**只剩 [TextField] 仍转发 `material`**。它是页内表单输入（不是 composer），
+ *     玻璃版要先解决「玻璃底上的光标 / 内描边 / 错误行」三件事，留给下一批；其余的显式
+ *     委托在 [GlassParts.kt] 里，本文件的 override 只剩一行转发调用。
  *  3. 配色**不换**（[GlassTokens.colorsFrom] 只改写玻璃相关 token）：glass 与 material 的
  *     区别必须是「半透明/模糊」，验收里那条盲测要指出的正是它。换一套紫色 accent 只会让
  *     盲测变成"颜色不一样"。
@@ -200,11 +200,11 @@ class GlassSkin(
     /**
      * 玻璃卡：**玻璃只做边缘，内容区近不透明**（任务书 §T2 的可读性硬指标）。
      *
-     * 内层 [ContentBase]（`surface @ 0.88`）不是装饰：玻璃背后的内容可能是深色图片或红字
-     * 工具卡，正文压在半透明底上就必然掉到 4.5:1 以下。0.88 让两种极端（背后纯黑 / 纯白）
-     * 都有余量 —— 亮色 13.6:1 / 17.4:1、暗色 15.8:1 / 10.6:1，由 [worstCaseContentContrast]
-     * 计算、`GlassTokensContrastTest` 断言。1dp 的 inset 正好露出玻璃的一圈边 ——
-     * 玻璃在这里是"材质提示"，不是背景。
+     * 内层 [GlassContentBase]（`surface @ 0.88`）不是装饰：玻璃背后的内容可能是深色图片或
+     * 红字工具卡，正文压在半透明底上就必然掉到 4.5:1 以下。0.88 让两种极端（背后纯黑 /
+     * 纯白）都有余量 —— 亮色 15.31:1 / 17.89:1、暗色 15.84:1 / 12.87:1，由
+     * [inkOnGlassBase] 计算、`GlassComponentContrastTest` 断言。1dp 的 inset 正好露出玻璃
+     * 的一圈边 —— 玻璃在这里是"材质提示"，不是背景。
      *
      * 阴影用 `VadeShadows.card`（§8 静态卡 hairline-first，阴影极浅）而不是浮层 shadow2：
      * 一页里会有多张卡，每张都带浮层阴影会把页面压成"一堆悬浮窗"。
@@ -221,31 +221,9 @@ class GlassSkin(
             highlight = GlassTokens.highlight,
             shadow = VadeShadows.card,
         ) {
-            ContentBase(inner)
+            GlassContentBase(colors, inner)
             content()
         }
-    }
-
-    /**
-     * 玻璃层上的近不透明内容底 —— Card / InputBar / 用户气泡**共用这一个实现**。
-     *
-     * 为什么三处必须是同一个：这三处都承载正文，正文的可读性不该取决于"这次背后恰好是
-     * 什么"。共用一个 [contentBase] 才可能用一条断言钉住三处（`GlassTokensContrastTest`
-     * 的 `contentBaseSurvivesBlackAndWhiteBackdrops` + 源码守卫的三处调用点）。
-     *
-     * `matchParentSize()` 跟着玻璃的最终尺寸走、不参与测量（不会撑大组件），再 inset 1dp
-     * 露出玻璃的一圈边。铺满整张卡而不是"按内容宽度"是必须的：短文本 + fillMaxWidth 的卡
-     * 右侧会剩一片纯玻璃 —— 那不是"只做边缘"。
-     */
-    @Composable
-    private fun BoxScope.ContentBase(inner: Shape) {
-        Box(
-            Modifier
-                .matchParentSize()
-                .padding(GlassTokens.strokeWidth)
-                .clip(inner)
-                .background(contentBase(colors), inner),
-        )
     }
 
     // --- 11 · InputBar ---------------------------------------------------------
@@ -293,7 +271,7 @@ class GlassSkin(
             strokeWidth = if (focused) 2.dp else GlassTokens.strokeWidth,
             highlight = GlassTokens.highlight,
         ) {
-            ContentBase(RoundedCornerShape(shapes.xl - GlassTokens.strokeWidth))
+            GlassContentBase(colors, RoundedCornerShape(shapes.xl - GlassTokens.strokeWidth))
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -440,7 +418,7 @@ class GlassSkin(
                     ) {
                         // 用户气泡与 Card / InputBar 共用同一个内容底（审查 P1-4）：气泡里是
                         // 用户自己打的正文，不能因为背后恰好是一张图就读不清。
-                        ContentBase(bubbleShape)
+                        GlassContentBase(colors, bubbleShape)
                         Box(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) { content() }
                     }
                 }
@@ -479,9 +457,9 @@ class GlassSkin(
         }
     }
 
-    // --- 2/4/5/6/7/9/10/12 · material 回退 ------------------------------------
-    // 任务书 §T2 的顺序：先交 4 个真玻璃组件，其余 8 个用 material token 顶上。
-    // 每一条都是显式转发（不是委托），见类头 KDoc 里关于 @Composable 的说明。
+    // --- 2 · TextField（唯一仍转发 material 的组件）------------------------------
+    // 页内表单输入（不是 composer）：玻璃底上的光标、内描边、错误行要先各自定一套语义，
+    // 留给下一批。其余 11 个组件都是真玻璃。
 
     @Composable
     override fun TextField(
@@ -498,6 +476,12 @@ class GlassSkin(
         enabled = enabled,
     )
 
+    // --- 4/5/6/7/9/10/12 · T2 的七个真玻璃组件 ----------------------------------
+    // 实现全在 GlassParts.kt（与 material 把 7–11 放进 MaterialParts.kt 同一手法）：
+    // 这里只留签名转发，好处是「哪几个组件是玻璃」在本文件里一眼可数，而玻璃的画法
+    // （GlassSurface + GlassContentBase + statusInk）只有 GlassParts.kt 那一份。
+
+    /** 4 · [ListItem] —— 玻璃只在 hover / 选中时出现（静止态透明，见 GlassParts.kt 文件头）。 */
     @Composable
     override fun ListItem(
         title: String,
@@ -507,7 +491,8 @@ class GlassSkin(
         onClick: (() -> Unit)?,
         enabled: Boolean,
         selected: Boolean,
-    ) = base.ListItem(
+    ) = GlassListItem(
+        skin = this@GlassSkin,
         title = title,
         leading = leading,
         subtitle = subtitle,
@@ -517,53 +502,88 @@ class GlassSkin(
         selected = selected,
     )
 
+    /** 5 · [Switch] —— 玻璃轨道（关）/ 实心 accent 轨道（开）+ 实心滑块。 */
     @Composable
     override fun Switch(checked: Boolean, onCheckedChange: (Boolean) -> Unit, enabled: Boolean) =
-        base.Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
+        GlassSwitch(
+            skin = this@GlassSkin,
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled,
+        )
 
+    /** 6 · [BottomBar] —— 三态共用一层玻璃，尺寸与 material 逐像素一致。 */
     @Composable
     override fun BottomBar(
         items: List<NavItem>,
         selected: Int,
         onSelect: (Int) -> Unit,
         style: BottomBarStyle,
-    ) = base.BottomBar(items = items, selected = selected, onSelect = onSelect, style = style)
+    ) = GlassBottomBar(
+        skin = this@GlassSkin,
+        items = items,
+        selected = selected,
+        onSelect = onSelect,
+        style = style,
+    )
 
+    /** 7 · [ApprovalDialog] —— 深遮罩 + 高不透明面板（安全关键路径）。 */
     @Composable
     override fun ApprovalDialog(
         request: ApprovalRequest,
         remainingSec: Int,
         onDecide: (Decision, Scope) -> Unit,
-    ) = base.ApprovalDialog(request = request, remainingSec = remainingSec, onDecide = onDecide)
+    ) = GlassApprovalDialog(
+        skin = this@GlassSkin,
+        request = request,
+        remainingSec = remainingSec,
+        onDecide = onDecide,
+    )
 
+    /** 9 · [AttachmentChip] —— 玻璃芯片；失败态用 [errorInk]（不是 60% 弱红）。 */
     @Composable
     override fun AttachmentChip(
         attachment: AttachmentView,
         onRetry: (() -> Unit)?,
         onRemove: (() -> Unit)?,
         leading: (@Composable () -> Unit)?,
-    ) = base.AttachmentChip(
+    ) = GlassAttachmentChip(
+        skin = this@GlassSkin,
         attachment = attachment,
         onRetry = onRetry,
         onRemove = onRemove,
         leading = leading,
     )
 
+    /** 10 · [ToolCallCard] —— 玻璃静态卡 + 内容底 + 状态条 + 不透明代码块。 */
     @Composable
     override fun ToolCallCard(
         call: ToolCallView,
         state: ToolCardState,
         onToggle: () -> Unit,
         meta: (@Composable () -> Unit)?,
-    ) = base.ToolCallCard(call = call, state = state, onToggle = onToggle, meta = meta)
+    ) = GlassToolCallCard(
+        skin = this@GlassSkin,
+        call = call,
+        state = state,
+        onToggle = onToggle,
+        meta = meta,
+    )
 
+    /** 12 · [SendOrb] —— 玻璃球（染色即内容底）+ 按压缩放，动效门与 material 逐字段一致。 */
     @Composable
     override fun SendOrb(
         mode: InputMode,
         enabled: Boolean,
         onClick: () -> Unit,
         modifier: Modifier,
-    ) = base.SendOrb(mode = mode, enabled = enabled, onClick = onClick, modifier = modifier)
+    ) = GlassSendOrb(
+        skin = this@GlassSkin,
+        mode = mode,
+        enabled = enabled,
+        onClick = onClick,
+        modifier = modifier,
+    )
 }
 
 /**

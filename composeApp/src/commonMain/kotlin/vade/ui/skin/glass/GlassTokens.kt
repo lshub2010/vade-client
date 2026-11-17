@@ -180,6 +180,65 @@ private fun Color.darkened(factor: Float): Color =
     Color(red = red * factor, green = green * factor, blue = blue * factor, alpha = alpha)
 
 /**
+ * 亮色下玻璃内容底上的**状态色**压深系数（0.86）。
+ *
+ * 为什么需要它：`colors.error/success/warning` 是按「压在实心 `surface` 上」调的，
+ * 而玻璃组件里的状态字压在「内容底 0.88 ⊕ tint ⊕ 背后内容」上 —— 底比 surface 暗一档，
+ * 亮色下实测掉到 error 3.89 / success 4.28 / warning 3.63（全部 < 4.5）。压深 0.86 之后
+ * 5.83 / 6.32 / 5.44（白底）与 4.99 / 5.41 / 4.66（纯黑底）—— 两种极端都过线。
+ *
+ * 暗色不压：暗色 token 本身就是提亮过的（#F16A6A / #4FD1A0 / #E8A33D），在 0.88 底上
+ * 最低仍有 5.02，压深只会把它们变成「第二种红/绿」。
+ */
+const val STATUS_INK_SHADE_LIGHT: Float = 0.86f
+
+/**
+ * 玻璃内容底上的状态墨色（成功 / 警告 / 错误）。
+ *
+ * 与 [actionFill] 的分工：那个是**实心按钮的底座**（要贴近 token 的红/靛），这个是
+ * **字**（只要过 4.5:1）。两者在亮色下都压深，但系数不同（0.86 vs 0.90），因为底座
+ * 后面没有 0.88 的内容底。
+ */
+fun statusInk(colors: SkinColors, ink: Color): Color =
+    if (colors.isDark) ink else ink.darkened(STATUS_INK_SHADE_LIGHT)
+
+/** 玻璃内容底上的错误墨色 —— 审批弹层的 error、附件 chip 的失败态共用这一支。 */
+fun errorInk(colors: SkinColors): Color = statusInk(colors, colors.error)
+
+/**
+ * 审批弹层的遮罩 alpha（亮 0.42 / 暗 0.58）。
+ *
+ * §9 的全局弹窗遮罩是 24% 黑 —— 那是给「页面上只有一张浮卡」算的。审批是安全关键路径，
+ * 面板本身还是玻璃（12% 的透光），24% 遮罩背后的聊天正文会以可读的强度透进面板；
+ * 这里加深到 0.42（亮）/ 0.58（暗，与 G5 给附件预览定的 ≥48% 同源），把背后的正文彻底
+ * 压成「一块有色底」。数值由 `GlassComponentContrastTest` 钉住下限。
+ */
+const val DIALOG_SCRIM_LIGHT_ALPHA: Float = 0.42f
+
+/** 暗色遮罩 alpha —— 见 [DIALOG_SCRIM_LIGHT_ALPHA]。 */
+const val DIALOG_SCRIM_DARK_ALPHA: Float = 0.58f
+
+/** 当前主题的审批遮罩。 */
+fun dialogScrim(dark: Boolean): Color =
+    Color.Black.copy(alpha = if (dark) DIALOG_SCRIM_DARK_ALPHA else DIALOG_SCRIM_LIGHT_ALPHA)
+
+/**
+ * 玻璃内容底上的墨色对比度：`ink ⊕ 内容底(0.88) ⊕ tint ⊕ backdrop`。
+ *
+ * 这是本批 7 个组件里「文字压在玻璃上」的**唯一**算式（Card / InputBar / 气泡走的是
+ * 同一条链，见 [contentBaseContrast] 的简化版）。`backdrop` 传**不透明**色：背后可能是
+ * 纯黑图片也可能是纯白卡片，两种极端各算一次。
+ *
+ * 注：`SendOrb` 的球面把内容底**当成染色**（48dp 的球放不下一层独立的内容底），所以它的
+ * 算式没有 tint 那一层 —— 用 [contentBaseContrast]。
+ */
+fun inkOnGlassBase(colors: SkinColors, ink: Color, backdrop: Color): Double =
+    contrastRatio(
+        ink,
+        contentBase(colors).over(GlassTokens.tint(colors.isDark).over(backdrop)),
+    )
+
+/**
  * [GlassTokens.highlight] 在形状竖直 [fraction]（0 = 顶边，1 = 底边）处的白覆盖量。
  *
  * 供对比度测试使用：按钮 label 不是压在「底座」上，而是压在「底座 ⊕ 高光」上。用一个
