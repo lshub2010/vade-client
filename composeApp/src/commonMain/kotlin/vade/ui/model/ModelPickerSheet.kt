@@ -161,6 +161,8 @@ fun ModelPickerSheet(
                 .padding(start = 12.dp, end = 12.dp, bottom = 12.dp + bottomSafeClearance()),
             shape = shape,
             skin = skin,
+            // 共享调用点：恒建 haze 节点（U3 之前的像素）。
+            backdropPolicy = GlassBackdropPolicy.HazeAlwaysCompat,
         ) {
             Column(
                 Modifier
