@@ -141,6 +141,11 @@ fun GlassSurface(
      * 不建 haze 节点，直接染色 + 描边 + 高光。
      */
     backdropPolicy: GlassBackdropPolicy = GlassBackdropPolicy.HazeAlwaysCompat,
+    /**
+     * 挂在 `clip(shape)` **之后**的交互 modifier（clickable 等）：水波纹被胶囊裁切，
+     * 同时不占内容槽 —— 内容仍参与测量，按钮不会被 `matchParentSize` 压成最小尺寸。
+     */
+    interactionModifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val ambient = LocalGlassHazeState.current
@@ -198,7 +203,8 @@ fun GlassSurface(
             // Explicit clip (g-input-shadow): "content never leaves the shape" used to be a
             // side effect of the haze layer clipping its own draw. Make it a contract — a
             // translucent child (the blur-less `glassFallback`) must not paint square corners.
-            .clip(shape),
+            .clip(shape)
+            .then(interactionModifier),
         contentAlignment = contentAlignment,
     ) {
         // 顶部高光：染色之上、内容之下。`matchParentSize` 让它跟着玻璃的最终尺寸走，

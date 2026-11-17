@@ -186,14 +186,11 @@ class GlassSkin(
                 tintOverride = tintForStyle,
                 highlight = if (style == BtnStyle.Secondary && enabled) GlassTokens.highlight else null,
                 contentAlignment = Alignment.Center,
+                interactionModifier = Modifier.clickable(enabled = enabled, onClick = onClick),
             ) {
-                Box(
-                    Modifier
-                        .matchParentSize()
-                        .clip(pill)
-                        .clickable(enabled = enabled, onClick = onClick),
-                    contentAlignment = Alignment.Center,
-                ) { label() }
+                // 内容直接参与测量：标签决定胶囊宽度，clickable 由 GlassSurface 在
+                // clip 之后挂上（interactionModifier），水波纹仍被胶囊裁切。
+                label()
             }
         }
     }
