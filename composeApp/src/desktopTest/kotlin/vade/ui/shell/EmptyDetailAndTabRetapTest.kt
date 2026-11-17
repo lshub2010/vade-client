@@ -96,11 +96,11 @@ class EmptyDetailAndTabRetapTest {
             println("selectedSessionId=${ui.selectedSessionId} drawerOpen=${ui.sessionsDrawerOpen}")
             throw failure
         }
-        runOnIdle { assertTrue(!ui.sessionsDrawerOpen, "现场前提：深链直进详情 ⇒ 抽屉初始收起") }
+        runOnIdle { if (ui.sessionsDrawerOpen) throw RuntimeException("PRE-CLICK drawerOpen=true") }
         onNode(button).performClick()
 
         waitForIdle()
-        assertTrue(ui.sessionsDrawerOpen, "点击后 sessionsDrawerOpen 必须为 true（按钮 → opener 接线）")
+        if (!ui.sessionsDrawerOpen) throw RuntimeException("POST-CLICK drawerOpen=false")
         waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithText(ROW_TITLE)) }
         onNodeWithText(ROW_TITLE).assertIsDisplayed()
     }
