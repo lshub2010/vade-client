@@ -3,14 +3,18 @@ package vade.ui.skin.glass
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -18,7 +22,13 @@ import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onNode
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
@@ -262,6 +272,44 @@ class GlassPartsTest {
             waitForIdle()
             onNodeWithContentDescription("停止生成").performClick()
             assertEquals(1, clicks, "流式停止不受 enabled 影响 —— 中断生成永远可用（§2）")
+        }
+    }
+
+    /**
+     * 审批遮罩必须**消费**指针：点面板外的空白不能落到下层（点穿会误触下面的消息、
+     * 按钮、链接），同时面板内的按钮必须还能点（遮罩不能连子级一起吞）。
+     *
+     * 命中点取宿主的 2%（面板居中 + 12dp 内边距，2% 一定落在遮罩上），避免用
+     * 「root 左上角」这种依赖窗口尺寸的坐标写成假绿。
+     */
+    @Test
+    fun approvalScrimSwallowsClicksInsteadOfPassingThemThrough() {
+        val skin: Skin = GlassSkin()
+        var below = 0
+        var decided = 0
+        runComposeUiTest {
+            setContent {
+                CompositionLocalProvider(LocalSkin provides skin) {
+                    Box(Modifier.size(360.dp, 420.dp).testTag("approval-host")) {
+                        // 下层：整块可点。遮罩不消费指针时，点空白会打到这里。
+                        Box(Modifier.fillMaxSize().clickable { below++ })
+                        skin.ApprovalDialog(
+                            request = approval,
+                            remainingSec = 30,
+                            onDecide = { _, _ -> decided++ },
+                        )
+                    }
+                }
+            }
+            waitForIdle()
+            onNodeWithTag("approval-host").performTouchInput {
+                click(Offset(width * 0.02f, height * 0.02f))
+            }
+            waitForIdle()
+            assertEquals(0, below, "遮罩没有消费指针：点面板外落到了下层")
+
+            onNode(hasText("拒绝") and hasClickAction()).performClick()
+            assertEquals(1, decided, "面板内按钮点不动：遮罩把子级一起吞了")
         }
     }
 
