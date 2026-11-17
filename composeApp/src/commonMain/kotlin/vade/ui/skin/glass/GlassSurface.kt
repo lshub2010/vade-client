@@ -126,11 +126,17 @@ fun GlassSurface(
     highlight: Brush? = null,
     contentAlignment: Alignment = Alignment.TopStart,
     shadow: LayeredShadow = VadeShadows.float,
+    /**
+     * 只在 glass 皮肤自己的组件上传 true：没有背景可采时跳过 haze 节点、直接染色。
+     * 共享调用点（material 的 FloatingBlur 等）保持默认 false —— 它们历史上一直用的是
+     * 「私有空 state + 无背景模糊」路径，像素与 shipped 版本一致，不能因本批改变。
+     */
+    degradeWithoutBackdrop: Boolean = false,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val ambient = LocalGlassHazeState.current
     val state = ambient ?: rememberHazeState()
-    val capability = glassCapability(hasBackdrop = ambient != null)
+    val capability = glassCapability(hasBackdrop = ambient != null || !degradeWithoutBackdrop)
     val tint = tintOverride ?: if (skin.colors.isDark) skin.glass.tintDark else skin.glass.tintLight
     val strokeColor = stroke ?: skin.glass.hairlineOnGlass
 
