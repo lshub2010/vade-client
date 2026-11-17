@@ -3,6 +3,7 @@ package vade.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import vade.ui.destinations.Destination
 import vade.ui.chat.ChatPreset
@@ -33,7 +34,14 @@ import vade.ui.skin.Skins
 @Composable
 fun App(
     initialBar: BottomBarStyle = Skins.bootBottomBar(),
-    initialSkinId: String = Skins.bootSkinId(),
+    /**
+     * I1 · 启动皮肤。null（默认）= 组合时读本地偏好（[Skins.bootSkinId]），而不是在调用点
+     * 就把偏好冻成实参 —— 测试在组合前换掉存储，读到的就是那份存储。
+     *
+     * 显式值（`--skin=` / `VADE_SKIN`）同样**不保证**是装得上的 id：组合前经
+     * [Skins.resolveSkinId] 收敛，`glass` 这种没注册的 id 退回上次选过的皮肤，不许在组合期抛。
+     */
+    initialSkinId: String? = null,
     initialDest: Destination = Destination.Sessions,
     initialPanelOpen: Boolean = false,
     initialSearchQuery: String? = null,
@@ -64,10 +72,17 @@ fun App(
     // g-pair-first-run：`remember` 以 [effectiveSource] 为 key —— 源换了，UiState 一起换。
     // DisposableEffect：随源重建时把旧 UiState 的 loader/连接停掉 —— 没配上对的旧源
     // 否则会在后台无限重试。
+    //
+    // P1-13 · 但「重建 UiState」不等于「用户的外观选择也重来」：皮肤 / 底栏是本轮的用户
+    // 选择（设置页点了立刻生效），不是启动快照。重建时若继续拿 [initialSkinId] /
+    // [initialBar] 这些**启动实参**，配对成功换源那一刻就会把刚选的外观静默打回出厂值
+    // ——用户看到的是「选了又自己弹回去」。所以跨重建带上一轮的值（[carriedAppearance]
+    // 每帧由下面的 SideEffect 同步），重建时优先用它，其次才是启动实参 / 本地偏好。
+    val carriedAppearance = remember { CarriedAppearance() }
     val state = remember(effectiveSource) {
         UiState(
-            initialBar = initialBar,
-            initialSkinId = initialSkinId,
+            initialBar = carriedAppearance.bar ?: initialBar,
+            initialSkinId = appearanceOnRebuild(carriedAppearance.skinId, initialSkinId),
             initialDest = initialDest,
             initialPanelOpen = initialPanelOpen,
             initialSessionId = initialSessionId,
@@ -81,6 +96,12 @@ fun App(
             }
         }
     }
+    // 把这一轮的选择记进 carry（组合成功之后跑，不在组合期写状态）：
+    // 下一次 `effectiveSource` 变化重建 UiState 时，`remember` 块读到的就是最新值。
+    SideEffect {
+        carriedAppearance.skinId = state.skinId
+        carriedAppearance.bar = state.barStyle
+    }
     DisposableEffect(effectiveSource) {
         onDispose { state.dispose() }
     }
@@ -89,8 +110,14 @@ fun App(
     val backDispatcher = remember { BackDispatcher() }
     // g-dark-follow: 主题变化只换 LocalSkin 的值，不重建整棵树；`currentDark()` 必须在
     // 组合期同步读出当 key（皮肤工厂读的是同一个 plain var，晚一帧就会拿旧值建皮肤）。
+    // P1-5 · 再收敛一次：`state.skinId` 正常来自 [appearanceOnRebuild]，但
+    // `UiState.setSkin(id)` 是公开入口，拿一个未注册的 id 进来不该把组合炸掉 ——
+    // `SkinRegistry.get` 对未知 id 是 `error(...)`，而这里就是唯一的调用点。
+    val effectiveSkinId = Skins.resolveSkinId(state.skinId)
     val skin =
-        remember(state.skinId, vade.ui.skin.ThemeController.currentDark()) { SkinRegistry.get(state.skinId) }
+        remember(effectiveSkinId, vade.ui.skin.ThemeController.currentDark()) {
+            SkinRegistry.get(effectiveSkinId)
+        }
 
     CompositionLocalProvider(
         LocalSkin provides skin,
@@ -99,4 +126,29 @@ fun App(
         BackHost(backDispatcher) // system-back bridge; stack empty ⇒ not intercepting
         AppShell(state)
     }
+}
+
+/**
+ * P1-13 · 重建 [UiState]（`effectiveSource` 变了）时该用哪个皮肤 id。
+ *
+ * 顺序：**本轮已选** [current]（且现在还装得上）> 启动链 [initial] → 本地偏好 → 出厂。
+ * 结果一律落在已安装的 id 上：装不上的 id 不许进 `SkinRegistry.get`。
+ * 纯函数（不碰组合），由 `AppAppearanceRebuildTest` 直接钉住「选了 Miuix，重建后还是 Miuix」。
+ */
+internal fun appearanceOnRebuild(current: String?, initial: String?): String {
+    Skins.installBuiltIns()
+    val carried = current?.trim()?.takeIf { it.isNotEmpty() }
+    if (carried != null && carried in SkinRegistry.installed()) return carried
+    return Skins.resolveSkinId(initial)
+}
+
+/**
+ * P1-13 · 跨 [UiState] 重建携带的外观选择。
+ *
+ * 普通 var 而不是 Compose 状态：它只在 `remember` 块重建时被读一次，写它不该触发重组
+ * （每次重组都写一遍，走快照状态会白白多一轮失效）。
+ */
+private class CarriedAppearance {
+    var skinId: String? = null
+    var bar: BottomBarStyle? = null
 }

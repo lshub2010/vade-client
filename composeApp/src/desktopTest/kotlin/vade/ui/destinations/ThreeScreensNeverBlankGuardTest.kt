@@ -43,6 +43,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertTrue
+import vade.ui.testutil.IsolatedPreferencesTest
 
 /**
  * g-state-coverage · **守卫**：能力页 / 活动页 / 我的页在**任何一个状态**下都不许是裸空白。
@@ -55,7 +56,7 @@ import kotlin.test.assertTrue
  * —— 与 `CapabilitiesModuleCatalogKickTest` 反复进出屏用的是同一套受支持的模式。
  */
 @OptIn(ExperimentalTestApi::class)
-class ThreeScreensNeverBlankGuardTest {
+class ThreeScreensNeverBlankGuardTest : IsolatedPreferencesTest() {
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
