@@ -185,19 +185,23 @@ class HistoryMirrorDecisionTest {
     // --- go(-k) 的 k 夹取 ------------------------------------------------------
 
     /**
-     * `k = min(k, history.length - 1)`：夹到 0 时调用点直接不发 go。
+     * `k = min(k, 身后条目数的下界)`。上界**不是** `history.length - 1`：
      *
-     * 这条不是「防越界」（越界的 go 静默无效），是**防看门狗误判**的反面：一个注定
-     * 落不了地的 go 会让 `pendingClose` 永远等不到 popstate，桥就卡在「等回程」里。
-     * 所以宁可判定为「没有条目可退」，也不要发一个空 go。
+     * `history.length` 数的是整个会话的条目 —— 含**前进**条目，也含进入本页之前的条目，
+     * 所以 `length - 1` 只是「身后有几条」的一个上界（评审 P2-1）。拿它当条目数会算出比
+     * 实际更大的步数：`go` 落空（白等一个看门狗周期），或者更糟 —— 退到本页之前的那一页，
+     * 直接离开应用。所以调用点先把「账目说的 historyDepth」和「length - 1」取小
+     * （[HistoryMirror] 的 `entriesBehind`），再交给这里。
+     *
+     * 夹到 0 时调用点直接不发 go（不是「防越界」：越界的 go 静默无效、不抛错）。
      */
     @Test
-    fun goStepsAreClampedToTheEntriesThatActuallyExist() {
-        assertEquals(3, clampSteps(3, 5), "有 4 条更早的条目：3 步原样")
-        assertEquals(4, clampSteps(9, 5), "只有 4 条更早的条目：夹到 4")
-        assertEquals(0, clampSteps(1, 1), "history 只有基座：一步也退不了 → 不发 go")
-        assertEquals(0, clampSteps(5, 0), "length 读不到（按 0 兜底）也不发 go")
-        assertEquals(0, clampSteps(-2, 5), "方向只允许后退")
-        assertEquals(0, clampSteps(0, 5))
+    fun goStepsAreClampedToTheEntriesActuallyBehind() {
+        assertEquals(3, clampSteps(3, 4), "身后确实有 4 条的把握：3 步原样")
+        assertEquals(4, clampSteps(9, 4), "身后只有 4 条的把握：夹到 4")
+        assertEquals(0, clampSteps(1, 0), "身后一条也没有（站在基座）→ 不发 go")
+        assertEquals(0, clampSteps(5, -1), "负数按 0 兜底（读不到 length 的情形）→ 不发 go")
+        assertEquals(0, clampSteps(-2, 4), "方向只允许后退")
+        assertEquals(0, clampSteps(0, 4))
     }
 }
