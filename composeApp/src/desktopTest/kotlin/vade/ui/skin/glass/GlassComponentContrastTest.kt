@@ -283,16 +283,18 @@ class GlassComponentContrastTest {
             DIALOG_SCRIM_LIGHT_ALPHA > 0.24f && DIALOG_SCRIM_DARK_ALPHA > 0.24f,
             "审批遮罩不许沿用 §9 全局弹窗的 24% —— 那一条是给不透明面板写的",
         )
+        // Compose 的 Color 把 alpha 存成 8 位：0.42f 读回来是 107/255=0.41961，
+        // 与 0.42 差 3.9e-4，1e-4 的容差会把正确的常量判红（CI 44085417262）。
         assertEquals(
-            0.42f,
+            DIALOG_SCRIM_LIGHT_ALPHA,
             dialogScrim(dark = false).alpha,
-            1e-4f,
+            1f / 255f,
             "dialogScrim(false) 必须就是那个常量（不许有第二个数）",
         )
         assertEquals(
-            0.58f,
+            DIALOG_SCRIM_DARK_ALPHA,
             dialogScrim(dark = true).alpha,
-            1e-4f,
+            1f / 255f,
             "dialogScrim(true) 必须就是那个常量",
         )
     }

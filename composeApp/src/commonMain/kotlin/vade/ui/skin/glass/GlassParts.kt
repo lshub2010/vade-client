@@ -959,9 +959,9 @@ internal fun GlassSendOrb(
             .clickable(
                 interactionSource = interaction,
                 indication = null,
-                // §2：空球仍可点（触发提示）；只有页面显式禁用时才静止，流式停止不受
-                // enabled 影响 —— 中断生成永远可用。
-                enabled = streaming || enabled,
+                // §2：空球仍可点（触发提示），流式停止也不受 enabled 影响 —— 中断生成
+                // 永远可用。enabled 只决定视觉浓度（0.45 alpha），不参与命中测试：
+                // 之前写成 `streaming || enabled` 会让空球/输入中整颗球点不动。
             ) { onClick() }
             .semantics { contentDescription = if (streaming) "停止生成" else "发送消息" },
         contentAlignment = Alignment.Center,
