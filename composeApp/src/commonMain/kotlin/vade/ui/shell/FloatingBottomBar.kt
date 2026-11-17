@@ -63,6 +63,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
@@ -131,6 +132,28 @@ internal fun blurPillContainer(dark: Boolean): Color =
     if (dark) Color(0xFF0E0E10).copy(alpha = 0.34f) else Color.White.copy(alpha = 0.26f)
 
 /**
+ * 一次手势松手时该不该**上报**这次 tab 选择（m-bar · 审查 P2-4）。
+ *
+ * 浮动胶囊的触摸流只有一条：`inspectDragGestures` 的 `onDragStarted` 在按下时就把指示器
+ * 设到按下的那一格，松手统一走 `onDragStopped`。所以「点击」与「拖动」必须在松手时分开：
+ *
+ *  - 落在**别的**格子 ⇒ 这是一次拖动切换，必须上报（否则手势切 tab 失效）；
+ *  - 落在**同一格**：只有这次手势的累计位移小于平台 [touchSlopPx] 才算点击（上报，用来实现
+ *    「会话页再点一次 = 退一层」）；否则只是摸了一下胶囊 / 拖走又拖回来 —— **不上报**。
+ *
+ * 旧实现在这里无条件上报，于是「拖回原位」「不足半格」「拖出边界松手」都会落成「点了当前
+ * tab」；在会话详情页上那就是不弹确认地退掉会话（`UiState.select` 的退一层分支）。
+ *
+ * 纯函数，`FloatingBottomBarDragGuardTest` 直接钉四条分支。
+ */
+internal fun shouldReportTabRelease(
+    targetIndex: Int,
+    currentIndex: Int,
+    travelPx: Float,
+    touchSlopPx: Float,
+): Boolean = targetIndex != currentIndex || travelPx < touchSlopPx
+
+/**
  * KernelSU's floating liquid-glass pill, parameter-for-parameter:
  *
  *  - pill rows are 64 dp tall (56 dp content + 4 dp padding per side); the
@@ -197,6 +220,13 @@ internal fun FloatingBottomBar(
 
     var currentIndex by remember { mutableIntStateOf(selectedIndex) }
     val onSelectedUpdated by rememberUpdatedState(onSelected)
+    // m-bar P2-4：这次手势累计走了多远。`onDragStarted` 在**按下**时就把值设到按下的那一格，
+    // 所以「拖走再拖回原位」「不足半格」「拖出 canDrag 边界后松手」原本都会落成一次
+    // onDragStopped ⇒ 被当成「点了当前 tab」。在详情页上那等于不弹确认就把会话退掉。
+    // 判定见 [shouldReportTabRelease]：同格 + 位移 < touchSlop 才算点击。
+    var dragTravelPx by remember { mutableFloatStateOf(0f) }
+    // 平台触摸阈值（Android ≈ 8dp，桌面 ViewConfiguration 自带一个）；由组合读取，不在这里猜常量。
+    val touchSlopPx = LocalViewConfiguration.current.touchSlop
 
     fun indexAt(positionX: Float): Int {
         if (tabWidthPx == 0f) return currentIndex
@@ -219,15 +249,23 @@ internal fun FloatingBottomBar(
                 offset.x in 0f..totalWidthPx
             },
             onDragStarted = { position ->
+                dragTravelPx = 0f
                 updateValue(indexAt(position.x).toFloat())
             },
             onDragStopped = {
                 val targetIndex = targetValue.roundToInt().coerceIn(0, items.size - 1)
-                // 点按也走这条手势（不是 item 的语义 onClick），所以重复点当前 tab
-                // 必须同样上报：UiState 用它实现「会话页再点一次 = 退一层」。
-                // 旧代码只在 index 变化时回调，浮动胶囊上这条语义等于不存在。
+                // 点按也走这条手势（不是 item 的语义 onClick），所以**同一个 tab 上的点击**
+                // 必须上报：UiState 用它实现「会话页再点一次 = 退一层」。
+                // 但「拖动」不是点击：拖走又拖回 / 不足半格 / 拖出边界后松手，都只是想把胶囊
+                // 摸一下，不能在详情页上静默退掉会话（审查 P2-4）。判据见 [shouldReportTabRelease]。
+                val report = shouldReportTabRelease(
+                    targetIndex = targetIndex,
+                    currentIndex = currentIndex,
+                    travelPx = dragTravelPx,
+                    touchSlopPx = touchSlopPx,
+                )
                 currentIndex = targetIndex
-                onSelectedUpdated(targetIndex)
+                if (report) onSelectedUpdated(targetIndex)
                 updateValue(targetIndex.toFloat())
                 animationScope.launch {
                     offsetAnimation.animateTo(0f, spring(1f, 300f, 0.5f))
@@ -240,6 +278,9 @@ internal fun FloatingBottomBar(
                 }
             },
             onDrag = { _, dragAmount ->
+                // 累计位移在 tabWidthPx 判定**之外**：布局还没量到宽度时手势也已经走了。
+                // 取曼哈顿长度（x+y）：竖着搓一下胶囊同样不算点击。
+                dragTravelPx += abs(dragAmount.x) + abs(dragAmount.y)
                 if (tabWidthPx > 0f && dragAmount.x != 0f) {
                     updateValue(
                         (targetValue + dragAmount.x / tabWidthPx * if (isLtr) 1f else -1f)
@@ -266,6 +307,8 @@ internal fun FloatingBottomBar(
         // 退一层（抽屉滑出）」，旧代码只在 `currentIndex != index` 时才回调，把这条
         // 语义在浮动栏上静默吞掉了（m1-bar 的 CI 实测：选中的会话 tab 点不动）。
         // 固定栏本来每次点击都回调，三种形态必须是同一套语义。
+        // 这条路是**点击**（语义 onClick / 键盘 Enter），不是手势：`onDragStopped` 的门
+        // （[shouldReportTabRelease]）只拦拖动，点按永远上报。
         currentIndex = index
         onSelectedUpdated(index)
         dampedDragAnimation.animateToValue(index.toFloat())

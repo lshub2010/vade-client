@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,6 +44,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import vade.ui.UiText
 import vade.ui.data.AdapterHost
 import vade.ui.data.AdapterProvider
@@ -76,6 +78,7 @@ import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.NavItem
 import vade.ui.skin.glass.LocalGlassHazeState
+import vade.ui.component.insets.composerNavClearance
 import vade.ui.component.liquid.captureGlassBackdrop
 import vade.ui.component.liquid.rememberGlassBackdrop
 
@@ -85,10 +88,10 @@ import vade.ui.component.liquid.rememberGlassBackdrop
  *
  * Layout rules (task book §2.1 / FR-8.76, with the v2 glass structure of §5):
  *  - `<600dp`  bottom bar, single pane; opening a session keeps the bar composed — the bar is
- *              **常驻** on phones (m-bar 口径变更：会话详情页不再整屏 push 掉底栏), and the
- *              detail tree reserves the bar zone as *container* padding because
- *              `SessionDetailScreen` only honours `contentPadding.top` (see
- *              [PhoneContentStageTag]).
+ *              **常驻** on phones (m-bar 口径变更：会话详情页不再整屏 push 掉底栏). 详情态的下留白
+ *              走**内容链**（[SessionDetailScreen] 的 `bottomBarInset` → 消息列表 + composer），
+ *              **绝不容器留白**：容器一垫，详情子树里的抽屉 / 模型面板 / 图片预览（都是
+ *              `fillMaxSize`）会一起被抬离屏底，遮罩在 104–132 dp 处硬切一刀（审查 P1-2）。
  *  - `600–839` NavigationRail 80 dp; from 720 dp the list stays beside the detail.
  *  - `840–1199` rail 72 dp + 300 dp list + detail.
  *  - `≥1200`   the same two panes plus a collapsible right panel (default collapsed).
@@ -172,16 +175,42 @@ internal const val GlassSourceRailTag = "vade.glass.source.rail"
 internal const val GlassSourceRightPanelTag = "vade.glass.source.rightPanel"
 
 /**
- * 手机单栏内容层的 testTag（m-bar）。这一层是「底栏常驻」的另一半：它把 `contentInsets`
- * 的 bottom（= 底栏区，[barZoneFor] 的真值）作为**容器**留白，会话详情因此停在胶囊上沿。
+ * 手机单栏内容层的 testTag（m-bar）。这一层是**容器**：只负责铺满窗口底（列表根的行靠
+ * `contentInsets` 滚到栏后），**不再**把底栏区垫在自己身上 —— 审查 P1-2 的根因就是容器
+ * 留白把详情子树里的抽屉 / 模型面板 / 图片预览一起抬离屏底。
  *
- * 为什么容器留白而不是内容留白：`SessionDetailScreen` 只消费 `contentPadding.top`，聊天流
- * 的 composer 是贴屏底的浮层，内容侧的 bottom 留白传进去没有任何效果（读了会被忽略）。
- * 详情层在 [SessionsDrawerHost] 内部组合，本棒无权改那个文件，所以留白只能加在宿主外面。
+ * 详情态的下留白现在走内容链：`SessionDetailScreen(bottomBarInset = …)` 只把
+ * [detailContentBottomInset] 加到「消息列表 + composer」那一层上（`RouteTransition` 的
+ * `DrawerDetailBase` 把值传下去），浮层与抽屉仍是 `fillMaxSize` 的兄弟 ⇒ 贴屏底。
  *
- * 测试（`AppShellSessionDetailBarTest`）用它量这一层底边 == 窗口底 − `barZoneFor(...)`。
+ * 测试（`AppShellSessionDetailBarTest`）用它钉「容器满高」：底边 == 窗口底。
  */
 internal const val PhoneContentStageTag = "vade.shell.phone.content"
+
+/**
+ * 详情内容链（消息列表 + composer）的下内边距 —— 手机单栏详情态唯一的一处「给内容让栏」
+ * （审查 P1-1）。
+ *
+ * 为什么必须减掉 `clearance`：composer 自己已经加了一层 `16.dp + composerNavClearance()`
+ * （`ChatThread.kt` 的 composer 浮层）。若这里直接给整条 [barZoneFor]（含导航条），
+ * Android 上手势 24 / 三键 48 的导航条就被算**两遍** —— 胶囊与 composer 之间永久多出
+ * 24/48 dp 白边（桌面 `navInset` 恒 0，所以桌面用例看不见）。
+ *
+ * 不变式（`DetailBarInsetTest` 纯算术钉 0/24/48 三档）：
+ * ```
+ * inset + 16 + clearance == barZone + 16
+ * ```
+ * 即 composer 的胶囊底边恒在栏区上沿之上 16 dp，与导航条形态无关；导航条只出现一次。
+ *
+ * [clearance] 由调用点用 `composerNavClearance()`（与 composer 同一个公式：`max(0, nav − ime)`）
+ * 传进来 —— 键盘收起 = nav，键盘弹起 = 0（IME 已由根部 `imePadding` 抬起整页），所以
+ * 键盘开合两种几何各只有一项导航条，不会相加。
+ */
+internal fun detailContentBottomInset(
+    style: BottomBarStyle,
+    navInset: Dp,
+    clearance: Dp,
+): Dp = (barZoneFor(style, navInset) - clearance).coerceAtLeast(0.dp)
 
 /**
  * Bottom-bar zone **per form**. The two forms do not share a footprint, so they must not
@@ -251,9 +280,14 @@ internal fun barZoneFor(style: BottomBarStyle, navInset: Dp): Dp = when (style) 
 }
 
 /**
- * What scrollable content must reserve below itself: the zone of the composed form while
- * the bar is shown, nothing when it is not (pushed detail / rail breakpoints — D88: the
- * bar is not composed there, so no zone may be reserved).
+ * What **scrollable pages** must reserve below themselves: the zone of the composed form
+ * while the bar is shown, nothing when it is not.
+ *
+ * m-bar 口径（审查 P2-1，旧注释这里还写着「pushed detail 不组合底栏 ⇒ 不得留白」）：
+ * `showBar = !metrics.useRail`，手机单栏**任何**状态（列表根 / 详情 / 抽屉展开）都组合底栏，
+ * 所以详情态也照样有这一条 zone —— 只是它**不走容器**，而是经
+ * [detailContentBottomInset] 落到详情的内容链上；rail / 双栏（`useRail = true`）没有底栏，
+ * 这里返回 0。
  *
  * `style` defaults to the floating form so pure-arithmetic callers keep their meaning;
  * the shell always passes the state's real [BottomBarStyle].
@@ -333,6 +367,16 @@ private fun ShellBody(state: UiState) {
             top = TOP_BAR_ZONE,
             bottom = contentBottomInset(showBar, navInset, state.barStyle),
         )
+        // m-bar P1-2：详情里的**模态浮层**（模型面板 / 图片预览）开着时，内容链整体抬到底栏
+        // 之上 —— 遮罩因此真的盖住底栏（变暗 + 吃掉点按），而不是让胶囊漂在遮罩外面继续被
+        // 点到（旧行为：面板开着还能点底栏切页，把面板连人一起端掉）。
+        // 由详情自己上报（`SessionDetailScreen(onOverlayChange = …)`）：两个浮层的状态都在
+        // 页面内部（`modelPickerOpen`）与 ChatState 里（`chat.preview`），ShellBody 看不到。
+        // 抽屉（`SessionsDrawerHost` 自带遮罩）**不**走这条：抽屉只占 80% 宽，抬上来会让胶囊
+        // 被抽屉的左 80% 埋掉一半、右 20% 露一条残影；它的遮罩已经铺满窗口，底栏留在最上层
+        // 才仍能从抽屉里一键切 tab（m-bar 的常驻语义）。
+        val detailOverlayOpen = remember { mutableStateOf(false) }
+        val contentZIndex = if (detailOverlayOpen.value) 1f else 0f
 
         // --- backdrop (g-haze-structure): miuix-blur capture only. The HAZE source used
         // to sit HERE — on the whole ShellBody — which made every page-level glass layer
@@ -348,6 +392,8 @@ private fun ShellBody(state: UiState) {
             Modifier
                 .fillMaxSize()
                 .background(skin.colors.canvas)
+                // 模态浮层开着 ⇒ 整条内容链压到底栏之上（见 [detailOverlayOpen] 的注释）。
+                .zIndex(contentZIndex)
                 .captureGlassBackdrop(contentBackdrop),
         ) {
             if (metrics.useRail) {
@@ -385,19 +431,29 @@ private fun ShellBody(state: UiState) {
                     // 双栏的左侧列表）。下层那份详情由 `SessionsDrawerHost` 自己组合
                     // （`DrawerDetailBase`），它拿不到 `UiState`，所以动作只能由这一层给
                     // （见 `LocalSessionListOpener` 的 KDoc）。
-                    // m-bar：详情层没有 bottom inset 的接线口 —— `SessionDetailScreen` 只把
-                    // `contentPadding.top` 当内容留白（composer 直接贴在屏底），所以手机单栏
-                    // 把底栏区作为**容器**留白留给整棵「详情 + 抽屉」树：详情底部（消息列表
-                    // 与 composer）因此停在胶囊上沿，不会钻到玻璃底下。
-                    // 留白取自同一条 contentInsets 的 bottom（= contentBottomInset(...)），
-                    // 不另立第二个常量；此分支里列表的 contentInsets 不再重复算 bottom
-                    // （容器已经留过，再算一遍就是双层空白）。
-                    val detailBarReserve =
-                        if (detailOpen) contentInsets.calculateBottomPadding() else 0.dp
+                    // m-bar（审查 P1-1/P1-2/P1-3）：底栏的下留白**不再垫在这个容器上**。
+                    // 容器一垫，整棵「详情 + 抽屉」都被切在栏区上沿：抽屉 / 遮罩 / 模型面板 /
+                    // 图片预览（全是 `fillMaxSize` 的兄弟）一起被抬离屏底 104–132 dp，遮罩在
+                    // 屏底上方硬切一刀，面板开着时底栏还浮在遮罩外面能点。
+                    // 现在留白只走内容链：`SessionDetailScreen(bottomBarInset = …)` 把
+                    // [detailContentBottomInset]（= 栏区 − composer 自带的导航条余量，导航条
+                    // 只算一次）加在「消息列表 + composer」那一层上；抽屉与浮层留在外面，
+                    // 因此永远贴屏底。抽屉展开（屏上是列表）时不垫：它自己的列表把完整
+                    // `contentInsets` 当内容留白，行照旧能滚到胶囊后。
+                    val detailBarInset = if (detailOpen && !state.sessionsDrawerOpen) {
+                        detailContentBottomInset(
+                            style = state.barStyle,
+                            navInset = navInset,
+                            // 与 composer 同一个公式（`ChatThread` 的 composer 浮层用的就是它）：
+                            // 键盘收起 = nav，键盘弹起 = 0。同一个数只出现一次。
+                            clearance = composerNavClearance(),
+                        )
+                    } else {
+                        0.dp
+                    }
                     Box(
                         Modifier
                             .fillMaxSize()
-                            .padding(bottom = detailBarReserve)
                             .testTag(PhoneContentStageTag),
                     ) {
                         CompositionLocalProvider(
@@ -406,11 +462,15 @@ private fun ShellBody(state: UiState) {
                             SessionsDrawerHost(
                                 state = state,
                                 adapters = adapters,
-                                contentInsets = if (detailOpen) {
-                                    PaddingValues(top = TOP_BAR_ZONE)
-                                } else {
-                                    contentInsets
-                                },
+                                // 抽屉列表一律拿**完整**的 contentInsets（顶栏 + 底栏区）：
+                                // 容器不再垫底（见上），末行要靠内容留白自己滚到胶囊之后，
+                                // 中段滚动时行穿过栏区 —— 玻璃才有东西可糊（审查 P1-3）。
+                                contentInsets = contentInsets,
+                                // 底栏的下留白只给详情的内容链（消息列表 + composer）；
+                                // 抽屉与遮罩是宿主的兄弟，仍是满高。
+                                detailBottomInset = detailBarInset,
+                                // 模型面板 / 图片预览开着 ⇒ ShellBody 把内容链抬到底栏之上。
+                                onDetailOverlayChange = { detailOverlayOpen.value = it },
                                 animate = state.chatPreset == vade.ui.chat.ChatPreset.Live,
                                 // B2：分组真相在 state 机（含乐观投影），长按开菜单。
                                 metaGroups = drawerMetaOverlay.meta.groups,
@@ -507,7 +567,11 @@ private fun ShellBody(state: UiState) {
             //    路由、也没有能从顶栏打开的悬浮宿主。接它要么新造一个面板、要么把「用量」
             //    伪装成「活动」页入口 —— 两样都不该在本棒做，所以按钮不存在（缺的是
             //    「用量」页 + 一个可复用宿主，不是一个假面板）。
-            val showHome = state.dest != Destination.Sessions || (detailOpen && !metrics.twoPane)
+            // 审查 P2-2：判据用 **detailVisible**（不是 detailOpen）—— 抽屉展开时屏上是列表，
+            // 这时再画「主页」就成了一个点了看不见任何变化、却把抽屉背后那个会话的选中清掉的
+            // 静默破坏性按钮。detailVisible 已经含「抽屉收回」这一项，三种形态（详情可见 /
+            // 列表根 / 抽屉展开）因此各只有一个正确答案。
+            val showHome = state.dest != Destination.Sessions || detailVisible
             val actions: (@Composable RowScope.() -> Unit) = {
                 if (showHome) {
                     TopBarButton(
@@ -564,9 +628,9 @@ private fun ShellBody(state: UiState) {
                     items = navItems(),
                     selected = state.dest.ordinal,
                     // m-bar：底栏在手机单栏**常驻**（会话详情也在），所以点 tab 必须先离开
-                    // 会话 —— 走的是既有导航路径（`switchDestination` → `state.back()` +
-                    // `state.select`），不弹确认框，也不碰任何 `ChatState`（草稿由 ChatState
-                    // 侧负责，这里只切选中 id）。
+                    // 会话 —— 走的是既有导航路径（`switchDestination` → `state.select`，换
+                    // 目的地清选中、重复点会话 tab 由 `select` 自己 `back()`），不弹确认框，
+                    // 也不碰任何 `ChatState`（草稿由 ChatState 侧负责，这里只切选中 id）。
                     // `listBesideDetail` 仍显式传同一条判据（P1-12）：本栏只在单栏出现，
                     // 恒为 false，但日后放进双栏时不会悄悄退回「再点一次就关掉会话」。
                     onSelect = { index ->
@@ -978,15 +1042,19 @@ private val HomeIcon: ImageVector get() = MetaIcons["home"] ?: VadeIcons.Chat
  * 底栏与顶栏「主页」共用的切页入口（m-bar）。
  *
  * 会话详情里点别的 tab 的语义是「**直接离开**会话」：不弹确认框、不在详情里等二次确认。
- * 离开走的是**既有导航路径** —— `state.back()`（与系统返回 / Esc / 顶栏「返回」同一个
- * 动作：清选中，并把手机抽屉置为打开）+ `state.select(target)`。
+ * 离开走的是既有导航路径 —— [`UiState.select`] 自己的两条分支已经覆盖全部情形：
+ *  - 换目的地 ⇒ 清选中（`destination != Sessions` 时 `selectedSessionId = null`）；
+ *  - 点回**会话 tab 本身** ⇒ 它内部就调 `back()`（单栏「退一层」；双栏 `listBesideDetail`
+ *    时为 no-op）。
  *
- * 为什么先 `back()` 再 `select()`：`UiState.select()` 只有「换了目的地」那条分支会清
- * 选中；点回**会话 tab 本身**时它走的是另一条分支。显式先退一层，两条路都落成「离开详情」。
+ * 所以这里**不再**显式 `state.back()`（审查 P2-3）：那是纯粹冗余的一步，而且在
+ * `listBesideDetail = true` 时反而**先**清掉了选中 —— 把 KDoc 承诺的双栏 no-op 破坏掉。
+ * 今天底栏只在单栏组合、这条分支不可达，但 `internal` + 错误 KDoc 就是下一棒的雷。
  *
  * **不碰 ChatState**：本函数只读写 `selectedSessionId` / `dest` / 抽屉开关。草稿、滚动
- * 位置、待发附件都属于 ChatState（草稿存储由另一棒负责），这里既不清空也不重建它 ——
- * 离开再回来，会话状态原样还在。
+ * 位置、待发附件都属于 ChatState；`ChatState` 的存活周期由 `SessionDetailScreen` 的
+ * `remember(session.id, …)` 决定（草稿跨屏幕存活靠 `DraftStore`，另一棒），本函数既不清空
+ * 也不重建它。
  *
  * [listBesideDetail] 由布局宿主传入（`ShellMetrics.twoPane`）：双栏里重复点会话 tab 是
  * no-op，不该把用户正在读的会话关掉（P1-12）。
@@ -996,7 +1064,6 @@ internal fun switchDestination(
     target: Destination,
     listBesideDetail: Boolean,
 ) {
-    if (state.selectedSessionId != null) state.back()
     state.select(target, listBesideDetail = listBesideDetail)
 }
 
