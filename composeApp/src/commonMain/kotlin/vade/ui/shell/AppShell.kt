@@ -65,6 +65,7 @@ import vade.ui.destinations.settledListStatus
 import vade.ui.glass.GlassScope
 import vade.ui.glass.asGlassSource
 import vade.ui.glass.rememberGlassState
+import vade.ui.icon.MetaIcons
 import vade.ui.icon.ShellGlyphs
 import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
@@ -83,8 +84,11 @@ import vade.ui.component.liquid.rememberGlassBackdrop
  * glass bottom bar.
  *
  * Layout rules (task book §2.1 / FR-8.76, with the v2 glass structure of §5):
- *  - `<600dp`  bottom bar, single pane; opening a session pushes it full screen and the
- *              bar is **not composed** (D88).
+ *  - `<600dp`  bottom bar, single pane; opening a session keeps the bar composed — the bar is
+ *              **常驻** on phones (m-bar 口径变更：会话详情页不再整屏 push 掉底栏), and the
+ *              detail tree reserves the bar zone as *container* padding because
+ *              `SessionDetailScreen` only honours `contentPadding.top` (see
+ *              [PhoneContentStageTag]).
  *  - `600–839` NavigationRail 80 dp; from 720 dp the list stays beside the detail.
  *  - `840–1199` rail 72 dp + 300 dp list + detail.
  *  - `≥1200`   the same two panes plus a collapsible right panel (default collapsed).
@@ -166,6 +170,18 @@ internal const val GlassSourceRailTag = "vade.glass.source.rail"
 
 /** 右面板的 haze source tag（与 [GlassSourceRailTag] 同一契约）。 */
 internal const val GlassSourceRightPanelTag = "vade.glass.source.rightPanel"
+
+/**
+ * 手机单栏内容层的 testTag（m-bar）。这一层是「底栏常驻」的另一半：它把 `contentInsets`
+ * 的 bottom（= 底栏区，[barZoneFor] 的真值）作为**容器**留白，会话详情因此停在胶囊上沿。
+ *
+ * 为什么容器留白而不是内容留白：`SessionDetailScreen` 只消费 `contentPadding.top`，聊天流
+ * 的 composer 是贴屏底的浮层，内容侧的 bottom 留白传进去没有任何效果（读了会被忽略）。
+ * 详情层在 [SessionsDrawerHost] 内部组合，本棒无权改那个文件，所以留白只能加在宿主外面。
+ *
+ * 测试（`AppShellSessionDetailBarTest`）用它量这一层底边 == 窗口底 − `barZoneFor(...)`。
+ */
+internal const val PhoneContentStageTag = "vade.shell.phone.content"
 
 /**
  * Bottom-bar zone **per form**. The two forms do not share a footprint, so they must not
@@ -293,12 +309,14 @@ private fun ShellBody(state: UiState) {
         val adapters = adaptersOf(state)
         val detailOpen = state.dest == Destination.Sessions && session != null && !metrics.twoPane
         // g-route-transition：详情「真正可见」= 详情开着 且（无抽屉断点 或 抽屉已收回）。
-        // 顶栏 chrome 与底栏显隐都跟着这个走：抽屉开着时屏上是列表 → 列表 chrome；
-        // 抽屉收回时屏上是详情 → 详情 chrome + 隐藏底栏（D88 原语义不变）。
+        // 顶栏 chrome 跟着这个走：抽屉开着时屏上是列表 → 列表 chrome；抽屉收回时屏上是
+        // 详情 → 详情 chrome（底栏**不再**跟着它显隐，m-bar 起手机单栏常驻）。
         val detailVisible = detailOpen && (metrics.useRail || !state.sessionsDrawerOpen)
 
-        // v2 bottom bar: compact single-pane only, never while a detail is pushed (D88).
-        val showBar = !metrics.useRail && !detailVisible
+        // m-bar：手机单栏的底栏**常驻**——会话详情开着也照样组合。旧 D88 的「详情 push 时
+        // 整条栏不组合」已废弃：详情页要能一键切去别的 tab，底栏不在就没有这个出口。
+        // rail / 双栏断点仍然没有底栏（切换由 `NavRail` / 左列承担，`metrics.useRail`）。
+        val showBar = !metrics.useRail
         // P1-3 + g-zone-split: the reserved zone is the **composed form's** measured-in-code
         // footprint, so it tracks the navigation inset (gesture ≈ 24 dp, 3-button ≈ 48 dp)
         // instead of guessing one constant — and the docked form no longer reserves the
@@ -367,25 +385,45 @@ private fun ShellBody(state: UiState) {
                     // 双栏的左侧列表）。下层那份详情由 `SessionsDrawerHost` 自己组合
                     // （`DrawerDetailBase`），它拿不到 `UiState`，所以动作只能由这一层给
                     // （见 `LocalSessionListOpener` 的 KDoc）。
-                    CompositionLocalProvider(
-                        LocalSessionListOpener provides state::openSessionsDrawer,
+                    // m-bar：详情层没有 bottom inset 的接线口 —— `SessionDetailScreen` 只把
+                    // `contentPadding.top` 当内容留白（composer 直接贴在屏底），所以手机单栏
+                    // 把底栏区作为**容器**留白留给整棵「详情 + 抽屉」树：详情底部（消息列表
+                    // 与 composer）因此停在胶囊上沿，不会钻到玻璃底下。
+                    // 留白取自同一条 contentInsets 的 bottom（= contentBottomInset(...)），
+                    // 不另立第二个常量；此分支里列表的 contentInsets 不再重复算 bottom
+                    // （容器已经留过，再算一遍就是双层空白）。
+                    val detailBarReserve =
+                        if (detailOpen) contentInsets.calculateBottomPadding() else 0.dp
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .padding(bottom = detailBarReserve)
+                            .testTag(PhoneContentStageTag),
                     ) {
-                        SessionsDrawerHost(
-                            state = state,
-                            adapters = adapters,
-                            contentInsets = contentInsets,
-                            animate = state.chatPreset == vade.ui.chat.ChatPreset.Live,
-                            // B2：分组真相在 state 机（含乐观投影），长按开菜单。
-                            metaGroups = drawerMetaOverlay.meta.groups,
-                            onLongPress = { session, anchor -> drawerMetaOverlay.openSessionMenu(session, anchor) },
-                            groups = drawerMetaOverlay.projectGroups(state.groups()),
-                            overlayHost = {
-                                SessionMetaOverlayHost(
-                                    overlay = drawerMetaOverlay,
-                                    rows = state.groups().flatMap { it.sessions },
-                                )
-                            },
-                        )
+                        CompositionLocalProvider(
+                            LocalSessionListOpener provides state::openSessionsDrawer,
+                        ) {
+                            SessionsDrawerHost(
+                                state = state,
+                                adapters = adapters,
+                                contentInsets = if (detailOpen) {
+                                    PaddingValues(top = TOP_BAR_ZONE)
+                                } else {
+                                    contentInsets
+                                },
+                                animate = state.chatPreset == vade.ui.chat.ChatPreset.Live,
+                                // B2：分组真相在 state 机（含乐观投影），长按开菜单。
+                                metaGroups = drawerMetaOverlay.meta.groups,
+                                onLongPress = { session, anchor -> drawerMetaOverlay.openSessionMenu(session, anchor) },
+                                groups = drawerMetaOverlay.projectGroups(state.groups()),
+                                overlayHost = {
+                                    SessionMetaOverlayHost(
+                                        overlay = drawerMetaOverlay,
+                                        rows = state.groups().flatMap { it.sessions },
+                                    )
+                                },
+                            )
+                        }
                     }
                 } else {
                     DestinationHost(metrics = metrics, state = state, contentInsets = contentInsets)
@@ -461,25 +499,38 @@ private fun ShellBody(state: UiState) {
                 // 双栏/rail 上它退出右栏详情 —— 三端同一个动作，不再有 sessionDetailBack 分叉。
                 { TopBarButton(VadeIcons.Back, onClick = state::back, contentDescription = "返回") }
             } else null
-            // 显式类型：if-表达式里的 @Composable lambda 经参数位推断不过（实测），声明处钉住。
-            val listActions: (@Composable RowScope.() -> Unit)? = if (detailVisible) null else {
-                {
-                    if (state.dest == Destination.Sessions) {
-                        // U1-c: phones reach search here; desktop also has ⌘K.
-                        TopBarButton(VadeIcons.Search, onClick = { state.openSearch() }, contentDescription = "搜索")
-                        TopBarButton(VadeIcons.Compose, onClick = { state.newSession() }, contentDescription = "新建会话")
-                    }
-                    if (metrics.hasRightPanel) {
-                        // g-glyph-clear: 这处曾是 `glyph = if (open) "▸" else "◂"` —— 源码
-                        // 注释自己写着「w2-icons 遗留」：VadeIcons 里没有侧栏语义名，本棒
-                        // 又不许往那个文件追加。两态矢量因此落在 vade/ui/icon/ShellGlyphs.kt
-                        // （同包，Tabler 命名空间仍只在 icon/ 里）。
-                        TopBarButton(
-                            icon = panelToggleIcon(state.panelOpen),
-                            onClick = { state.togglePanel() },
-                            contentDescription = if (state.panelOpen) "收起右面板" else "展开右面板",
-                        )
-                    }
+            // m-bar：动作栏收敛成**一个** lambda（不再 if/else 两个组合组）。
+            //  - 「主页」：不在会话列表根时出现（会话详情 / 其他三个 tab），回到会话 tab；
+            //    手机单栏的详情里它就是「离开会话回列表」的第二出口（第一个是返回）。
+            //  - 「用量」按钮**刻意不画**：仓里唯一显示用量的是 `ActivityScreen` 里那一段
+            //    内嵌的 `UsagePanel` / `UsageSectionLive`（还带会话范围选择器），既没有独立
+            //    路由、也没有能从顶栏打开的悬浮宿主。接它要么新造一个面板、要么把「用量」
+            //    伪装成「活动」页入口 —— 两样都不该在本棒做，所以按钮不存在（缺的是
+            //    「用量」页 + 一个可复用宿主，不是一个假面板）。
+            val showHome = state.dest != Destination.Sessions || (detailOpen && !metrics.twoPane)
+            val actions: (@Composable RowScope.() -> Unit) = {
+                if (showHome) {
+                    TopBarButton(
+                        HomeIcon,
+                        onClick = { switchDestination(state, Destination.Sessions, metrics.twoPane) },
+                        contentDescription = "主页",
+                    )
+                }
+                if (state.dest == Destination.Sessions && !detailVisible) {
+                    // U1-c: phones reach search here; desktop also has ⌘K.
+                    TopBarButton(VadeIcons.Search, onClick = { state.openSearch() }, contentDescription = "搜索")
+                    TopBarButton(VadeIcons.Compose, onClick = { state.newSession() }, contentDescription = "新建会话")
+                }
+                if (metrics.hasRightPanel) {
+                    // g-glyph-clear: 这处曾是 `glyph = if (open) "▸" else "◂"` —— 源码
+                    // 注释自己写着「w2-icons 遗留」：VadeIcons 里没有侧栏语义名，本棒
+                    // 又不许往那个文件追加。两态矢量因此落在 vade/ui/icon/ShellGlyphs.kt
+                    // （同包，Tabler 命名空间仍只在 icon/ 里）。
+                    TopBarButton(
+                        icon = panelToggleIcon(state.panelOpen),
+                        onClick = { state.togglePanel() },
+                        contentDescription = if (state.panelOpen) "收起右面板" else "展开右面板",
+                    )
                 }
             }
             TopBar(
@@ -492,7 +543,7 @@ private fun ShellBody(state: UiState) {
                 },
                 onSubtitleClick = (usageLine as? UsageSubtitleLine.Retry)?.onRetry,
                 leading = detailLeading,
-                actions = listActions,
+                actions = actions,
             )
         }
 
@@ -512,11 +563,18 @@ private fun ShellBody(state: UiState) {
                 VadeBottomBar(
                     items = navItems(),
                     selected = state.dest.ordinal,
-                    // 底栏只在单栏出现（D88：详情 push 时整条栏不组合），所以这里
-                    // `twoPane` 恒为 false；仍显式传同一条判据，免得日后把栏放进双栏时
-                    // 悄悄退回「再点一次就关掉会话」的旧语义（P1-12）。
+                    // m-bar：底栏在手机单栏**常驻**（会话详情也在），所以点 tab 必须先离开
+                    // 会话 —— 走的是既有导航路径（`switchDestination` → `state.back()` +
+                    // `state.select`），不弹确认框，也不碰任何 `ChatState`（草稿由 ChatState
+                    // 侧负责，这里只切选中 id）。
+                    // `listBesideDetail` 仍显式传同一条判据（P1-12）：本栏只在单栏出现，
+                    // 恒为 false，但日后放进双栏时不会悄悄退回「再点一次就关掉会话」。
                     onSelect = { index ->
-                        state.select(Destination.entries[index], listBesideDetail = metrics.twoPane)
+                        switchDestination(
+                            state,
+                            Destination.entries[index],
+                            listBesideDetail = metrics.twoPane,
+                        )
                     },
                     style = state.barStyle,
                     backdrop = contentBackdrop,
@@ -904,6 +962,43 @@ private fun VerticalRule() {
  */
 internal fun panelToggleIcon(open: Boolean): ImageVector =
     if (open) ShellGlyphs.PanelCollapse else ShellGlyphs.PanelExpand
+
+/**
+ * 顶栏「主页」按钮的矢量（m-bar）。
+ *
+ * `VadeIcons` 里没有 home 语义名，本棒又只许改 AppShell/TopBar（`vade/ui/icon/` 下的两个
+ * 文件不在范围内），同时业务代码不许直接 import Tabler
+ * （`IconGuardTest.businessCodeDoesNotImportTablerDirectly`）。[MetaIcons] 是仓里唯一已
+ * 登记 `home` 的公开缝（服务端图标白名单 39 项之一），于是从这里取；万一哪天白名单收窄，
+ * 退回会话 tab 的矢量而不是崩掉。
+ */
+private val HomeIcon: ImageVector get() = MetaIcons["home"] ?: VadeIcons.Chat
+
+/**
+ * 底栏与顶栏「主页」共用的切页入口（m-bar）。
+ *
+ * 会话详情里点别的 tab 的语义是「**直接离开**会话」：不弹确认框、不在详情里等二次确认。
+ * 离开走的是**既有导航路径** —— `state.back()`（与系统返回 / Esc / 顶栏「返回」同一个
+ * 动作：清选中，并把手机抽屉置为打开）+ `state.select(target)`。
+ *
+ * 为什么先 `back()` 再 `select()`：`UiState.select()` 只有「换了目的地」那条分支会清
+ * 选中；点回**会话 tab 本身**时它走的是另一条分支。显式先退一层，两条路都落成「离开详情」。
+ *
+ * **不碰 ChatState**：本函数只读写 `selectedSessionId` / `dest` / 抽屉开关。草稿、滚动
+ * 位置、待发附件都属于 ChatState（草稿存储由另一棒负责），这里既不清空也不重建它 ——
+ * 离开再回来，会话状态原样还在。
+ *
+ * [listBesideDetail] 由布局宿主传入（`ShellMetrics.twoPane`）：双栏里重复点会话 tab 是
+ * no-op，不该把用户正在读的会话关掉（P1-12）。
+ */
+internal fun switchDestination(
+    state: UiState,
+    target: Destination,
+    listBesideDetail: Boolean,
+) {
+    if (state.selectedSessionId != null) state.back()
+    state.select(target, listBesideDetail = listBesideDetail)
+}
 
 /** Bottom-bar rows: the four destinations, in contract order (FR-8.77). */
 private fun navItems(): List<BottomBarItem> = Destination.entries.map {
