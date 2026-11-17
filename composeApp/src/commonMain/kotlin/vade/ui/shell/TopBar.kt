@@ -39,6 +39,7 @@ import vade.ui.component.liquid.GlassBand
 import vade.ui.skin.LocalReduceMotion
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.ReduceMotion
+import vade.ui.skin.glass.GlassBackdropPolicy
 import vade.ui.skin.glass.GlassSurface
 import vade.ui.skin.glass.LocalGlassHazeState
 
@@ -124,6 +125,8 @@ fun TopBar(
             .testTag(TopBarGlassTag),
         shape = RoundedCornerShape(skin.shapes.xl),
         skin = skin,
+        // 共享调用点：像素与 U3 之前一致（恒建 haze 节点），显式声明而不是靠默认值。
+        backdropPolicy = GlassBackdropPolicy.HazeAlwaysCompat,
     ) {
         Row(
             modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp),
