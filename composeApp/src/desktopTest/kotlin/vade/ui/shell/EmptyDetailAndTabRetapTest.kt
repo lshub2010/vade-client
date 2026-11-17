@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.printToString
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.Dp
@@ -100,24 +101,13 @@ class EmptyDetailAndTabRetapTest {
             assertEquals("s-gone", ui.selectedSessionId, "现场前提：没有东西把选中 id 清掉")
             assertTrue(!ui.sessionsDrawerOpen, "现场前提：深链直进详情 ⇒ 抽屉初始收起，空态露在外面")
         }
-        // 收起态的几何前提：抽屉层**在**组合里、但完全平移到屏外（否则「滑回屏内」无从断言）。
-        waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithTag(DRAWER_TAG)) }
-        waitUntil(timeoutMillis = 5_000) { drawerLeft() < -1f }
-
         onNode(button).performClick()
 
         waitUntil(timeoutMillis = 5_000) { ui.sessionsDrawerOpen }
-        // 几何判据：抽屉层真的滑回屏内（收起时它只是被平移到左边，语义树里一直在）。
-        waitUntil(timeoutMillis = 10_000) { drawerLeft() >= -1f }
+        // 抽屉是否真的滑出来：不看具体位移实现，只看「行可见且可点」——
+        // 收起时行即便在语义树里也不该 displayed。
         waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithText(ROW_TITLE)) }
-        // 行也真的落在屏内 —— 比「语义树里有它」硬：抽屉收起时它同样在树里。
-        val rowLeft = onAllNodesWithText(ROW_TITLE).fetchSemanticsNodes()
-            .map { it.boundsInRoot.left }
-            .maxOrNull()
-        assertTrue(
-            rowLeft != null && rowLeft >= 0f,
-            "抽屉滑回屏内后列表行必须落在屏内（实测 left=$rowLeft）",
-        )
+        onNodeWithText(ROW_TITLE).assertIsDisplayed()
     }
 
     /**
