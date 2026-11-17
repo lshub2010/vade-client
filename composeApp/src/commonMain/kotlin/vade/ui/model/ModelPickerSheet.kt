@@ -61,6 +61,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import vade.ui.UiText
+import vade.ui.component.insets.bottomSafeClearance
 import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
 import vade.ui.skin.LocalSkin
@@ -146,12 +147,15 @@ fun ModelPickerSheet(
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.24f)))
         }
 
-        // 卡片：BottomCenter、左右 12dp、底部 12dp、四角 28dp —— 永不贴边、不满宽。
+        // 卡片：BottomCenter、左右 12dp、底部 12dp + 导航条余量、四角 28dp —— 永不贴边、
+        // 不满宽。c6-insets · L4：固定 12dp 时三键导航条 / 手势胶囊压在卡片最后一行上
+        // （真机截图），现在读 `WindowInsets.navigationBars` 的余量（键盘弹起时为 0，
+        // 由根的 imePadding 抬升，不与 IME 相加）。
         GlassSurface(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+                .padding(start = 12.dp, end = 12.dp, bottom = 12.dp + bottomSafeClearance()),
             shape = shape,
             skin = skin,
         ) {

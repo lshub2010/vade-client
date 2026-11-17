@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 夜间档：DeviceDefault 的暗色底（无 ActionBar）。与 values/themes.xml 同名同结构，
+     资源限定符选择，manifest 只引用 @style/Theme.Vade。
+     windowBackground 只服务冷启动首帧；运行期条带由 MainActivity 画当前皮肤的 canvas
+     （f4-insets · P2），这里仅是 material 暗色 canvas 的近似。 -->
+<resources>
+    <style name="Theme.Vade" parent="@android:style/Theme.DeviceDefault.NoActionBar">
+        <item name="android:windowBackground">@color/vade_window_background</item>
+    </style>
+</resources>

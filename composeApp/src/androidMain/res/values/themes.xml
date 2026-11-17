@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  c6-insets · L3：主题必须是 day/night —— 冷启动那一条白带就是「亮色主题的
+  windowBackground 在暗色设备上先画了一帧」。
+
+  平台没有能在 API 24 上用的 DayNight 主题（`android:Theme.DeviceDefault.DayNight`
+  是 API 29 才加的），所以白天/黑夜各一份，由 `-night` 资源限定符选择；效果与
+  DeviceDefault.DayNight 等价，且 minSdk 24 全程可用。两个变体都 **没有 ActionBar**：
+  这是纯 Compose 应用，页面标题由 shell 自己画。
+
+  windowBackground **只服务冷启动的第一帧**（Compose 还没画之前的那一瞬间），取值是
+  material 皮肤 canvas 的近似（亮 #F7F7F8 / 暗 #0E0E10）。运行期的状态栏条带**不再**
+  由它上色：`MainActivity` 在根节点用当前皮肤的 `skin.colors.canvas` 全出血铺底
+  （f4-insets · P2），所以换到 miuix 等非 material 皮肤时条带跟着皮肤走，而不是留一条
+  写死的 material 色带。
+-->
+<resources>
+    <style name="Theme.Vade" parent="@android:style/Theme.DeviceDefault.Light.NoActionBar">
+        <item name="android:windowBackground">@color/vade_window_background</item>
+    </style>
+</resources>
