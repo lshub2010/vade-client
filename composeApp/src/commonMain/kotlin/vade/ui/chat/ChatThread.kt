@@ -38,7 +38,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
@@ -51,6 +50,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.semantics.semantics
@@ -153,7 +153,17 @@ fun ChatThread(
     inputLeading: (@Composable () -> Unit)? = null,
 ) {
     val skin = LocalSkin.current
-    val scroll = rememberScrollState()
+
+    // P2-2 · 视图状态**按会话整份重建**：滚动位置、跟随基线（items 数 / 末条长度 /
+    // 两路实测高度）全在 [ChatViewport] 里，`state.sessionId` 是 remember key。
+    // 切会话 = 换一份 0 基线的实例 —— 新会话从**最新一行**打开，既不继承上一个会话的
+    // `scroll.value`（打开在历史中段），也不继承它的「有新内容」胶囊。同一会话的重组
+    // （会话 id 与 density 都没变）拿回同一实例，阅读位置原地保留。
+    val density = LocalDensity.current
+    val nearBottomPx = with(density) { FollowThreshold.roundToPx() }
+    val viewport = rememberChatViewport(state.sessionId, nearBottomPx)
+    val scroll = viewport.scroll
+    val follower = viewport.follower
 
     // Streaming: one chunk per frame-ish tick. `animate = false` freezes the state so the
     // screenshot loop captures a deterministic frame.
@@ -200,24 +210,23 @@ fun ChatThread(
     //
     // 用 `snapshotFlow` 而不是 keyed `LaunchedEffect`：内容长度与高度按帧变化，keyed effect
     // 会在每次 key 变更时**取消在途滚动**，写永远落不了地。
-    val density = LocalDensity.current
-    val nearBottomPx = with(density) { FollowThreshold.roundToPx() }
-    val follower = remember(nearBottomPx) { FollowScrollGate(nearBottomPx) }
+    //
+    // P2-2 · 三个收集器的 key 都带上 [viewport]：切换会话时它们必须跟着换到新实例上，
+    // 否则闭包里攥着上一个会话的 `ScrollState` / gate，补偿会写进一个已经不在屏上的对象。
     val reduceMotion = LocalReduceMotion.current || ReduceMotion.enabled
     val capsuleMs = skin.motion.durationMs(skin.motion.quickMs, reduceMotion)
-    var composerHeightPx by remember { mutableStateOf(0) }
-    var messagesHeightPx by remember { mutableStateOf(0) }
 
-    LaunchedEffect(animate) {
+    LaunchedEffect(animate, viewport) {
         if (!animate) return@LaunchedEffect
-        snapshotFlow { messagesHeightPx to composerHeightPx }.collect { (messages, composer) ->
-            // 两列各记各的账；同一帧里都变了就各补各的增量，总和 = 内容总增长。
-            scroll.applyFollow(follower.onHeightChanged(FollowHeightKind.Messages, messages, scroll.value))
-            scroll.applyFollow(follower.onHeightChanged(FollowHeightKind.Composer, composer, scroll.value))
-        }
+        snapshotFlow { viewport.messagesHeightPx to viewport.composerHeightPx }
+            .collect { (messages, composer) ->
+                // 两列各记各的账；同一帧里都变了就各补各的增量，总和 = 内容总增长。
+                scroll.applyFollow(follower.onHeightChanged(FollowHeightKind.Messages, messages, scroll.value))
+                scroll.applyFollow(follower.onHeightChanged(FollowHeightKind.Composer, composer, scroll.value))
+            }
     }
 
-    LaunchedEffect(animate) {
+    LaunchedEffect(animate, viewport) {
         if (!animate) return@LaunchedEffect
         snapshotFlow {
             state.items.size to (state.messages.lastOrNull()?.bodyText?.length ?: 0)
@@ -228,7 +237,7 @@ fun ChatThread(
 
     // 用户自己回到底部（滚轮 / 触摸）→ 胶囊收起、跟随恢复。`scroll.value` 每像素一发，
     // 但 `onScroll` 只在贴底时才写状态，静止时没有额外失效。
-    LaunchedEffect(animate) {
+    LaunchedEffect(animate, viewport) {
         if (!animate) return@LaunchedEffect
         snapshotFlow { scroll.value }.collect { follower.onScroll(it) }
     }
@@ -272,7 +281,7 @@ fun ChatThread(
                     // j1-scroll (P1-9)：消息列实高 = 位置补偿的观测量。它只覆盖时间线
                     // 本体（下面的 composer 内边距是兄弟节点），所以 composer 与内容
                     // 各自记账、互不冒充 —— 胶囊只认内容那一路。
-                    .onSizeChanged { messagesHeightPx = it.height },
+                    .onSizeChanged { viewport.messagesHeightPx = it.height },
                 // 消息之间 20dp（视觉规范 §4）。
                 verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
@@ -302,14 +311,14 @@ fun ChatThread(
             // （见 [ComposerOverlay]；c6-insets 把原先挂在 `.padding` 后面的量法修了），
             // 所以 g-inset2 给 composer 底部叠的导航条 clearance 也 1:1 算进来：最后一条
             // 始终滚出 composer + 导航条区域。公式提成 [composerListSpacer] 供测试钉住。
-            Spacer(Modifier.height(with(density) { composerListSpacer(composerHeightPx.toDp()) }))
+            Spacer(Modifier.height(with(density) { composerListSpacer(viewport.composerHeightPx.toDp()) }))
         }
 
         ComposerOverlay(
             state = state,
             gutter = gutter,
             animate = animate,
-            onHeightChanged = { composerHeightPx = it },
+            onHeightChanged = { viewport.composerHeightPx = it },
             inputLeading = inputLeading,
         )
 
@@ -319,7 +328,7 @@ fun ChatThread(
             visible = follower.unseenBelow,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = with(density) { composerHeightPx.toDp() } + 8.dp),
+                .padding(bottom = with(density) { viewport.composerHeightPx.toDp() } + 8.dp),
             enter = fadeIn(tween(durationMillis = capsuleMs, easing = skin.motion.easing)) +
                 scaleIn(
                     initialScale = 0.92f,
@@ -1208,6 +1217,60 @@ private fun rememberCoalescedStreamText(raw: String): String {
 
 /** K4 · 「新内容」胶囊的 testTag（`ChatFollowScrollGateTest` / 渲染测试用它断言出现 / 消失）。 */
 internal const val NewContentCapsuleTag = "vade.chat.newContentCapsule"
+
+/**
+ * P2-2 · 一个会话的滚动视图状态 —— **位置 + 跟随基线**（两路实测高度在 [ChatViewport]；
+ * items 数 / 末条正文长度在 [follower] 的私有账本里）。
+ *
+ * 为什么必须「一份会话一份」：`rememberScrollState()` 和 `remember { FollowScrollGate() }`
+ * 只认组合位置、不认数据。`ChatThread` 切会话时留在**同一个组合槽位**，于是新会话继承了
+ * 上一个会话的 `scroll.value`（打开在历史中段）、继承 `unseenBelow`（凭空举着「新内容」
+ * 胶囊），跟随基线里还躺着上一个会话的 items / 高度（切过去的第一帧会被当成「内容增长」
+ * 补偿一次，或者把「上滚」的旧位置继续当作阅读位置）。
+ *
+ * 身份 = 会话 id + 近底阈值（阈值随 density 变）。两者任一变了就整份重建
+ * （[rememberChatViewport]），同一会话的重组拿回同一实例、位置原地保留 —— 修
+ * 「切会话不重置」不能顺手把「每次重组都重置」引进来，那是另一个更糟的缺陷。
+ */
+internal class ChatViewport(
+    /** 这一份视图状态属于哪个会话。 */
+    val sessionId: String,
+    /** 近底阈值（px）—— 与 density 绑定，所以它也是实例身份的一部分。 */
+    val nearBottomPx: Int,
+    /**
+     * `reverseScrolling` 下的滚动位置：0 = 贴底（最新一行），单位 px。
+     *
+     * 由 [rememberChatViewport] 用 `rememberSaveable(sessionId, saver = ScrollState.Saver)`
+     * 建出来（切会话重置为 0，同会话旋转不丢）；纯测试可直接用默认值。
+     */
+    val scroll: ScrollState = ScrollState(0),
+) {
+    /** 跟随决策状态机。基线（items / 末条长度）私有在它里面，随实例一起清零。 */
+    val follower: FollowScrollGate = FollowScrollGate(nearBottomPx)
+
+    /** 消息列（时间线本体）实测高度；0 = 这个会话还没量过第一帧。 */
+    var messagesHeightPx by mutableStateOf(0)
+
+    /** composer 浮层实测高度（只影响列表底部内边距）；0 = 还没量过。 */
+    var composerHeightPx by mutableStateOf(0)
+}
+
+/**
+ * P2-2 · `ChatThread` 取视图状态的唯一入口。
+ *
+ * key 是**会话 id + 近底阈值**：切会话时整份重建（滚动回 0、基线清空、胶囊不举），
+ * 同一会话重组时复用同一实例（阅读位置不被打断）。`ChatSessionScrollResetTest`
+ * 在真实组合里驱动这个函数，而不是另抄一份判据。
+ *
+ * 滚动位置仍走 `rememberSaveable` 的 [ScrollState.Saver]（与 `rememberScrollState()`
+ * 同一个 saver，旋转 / 进程重建不丢位置），只是把 `sessionId` 加进 inputs：**同一个
+ * saver，换了会话就按初始值 0 重建** —— 这正是 P2-2 的修复点，恢复语义没有丢。
+ */
+@Composable
+internal fun rememberChatViewport(sessionId: String, nearBottomPx: Int): ChatViewport {
+    val scroll = rememberSaveable(sessionId, saver = ScrollState.Saver) { ScrollState(0) }
+    return remember(sessionId, nearBottomPx) { ChatViewport(sessionId, nearBottomPx, scroll) }
+}
 
 /**
  * K4 · 把 [FollowScrollDirective] 落到滚动状态上。
