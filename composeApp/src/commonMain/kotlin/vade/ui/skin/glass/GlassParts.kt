@@ -301,9 +301,10 @@ internal fun GlassSwitch(
             shadow = NoShelfShadow,
             // 实心染色的后面再模糊一次只是白花 GPU。
             blurBackdrop = !checked,
-            // 关态轨道与画布同色系，26% 黑发丝线只有 1.87:1 —— 非文本 UI 边界要 3:1，
-            // 换皮肤自己的 outline（亮 4.6 / 暗 7 量级）。开态是实心 accent，不需要。
-            stroke = if (checked) null else colors.outline,
+            // 关态轨道与画布同色系，26% 黑发丝线只有 1.87:1 —— 非文本 UI 边界要 3:1。
+            // 注意 `outline` 在 material 里是**近白发丝线**（#E6E6E9，1.1:1），不能用；
+            // 取 `onSurfaceVariant`（亮 #6B6B73 ≈5.2、暗 ≈7）。开态是实心 accent，不需要描边。
+            stroke = if (checked) null else colors.onSurfaceVariant,
         ) {
             Box(
                 Modifier.fillMaxSize().padding(4.dp),
@@ -314,7 +315,7 @@ internal fun GlassSwitch(
                         .size(24.dp)
                         .clip(CircleShape)
                         .background(if (checked) colors.onPrimary else colors.surface)
-                        .border(1.dp, if (checked) GlassTokens.stroke(colors.isDark) else colors.outline, CircleShape),
+                        .border(1.dp, if (checked) GlassTokens.stroke(colors.isDark) else colors.onSurfaceVariant, CircleShape),
                 )
             }
         }

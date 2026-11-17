@@ -16,7 +16,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.ComposeUiTest
-import androidx.compose.ui.test.assertHasNoClickAction
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onRoot
@@ -252,7 +252,10 @@ class GlassPartsTest {
                 }
             }
             waitForIdle()
-            onNodeWithContentDescription("发送消息").assertHasNoClickAction()
+            onNodeWithContentDescription("发送消息").assertIsNotEnabled()
+            // clickable(enabled=false) 仍会留一个命中节点（只是标记 Disabled），所以先断言
+            // 语义禁用，再真点一次确认回调不触发。
+            runCatching { onNodeWithContentDescription("发送消息").performClick() }
             assertEquals(0, clicks, "enabled=false 的 Idle 球不该还能点")
 
             runOnIdle { mode = InputMode.Streaming }

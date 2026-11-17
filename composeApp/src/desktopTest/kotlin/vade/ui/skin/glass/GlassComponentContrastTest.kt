@@ -227,8 +227,8 @@ class GlassComponentContrastTest {
      *    滑块位置与 1dp 描边读出，不值得为它把轨道做成不透明；
      *  - **滑块 vs 开态轨道** ≥4.5（`onPrimary` on [actionFill]，与按钮同一条推导）；
      *  - **关态边界（轨道 + 滑块描边）** ≥3.0 —— 非文本 UI 组件的 3:1。原来的 26% 黑发丝线
-     *    只有 1.87，等于没画；现在用皮肤 `outline`（亮 4.6 / 暗 7 量级），阈值必须跟着回到
-     *    标准，不许为了保绿降到 1.5。
+     *    只有 1.87，等于没画；`outline` 在 material 里是近白发丝线（#E6E6E9，1.1:1）也不能用，
+     *    改用 `onSurfaceVariant`（亮 ≈5.2 / 暗 ≈7），阈值必须跟着回到标准，不许为保绿降到 1.5。
      */
     @Test
     fun switchTrackStatesAndKnobAreLegible() {
@@ -249,7 +249,7 @@ class GlassComponentContrastTest {
             )
 
             val rim = contrastRatio(
-                colors.outline,
+                colors.onSurfaceVariant,
                 GlassTokens.tint(colors.isDark).over(colors.canvas),
             )
             assertTrue(
