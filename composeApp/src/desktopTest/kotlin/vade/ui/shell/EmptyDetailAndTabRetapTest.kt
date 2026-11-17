@@ -10,6 +10,8 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.Dp
@@ -82,8 +84,16 @@ class EmptyDetailAndTabRetapTest {
         shell(ui, width = 411.dp, height = 760.dp)
 
         val button = hasText("打开会话列表") and hasClickAction()
-        waitUntil(timeoutMillis = 10_000) {
-            onAllNodes(button).fetchSemanticsNodes().isNotEmpty()
+        runCatching {
+            waitUntil(timeoutMillis = 10_000) {
+                onAllNodes(button).fetchSemanticsNodes().isNotEmpty()
+            }
+        }.onFailure { failure ->
+            // 现场快照：把整棵语义树打进 CI 日志，别再靠猜。
+            println("=== 411dp empty-state dump ===")
+            println(onRoot(useUnmergedTree = true).printToString(maxDepth = 30))
+            println("selectedSessionId=${ui.selectedSessionId} drawerOpen=${ui.sessionsDrawerOpen}")
+            throw failure
         }
         runOnIdle {
             assertNull(ui.selectedSession, "现场前提：选中 id 已不在列表里（否则这条路不是空态）")
