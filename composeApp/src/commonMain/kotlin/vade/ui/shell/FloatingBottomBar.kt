@@ -261,10 +261,12 @@ internal fun FloatingBottomBar(
 
     fun activateTab(index: Int) {
         if (index !in 0 until items.size) return
-        if (currentIndex != index) {
-            currentIndex = index
-            onSelectedUpdated(index)
-        }
+        // 重复点当前 tab 也必须上报：`UiState.select` 用它实现「会话页再点一次 =
+        // 退一层（抽屉滑出）」，旧代码只在 `currentIndex != index` 时才回调，把这条
+        // 语义在浮动栏上静默吞掉了（m1-bar 的 CI 实测：选中的会话 tab 点不动）。
+        // 固定栏本来每次点击都回调，三种形态必须是同一套语义。
+        currentIndex = index
+        onSelectedUpdated(index)
         dampedDragAnimation.animateToValue(index.toFloat())
     }
 
