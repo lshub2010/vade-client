@@ -98,11 +98,9 @@ class ThemeSwitchUiTest : IsolatedPreferencesTest() {
          * 等它们成立是等确定状态，不是赌帧数；重建会让抽屉重新滑出（信号翻转回 false）。
          */
         fun drawerFullyClosed(): Boolean {
-            val scrim = onAllNodesWithTag(DRAWER_SCRIM_TAG).fetchSemanticsNodes()
-            val disabled = scrim.any {
-                runCatching { it.config[SemanticsProperties.Disabled] }.getOrNull() != null
-            }
-            if (!disabled) return false
+            // 只看抽屉是否完全出屏：这是「已收起」的本质信号。旧版还要求遮罩处于
+            // Disabled，那是 `clickable(enabled=false)` 的实现细节；该写法会吞掉底下
+            // 空态按钮的点击（P1-11），已改成收起时不挂 clickable，语义里不再有 Disabled。
             val drawer = onAllNodesWithTag(DRAWER_TAG).fetchSemanticsNodes()
             return drawer.isNotEmpty() && drawer.all { it.boundsInRoot.right <= 0f }
         }
