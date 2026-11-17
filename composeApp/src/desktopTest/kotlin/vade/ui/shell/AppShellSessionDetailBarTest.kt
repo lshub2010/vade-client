@@ -248,6 +248,11 @@ class AppShellSessionDetailBarTest {
      * 旧实现里容器垫了 108 dp ⇒ 抽屉与遮罩底边停在屏底上方 108 dp，抽屉右下 28 dp 圆角悬在
      * 半空、遮罩下面露出一条裸画布 + 胶囊。「拉开抽屉看一眼列表」是手机切会话的主路径，
      * 这条几乎人人可见。
+     *
+     * 量的是**几何**：遮罩铺满整个窗口，所以底栏的矩形被它覆盖。抽屉这一态的**画序**是
+     * 底栏在上（`AppShell` 只在模型面板 / 图片预览那种整屏模态里把内容链抬到底栏之上）——
+     * 抽屉只占 80% 宽，抬上来会埋掉半个胶囊；底栏留在最上层才仍能从抽屉里一键切 tab。
+     * 模态浮层（模型面板 / 预览）那一半由 `theModelSheetScrimCoversTheBottomBar` 用真触摸钉。
      */
     @Test
     fun theOpenDrawerAndItsScrimCoverTheWholeWindow() = runComposeUiTest {
@@ -255,7 +260,7 @@ class AppShellSessionDetailBarTest {
         phoneShell(ui)
         waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithContentDescription("返回")) }
 
-        ui.openSessionsDrawer()
+        runOnIdle { ui.openSessionsDrawer() }
         waitForIdle()
         waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithTag(DRAWER_SCRIM_TAG)) }
 
@@ -358,7 +363,7 @@ class AppShellSessionDetailBarTest {
         phoneShell(ui)
         waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithContentDescription("返回")) }
 
-        ui.openSessionsDrawer()
+        runOnIdle { ui.openSessionsDrawer() }
         waitForIdle()
 
         assertEquals(

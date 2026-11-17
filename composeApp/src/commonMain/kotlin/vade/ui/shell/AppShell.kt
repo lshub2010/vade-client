@@ -363,6 +363,9 @@ private fun ShellBody(state: UiState) {
         // permanently hidden behind it (the 能力 page's final card was clipped by the
         // window edge). Rows still pass *through* the bar zone mid-scroll, which is what
         // gives the glass something to blur — both behaviours come from content padding.
+        // 详情页是这条规则的**唯一**例外形态（它的 composer 是贴屏底的浮层）：那里走
+        // [detailContentBottomInset] + `SessionDetailScreen(bottomBarInset = …)`，仍然不是
+        // 容器留白 —— 容器一垫，抽屉 / 遮罩 / 面板就一起离屏（审查 P1-2）。
         val contentInsets = PaddingValues(
             top = TOP_BAR_ZONE,
             bottom = contentBottomInset(showBar, navInset, state.barStyle),
