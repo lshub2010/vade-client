@@ -7,6 +7,8 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
 import vade.ui.protocol.FakeTransportFactory
+import vade.ui.protocol.VadeTransport
+import vade.ui.protocol.VadeTransportFactory
 import vade.ui.protocol.eventFrame
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -178,6 +180,120 @@ class RealSessionLifecycleTest {
             assertEquals(RealSessionState.Disconnected, source.state.value)
             assertTrue(factory.transports[0].closedCount >= 1)
             assertTrue(source.client == null)
+        }
+    }
+
+    // ---------------------------------------------------------------- factory ownership (P1)
+
+    /**
+     * A factory whose [dispose] REALLY closes the door: every later [connect] throws.
+     * That is exactly [vade.ui.protocol.KtorTransportFactory], whose `dispose()` closes
+     * its own `HttpClient` and cannot be revived.
+     *
+     * The shared [FakeTransportFactory] does NOT override `dispose()` (the interface
+     * default is a no-op), which is why the "disconnect killed the shared factory"
+     * regression stayed invisible: with this fake the same call throws instead.
+     */
+    private class ClosingTransportFactory : VadeTransportFactory {
+        private val inner = FakeTransportFactory()
+
+        @Volatile
+        var disposeCount: Int = 0
+            private set
+
+        val connectAttempts: Int get() = inner.connectAttempts.size
+
+        override suspend fun connect(): VadeTransport {
+            check(disposeCount == 0) {
+                "connect() on a disposed factory — a closed HttpClient cannot be revived " +
+                    "(this is the permanent-disconnect shape)"
+            }
+            return inner.connect()
+        }
+
+        override suspend fun dispose() {
+            disposeCount += 1
+        }
+    }
+
+    /**
+     * P1 · 注入的 factory 是**共享**的（`PairingRuntime.pairedFactory`：cookie 缓存、
+     * 配对桥、下一次 connect 都用它），`disconnect()` 只摘 tee，不 dispose 它。
+     * 旧实现在这里让第二次 `connect()` 永远失败 —— 即「断开一次 = 永久断连」。
+     */
+    @Test
+    fun injectedFactorySurvivesDisconnectAndServesTheNextConnect() {
+        val factory = ClosingTransportFactory()
+        val source = RealSessionSource(dataTestConfig(), factory)
+        runBlocking {
+            source.connect()
+            source.state.awaitState("the first connection") { it == RealSessionState.Connected }
+            source.disconnect()
+            assertEquals(
+                0,
+                factory.disposeCount,
+                "注入的 factory 不归源所有 —— disconnect 只摘 tee，dispose 会关掉持有者的 HttpClient",
+            )
+            source.connect()
+            source.state.awaitState("the second connection through the SAME shared factory") {
+                it == RealSessionState.Connected
+            }
+            assertEquals(2, factory.connectAttempts, "第二次 connect 必须真的经同一个共享 factory 建连")
+            assertEquals(0, factory.disposeCount)
+            source.disconnect()
+        }
+    }
+
+    /**
+     * P1 · 换源的现场（引导卡配对成功后 `App()` 重建 UiState）：旧源被 disconnect、
+     * 新源拿到**同一个** `PairingRuntime.pairedFactory`。旧源若 dispose 了它，新源从
+     * 第一次 connect 起就必然失败，而 UI 只显示「一直连不上」。
+     */
+    @Test
+    fun sharedFactoryStillServesTheSourceThatReplacesTheDisconnectedOne() {
+        val factory = ClosingTransportFactory()
+        val first = RealSessionSource(dataTestConfig(), factory)
+        val second = RealSessionSource(dataTestConfig(), factory)
+        runBlocking {
+            first.connect()
+            first.state.awaitState("the old source to connect") { it == RealSessionState.Connected }
+            first.disconnect()
+            second.connect()
+            second.state.awaitState("the replacement source (same shared factory)") {
+                it == RealSessionState.Connected
+            }
+            assertEquals(2, factory.connectAttempts)
+            assertEquals(0, factory.disposeCount, "换源时旧源不得把关着的门带走")
+            second.disconnect()
+        }
+    }
+
+    /**
+     * P1 · 没注入 factory 时工厂是**自建**的：它必须由源 dispose（否则 HttpClient 泄漏），
+     * 且下一次 `connect()` 必须**重建**一个 —— 复用 dispose 过的那个就是永久断连
+     * （旧 `innerFactory by lazy` 的形态）。
+     */
+    @Test
+    fun selfBuiltFactoryIsDisposedOnDisconnectAndRebuiltOnTheNextConnect() {
+        val built = mutableListOf<ClosingTransportFactory>()
+        val source = RealSessionSource(
+            config = dataTestConfig(),
+            ownedFactoryProvider = { ClosingTransportFactory().also(built::add) },
+        )
+        runBlocking {
+            source.connect()
+            source.state.awaitState("the first connection") { it == RealSessionState.Connected }
+            assertEquals(1, built.size, "第一次 connect 建一个自建工厂")
+            source.disconnect()
+            assertEquals(1, built[0].disposeCount, "自建的工厂必须由源 dispose —— 没人会替它关 HttpClient")
+            source.connect()
+            source.state.awaitState("the second connection (a rebuilt factory, not the disposed one)") {
+                it == RealSessionState.Connected
+            }
+            assertEquals(2, built.size, "dispose 过的工厂不可复用 —— 第二次 connect 必须重新建")
+            assertEquals(0, built[1].disposeCount, "新工厂在断开之前不得被关")
+            source.disconnect()
+            assertEquals(1, built[1].disposeCount)
         }
     }
 }
