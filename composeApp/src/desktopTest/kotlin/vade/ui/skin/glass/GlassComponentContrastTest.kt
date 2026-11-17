@@ -270,17 +270,17 @@ class GlassComponentContrastTest {
     @Test
     fun approvalScrimIsDeeperThanTheSheetScrim() {
         assertTrue(
-            GlassTokens.DIALOG_SCRIM_LIGHT_ALPHA >= 0.40f,
-            "亮色审批遮罩 alpha=${GlassTokens.DIALOG_SCRIM_LIGHT_ALPHA} —— 低于 0.40 压不住背后的正文" +
+            DIALOG_SCRIM_LIGHT_ALPHA >= 0.40f,
+            "亮色审批遮罩 alpha=${DIALOG_SCRIM_LIGHT_ALPHA} —— 低于 0.40 压不住背后的正文" +
                 "（§9 的 24% 是给不透明面板算的）",
         )
         assertTrue(
-            GlassTokens.DIALOG_SCRIM_DARK_ALPHA >= 0.48f,
-            "暗色审批遮罩 alpha=${GlassTokens.DIALOG_SCRIM_DARK_ALPHA} —— 暗色下 24% 根本不可感知" +
+            DIALOG_SCRIM_DARK_ALPHA >= 0.48f,
+            "暗色审批遮罩 alpha=${DIALOG_SCRIM_DARK_ALPHA} —— 暗色下 24% 根本不可感知" +
                 "（G5 的结论），审批只会更严",
         )
         assertTrue(
-            GlassTokens.DIALOG_SCRIM_LIGHT_ALPHA > 0.24f && GlassTokens.DIALOG_SCRIM_DARK_ALPHA > 0.24f,
+            DIALOG_SCRIM_LIGHT_ALPHA > 0.24f && DIALOG_SCRIM_DARK_ALPHA > 0.24f,
             "审批遮罩不许沿用 §9 全局弹窗的 24% —— 那一条是给不透明面板写的",
         )
         assertEquals(
