@@ -162,4 +162,19 @@ class DraftStoreTest {
 
         assertEquals("", store.load("s-draft-blank"))
     }
+
+    // ⑥ 审查 P2-1：截图/演示预设只改屏上文字，绝不覆盖或删除该会话的真实草稿。
+    @Test
+    fun presetModesNeverTouchTheDraftStore() {
+        val store = DraftStore().apply { save("s-preset", "用户真的草稿") }
+
+        val composer = ChatState("s-preset", preset = ChatPreset.Composer, drafts = store)
+        assertTrue(composer.draft.isNotBlank(), "预设态屏上仍要显示夹具文本")
+        composer.updateDraft("预设态里的编辑")
+        assertEquals("用户真的草稿", store.load("s-preset"), "Composer 预设不许写真实草稿")
+
+        val queue = ChatState("s-preset", preset = ChatPreset.Queue, drafts = store)
+        assertEquals("用户真的草稿", store.load("s-preset"), "Queue 预设的 submit 不许清掉真实草稿")
+        assertEquals("用户真的草稿", ChatState("s-preset", drafts = store).draft)
+    }
 }

@@ -59,7 +59,7 @@ import kotlin.time.TimeSource
 class ChatState(
     val sessionId: String,
     private val script: List<String> = ChatFixtures.streamScript,
-    preset: ChatPreset = ChatPreset.Live,
+    private val preset: ChatPreset = ChatPreset.Live,
     /** Blob upload channel (injectable; in-memory fake this round). */
     private val uploader: AttachmentUploader = InMemoryAttachmentUploader(),
     /** `message/edit_resubmit` + `turn/regenerate` channel (injectable; fake this round). */
@@ -123,6 +123,9 @@ class ChatState(
         get() = draftText
         private set(value) {
             draftText = value
+            // 预设只改屏上夹具，**不得**覆盖/删除该会话的真实草稿：`--chat=composer` 与
+            // `--chat=queue` 都是截图/演示态，它们写进单例表会污染真会话（审查 P2-1）。
+            if (preset != ChatPreset.Live) return
             if (value.isBlank()) drafts.clear(sessionId) else drafts.save(sessionId, value)
         }
 
