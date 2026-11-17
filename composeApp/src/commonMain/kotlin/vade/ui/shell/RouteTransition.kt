@@ -271,9 +271,15 @@ internal fun SessionsDrawerHost(
                 .testTag(DRAWER_SCRIM_TAG)
                 .graphicsLayer { alpha = spec.scrimAlpha * progress.value }
                 .background(Color.Black)
-                .clickable(
-                    enabled = expanded && state.selectedSessionId != null,
-                    onClick = state::closeSessionsDrawer,
+                // 收起时**完全不挂 pointerInput**：`clickable(enabled=false)` 仍是一个
+                // 命中测试节点，会挡住底下的空态按钮（真机/真组合里就是「点了没反应」）。
+                // 只有展开且底层有详情时才可点；其余时候这层是纯视觉压暗。
+                .then(
+                    if (expanded && state.selectedSessionId != null) {
+                        Modifier.clickable(onClick = state::closeSessionsDrawer)
+                    } else {
+                        Modifier
+                    },
                 )
                 .semantics { if (!expanded) invisibleToUser() },
         )
