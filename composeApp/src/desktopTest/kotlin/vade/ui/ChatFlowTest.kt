@@ -12,6 +12,7 @@ import vade.ui.chat.ChatRole
 import vade.ui.chat.ChatPreset
 import vade.ui.chat.ChatState
 import vade.ui.chat.ContentPart
+import vade.ui.chat.DraftStore
 import vade.ui.chat.MessageState
 import vade.ui.chat.ToolCall
 import vade.ui.chat.ToolResult
@@ -29,6 +30,7 @@ import vade.ui.chat.toAttachmentLike
 import vade.ui.skin.Decision
 import vade.ui.skin.InputMode
 import vade.ui.skin.ToolCardState
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -45,6 +47,14 @@ import kotlin.test.assertTrue
  * "点停止后不再追加" are facts about [ChatState], not about a timer that happened to fire.
  */
 class ChatFlowTest {
+
+    /**
+     * 草稿现在按会话留存在进程内单例 [DraftStore] 里（`DraftStoreTest` 覆盖那套语义）。
+     * 这一类的用例共用 `s-rfc0004`，每条之前先把表收干净，免得上一条没发出去的半句话
+     * （例如 Composer 预设、键盘用例留下的 `x`）被下一条的重建读回来。
+     */
+    @BeforeTest
+    fun resetDrafts() = DraftStore.shared.clearAll()
 
     private fun state(preset: ChatPreset = ChatPreset.Live) = ChatState("s-rfc0004", preset = preset)
 
