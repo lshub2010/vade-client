@@ -305,25 +305,33 @@ class UiState(
     /**
      * Tab / rail entry point（`NavRail` 与底栏三个形态都落到这里）。
      *
-     * **重复点当前 tab**（审查 P2-1）：旧实现把「再点一次」当普通重选处理 —— `dest` 不变、
-     * 选中原样、抽屉重算成同一个值，于是**屏幕上什么都没发生**。现在：
-     *  - 已在会话详情（`dest == Sessions && selectedSessionId != null`）⇒ [back]：手机端
-     *    抽屉滑出、双栏清空选中，露出列表根。「退一层」与系统返回是同一个动作，不是第二
-     *    套返回语义；
+     * **重复点当前 tab**（审查 P2-1 + P1-12）：
+     *  - 已在会话详情 + **单栏**（`listBesideDetail = false`：手机抽屉 / 600–719 rail
+     *    单栏）⇒ [back]：列表要么滑出抽屉、要么回到根页。「退一层」与系统返回是同一个
+     *    动作，不是第二套返回语义；
+     *  - 已在会话详情 + **双栏**（`listBesideDetail = true`）⇒ **no-op**。双栏里列表就在
+     *    详情左边，根本没有「退一层」这回事：旧实现照单栏的规则 `back()` 清掉选中，
+     *    把用户正在读的会话关了、右栏退回空态（审查 P1-12 的原话）。本批也不假装
+     *    「滚到顶」——滚动位置是 `SessionsScreen` 内部的 `LazyListState`，要做得把它
+     *    上提成一个由这里递增的 token，那个文件不在本批范围；
      *  - 已是列表根 ⇒ no-op（也不再重算抽屉 —— 那会把手机抽屉莫名开合）；
      *  - 其他目的地 ⇒ 保留旧行为（离开会话页 ⇒ 选中清空），逐字节不变。
      *
-     * 另一半（在列表根重复点 ⇒ 列表滚到顶）**本批没做**：滚动位置属于 `SessionsScreen`
-     * 内部的 `LazyListState`，那个文件不在本批可改范围。要做就需要把它上提成一个由这里
-     * 递增的 token（`LaunchedEffect(tick) { animateScrollToItem(0) }`），而不是在这里假装
-     * 已经实现。
+     * [listBesideDetail] 由**布局宿主**传入（只有 `ShellMetrics.twoPane` 那一层知道），
+     * 默认 `false` = 单栏：屏幕/state 不该自己猜布局（J4 的教训），历史调用点（测试里
+     * 的 `ui.select(dest)`）因此仍走「退一层」这条既有语义。
      */
-    fun select(destination: Destination) {
+    fun select(destination: Destination, listBesideDetail: Boolean = false) {
         if (destination == dest) {
-            if (destination == Destination.Sessions) {
-                if (selectedSessionId != null) back()
-            } else {
-                selectedSessionId = null
+            when {
+                // 双栏 + 会话页：列表已在左，重复点 = no-op（P1-12）。
+                destination == Destination.Sessions && listBesideDetail -> Unit
+                // 单栏 + 有选中：退一层（手机 = 抽屉滑出；rail 单栏 = 回列表根）。
+                destination == Destination.Sessions && selectedSessionId != null -> back()
+                // 离开会话页：清选中（旧行为，逐字节不变）。
+                destination != Destination.Sessions -> selectedSessionId = null
+                // 会话页列表根：no-op。
+                else -> Unit
             }
             return
         }
