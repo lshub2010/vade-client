@@ -73,6 +73,15 @@ jobs:
               tests += int(r.get("tests", 0)); failures += int(r.get("failures", 0))
               errors += int(r.get("errors", 0)); skipped += int(r.get("skipped", 0))
           print(f"files={len(files)} tests={tests} failures={failures} errors={errors} skipped={skipped}")
+          # 失败原文（断言 message + 栈）必须进日志：GitHub 不保留 runner 上的 XML，
+          # 只打印类名+行号会让「到底哪条断言红了」无法定位（m1-bar 的红就是这样）。
+          for f in files:
+              root = ET.parse(f).getroot()
+              for tc in root.iter("testcase"):
+                  for bad in list(tc.iter("failure")) + list(tc.iter("error")):
+                      print(f"FAILED {tc.get('classname')} > {tc.get('name')}")
+                      print((bad.get("message") or "").strip()[:1500])
+                      print((bad.text or "").strip()[:4000])
           PY
 
   android:
