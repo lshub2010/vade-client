@@ -223,10 +223,11 @@ internal fun FloatingBottomBar(
             },
             onDragStopped = {
                 val targetIndex = targetValue.roundToInt().coerceIn(0, items.size - 1)
-                if (currentIndex != targetIndex) {
-                    currentIndex = targetIndex
-                    onSelectedUpdated(targetIndex)
-                }
+                // 点按也走这条手势（不是 item 的语义 onClick），所以重复点当前 tab
+                // 必须同样上报：UiState 用它实现「会话页再点一次 = 退一层」。
+                // 旧代码只在 index 变化时回调，浮动胶囊上这条语义等于不存在。
+                currentIndex = targetIndex
+                onSelectedUpdated(targetIndex)
                 updateValue(targetIndex.toFloat())
                 animationScope.launch {
                     offsetAnimation.animateTo(0f, spring(1f, 300f, 0.5f))
