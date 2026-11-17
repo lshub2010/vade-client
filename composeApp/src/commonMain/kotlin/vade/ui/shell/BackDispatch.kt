@@ -153,11 +153,17 @@ fun BackHost(dispatcher: BackDispatcher) {
 @Composable
 expect fun SystemBackHandler(enabled: Boolean, onBack: () -> Unit)
 
-// --- wasm 历史桥的决策（纯函数） -------------------------------------------------
+// --- wasm 历史桥的记账（纯逻辑） ---------------------------------------------------
 //
-// 浏览器端的 actual（`BackDispatch.wasmJs.kt`）把返回栈**镜像**成 N 条历史条目，
-// 它所有的「要不要派发 / 要不要补条目」判断都收在这里，好让 desktopTest 能在
-// 没有浏览器的环境里逐条钉住 —— wasm 那一侧只剩「读事件 + 执行命令」。
+// 浏览器端的 actual（`BackDispatch.wasmJs.kt`）把返回栈**镜像**成 N 条历史条目。它的全部
+// 判断与账目都收在这里，wasm 那一侧只剩「读事件 + 执行命令」，好让 desktopTest 在没有
+// 浏览器的环境里把整套记账序列跑一遍（`HistoryMirrorAccountingTest`）。
+//
+// 三个层次，各有各的失败方式：
+//  - [decide]：一次 popstate 该不该派发（单次判定，纯函数）；
+//  - [clampSteps]：一次 `go(-k)` 最多走多远（单步边界，纯函数）；
+//  - [HistoryMirror]：连续记账 —— 在途 `go`、后退之后的欠账、看门狗、降级全在这一层，
+//    副作用经 [HistoryPort] 注入。
 
 /**
  * 一次历史事件（或派发后的一次复检）该做什么。
@@ -181,8 +187,8 @@ internal enum class BackAction {
      * 后退已经发生、栈一条也没降（层的 `onBack` 不关层，比如抽屉只收抽屉）：
      * 不派发、也不 push —— 后退之后 `pushState` 会被 Chromium 判成 back-trap，
      * 新条目被标 `should_skip_on_back_forward_ui_`，后退按钮整条跳过它、
-     * 连 popstate 都不投递。处理办法见 actual 的 `hold()`：
-     * 抬当前条目 + 把补条目推迟到下一次用户手势。
+     * 连 popstate 都不投递。处理办法见 [HistoryMirror.holdAfterBack]：只记账，
+     * 补条目推迟到下一次用户手势。
      */
     HOLD,
 }
@@ -226,13 +232,462 @@ internal fun decide(previous: Int, landed: Int, expected: Int?, desired: Int): B
 }
 
 /**
- * `history.go(-k)` 的 k 夹在 `[0, historyLength-1]`。
+ * `history.go(-k)` 的 k 夹在 `[0, entriesBehind]`。
  *
- * 夹的原因不是「怕越界」（越界的 go 静默无效、不抛错），而是**看门狗**：
- * 一个注定落不了地的 go 会让 `pendingClose` 永远等不到 popstate，桥就卡在
- * 「等回程」里不再收敛。k 被夹到 0 时调用点直接不发 go。
+ * [entriesBehind] 是**身后条目数的下界**，不是会话历史总长度：
+ *
+ *  - `history.length` 数的是**整个会话**的条目（含前进条目，含进入本页之前的条目），
+ *    `length - 1` 只是「身后到底有几条」的一个上界 —— 拿它当条目数会算出比实际更大的
+ *    步数，`go` 落空（或更糟：退到本页之前的那一页，直接离开应用）；
+ *  - 账目里的 `historyDepth`（当前位置的 vade）是我们自己的估计，同样可能偏大。
+ *
+ * 所以调用点先取两者的**下界**再交进来（见 [HistoryMirror.entriesBehind]）：宁可少退一次
+ * （落地后 [HistoryMirror.reconcile] 会接着退），也不发一个落空的 go —— 落空要白等一个
+ * 看门狗周期。k 被夹到 0 时调用点直接不发 go。
  */
-internal fun clampSteps(steps: Int, historyLength: Int): Int {
-    val maxBack = (historyLength - 1).coerceAtLeast(0)
-    return steps.coerceIn(0, maxBack)
+internal fun clampSteps(steps: Int, entriesBehind: Int): Int =
+    steps.coerceIn(0, entriesBehind.coerceAtLeast(0))
+
+/**
+ * 历史侧副作用的端口。
+ *
+ * 抽出来不是为了多一层抽象，而是为了让 [HistoryMirror] 的记账（在途 go、欠账、看门狗、
+ * 降级）能在 desktopTest 里**真跑一遍** —— 那套逻辑此前埋在 wasm actual 里，`window`
+ * 在 JVM 上不存在，只能靠读代码确认，P1-1（看门狗永久降级）就是这么漏过去的。
+ *
+ * 实现约定：`push` / `goBack` **真抛异常**才算「历史 API 不可用」（不透明来源的
+ * SecurityError、被嵌入策略拦掉），由 [HistoryMirror] 捕获后降级；`history.go` 越界
+ * 这类静默无效**不抛**，走看门狗那条路。
+ */
+internal interface HistoryPort {
+
+    /** 会话历史条数（含当前条目）。读不到给 1 = 只有基座。 */
+    val length: Int
+
+    /** 当前条目 state 里的 `vade`；读不出（基座条目本来没有 state / 别人写的 state）给 -1。 */
+    fun currentVade(): Int
+
+    /** `history.pushState({vade: vade}, "", null)`。 */
+    fun push(vade: Int)
+
+    /** `history.go(-steps)`，`steps > 0`。 */
+    fun goBack(steps: Int)
+}
+
+/**
+ * 浏览器历史 ↔ 返回栈的**记账器**（纯逻辑，没有 DOM）。
+ *
+ * wasm actual 每个页面一份：popstate 只调 [onPopState] 记账，用户手势调 [onUserGesture]，
+ * 栈深变化调 [sync]；要不要派发问 [decide]，一次走多远问 [clampSteps]。三条不变式：
+ *
+ *  1. **加长历史只有一条路径**（[pushUpTo]）：从 `historyDepth + 1` 逐条压到 `desired`，
+ *     每条 vade 递增 1。这里曾经还有第二条路径 —— HOLD 时 `replaceState({vade: now})`
+ *     把当前条目抬到 `now`，手势后再 `pushState({vade: now})` 补一条**同深度**的物理条目，
+ *     历史里于是出现两条 vade 相同的条目（评审 P2-1）：后退一次落到同 vade 那条上，
+ *     连 popstate 都不投递，表现为「按了没反应」。现在物理位置就停在浏览器说的那一条，
+ *     欠的条目一律由手势后的 `pushUpTo` 按台阶补齐。
+ *  2. **后退之后不 push**（`afterBack`，Chromium 的 back-trap 启发式）：欠账只记不改历史，
+ *     等下一次 `pointerdown` / `keydown` 再补。收条目（`go`）不受限，`go` 是后退。
+ *  3. **`go` 不落地 ≠ 历史不可用**（评审 P1-1）：`history.go` 不抛错也可能什么都不做
+ *     （越界 / 被嵌入策略吞掉 / 页面正在卸载）。看门狗超时只清在途状态、按浏览器此刻
+ *     说的位置重建账目、用剩余预算至多重发**一次** `go`；永久降级只留给 `pushState` /
+ *     `go` 真抛异常的场合。
+ *
+ * 线程/重入：全部从 UI 线程（组合副作用、事件回调）进入，与浏览器历史一样是单线程的。
+ * [frames] 是「两帧之后」的注入点：wasm 侧 = `requestAnimationFrame` ×2，测试里 = 手动队列
+ * （延迟回调的必要性见 [onDecisionFrame] 的注释）。
+ */
+internal class HistoryMirror(
+    private val port: HistoryPort,
+    private val frames: (() -> Unit) -> Unit,
+    private val warn: (String) -> Unit = {},
+) {
+
+    /** 派发目标（`dispatcher.dispatch()`）；组合 dispose 后置空 = 只记账不派发。 */
+    var onBack: (() -> Unit)? = null
+
+    /**
+     * 栈深的**实时**读取器（`dispatcher.depth`）。
+     *
+     * 不能直接用 [sync] 记下来的 [desired]：帧决策要的是「层的 `onBack` 跑完之后」的深度，
+     * 而 [sync] 只在重组时被 `LaunchedEffect` 推进 —— 两者之间可能差一帧。
+     */
+    var depthNow: (() -> Int)? = null
+
+    /** 应用想要的深度（`dispatcher.depth` 的最新值，由 [sync] 推进）。 */
+    private var desired = 0
+
+    /** 历史位置对应的深度 = 当前位置条目的 `vade`（基座条目 0）。 */
+    private var historyDepth = 0
+
+    /** UI 主动关层发起、尚未落地的 `go(-k)` 期望落点；非空时不再动历史。 */
+    private var pendingClose: Int? = null
+
+    /** 看门狗的令牌：每发一次 go / 每落地一次自增，过期的回调直接丢。 */
+    private var watchdog = 0
+
+    /** 看门狗超时后的重发预算：每次 [sync] / 每次落地重置为 1 —— 重发只针对当前这次意图。 */
+    private var closeRetriesLeft = 1
+
+    /** popstate 已到、还没做帧决策的落点（`-1` = 两处 state 对不上，模型不可信）。只记不算。 */
+    private var pendingDispatch: Int? = null
+
+    /** 这一批 pop 之前我们记的历史深度（decide 的 `previous`）。 */
+    private var pendingPrevious = 0
+
+    /** 这一批 pop 里那次自发 go 的期望（decide 的 `expected`）。 */
+    private var pendingExpected: Int? = null
+
+    /** 帧决策只排一次：同一帧多次 popstate 合并成一次判定。 */
+    private var decisionScheduled = false
+
+    /** 这批后退是否已经派发过一次（首次派发不吃 decide，见 [decide] 的调用契约）。 */
+    private var dispatchedThisBack = false
+
+    /** 上一次后退还没被用户手势解除：这期间绝不 push（back-trap）。 */
+    private var afterBack = false
+
+    /** 历史 API 已因**真异常**判定不可用：永久降级，不再尝试。 */
+    private var unavailable = false
+
+    /** 同一条告警只喊一次，避免 popstate 每次都刷控制台。 */
+    private val warnedKeys = HashSet<String>()
+
+    /** 诊断：账目认为当前站在第几条（= 身后自有条目数）。 */
+    val currentDepth: Int get() = historyDepth
+
+    /** 诊断：在途 `go(-k)` 的期望落点（null = 没有回程在飞）。夹过 k 时它**不等于**目标深度。 */
+    val expectedLanding: Int? get() = pendingClose
+
+    /** 诊断：是否已因历史 API 真异常永久降级。 */
+    val isDegraded: Boolean get() = unavailable
+
+    /** 欠着的物理条目数：账目想要的深度比历史位置多出来的部分。 */
+    private val owedEntries: Int get() = (desired - historyDepth).coerceAtLeast(0)
+
+    /**
+     * 挂载时调一次：App 里 0 层（[desired] 的初值就是 0），先把刷新残留的条目退回去。
+     *
+     * 这里**不**再赋 `desired = 0`：本函数与 [sync] 的先后取决于两个副作用的排队顺序，
+     * 谁先谁后都不该把栈深重置掉。
+     */
+    fun start() {
+        discardStaleEntries()
+    }
+
+    /**
+     * 让「历史深度」追上「栈深」：多了就 `go(-k)` 收回（只投递一个 popstate，用
+     * [pendingClose] 认领），少了就一次压好差额的条目（每条带 `{vade: d}`）。
+     */
+    fun sync(depth: Int) {
+        if (unavailable) return
+        desired = depth
+        // 新的意图 = 新的重试预算（看门狗的重发只针对「这一次 sync」）。
+        closeRetriesLeft = 1
+        reconcile()
+    }
+
+    private fun reconcile() {
+        if (unavailable) return
+        // 在途的那次 go 落地后会重新收敛；这期间再发 go 会把位置算错。
+        if (pendingClose != null) return
+        // 帧决策没做完之前不动历史：那一刻才知道该不该补/该不该再派发。
+        if (pendingDispatch != null) return
+
+        when {
+            // 收条目永远安全（go 是「后退」，不踩 back-trap）：欠着补条目也照收。
+            desired < historyDepth -> closeTo(desired)
+            desired > historyDepth -> {
+                // 后退之后想变长：pushState 会被判成 back-trap，只记账，等手势。
+                if (afterBack) {
+                    holdAfterBack()
+                    return
+                }
+                pushUpTo(desired)
+            }
+        }
+    }
+
+    /**
+     * 一次压好差额的条目：`historyDepth+1 .. target`，每条带自己的 `{vade}`。
+     *
+     * **加长历史只有这一条路径**（不变式 1）：没有「抬当前条目」的写法，也就不可能造出
+     * 两条 vade 相同的条目。补条目（HOLD 之后的欠账）走的也是这里。
+     */
+    private fun pushUpTo(target: Int) {
+        while (historyDepth < target) {
+            val d = historyDepth + 1
+            if (!attempt("pushState($d)") { port.push(d) }) return
+            historyDepth = d
+        }
+    }
+
+    /**
+     * 关层收条目：`go(-k)`，k 按**身后条目数的下界**夹（[clampSteps]）。
+     *
+     * 夹过之后走不满 target 是正常的：期望落点记成「退 steps 条之后」的深度而不是 target，
+     * 否则 popstate 回来会被判成「踏空」→ RESYNC（评审 P2-5）。剩下那截由落地后的
+     * [reconcile] 接着收。
+     */
+    private fun closeTo(target: Int) {
+        val wanted = historyDepth - target
+        val steps = clampSteps(wanted, entriesBehind())
+        if (steps <= 0) {
+            // 一步也退不了：此时浏览器只会是「站在基座」（length = 1），按 0 记账，
+            // 不发一个注定落空的 go（它会白等一个看门狗周期）。
+            historyDepth = 0
+            warnOnce(
+                "close-no-entries",
+                "vade: 想收回 $wanted 条历史条目，但 history 里只有基座" +
+                    "—— 后退仍可关层，只是历史不再镜像",
+            )
+            return
+        }
+        if (!attempt("history.go(-$steps)") { port.goBack(steps) }) return
+        // 注意不预先改 historyDepth：真正的位置等 popstate 回来再对。
+        pendingClose = historyDepth - steps
+        armCloseWatchdog()
+    }
+
+    /**
+     * 身后到底有多少条历史条目 —— 取**下界**。
+     *
+     * 两个已知量都只是上界：账目说 [historyDepth] 条（自己的估计，可能偏大），
+     * 浏览器说最多 `length - 1` 条（`history.length` 还含前进条目与进入本页之前的条目，
+     * 它从来**不是**「身后条目数」，评审 P2-1）。取小的那个，宁可少退一次。
+     */
+    private fun entriesBehind(): Int = minOf(historyDepth, port.length - 1).coerceAtLeast(0)
+
+    /**
+     * popstate：**只记账**，不动栈、不派发。
+     *
+     * [eventVade] = 事件里那份 state（入口写的），[currentVade] = 此刻的 `history.state`
+     * （浏览器认的）。两份对不上说明模型不可信，[decide] 会判 RESYNC。
+     * 「两处都读不出」不算不可信：**基座条目本来就没有 state**，退到它上面自然是 -1，
+     * 判成不可信会让每次退到基座都被吞掉（浮层永远关不掉）。
+     */
+    fun onPopState(eventVade: Int, currentVade: Int) {
+        if (unavailable) return
+        val landed = when {
+            eventVade >= 0 && currentVade == eventVade -> eventVade
+            eventVade < 0 && currentVade < 0 -> 0
+            else -> -1
+        }
+
+        // previous / expected 必须在改写账目之前取：decide 要的是「这一跳之前」的我们。
+        val previous = historyDepth
+        val expected = pendingClose
+        pendingDispatch = landed
+        pendingPrevious = previous
+        pendingExpected = expected
+        pendingClose = null
+        watchdog++ // 在途看门狗作废：这次 go 有回音了
+        closeRetriesLeft = 1 // 位置真的动了：重发预算重新给
+        historyDepth = if (landed >= 0) landed else 0
+        dispatchedThisBack = false
+        scheduleDecision()
+    }
+
+    /** 合并同一帧的多次 popstate：只排一次帧回调。 */
+    private fun scheduleDecision() {
+        if (decisionScheduled) return
+        decisionScheduled = true
+        frames {
+            decisionScheduled = false
+            onDecisionFrame()
+        }
+    }
+
+    /**
+     * 帧决策：用**新的** `dispatcher.depth` 问 [decide]。
+     *
+     * 首次派发不问 decide（后退一定先给栈顶一次机会）；之后每一次复检都问 ——
+     * 栈还在往落点缩就再派发，一条没降就 [BackAction.HOLD] 停手并转入「禁止 push」。
+     */
+    private fun onDecisionFrame() {
+        val landed = pendingDispatch ?: return
+        val previous = pendingPrevious
+        val expected = pendingExpected
+        pendingDispatch = null
+        pendingExpected = null
+        if (unavailable) return
+
+        val now = liveDepth()
+
+        if (!dispatchedThisBack && landed >= 0 && expected == null && landed < previous) {
+            dispatchedThisBack = true
+            dispatchOnce(landed)
+            return
+        }
+
+        when (decide(previous, landed, expected, now)) {
+            BackAction.ADOPT, BackAction.IGNORE -> {
+                // 这一跳确实后退过（哪怕栈已经缩到位）：之后想变长就得等手势，
+                // 否则 pushState 会落进 back-trap 的窗口。
+                afterBack = landed >= 0 && landed < previous
+                reconcile()
+            }
+            BackAction.RESYNC -> {
+                // 模型不可信：按浏览器此刻说的对齐，再收敛。落点比原来浅就是发生过后退。
+                val actual = port.currentVade()
+                historyDepth = actual.coerceAtLeast(0)
+                afterBack = actual.coerceAtLeast(0) < previous
+                reconcile()
+            }
+            // landed < 0 已经在上面被 decide 判成 RESYNC，走不到这一支。
+            BackAction.HOLD -> holdAfterBack()
+            BackAction.DISPATCH -> {
+                dispatchedThisBack = true
+                dispatchOnce(landed)
+            }
+        }
+    }
+
+    /**
+     * 派发一次，并排下一帧复检。
+     *
+     * 基线取**派发前**的栈深：层的 `onBack` 是异步的（改 state → 重组 → 出栈），
+     * 派发后立刻读 `depth` 会读到旧值，那样「一条没降」和「还没跑完」就分不开了。
+     */
+    private fun dispatchOnce(landed: Int) {
+        val callback = onBack ?: return
+        val baseline = liveDepth()
+        callback()
+        pendingDispatch = landed
+        pendingPrevious = baseline
+        pendingExpected = null
+        scheduleDecision()
+    }
+
+    /**
+     * 后退已经发生、历史却不能加长（back-trap 窗口）：**只记账，不动历史**。
+     *
+     * 物理位置就停在浏览器说的那一条（[historyDepth] 已经等于 landed），欠多少条由
+     * [owedEntries] 现算 —— 之后再开一层，欠账跟着涨，不需要第二本账。补条目统一由
+     * [onUserGesture] → [pushUpTo] 走台阶，不存在「抬当前条目」那条会把 vade 记重的路。
+     */
+    private fun holdAfterBack() {
+        afterBack = true
+        warnOnce(
+            "hold-after-back",
+            "vade: 后退之后历史不再加长（back-trap）—— 按规则不 push，" +
+                "补条目推迟到下一次用户手势（欠 $owedEntries 条）",
+        )
+    }
+
+    /**
+     * 用户手势到达 = back-trap 窗口过去：把欠的物理条目按台阶（`historyDepth+1 .. desired`）
+     * 一次补齐，恢复正常镜像。
+     *
+     * 监听是常驻的、**行为**是一次性的：`afterBack` 归零后这里只剩 [reconcile]。
+     */
+    fun onUserGesture() {
+        if (unavailable) return
+        afterBack = false
+        reconcile()
+    }
+
+    /**
+     * 刷新后把「state 里写着、内存里却没有」的条目退回去。
+     *
+     * `pushState` 的 state 是浏览器持久化的，内存里的栈却随刷新清零：`history.state.vade = 3`
+     * 而 App 里 0 层 —— 用户按一次后退会被当成「关层」，白白吃掉一次（要按 3 次才真正
+     * 离开页面）。期望落点是基座，所以用 `pendingClose = 落点` 认领这次回程。
+     */
+    private fun discardStaleEntries() {
+        val stale = port.currentVade()
+        if (stale <= 0) {
+            historyDepth = 0
+            return
+        }
+        historyDepth = stale
+        val steps = clampSteps(stale, entriesBehind())
+        if (steps <= 0) {
+            // history 里没有更早的条目可退：按 0 起算，宁可少拦一层也不发无效 go。
+            historyDepth = 0
+            warnOnce(
+                "stale-no-entries",
+                "vade: 刷新残留的 vade=$stale 收不回去（history 只有基座）—— 按 0 层起算",
+            )
+            return
+        }
+        if (!attempt("history.go(-$steps)") { port.goBack(steps) }) {
+            // 真抛异常已经降级；把自己按 0 起算，好歹别让一次刷新把后退全吞掉。
+            historyDepth = 0
+            return
+        }
+        pendingClose = historyDepth - steps
+        armCloseWatchdog()
+    }
+
+    /**
+     * `go(-k)` 的看门狗：两帧之内没等到 popstate 就判定「这次 go 没有落地」。
+     *
+     * 见不变式 3 —— 超时**不是**降级信号，所以这里只清在途状态，处理在 [onCloseWatchdog]。
+     */
+    private fun armCloseWatchdog() {
+        val token = ++watchdog
+        frames { onCloseWatchdog(token) }
+    }
+
+    /**
+     * 看门狗超时（评审 P1-1）：`go` 没落地 ≠ 历史不可用。
+     *
+     * 旧实现在这里直接 `degrade()` —— 一次没落地的 go 就把整座桥永久关掉：之后开层不压
+     * 条目、关层不收条目，浏览器后退**静默**退回「离开整个应用」。但没落地的原因往往只是
+     * 这一次 go 越界 / 被嵌入策略吞掉 / 页面正在卸载，历史本身仍然好好地在。
+     *
+     * 现在：清 [pendingClose]（否则 [reconcile] 永久短路）→ 按 `history.state.vade` 重建
+     * 账目（浏览器此刻站在哪条就记哪条）→ 用剩余预算**重发一次** go。第二次还不落地就
+     * 停在「历史不再收缩、但后退照旧派发」的诚实状态，等下一次 [sync] 重新给预算。
+     */
+    private fun onCloseWatchdog(token: Int) {
+        if (token != watchdog) return // 期间落地了 / 又发了新的 go
+        if (pendingClose == null) return
+        pendingClose = null
+        // 重建账目：go 没落地 = 位置没动，按浏览器此刻说的那条重记（基座读不出 state 按 0）。
+        historyDepth = port.currentVade().coerceAtLeast(0)
+        if (closeRetriesLeft > 0) {
+            closeRetriesLeft--
+            warnOnce(
+                "go-not-landed",
+                "vade: history.go 没有落地 —— 按当前位置（vade=$historyDepth）重建账目后重发一次",
+            )
+            reconcile()
+            return
+        }
+        warnOnce(
+            "go-stuck",
+            "vade: history.go 连续两次没有落地 —— 停止收缩历史；后退仍由栈处理，Esc 照旧",
+        )
+    }
+
+    /** 实时栈深：读不到就退回上次 sync 的值（孤立子树 / 已 dispose）。 */
+    private fun liveDepth(): Int = runCatching { depthNow?.invoke() ?: desired }.getOrDefault(desired)
+
+    /** 执行一次历史副作用；**真抛异常**才降级（静默无效走看门狗）。 */
+    private fun attempt(what: String, block: () -> Unit): Boolean {
+        val failure = runCatching(block).exceptionOrNull() ?: return true
+        degrade(what, failure)
+        return false
+    }
+
+    private fun warnOnce(key: String, message: String) {
+        if (!warnedKeys.add(key)) return
+        runCatching { warn(message) }
+    }
+
+    private fun degrade(reason: String, cause: Throwable? = null) {
+        if (unavailable) return
+        unavailable = true
+        pendingClose = null
+        pendingDispatch = null
+        afterBack = false
+        val detail = cause?.message?.takeIf { it.isNotBlank() }?.let { "：$it" } ?: ""
+        warnOnce(
+            "history-degraded",
+            "vade: 浏览器历史账目不可信（$reason$detail）" +
+                "—— 后退不再被浮层拦截，Esc 仍可关层",
+        )
+    }
 }
