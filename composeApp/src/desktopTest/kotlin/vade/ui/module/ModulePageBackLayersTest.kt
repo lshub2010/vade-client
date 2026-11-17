@@ -5,7 +5,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.onNode
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import kotlinx.serialization.json.JsonObject
@@ -119,7 +122,8 @@ class ModulePageBackLayersTest {
         onNodeWithText(P1_BODY).assertExists()
 
         // 页内 navigate：深度 2 ⇒ 两层（旧实现这里仍只有一层 —— 本用例的靶子）。
-        onNodeWithText(NAV_LABEL).performClick()
+        // 按钮的文本子节点可能不合并点击语义：按「文本 + 可点击」取真正带 click 的节点。
+        onNode(hasText(NAV_LABEL) and hasClickAction()).performClick()
         waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 2 }
         onNodeWithText(P2_BODY).assertExists()
 
