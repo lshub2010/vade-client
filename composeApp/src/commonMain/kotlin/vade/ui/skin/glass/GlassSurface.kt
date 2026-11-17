@@ -1,13 +1,19 @@
 package vade.ui.skin.glass
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
@@ -15,6 +21,7 @@ import dev.chrisbanes.haze.rememberHazeState
 import dev.chrisbanes.haze.blur.HazeBlurStyle
 import dev.chrisbanes.haze.blur.HazeColorEffect
 import dev.chrisbanes.haze.blur.hazeBlur
+import vade.ui.component.liquid.LayeredShadow
 import vade.ui.component.liquid.VadeShadows
 import vade.ui.component.liquid.downwardShelf
 import vade.ui.skin.Skin
@@ -30,8 +37,8 @@ import vade.ui.skin.Skin
  * call site threading a parameter through the whole tree.
  *
  * A screen that never provides this local (tests, isolated previews) still gets a
- * correct — if blur-less — surface: [GlassSurface] then creates a private empty state,
- * and the layer degrades to tint + hairline + shadow (the §5 Android ≤30 scrim shape).
+ * correct — if blur-less — surface: [GlassSurface] then skips the haze node entirely and
+ * degrades to tint + hairline + shadow (the §5 Android ≤30 scrim shape).
  */
 val LocalGlassHazeState = staticCompositionLocalOf<HazeState?> { null }
 
@@ -68,60 +75,119 @@ val LocalGlassHazeState = staticCompositionLocalOf<HazeState?> { null }
  * (§5: deepen it one step on busy backdrops); setting it to `colors.hairline` falls back
  * to the plain token.
  *
+ * ### What the `glass` skin added (52-U3 §T1) — all of it opt-in
+ *
+ * The parameters below default to **today's behaviour exactly**, so every shipped
+ * call site (material's `FloatingBlur` bar, `TopBar`, `GlassNavBar`, `SearchOverlay`,
+ * `ChatThread`, the model picker) keeps its pixels. The glass skin turns them on; nobody
+ * else has to.
+ *
+ *  - [tintOverride] — a per-call tint. Used by the glass `Button`: 危险操作用红主导的
+ *    tint，`SkinGlass.tintLight`（白 42%）会把 `colors.error` 冲成粉色。名字里带
+ *    `Override` 是因为局部变量 `tint` 已被 hover/haze 的取色占用，而
+ *    `HazeColorEffect.tint(tint)` 这一行被 `ComposerShadowShapeTest` 的源码守卫钉着。
+ *  - [stroke] / [strokeWidth] — 描边色与宽度。输入框聚焦时描边加亮（2dp accent）；
+ *    默认仍是**内侧 1dp**、`SkinGlass.hairlineOnGlass`。
+ *  - [highlight] — 顶部高光（[GlassTokens.highlight]）。画在染色之上、内容之下：它只
+ *    抬边缘的亮度，正文照样压在最上层（对比度算法见 `GlassTokens`）。
+ *  - [contentAlignment] — 玻璃容器是个 `Box`，但按钮这类内容必须在玻璃里居中；默认
+ *    `TopStart` 保持既有调用的布局不变。
+ *  - [shadow] — 浮层阴影的档位。默认 §8.2 `shadow2`（浮层）；静态卡（玻璃 `Card`）传
+ *    `VadeShadows.card`，因为 §8 的静态卡是 hairline-first、阴影只允许极浅。
+ *
+ * ### Degradation (D22 / FR-8.23) — 不崩、不白屏
+ *
+ * [glassCapability] 决定这条链上到底画什么：
+ *
+ *  - `Blur`（Android / Desktop / Wasm，且页面接了 `GlassScope`）：今天这条 haze 链；
+ *  - `TintStroke`（没接背景 / 探测失败）：**根本不建 haze 节点**，直接
+ *    `background(tint, shape)` + 描边 + 高光。旧实现会拿一个空的 `HazeState` 硬跑
+ *    `hazeBlur`，采不到背景时整层什么都不画 —— 一个"看不见的玻璃"比没有玻璃更糟，
+ *    而且与本文档写的"degrade to tint + hairline + shadow"不符。
+ *
+ * 折射（Android 13+ AGSL）**不在本文件**：它要求背景单独成层，属任务书 §五 T3，且本批
+ * 无法上机验证。阶梯已经能表达 `Refraction`（见 [GlassCapability]），但没有平台返回它，
+ * 所以这里没有第二条绘制路径可以漂移。
+ *
  * @param shape clipping shape for the blur edges, the border and the shadow.
  * @param skin the active skin — supplies [Skin.glass] radii/tints and the colours.
- * @param content drawn unfiltered on top of the glass.
+ * @param content drawn unfiltered on top of the glass. It runs in the glass `Box`'s scope,
+ *   so `Modifier.matchParentSize()` is available — the glass `Card` uses it for its
+ *   near-opaque content base (a panel that must cover the whole card, not just the text).
  */
 @Composable
 fun GlassSurface(
     modifier: Modifier = Modifier,
     shape: Shape,
     skin: Skin,
-    content: @Composable () -> Unit,
+    tintOverride: Color? = null,
+    stroke: Color? = null,
+    strokeWidth: Dp = 1.dp,
+    highlight: Brush? = null,
+    contentAlignment: Alignment = Alignment.TopStart,
+    shadow: LayeredShadow = VadeShadows.float,
+    content: @Composable BoxScope.() -> Unit,
 ) {
-    val state = LocalGlassHazeState.current ?: rememberHazeState()
-    val tint = if (skin.colors.isDark) skin.glass.tintDark else skin.glass.tintLight
+    val ambient = LocalGlassHazeState.current
+    val state = ambient ?: rememberHazeState()
+    val capability = glassCapability(hasBackdrop = ambient != null)
+    val tint = tintOverride ?: if (skin.colors.isDark) skin.glass.tintDark else skin.glass.tintLight
+    val strokeColor = stroke ?: skin.glass.hairlineOnGlass
+
+    // §8: a float layer is defined by having a shadow — draw it first so it casts from the
+    // surface bounds and is not clipped by the blur layer.
+    //
+    // g-shadow-android: this used to be `Modifier.shadow(elevation = 16.dp, …)`, Material's
+    // *symmetric tessellated* silhouette. On emulator-5554 it painted a 10.7/255 grey band
+    // ABOVE the bar (D10) and stepped 237→249 in one pixel just outside its rounded corners
+    // (D6's 「第二道轮廓」). The shared [downwardShelf] draws the §8.2 float layers as a
+    // downward-only gradient shelf: nothing above the element (0/255 measured), no corner
+    // silhouette, quantised peak pinned inside the ≤3% budget, and it lands pixels on
+    // Android's hardware canvas — where every clip/blur/mask route measured 0
+    // (shots/g-shadow-real/RESULT.md). The ink stays [SkinColors.shadowFloat] so each skin
+    // keeps its neutral shadow colour; the *geometry* comes from the shared primitive, so
+    // this surface can never drift from the composer.
+    val floatShell = modifier.downwardShelf(
+        shadow = shadow,
+        shape = shape,
+        color = skin.colors.shadowFloat,
+        dark = skin.colors.isDark,
+    )
+
+    val backdrop = if (capability.blurs) {
+        Modifier.hazeBlur(
+            input = HazeInput.Sources(state = state),
+            style = HazeBlurStyle {
+                blurEnabled(true)
+                blurRadius(skin.glass.blurRadiusDp.dp)
+                // 染色只能走 colorEffects —— backgroundColor 画在不透明模糊层之后，
+                // 完全无效（haze 探针 RESULT.md §坑1）。
+                colorEffects(listOf(HazeColorEffect.tint(tint)))
+                noiseFactor(0f)
+                blurredEdgeTreatment(BlurredEdgeTreatment(shape))
+            },
+        )
+    } else {
+        // 降级档（没有背景可采）：不建 haze 节点，直接染色。整层仍然是一个完整的、
+        // 有描边和高光的层 —— 这就是"不白屏"那条要求的落地方式。
+        Modifier.background(tint, shape)
+    }
+
     Box(
-        modifier
-            // §8: a float layer is defined by having a shadow — draw it first so it
-            // casts from the surface bounds and is not clipped by the blur layer.
-            //
-            // g-shadow-android: this used to be `Modifier.shadow(elevation = 16.dp, …)`,
-            // Material's *symmetric tessellated* silhouette. On emulator-5554 it painted
-            // a 10.7/255 grey band ABOVE the bar (D10) and stepped 237→249 in one pixel
-            // just outside its rounded corners (D6's 「第二道轮廓」). The shared
-            // [downwardShelf] draws the §8.2 float layers as a downward-only gradient
-            // shelf: nothing above the element (0/255 measured), no corner silhouette,
-            // quantised peak pinned inside the ≤3% budget, and it lands pixels on
-            // Android's hardware canvas — where every clip/blur/mask route measured 0
-            // (shots/g-shadow-real/RESULT.md). The ink stays
-            // [SkinColors.shadowFloat] so each skin keeps its neutral shadow colour; the
-            // *geometry* comes from the shared primitive, so this surface can never drift
-            // from the composer.
-            .downwardShelf(
-                shadow = VadeShadows.float,
-                shape = shape,
-                color = skin.colors.shadowFloat,
-                dark = skin.colors.isDark,
-            )
-            .hazeBlur(
-                input = HazeInput.Sources(state = state),
-                style = HazeBlurStyle {
-                    blurEnabled(true)
-                    blurRadius(skin.glass.blurRadiusDp.dp)
-                    // 染色只能走 colorEffects —— backgroundColor 画在不透明模糊层之后，
-                    // 完全无效（haze 探针 RESULT.md §坑1）。
-                    colorEffects(listOf(HazeColorEffect.tint(tint)))
-                    noiseFactor(0f)
-                    blurredEdgeTreatment(BlurredEdgeTreatment(shape))
-                },
-            )
-            .border(1.dp, skin.glass.hairlineOnGlass, shape)
+        modifier = floatShell
+            .then(backdrop)
+            .border(strokeWidth, strokeColor, shape)
             // Explicit clip (g-input-shadow): "content never leaves the shape" used to be a
             // side effect of the haze layer clipping its own draw. Make it a contract — a
             // translucent child (the blur-less `glassFallback`) must not paint square corners.
             .clip(shape),
+        contentAlignment = contentAlignment,
     ) {
+        // 顶部高光：染色之上、内容之下。`matchParentSize` 让它跟着玻璃的最终尺寸走，
+        // 不需要每个组件各算一遍宽高。
+        if (highlight != null) {
+            Box(Modifier.matchParentSize().background(highlight, shape))
+        }
         content()
     }
 }
