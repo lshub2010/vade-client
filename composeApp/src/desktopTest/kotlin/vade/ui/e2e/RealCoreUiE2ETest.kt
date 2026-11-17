@@ -249,7 +249,7 @@ class RealCoreUiE2ETest {
             initialBar = vade.ui.skin.BottomBarStyle.Fixed,
             initialSkinId = "material",
             initialDest = vade.ui.destinations.Destination.Sessions,
-            source = source,
+            source = BorrowedSource(source),
             loaderScope = kotlinx.coroutines.CoroutineScope(
                 kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default,
             ),
