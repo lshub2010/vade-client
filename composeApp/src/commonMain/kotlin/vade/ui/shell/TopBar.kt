@@ -36,7 +36,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import vade.ui.UiText
 import vade.ui.component.liquid.GlassBand
+import vade.ui.skin.LocalReduceMotion
 import vade.ui.skin.LocalSkin
+import vade.ui.skin.ReduceMotion
 import vade.ui.skin.glass.GlassSurface
 import vade.ui.skin.glass.LocalGlassHazeState
 
@@ -62,6 +64,15 @@ internal const val TopBarBandTintScale = 0.6f
 internal val TopBarHeight = 56.dp
 
 /**
+ * g-topbar-usage · 标题对淡换的两个时长（口径：进场 200ms / 离场 160ms）。
+ *
+ * 提成常量是为了让 reduced-motion 只有一个接线点：两处 `tween(...)` 都经
+ * `skin.motion.durationMs(...)` 取**实际**时长（K1 封顶 100ms），这里只留「想要多久」。
+ */
+internal const val TopBarTitleFadeInMs = 200
+internal const val TopBarTitleFadeOutMs = 160
+
+/**
  * Shell top bar — v2 form (docs/visual-language.md §5, §12「导航/底栏」row):
  * a **glass capsule**. The bar is a real Gaussian blur layer ([GlassSurface], haze 2.1.0)
  * with the §5 tint (26%/34%), a 1px hairline edge and the §8 float-layer shadow; text on
@@ -83,6 +94,10 @@ internal val TopBarHeight = 56.dp
  * 过渡 —— 前提是 `AppShell` 只保留**一个** TopBar 调用点（if/else 两个分支是两个组合
  * 组，分支翻转会销毁 TopBar 内部的过渡状态，淡换就死在了切换的边界上）。
  *
+ * K1 · reduced-motion：两个时长都经 `skin.motion.durationMs(...)` 取实际值（封顶
+ * [vade.ui.skin.REDUCE_MOTION_MAX_MS] = 100ms）。这一段本来就是纯淡入、零位移，所以
+ * 降级只压缩时长、**不** snap —— 淡入保留「发生了替换」的因果感。
+ *
  * @param animate `false` = 瞬时替换（无中间态）—— 供测试与无动画场景；
  *   `true`（默认）= 淡入淡出。
  * @param onSubtitleClick 副标题可点（g-topbar-usage 失败态的重试入口）；`null` = 不可点。
@@ -97,6 +112,11 @@ fun TopBar(
     onSubtitleClick: (() -> Unit)? = null,
 ) {
     val skin = LocalSkin.current
+    // K1 · 动画门（Skin.kt 的既定读法：CompositionLocal OR 宿主级安装值）。
+    val reduceMotion = LocalReduceMotion.current || ReduceMotion.enabled
+    // 纯淡入 = 位移为零，所以只封顶时长（100ms），不需要走 travelPx 的归零分支。
+    val titleFadeInMs = skin.motion.durationMs(TopBarTitleFadeInMs, reduceMotion)
+    val titleFadeOutMs = skin.motion.durationMs(TopBarTitleFadeOutMs, reduceMotion)
     GlassSurface(
         modifier = Modifier
             .fillMaxWidth()
@@ -118,8 +138,8 @@ fun TopBar(
                     AnimatedContent(
                         targetState = title to subtitle,
                         transitionSpec = {
-                            fadeIn(tween(durationMillis = 200)) togetherWith
-                                fadeOut(tween(durationMillis = 160)) using
+                            fadeIn(tween(durationMillis = titleFadeInMs)) togetherWith
+                                fadeOut(tween(durationMillis = titleFadeOutMs)) using
                                 SizeTransform(clip = false) { _, _ -> snap() }
                         },
                         contentAlignment = Alignment.TopStart,
