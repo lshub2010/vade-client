@@ -150,6 +150,18 @@ class AppShellSessionDetailBarTest {
         phoneShell(ui)
         waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithContentDescription("返回")) }
 
+        // DIAG（临时）：点之前把「会话」节点的语义打印出来，定位点到的是不是底栏项。
+        run {
+            val nodes = onAllNodesWithContentDescription("会话").fetchSemanticsNodes()
+            val dump = nodes.joinToString(" | ") { n ->
+                val cfg = n.config
+                "role=" + cfg.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Role) +
+                    " selected=" + cfg.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Selected) +
+                    " onClick=" + (cfg.getOrNull(androidx.compose.ui.semantics.SemanticsActions.OnClick) != null) +
+                    " bounds=" + n.boundsInRoot
+            }
+            assertTrue(false, "DIAG nodes=${nodes.size}: $dump")
+        }
         onNodeWithContentDescription("会话").performClick()
         waitForIdle()
 
