@@ -5,7 +5,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNode
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -60,7 +63,7 @@ class EmptyDetailAndTabRetapTest {
         assertNull(ui.selectedSession, "现场前提：选中 id 已不在列表里（否则这条路不是空态）")
         assertTrue(!ui.sessionsDrawerOpen, "现场前提：深链直进详情 ⇒ 抽屉初始收起，空态露在外面")
 
-        onNodeWithText("打开会话列表").performClick()
+        onNode(hasText("打开会话列表") and hasClickAction()).performClick()
 
         runOnIdle { assertTrue(ui.sessionsDrawerOpen, "点按钮 ⇒ 抽屉必须滑出（P1-11 的闭路）") }
         // 几何判据：抽屉层从屏外回到屏内（收起时它只是被平移到左边，语义树里一直在）。
