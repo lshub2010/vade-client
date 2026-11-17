@@ -81,6 +81,40 @@ class SessionsDrawerTest {
         assertEquals(0, sessionsDrawerSpec(animate = false).durationMillis)
     }
 
+    /**
+     * K1 · reduced-motion：抽屉是一段**纯位移**转场（整层横移 80% 屏宽），位移归零就等于
+     * 「这次转场没有位移」，再留 260ms 的滑行反而是前庭敏感读者唯一会看到的东西 ——
+     * 所以 reduced 直接走 0ms 分支（与 `animate = false` 同一条，状态机与组合结构不变）。
+     *
+     * 反向钉子同样重要：reduced 关掉时必须仍是口径的 260ms，别为了 reduced 把常规时长一起压短
+     * （那会让所有普通用户都失去转场）。
+     */
+    @Test
+    fun reducedMotionSnapsTheDrawerWhileTheNormalSpecKeepsItsTiming() {
+        assertEquals(260, DRAWER_SLIDE_MS, "口径时长常量本身 = 260ms")
+        assertEquals(
+            0,
+            sessionsDrawerSpec(animate = true, reduceMotion = true).durationMillis,
+            "reduceMotion = true ⇒ 抽屉立即到位（0ms），不许留半段滑行",
+        )
+        assertEquals(
+            DRAWER_SLIDE_MS,
+            sessionsDrawerSpec(animate = true, reduceMotion = false).durationMillis,
+            "reduceMotion = false ⇒ 仍是 260ms（reduced 不许把常规时长一起改小）",
+        )
+        assertEquals(
+            260,
+            sessionsDrawerSpec(animate = true).durationMillis,
+            "不传 reduceMotion 的默认值 = 常规 260ms",
+        )
+        // 0ms 的分支里缓动退化成线性：没有时长就没有缓动曲线可谈，免得读出一个假的「缓动」。
+        assertTrue(
+            sessionsDrawerSpec(animate = true, reduceMotion = true).easing ===
+                androidx.compose.animation.core.LinearEasing,
+            "0ms 时缓动必须是线性（与 animate = false 同一分支）",
+        )
+    }
+
     @Test
     fun theDrawerGeometryIsTheContractedOne() {
         assertEquals(0.8f, DRAWER_WIDTH_FRACTION, "抽屉宽 = 80% 屏宽（口径）")
