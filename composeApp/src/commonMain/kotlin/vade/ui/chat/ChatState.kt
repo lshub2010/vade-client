@@ -51,7 +51,10 @@ import kotlin.time.TimeSource
  *  - [ChatTurnGateway] — `message/edit_resubmit` + `turn/regenerate` ([confirmEdit] /
  *    [regenerate]); same deal, [InMemoryTurnGateway] stands in this round.
  *
- * Nothing here is persisted, so dropping the object costs nothing that matters.
+ * Nothing else here is persisted, so dropping the object costs nothing that matters. The one
+ * exception is the composer's [draft]: it is handed to [DraftStore] on every edit (see
+ * [updateDraft]) so that leaving the page — a bottom-tab switch, a rebuilt screen — does not
+ * eat the half-written message.
  */
 class ChatState(
     val sessionId: String,
@@ -67,6 +70,14 @@ class ChatState(
      * 测试可直接注入一个假的读通道来驱动三态。
      */
     private val transcript: ChatTranscriptSource? = turns.transcript(),
+    /**
+     * 草稿的存放处（默认进程内单例 [DraftStore.shared]）。会话页离开时 [ChatState] 被销毁，
+     * 草稿靠它按 [sessionId] 留住：页面重建 → 构造时 [DraftStore.load]，每次编辑
+     * [DraftStore.save]，发送成功/清空输入框 [DraftStore.clear]。
+     *
+     * 放在参数表末尾且带默认值：已有调用点一行都不用改，测试可注入一份隔离的表。
+     */
+    private val drafts: DraftStore = DraftStore.shared,
 ) {
     /**
      * B2 · 真源模式：拿到真通道（[ChatTurnGateway.synthetic] == false）或显式给了读通道。
@@ -97,9 +108,23 @@ class ChatState(
 
     val items = mutableStateListOf<ChatItem>().apply { addAll(seed) }
 
-    /** The composer's text. Drafts are the textbook example of throwaway state (D98). */
-    var draft by mutableStateOf("")
-        private set
+    /**
+     * The composer's text.
+     *
+     * 唯一的写入口就是这个 setter，它做两件事：更新 [draftText]（Compose 观察它），并把新值
+     * 写回 [drafts]。所以「每次编辑保存」「发送成功清除」「用户清空输入框清除」都是同一条
+     * 通路，不会漏掉某个 `draft = …`。构造时先 [DraftStore.load]：离开会话页再回来，半句话还在。
+     *
+     * 空白草稿按清除处理 —— 切回来看到一串只有空格/换行的输入没有意义。
+     */
+    private var draftText by mutableStateOf(drafts.load(sessionId))
+
+    var draft: String
+        get() = draftText
+        private set(value) {
+            draftText = value
+            if (value.isBlank()) drafts.clear(sessionId) else drafts.save(sessionId, value)
+        }
 
     /** Attachments staged in the composer but not yet "sent". Fake bytes; never read. */
     val staged = mutableStateListOf<StagedAttachment>()
