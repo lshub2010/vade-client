@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -13,15 +14,18 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import vade.ui.data.FakeSessionSource
 import vade.ui.destinations.Destination
+import vade.ui.destinations.DetailContentInsetTag
 import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.material.MaterialSkin
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -30,16 +34,19 @@ import kotlin.test.assertTrue
  *
  * 口径（用户原话）：会话页底栏**常驻**；点其他 tab **直接离开会话**（不弹确认）。
  *
- * 本文件钉住四件事，全部在真实的 `AppShell` 组合里量，不测助手函数：
+ * 本文件钉住这些事，全部在真实的 `AppShell` 组合里量，不测助手函数：
  *
  *  1. **详情页上底栏还在** —— 旧 D88 说手机单栏 push 详情时整条栏不组合，所以只需要
  *     断言「四个 tab 的语义节点都在」就能把回归钉死（改回去就少四个节点）；
  *  2. **点别的 tab 直接离开会话** —— `dest` 切过去、`selectedSessionId` 变 null、详情
  *     chrome（「返回」）消失、目标页自己的内容出现；全程没有任何确认框节点；
- *  3. **内容不被底栏遮住** —— 用 `PhoneContentStageTag` 那一层的渲染几何对齐
- *     [barZoneFor]（同一个常量、同一个 inset），并断言四个 tab 全都在它下面；列表根
- *     （没有详情）时这一层**不**多留（留白只在详情态存在）；
- *  4. **「主页」按钮** 回到会话列表（手机 = 抽屉滑出）。
+ *  3. **留白只加在内容链上** —— 容器（[PhoneContentStageTag]）满高；「消息列表 + composer」
+ *     那一层（[DetailContentInsetTag]）底边 = 窗口底 − 栏区（桌面 nav = 0）。**抽屉与遮罩
+ *     不受影响**：拉开抽屉后它们仍然贴屏底（审查 P1-2/P1-3 的回归探针）；
+ *  4. **模态浮层盖住底栏** —— 模型面板的遮罩铺到窗口底，四个 tab 的矩形都落在遮罩里
+ *     （旧实现：容器垫 104 dp ⇒ 遮罩停在屏底上方、胶囊漂在遮罩外面还能点）；
+ *  5. **「主页」按钮** 回到会话列表（手机 = 抽屉滑出）；抽屉展开时它**不出现**（P2-2）；
+ *  6. **拖动胶囊又落回原位不是点击** —— 不许把会话退掉（P2-4）。
  *
  * ## 为什么用 `0.dp` 的 inset
  *
@@ -50,7 +57,7 @@ import kotlin.test.assertTrue
  * ## 没验证到的（诚实边界）
  *
  * 桌面测试无法跑 Gradle（本机禁用），Android 真机上的 `24/48 dp` inset 那两档只由
- * `AppShellBottomZoneTest` 的纯算术覆盖；底栏玻璃的模糊观感也只能上机看。
+ * `DetailBarInsetTest` 的纯算术覆盖；底栏玻璃的模糊观感也只能上机看。
  */
 @OptIn(ExperimentalTestApi::class)
 class AppShellSessionDetailBarTest {
@@ -158,39 +165,64 @@ class AppShellSessionDetailBarTest {
         assertEquals(Destination.Sessions, ui.dest)
     }
 
-    // ------------------------------------------------------------ 3 · 内容不被底栏遮住
+    // ------------------------------------------------------------ 3 · 留白只加在内容链上
 
+    /**
+     * 容器满高、内容链让栏（审查 P1-1/P1-2 的几何钉子）。
+     *
+     * 旧用例量的是**容器**（`PhoneContentStageTag`）底边 == 窗口底 − 栏区 —— 它只能证明
+     * 「我加的那条 padding 等于我自己算的常量」，碰不到 composer 一根手指，也看不见抽屉 /
+     * 浮层被一起抬离屏底。现在分两条量：
+     *  - 容器满高（底边 == 窗口底）⇒ 抽屉 / 遮罩 / 浮层不可能被容器裁；
+     *  - 内容链（[DetailContentInsetTag]）底边 == 窗口底 − 栏区（桌面 nav = 0，与 composer
+     *    自带的 16 dp + 0 一起，胶囊底边落在栏区上沿之上 16 dp）。
+     */
     @Test
-    fun theDetailStageStopsExactlyAtTheBarZone() = runComposeUiTest {
+    fun theContainerIsFullBleedAndOnlyTheContentChainReservesTheBarZone() = runComposeUiTest {
         val ui = detailState()
         phoneShell(ui)
         waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithTag(PhoneContentStageTag)) }
         waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithContentDescription("返回")) }
+        waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithTag(DetailContentInsetTag)) }
 
         val stage = onNodeWithTag(PhoneContentStageTag).fetchSemanticsNode().boundsInRoot
+        val chain = onNodeWithTag(DetailContentInsetTag).fetchSemanticsNode().boundsInRoot
         val window = onNodeWithTag(PHONE_ROOT_TAG).fetchSemanticsNode().boundsInRoot
 
         with(density) {
             // 同一个常量、同一个 inset：期望值就是被测代码用的 barZoneFor（不在测试里写 104）。
             val zone = barZoneFor(BottomBarStyle.Floating, 0.dp).toPx()
             assertNear(
-                expected = window.bottom - zone,
+                expected = window.bottom,
                 actual = stage.bottom,
                 tolerance = 1f,
-                message = "详情层（消息列表 + composer）底边必须正好停在底栏区上沿：多留 = 白边，少留 = 被玻璃压住",
+                message = "手机单栏的内容容器必须铺到窗口底 —— 它一垫，抽屉 / 遮罩 / 模型面板 / " +
+                    "图片预览就跟着被抬离屏底（P1-2 的根因）",
+            )
+            assertNear(
+                expected = window.bottom - zone,
+                actual = chain.bottom,
+                tolerance = 1f,
+                message = "「消息列表 + composer」那条内容链的底边必须正好停在底栏区上沿：多留 = 白边，" +
+                    "少留 = 输入框被玻璃压住",
+            )
+            assertTrue(
+                chain.top >= stage.top - 0.5f,
+                "内容链必须仍在容器内（否则量到的不是详情那一层）",
             )
             Destination.entries.forEach { destination ->
                 val tab = onNodeWithContentDescription(destination.label)
                     .fetchSemanticsNode().boundsInRoot
                 assertTrue(
-                    tab.top >= stage.bottom - 0.5f,
-                    "「${destination.label}」tab 顶边 ${tab.top} 压在内容底边 ${stage.bottom} 之上 —— 底栏遮住了会话内容",
+                    tab.top >= chain.bottom - 0.5f,
+                    "「${destination.label}」tab 顶边 ${tab.top} 压在内容链底边 ${chain.bottom} 之上 —— " +
+                        "底栏遮住了会话内容",
                 )
             }
         }
     }
 
-    /** 列表根（没有详情）时不许跟着多留一条：留白只服务「详情贴屏底的 composer」。 */
+    /** 列表根（没有详情）时内容链也不许跟着多留一条：留白只服务「详情贴屏底的 composer」。 */
     @Test
     fun theListRootReservesNoExtraBottomSpace() = runComposeUiTest {
         val ui = fixtureState()
@@ -209,6 +241,95 @@ class AppShellSessionDetailBarTest {
         }
     }
 
+    /**
+     * 抽屉展开态（审查 P1-2/P1-3）：抽屉与遮罩**贴屏底**，详情内容链**不垫**（满高），
+     * 底栏的每个 tab 都落在遮罩的矩形里。
+     *
+     * 旧实现里容器垫了 108 dp ⇒ 抽屉与遮罩底边停在屏底上方 108 dp，抽屉右下 28 dp 圆角悬在
+     * 半空、遮罩下面露出一条裸画布 + 胶囊。「拉开抽屉看一眼列表」是手机切会话的主路径，
+     * 这条几乎人人可见。
+     */
+    @Test
+    fun theOpenDrawerAndItsScrimCoverTheWholeWindow() = runComposeUiTest {
+        val ui = detailState()
+        phoneShell(ui)
+        waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithContentDescription("返回")) }
+
+        ui.openSessionsDrawer()
+        waitForIdle()
+        waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithTag(DRAWER_SCRIM_TAG)) }
+
+        val drawer = onNodeWithTag(DRAWER_TAG).fetchSemanticsNode().boundsInRoot
+        val scrim = onNodeWithTag(DRAWER_SCRIM_TAG).fetchSemanticsNode().boundsInRoot
+        val chain = onNodeWithTag(DetailContentInsetTag).fetchSemanticsNode().boundsInRoot
+        val window = onNodeWithTag(PHONE_ROOT_TAG).fetchSemanticsNode().boundsInRoot
+
+        assertNear(window.bottom, drawer.bottom, 1f, "抽屉必须贴屏底（右下 28 dp 圆角不许悬在半空）")
+        assertNear(window.top, drawer.top, 1f, "抽屉必须从窗口顶开始（满高）")
+        assertNear(window.bottom, scrim.bottom, 1f, "遮罩必须铺到窗口底 —— 否则屏底露一条裸画布")
+        assertNear(window.left, scrim.left, 0.5f, "遮罩必须满宽（左）")
+        assertNear(window.right, scrim.right, 0.5f, "遮罩必须满宽（右）")
+        assertNear(
+            window.bottom,
+            chain.bottom,
+            1f,
+            "抽屉展开时屏上是列表：详情内容链**不垫**（满高），别在遮罩底下再让出一条",
+        )
+        Destination.entries.forEach { destination ->
+            val tab = onNodeWithContentDescription(destination.label).fetchSemanticsNode().boundsInRoot
+            assertTrue(
+                tab.top >= scrim.top - 0.5f && tab.bottom <= scrim.bottom + 0.5f &&
+                    tab.left >= scrim.left - 0.5f && tab.right <= scrim.right + 0.5f,
+                "「${destination.label}」tab 不在遮罩矩形里（tab=${tab.left},${tab.top}→${tab.right},${tab.bottom}；" +
+                    "遮罩=${scrim.left},${scrim.top}→${scrim.right},${scrim.bottom}）—— 底栏没有被遮罩盖住",
+            )
+        }
+    }
+
+    /**
+     * 模型面板（审查 P1-2 的「模态泄漏」那一半）：遮罩铺满窗口（含底栏区），并且**真的**
+     * 压住底栏 —— 在胶囊的位置注入一次真触摸不会切页（面板照样开着 / 遮罩吃掉点按）。
+     *
+     * 旧实现两处都错：容器垫 104–132 dp 让遮罩停在屏底上方（硬边 + 卡片浮在半空），而且
+     * 底栏画在整条内容链之上 ⇒ 面板开着还能点 tab 切页，把面板连人一起端掉。
+     */
+    @Test
+    fun theModelSheetScrimCoversTheBottomBar() = runComposeUiTest {
+        val ui = detailState()
+        phoneShell(ui)
+        waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithContentDescription("更改会话模型")) }
+
+        onNodeWithContentDescription("更改会话模型").performClick()
+        waitForIdle()
+        waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithContentDescription("模型选择遮罩")) }
+
+        val scrim = onNodeWithContentDescription("模型选择遮罩").fetchSemanticsNode().boundsInRoot
+        val window = onNodeWithTag(PHONE_ROOT_TAG).fetchSemanticsNode().boundsInRoot
+        assertNear(window.bottom, scrim.bottom, 1f, "模型面板的遮罩必须铺到窗口底（贴屏底，不是停在栏区上沿）")
+        assertNear(window.top, scrim.top, 1f, "遮罩必须从窗口顶开始")
+        assertNear(window.left, scrim.left, 0.5f, "遮罩必须满宽（左）")
+        assertNear(window.right, scrim.right, 0.5f, "遮罩必须满宽（右）")
+
+        val activityTab = onNodeWithContentDescription("活动").fetchSemanticsNode().boundsInRoot
+        assertTrue(
+            activityTab.top >= scrim.top - 0.5f && activityTab.bottom <= scrim.bottom + 0.5f,
+            "「活动」tab 不在遮罩矩形里 —— 底栏没被盖住",
+        )
+        // 真触摸（不是语义 performClick）：命中测试会先给最上层。遮罩打开时点胶囊的位置
+        // 必须被遮罩吃掉，`dest` 不许跟着换。
+        onNodeWithTag(PHONE_ROOT_TAG).performTouchInput {
+            down(activityTab.center)
+            up()
+        }
+        waitForIdle()
+        assertEquals(
+            Destination.Sessions,
+            ui.dest,
+            "模型面板开着时点底栏的位置必须被遮罩吃掉（模态泄漏：旧实现这里会切到活动页并把面板端掉）",
+        )
+        assertNotNull(ui.selectedSessionId, "面板开着时也不许退掉会话")
+    }
+
     // ------------------------------------------------------------ 4 · 顶栏「主页」
 
     @Test
@@ -224,6 +345,111 @@ class AppShellSessionDetailBarTest {
         assertTrue(ui.sessionsDrawerOpen, "手机上回到会话列表 = 列表抽屉滑出")
         assertEquals(Destination.Sessions, ui.dest)
         assertEquals(0, countWithDescription("返回"), "回到列表后详情 chrome 必须消失")
+    }
+
+    /**
+     * 审查 P2-2：抽屉展开时屏上是**列表**，这时的「主页」按下去看不见任何变化，却会清掉
+     * 抽屉背后那个会话的选中（静默破坏性无反馈按钮）。判据从 `detailOpen` 换成
+     * `detailVisible` 之后，它不该出现。
+     */
+    @Test
+    fun theHomeButtonIsNotDrawnWhileTheSessionsDrawerIsOpen() = runComposeUiTest {
+        val ui = detailState()
+        phoneShell(ui)
+        waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithContentDescription("返回")) }
+
+        ui.openSessionsDrawer()
+        waitForIdle()
+
+        assertEquals(
+            0,
+            countWithDescription("主页"),
+            "抽屉展开（屏上是列表）时不许画「主页」：点了没有视觉变化，却会静默清掉背后的选中",
+        )
+    }
+
+    /**
+     * 审查 P2-3：`switchDestination` 里那句 `if (selectedSessionId != null) back()` 是死代码，
+     * 而且在 `listBesideDetail = true`（双栏）时**先**清了选中 —— 把 KDoc 承诺的 no-op 破坏掉。
+     * 删掉之后双栏重复点会话 tab 必须真的是 no-op。
+     */
+    @Test
+    fun retappingSessionsBesideADetailKeepsTheSelection() {
+        val ui = detailState()
+        switchDestination(ui, Destination.Sessions, listBesideDetail = true)
+
+        assertEquals(
+            "s-u1a",
+            ui.selectedSessionId,
+            "双栏重复点会话 tab 必须是 no-op：旧实现里的显式 back() 会把用户正在读的会话关掉",
+        )
+        assertEquals(Destination.Sessions, ui.dest)
+    }
+
+    /** 单栏重复点会话 tab 仍是「退一层」——删掉那句 back() 之后语义不变（`select` 自己调）。 */
+    @Test
+    fun retappingSessionsOnAPhoneStillBacksOutOneLayer() {
+        val ui = detailState()
+        switchDestination(ui, Destination.Sessions, listBesideDetail = false)
+
+        assertNull(ui.selectedSessionId, "单栏重复点会话 tab = 退一层（由 UiState.select 内部 back() 保证）")
+        assertTrue(ui.sessionsDrawerOpen, "退一层 = 抽屉滑出")
+    }
+
+    // ------------------------------------------------------------ 5 · 拖动不是点击
+
+    /**
+     * 审查 P2-4：浮动胶囊的 `onDragStopped` 曾经无条件上报 ⇒「拖走又拖回原位」会被当成
+     * 「点了当前 tab」，在详情页上等于不弹确认就把会话退掉。
+     *
+     * 这里注入**真触摸**（`performTouchInput`，走 `inspectDragGestures` 那条路），来回各 40 px
+     * （远超平台 touchSlop、净位移 0）后松手：会话必须还在。
+     */
+    @Test
+    fun draggingThePillBackToItsOwnTabDoesNotLeaveTheSession() = runComposeUiTest {
+        val ui = detailState()
+        phoneShell(ui)
+        waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithContentDescription("返回")) }
+        val before = ui.selectedSessionId
+        assertNotNull(before, "前置条件：这条用例必须在详情页里跑")
+
+        onNodeWithContentDescription("会话").performTouchInput {
+            down(center)
+            moveBy(Offset(40f, 0f))
+            moveBy(Offset(-40f, 0f))
+            up()
+        }
+        waitForIdle()
+
+        assertEquals(
+            before,
+            ui.selectedSessionId,
+            "拖走又拖回原位的胶囊不是「点当前 tab」：不许退掉会话",
+        )
+        assertEquals(Destination.Sessions, ui.dest, "同上：不许切页")
+    }
+
+    /** 反向守卫：真的拖到另一格时仍然要切换（别把 P2-4 的门做成「拖动全哑」）。 */
+    @Test
+    fun draggingThePillOntoAnotherTabStillSwitches() = runComposeUiTest {
+        val ui = detailState()
+        phoneShell(ui)
+        waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithContentDescription("返回")) }
+
+        val from = onNodeWithContentDescription("会话").fetchSemanticsNode().boundsInRoot.center
+        val to = onNodeWithContentDescription("活动").fetchSemanticsNode().boundsInRoot.center
+        onNodeWithTag(PHONE_ROOT_TAG).performTouchInput {
+            down(from)
+            moveTo(to)
+            up()
+        }
+        waitForIdle()
+
+        assertEquals(
+            Destination.Activity,
+            ui.dest,
+            "拖到「活动」那一格再松手必须切换（手势切 tab 是既有能力，不能被 P2-4 的门吞掉）",
+        )
     }
 }
 
