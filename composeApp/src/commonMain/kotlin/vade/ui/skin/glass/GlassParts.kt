@@ -6,6 +6,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -37,6 +38,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
@@ -89,7 +91,8 @@ import vade.ui.skin.cardAccentBar
  *
  * ## 两条贯穿全部 7 个组件的规则
  *
- * 1. **玻璃只做边缘与质感，正文永远在近不透明的内容底上**。这不是审美取舍：玻璃背后
+ * 1. **玻璃只做边缘与质感，正文永远在近不透明的内容底上**（`ListItem` 静止态是透明行、
+ *    根本没有玻璃，正文压在页面底上；`SendOrb` 的球面染色自己就是内容底，见 §12）。这不是审美取舍：玻璃背后
  *    可以是深色图片、红字工具卡、视频帧，而 `tint` 最厚只能到 §5 的 45% —— 只有 tint 时
  *    亮色正文在纯黑背后 3.4:1、暗色在纯白背后 2.4:1（`GlassTokensContrastTest` 的
  *    `tintOnlyWouldNotSurviveAnArbitraryBackdrop` 就是这两个数）。垫上
@@ -168,6 +171,11 @@ private fun innerShapeOf(outerRadius: Dp) =
  *
  * 标题 / 副标题 / 图标全部压在 [GlassContentBase] 上：玻璃行背后可能是列表级玻璃或
  * 深色封面，行内文字不能因此掉到 4.5:1 以下。
+ *
+ * **触摸端验收口径（审查 P1-4）**：Android 没有 hover，`showGlass` 只在 selected 时成立，
+ * 所以触摸端列表行本身不玻璃；模块页容器 `ModulePageCard` 仍是不透明 `surface`。
+ * 「整块列表共享一层玻璃」本批**未实现**（需要在 ModulePageRenderer 的容器上铺
+ * `GlassSurface`，且先证明 material 像素零回归），留到 T3，不在这里声称已完成。
  */
 @Composable
 internal fun GlassListItem(
@@ -293,6 +301,9 @@ internal fun GlassSwitch(
             shadow = NoShelfShadow,
             // 实心染色的后面再模糊一次只是白花 GPU。
             blurBackdrop = !checked,
+            // 关态轨道与画布同色系，26% 黑发丝线只有 1.87:1 —— 非文本 UI 边界要 3:1，
+            // 换皮肤自己的 outline（亮 4.6 / 暗 7 量级）。开态是实心 accent，不需要。
+            stroke = if (checked) null else colors.outline,
         ) {
             Box(
                 Modifier.fillMaxSize().padding(4.dp),
@@ -303,7 +314,7 @@ internal fun GlassSwitch(
                         .size(24.dp)
                         .clip(CircleShape)
                         .background(if (checked) colors.onPrimary else colors.surface)
-                        .border(1.dp, GlassTokens.stroke(colors.isDark), CircleShape),
+                        .border(1.dp, if (checked) GlassTokens.stroke(colors.isDark) else colors.outline, CircleShape),
                 )
             }
         }
@@ -497,6 +508,9 @@ internal fun GlassApprovalDialog(
         modifier = Modifier
             .fillMaxSize()
             .background(dialogScrim(colors.isDark))
+            // 遮罩必须消费指针：审批是模态的，点空白不能落到下层聊天（点穿会误触
+            // 消息里的按钮/链接）。没有「点遮罩关闭」的语义 —— 决定只能走按钮。
+            .pointerInput(Unit) { detectTapGestures { } }
             .padding(12.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -895,8 +909,10 @@ internal fun orbPressScale(pressed: Boolean, pressScale: Float): Float =
  * 玻璃发送球（C-09 组件 12，RFC-0011 / §2）—— 48dp 正圆、框外独立元素，三态：
  *
  *  - `Idle`：**玻璃球**。球面染色取 [contentBase]（0.88）—— 48dp 的球放不下一层独立的
- *    内容底，所以让染色本身承担内容底：图标在纯黑/纯白背后分别 13.60 / 17.89（亮）、
- *    15.84 / 10.96（暗），远高于图形要求的 3:1，也高于文字的 4.5；
+ *    内容底，所以让染色本身承担内容底。图标用 `onSurfaceVariant`（生产实际颜色），
+ *    在纯黑/纯白/画布三种背后都过图形的 3:1 —— 实测值见
+ *    `GlassComponentContrastTest.sendOrbGlyphStaysLegibleOnAnyBackdrop`，不要在注释里
+ *    另抄一份数字（抄错的那版把 `onSurface` 的 17.7:1 当成了实际图标对比度）；
  *  - `Composing`：实心 accent + 12dp glow（§8 row 3 辉光不是阴影），图标 `onPrimary`
  *    5.37 / 6.44；
  *  - `Streaming`：同一球位变 ■，只把图标与 1.5dp 环染成 [errorInk]（3.89 → 4.99），
@@ -959,9 +975,10 @@ internal fun GlassSendOrb(
             .clickable(
                 interactionSource = interaction,
                 indication = null,
-                // §2：空球仍可点（触发提示），流式停止也不受 enabled 影响 —— 中断生成
-                // 永远可用。enabled 只决定视觉浓度（0.45 alpha），不参与命中测试：
-                // 之前写成 `streaming || enabled` 会让空球/输入中整颗球点不动。
+                // 与 material/miuix 同一语义：Streaming 恒可点（中断生成永远可用），
+                // 其余状态听页面传入的 enabled。空球是否可点由页面决定（ChatThread 恒传
+                // enabled=true，草稿为空时 submit() 自己 return，不靠禁用兜）。
+                enabled = streaming || enabled,
             ) { onClick() }
             .semantics { contentDescription = if (streaming) "停止生成" else "发送消息" },
         contentAlignment = Alignment.Center,

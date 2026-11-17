@@ -16,6 +16,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.ComposeUiTest
+import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onRoot
@@ -235,27 +236,29 @@ class GlassPartsTest {
     // --- SendOrb 点击 / 按压 --------------------------------------------------------
 
     @Test
-    fun sendOrbStaysClickableInEveryMode() {
+    fun sendOrbFollowsEnabledExceptStreaming() {
         val skin: Skin = GlassSkin()
         var clicks = 0
         var mode by mutableStateOf(InputMode.Idle)
         runComposeUiTest {
             setContent {
                 CompositionLocalProvider(LocalSkin provides skin) {
-                    // enabled=false：空球与流式停止都必须还能点（§2 触发提示 / 中断生成永远可用）。
+                    // 与 material/miuix 同一语义：enabled=false 时 Idle 不响应；
+                    // Streaming 恒可点（中断生成永远可用）。空球可点由页面传 enabled=true 决定
+                    // （ChatThread 恒传 true，草稿为空时 submit() 自己 return）。
                     Box(Modifier.size(80.dp)) {
                         skin.SendOrb(mode = mode, enabled = false, onClick = { clicks++ })
                     }
                 }
             }
             waitForIdle()
-            onNodeWithContentDescription("发送消息").performClick()
-            assertEquals(1, clicks, "空球在 enabled=false 下仍必须可点（页面决定空球语义）")
+            onNodeWithContentDescription("发送消息").assertHasNoClickAction()
+            assertEquals(0, clicks, "enabled=false 的 Idle 球不该还能点")
 
             runOnIdle { mode = InputMode.Streaming }
             waitForIdle()
             onNodeWithContentDescription("停止生成").performClick()
-            assertEquals(2, clicks, "流式停止不受 enabled 影响 —— 中断生成永远可用（§2）")
+            assertEquals(1, clicks, "流式停止不受 enabled 影响 —— 中断生成永远可用（§2）")
         }
     }
 

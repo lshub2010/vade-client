@@ -186,16 +186,17 @@ class GlassComponentContrastTest {
      * SendOrb：球面染色**就是**内容底（48dp 的球放不下一层独立内容底），所以算式里没有
      * tint 那一层，用 [contentBaseContrast]。
      *
-     * 阈值分两档，理由写清楚：图标是**图形**（WCAG 1.4.11 → 3:1），不是文字；idle 态的
-     * 箭头取 `onSurface` 留足余量（≥10:1），流式的 ■ 取 [errorInk] 也必须过图形阈值。
+     * 阈值分两档，理由写清楚：图标是**图形**（WCAG 1.4.11 → 3:1），不是文字。idle 箭头
+     * 必须用生产实际颜色 `onSurfaceVariant`（GlassParts.kt 的 `paintOrbSend`）——之前断言
+     * `onSurface` 得到 17:1 的假绿，等于这条例行空转。流式的 ■ 取 [errorInk] 也按图形阈值。
      */
     @Test
     fun sendOrbGlyphStaysLegibleOnAnyBackdrop() {
         for ((theme, colors) in themes()) {
             for ((name, backdrop) in backdrops(colors)) {
-                val idle = contentBaseContrast(colors, backdrop, fg = colors.onSurface)
+                val idle = contentBaseContrast(colors, backdrop, fg = colors.onSurfaceVariant)
                 assertTrue(
-                    idle >= 4.5,
+                    idle >= 3.0,
                     "$theme SendOrb 的 idle 箭头压在「球面 ⊕ $name」上只有 ${idle.rounded()}:1",
                 )
                 val stop = contentBaseContrast(colors, backdrop, fg = errorInk(colors))
@@ -225,8 +226,9 @@ class GlassComponentContrastTest {
      *    它随背景变；在纯黑背后它与会与实心 accent 撞亮度（亮色实测 1.01），那时状态靠
      *    滑块位置与 1dp 描边读出，不值得为它把轨道做成不透明；
      *  - **滑块 vs 开态轨道** ≥4.5（`onPrimary` on [actionFill]，与按钮同一条推导）；
-     *  - **关态滑块的 1dp 描边** ≥1.5 —— 发丝线阈值，与 `GlassTokensContrastTest.lightStrokeIsVisibleInk`
-     *    同一口径（白钮压在近白玻璃上，靠的是这一圈线，不是亮度差）。
+     *  - **关态边界（轨道 + 滑块描边）** ≥3.0 —— 非文本 UI 组件的 3:1。原来的 26% 黑发丝线
+     *    只有 1.87，等于没画；现在用皮肤 `outline`（亮 4.6 / 暗 7 量级），阈值必须跟着回到
+     *    标准，不许为了保绿降到 1.5。
      */
     @Test
     fun switchTrackStatesAndKnobAreLegible() {
@@ -247,12 +249,12 @@ class GlassComponentContrastTest {
             )
 
             val rim = contrastRatio(
-                GlassTokens.stroke(colors.isDark),
+                colors.outline,
                 GlassTokens.tint(colors.isDark).over(colors.canvas),
             )
             assertTrue(
-                rim >= 1.5,
-                "$theme 关态滑块的描边只有 ${rim.rounded()}:1 —— 发丝线低于 1.5 就是没画",
+                rim >= 3.0,
+                "$theme 关态边界只有 ${rim.rounded()}:1 —— 非文本 UI 边界要 3:1（§1.4.11）",
             )
 
             assertFalse(
