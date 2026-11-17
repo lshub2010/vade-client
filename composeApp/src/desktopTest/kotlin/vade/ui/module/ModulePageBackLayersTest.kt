@@ -66,7 +66,7 @@ class ModulePageBackLayersTest {
                 """
                 {"type":"column","children":[
                   {"type":"text","props":{"text":"$P1_BODY"}},
-                  {"type":"button","props":{"text":"$NAV_LABEL"},
+                  {"type":"component","component":"Button","props":{"text":"$NAV_LABEL"},
                    "on":{"click":{"kind":"navigate","to":"module:p2"}}}]}
                 """,
             )
