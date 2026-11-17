@@ -18,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,6 +40,21 @@ import vade.ui.model.ModelComposerChip
 import vade.ui.model.ModelPickerSheet
 import vade.ui.model.ModelState
 import vade.ui.skin.LocalSkin
+
+/**
+ * 单栏空态的「打开会话列表」出口，由**布局宿主**供给（审查 P1-11）。
+ *
+ * 为什么是 CompositionLocal，而不是只加形参：手机（<600dp）的空态**不是** `AppShell`
+ * 直接组合出来的 —— 它躺在 `SessionsDrawerHost` 的常驻底层里（`shell/RouteTransition.kt`），
+ * 那一层拿不到 `AppShell` 手里的 `UiState`；而「列表」恰好就在同一个宿主里（盖在详情
+ * 之上的抽屉）。所以「打开列表」只能由**那个布局层**提供动作。`AppShell` 的手机分支
+ * provide 一次，底层那份详情（含 `DrawerDetailBase`）自动拿到，不必在两处各写一遍
+ * 动作、更不必让屏幕去猜自己跑在哪种布局里（J4 的教训）。
+ *
+ * 解析顺序：[SessionDetailScreen] 的 `onOpenList` 形参 > 本 local > 无。
+ * 没人 provide ⇒ 空态**不画**按钮：点了没反应的按钮比没有按钮更糟（§8.5）。
+ */
+internal val LocalSessionListOpener = staticCompositionLocalOf<(() -> Unit)?> { null }
 
 /**
  * 会话 · 详情 (U1-b).
@@ -120,8 +136,9 @@ fun SessionDetailScreen(
      */
     compactEmpty: Boolean? = null,
     /**
-     * 单栏空态的唯一出口：滑出会话列表。`null` = 宿主没提供（双栏 / 只做回归的测试）——
-     * 那时不画按钮：一个点了没反应的按钮比没有按钮更糟（§8.5）。
+     * 单栏空态的唯一出口：滑出会话列表。`null` = 用布局宿主提供的
+     * [LocalSessionListOpener]（手机抽屉宿主就走这条）；两者都没有 ⇒ 不画按钮：
+     * 一个点了没反应的按钮比没有按钮更糟（§8.5）。
      */
     onOpenList: (() -> Unit)? = null,
 ) {
@@ -129,7 +146,8 @@ fun SessionDetailScreen(
         EmptyDetail(
             modifier = modifier.fillMaxSize(),
             compact = compactEmpty ?: !showTitle,
-            onOpenList = onOpenList,
+            // 形参（显式注入，测试/特殊宿主）> 布局宿主（`AppShell` 手机分支 provide）。
+            onOpenList = onOpenList ?: LocalSessionListOpener.current,
         )
         return
     }

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -56,6 +57,7 @@ import vade.ui.destinations.ActivityScreen
 import vade.ui.destinations.CapabilitiesScreen
 import vade.ui.destinations.Destination
 import vade.ui.destinations.ListStatus
+import vade.ui.destinations.LocalSessionListOpener
 import vade.ui.destinations.ProfileScreen
 import vade.ui.destinations.SessionDetailScreen
 import vade.ui.destinations.SessionsScreen
@@ -339,7 +341,10 @@ private fun ShellBody(state: UiState) {
                         width = metrics.railWidth,
                         selected = state.dest,
                         badgeOf = state::badgeOf,
-                        onSelect = state::select,
+                        // P1-12：`metrics.twoPane` 是「列表就在详情左边」这个事实的**唯一**
+                        // 来源（`ShellMetrics`），交给 state 的重复点 tab 判定 —— 双栏里
+                        // 再点一次当前 tab 不再 `back()` 清掉用户正在读的会话。
+                        onSelect = { state.select(it, listBesideDetail = metrics.twoPane) },
                     )
                 }
             }
@@ -357,22 +362,31 @@ private fun ShellBody(state: UiState) {
                         sessionId = state.selectedSessionId.orEmpty(),
                         onRefreshList = state::retrySessions,
                     )
-                    SessionsDrawerHost(
-                        state = state,
-                        adapters = adapters,
-                        contentInsets = contentInsets,
-                        animate = state.chatPreset == vade.ui.chat.ChatPreset.Live,
-                        // B2：分组真相在 state 机（含乐观投影），长按开菜单。
-                        metaGroups = drawerMetaOverlay.meta.groups,
-                        onLongPress = { session, anchor -> drawerMetaOverlay.openSessionMenu(session, anchor) },
-                        groups = drawerMetaOverlay.projectGroups(state.groups()),
-                        overlayHost = {
-                            SessionMetaOverlayHost(
-                                overlay = drawerMetaOverlay,
-                                rows = state.groups().flatMap { it.sessions },
-                            )
-                        },
-                    )
+                    // P1-11：手机空态的「打开会话列表」出口在这里 provide 一次 —— 本分支
+                    // 就是**列表抽屉**的宿主，也只有它知道「列表在哪」（`<600dp` 抽屉 vs
+                    // 双栏的左侧列表）。下层那份详情由 `SessionsDrawerHost` 自己组合
+                    // （`DrawerDetailBase`），它拿不到 `UiState`，所以动作只能由这一层给
+                    // （见 `LocalSessionListOpener` 的 KDoc）。
+                    CompositionLocalProvider(
+                        LocalSessionListOpener provides state::openSessionsDrawer,
+                    ) {
+                        SessionsDrawerHost(
+                            state = state,
+                            adapters = adapters,
+                            contentInsets = contentInsets,
+                            animate = state.chatPreset == vade.ui.chat.ChatPreset.Live,
+                            // B2：分组真相在 state 机（含乐观投影），长按开菜单。
+                            metaGroups = drawerMetaOverlay.meta.groups,
+                            onLongPress = { session, anchor -> drawerMetaOverlay.openSessionMenu(session, anchor) },
+                            groups = drawerMetaOverlay.projectGroups(state.groups()),
+                            overlayHost = {
+                                SessionMetaOverlayHost(
+                                    overlay = drawerMetaOverlay,
+                                    rows = state.groups().flatMap { it.sessions },
+                                )
+                            },
+                        )
+                    }
                 } else {
                     DestinationHost(metrics = metrics, state = state, contentInsets = contentInsets)
                 }
@@ -498,7 +512,12 @@ private fun ShellBody(state: UiState) {
                 VadeBottomBar(
                     items = navItems(),
                     selected = state.dest.ordinal,
-                    onSelect = { index -> state.select(Destination.entries[index]) },
+                    // 底栏只在单栏出现（D88：详情 push 时整条栏不组合），所以这里
+                    // `twoPane` 恒为 false；仍显式传同一条判据，免得日后把栏放进双栏时
+                    // 悄悄退回「再点一次就关掉会话」的旧语义（P1-12）。
+                    onSelect = { index ->
+                        state.select(Destination.entries[index], listBesideDetail = metrics.twoPane)
+                    },
                     style = state.barStyle,
                     backdrop = contentBackdrop,
                 )
@@ -748,6 +767,10 @@ private fun DestinationHost(
                         adapters = adapters,
                         contentPadding = PaddingValues(top = TOP_BAR_ZONE),
                         banner = messageThreadBanner,
+                        // P1-11/`compactEmpty`：这一格**左边真有列表**，空态文案是
+                        // 「在左侧选择一个会话」。也因此**不传** `onOpenList` —— 双栏没有
+                        // 抽屉，给一个「打开会话列表」按钮只会点了没反应。
+                        compactEmpty = false,
                     )
                 }
             } else if (state.selectedSessionId != null) {
@@ -759,6 +782,11 @@ private fun DestinationHost(
                     showTitle = false,
                     adapters = adapters,
                     banner = messageThreadBanner,
+                    // 600–719 的 rail 单栏：没有抽屉（`sessionsDrawerOpen` 在这个断点是
+                    // 死状态，见 `UiState` 的 KDoc），列表是 rail 切换到的**根页** ——
+                    // 所以这里不 provide/不传任何「打开列表」动作；空态（只可能出现在
+                    // 选中 id 已不在列表里的悬挂态）不画一个点了没反应的按钮。
+                    compactEmpty = true,
                 )
             } else {
                 Box(Modifier.fillMaxSize()) {
