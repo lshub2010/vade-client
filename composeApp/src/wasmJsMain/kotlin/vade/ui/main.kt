@@ -1,8 +1,11 @@
+@file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
+
 package vade.ui
 
 import androidx.compose.runtime.key
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.window.ComposeViewport
+import kotlin.JsFun
 import kotlinx.browser.document
 import kotlinx.browser.window
 import org.w3c.dom.Element
@@ -84,8 +87,9 @@ fun main() {
                 }
             }
         }
-        // c7-wasm：canvas 建好之后立刻把键盘焦点交给它（见 installCanvasFocus 的注释）。
-        installCanvasFocus()
+        // c7-wasm：canvas 建好之后立刻把键盘焦点交给它、并放开双指缩放
+        // （见 installCanvasFixes 的注释）。
+        installCanvasFixes()
     }
 
     when {
@@ -130,28 +134,88 @@ private fun focusComposeCanvas(): Boolean {
     // canvas 自带 tabindex，这里补一次只是为了不被宿主页面改掉（CMP 版本差异的兜底）。
     if (canvas.tabIndex != 0) canvas.tabIndex = 0
     runCatching { canvas.focus() }
+        .onFailure { warnOnce("canvas-focus", "画布 focus() 失败（${it.message}）—— 快捷键可能要先点一下画布") }
     val active = document.activeElement
     // shadow root 里的元素不是 document.activeElement（那是宿主 div），所以再看 :focus。
-    return active == canvas || runCatching { canvas.matches(":focus") }.getOrDefault(false)
+    return active == canvas || runCatching { canvas.matches(":focus") }
+        .onFailure { warnOnce("canvas-focus-match", "canvas.matches(\":focus\") 失败（${it.message}）") }
+        .getOrDefault(false)
+}
+
+/**
+ * c7-wasm · 放开双指缩放。
+ *
+ * 真正的拦路者不是 `index.html` 的 viewport：CMP 1.12 自己在建 canvas 时设的是
+ * `touch-action: pan-x pan-y`（`ui-wasm-js-1.12.0.klib` 里 ComposeWindow.web.kt 那段
+ * `setProperty("touch-action", "pan-x pan-y")`，同一处还设了 `outline: none`）。
+ * `pan-x pan-y` **不含 `pinch-zoom`**，而 canvas 铺满视口 —— 于是两指捏合被浏览器直接
+ * 忽略（不是「缩放到上限」，是根本没有缩放手势），去掉 `maximum-scale` 也就无效。
+ *
+ * 修法：在 CMP 设完之后把 canvas 的 `touch-action` 覆写成含 `pinch-zoom` 的列表，
+ * 再用 `getComputedStyle` 读回来确认真生效（写失败/被别的样式表盖住都能当场发现）。
+ * 必须是**内联** `style.setProperty`：CMP 设的是内联样式，样式表里的选择器压不过它。
+ */
+private const val CANVAS_TOUCH_ACTION = "pan-x pan-y pinch-zoom"
+
+/** 覆写并校验 canvas 的 `touch-action`；返回「computed 里确实含 pinch-zoom」。 */
+private fun ensureCanvasTouchAction(): Boolean {
+    val canvas = findComposeCanvas() ?: return false
+    val current = runCatching { canvas.style.getPropertyValue("touch-action") }
+        .onFailure { warnOnce("touch-read", "读 canvas touch-action 失败（${it.message}）") }
+        .getOrNull()
+    if (current != CANVAS_TOUCH_ACTION) {
+        val written = runCatching { canvas.style.setProperty("touch-action", CANVAS_TOUCH_ACTION) }
+        if (written.isFailure) {
+            warnOnce("touch-write", "写 canvas touch-action 失败（${written.exceptionOrNull()?.message}）—— 双指缩放不可用")
+            return false
+        }
+    }
+    val computed = runCatching { window.getComputedStyle(canvas).getPropertyValue("touch-action") }
+        .onFailure { warnOnce("touch-computed", "读 computed touch-action 失败（${it.message}）") }
+        .getOrNull()
+        ?: return false
+    if (!computed.contains("pinch-zoom")) {
+        warnOnce("touch-verify", "canvas 的 computed touch-action 是「$computed」（不含 pinch-zoom）—— 双指缩放可能仍不可用")
+        return false
+    }
+    return true
+}
+
+/** 一次性告警：同一条原因只喊一次，避免每帧刷控制台。 */
+private val warnedKeys = HashSet<String>()
+
+/** `kotlinx.browser` 只绑了 window/document/storage，没有 console，只能过一层 JS。 */
+@JsFun("(m) => { console.warn(m); }")
+private external fun jsWarn(message: String)
+
+private fun warnOnce(key: String, message: String) {
+    if (!warnedKeys.add(key)) return
+    // 告警本身失败就没什么可做的了：吞掉，绝不让它冒进启动路径。
+    runCatching { jsWarn("vade: $message") }
 }
 
 /** 首次指针交互的兜底监听（只挂一次；用完自己摘掉）。 */
 private var pointerFocusFallback: ((Event) -> Unit)? = null
 
 /**
- * 排一串帧等 canvas 出现再 focus —— `ComposeViewport` 是异步建 canvas 的（首帧才 attach），
- * 入口处同步调用时它可能还不存在。
+ * 排一串帧等 canvas 出现再修（focus + touch-action）—— `ComposeViewport` 是异步建 canvas 的
+ * （首帧才 attach），入口处同步调用时它可能还不存在；CMP 的 `touch-action` 也可能晚于我们这一帧。
+ * 两项都成立就停；60 帧（约 1s）还没成就放弃，别让 rAF 常驻。
  *
  * 为什么还要指针兜底：部分浏览器/嵌入环境下「没有用户手势的 `element.focus()`」会被忽略
  * （焦点不落到 canvas 上），此时用户第一次点画布就该恢复。兜底**只在页面还没有焦点归属时**
  * 才动手（`activeElement` 是 body/html），绝不从输入框手里抢焦点 —— Compose 的文本输入
  * 靠它自己的隐藏输入元素，抢走会让「第一次点输入框就打不了字」。
  */
-private fun installCanvasFocus() {
+private fun installCanvasFixes() {
     var frames = 0
+    var focused = false
+    var touchOk = false
     fun attempt() {
-        if (focusComposeCanvas()) return
+        if (!focused) focused = focusComposeCanvas()
+        if (!touchOk) touchOk = ensureCanvasTouchAction()
         frames++
+        if (focused && touchOk) return
         if (frames < 60) window.requestAnimationFrame { attempt() }
     }
     attempt()
