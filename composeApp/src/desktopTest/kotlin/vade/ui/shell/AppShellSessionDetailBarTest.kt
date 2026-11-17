@@ -19,6 +19,7 @@ import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import vade.ui.data.FakeSessionSource
 import vade.ui.destinations.Destination
+import vade.ui.chat.ComposerOverlayTag
 import vade.ui.destinations.DetailContentInsetTag
 import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.LocalSkin
@@ -174,8 +175,8 @@ class AppShellSessionDetailBarTest {
      * 「我加的那条 padding 等于我自己算的常量」，碰不到 composer 一根手指，也看不见抽屉 /
      * 浮层被一起抬离屏底。现在分两条量：
      *  - 容器满高（底边 == 窗口底）⇒ 抽屉 / 遮罩 / 浮层不可能被容器裁；
-     *  - 内容链（[DetailContentInsetTag]）底边 == 窗口底 − 栏区（桌面 nav = 0，与 composer
-     *    自带的 16 dp + 0 一起，胶囊底边落在栏区上沿之上 16 dp）。
+     *  - composer 浮层（[ComposerOverlayTag]）底边 == 窗口底 − 栏区 − 16 dp：留白下沉进
+     *    composer 自己，图片预览/抽屉/模型面板这些 fillMaxSize 兄弟仍是满高。
      */
     @Test
     fun theContainerIsFullBleedAndOnlyTheContentChainReservesTheBarZone() = runComposeUiTest {
@@ -183,10 +184,11 @@ class AppShellSessionDetailBarTest {
         phoneShell(ui)
         waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithTag(PhoneContentStageTag)) }
         waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithContentDescription("返回")) }
-        waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithTag(DetailContentInsetTag)) }
+        waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithTag(ComposerOverlayTag)) }
 
         val stage = onNodeWithTag(PhoneContentStageTag).fetchSemanticsNode().boundsInRoot
-        val chain = onNodeWithTag(DetailContentInsetTag).fetchSemanticsNode().boundsInRoot
+        val composer = onNodeWithTag(ComposerOverlayTag).fetchSemanticsNode().boundsInRoot
+        val chain = composer
         val window = onNodeWithTag(PHONE_ROOT_TAG).fetchSemanticsNode().boundsInRoot
 
         with(density) {
@@ -200,10 +202,10 @@ class AppShellSessionDetailBarTest {
                     "图片预览就跟着被抬离屏底（P1-2 的根因）",
             )
             assertNear(
-                expected = window.bottom - zone,
-                actual = chain.bottom,
-                tolerance = 1f,
-                message = "「消息列表 + composer」那条内容链的底边必须正好停在底栏区上沿：多留 = 白边，" +
+                expected = window.bottom - zone - 16.dp.toPx(),
+                actual = composer.bottom,
+                tolerance = 2f,
+                message = "composer 浮层底边必须停在栏区上沿之上 16dp（留白下沉进 composer）：多留 = 白边，" +
                     "少留 = 输入框被玻璃压住",
             )
             assertTrue(

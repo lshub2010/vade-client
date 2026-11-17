@@ -228,13 +228,13 @@ fun SessionDetailScreen(
         Box(
             Modifier
                 .fillMaxSize()
-                .padding(bottom = bottomBarInset)
                 .testTag(DetailContentInsetTag),
         ) {
             ChatThread(
                 state = chat,
                 modifier = Modifier.fillMaxSize(),
                 animate = animate,
+                bottomBarInset = bottomBarInset,
                 inputLeading = {
                     ModelComposerChip(
                         state = modelState,
