@@ -3,6 +3,7 @@ package vade.ui.search
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,9 +31,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -48,6 +53,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import vade.ui.UiText
+import vade.ui.component.insets.bottomSafeClearance
 import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
 import vade.ui.shell.BackLayer
@@ -87,6 +93,12 @@ import vade.ui.skin.glass.GlassSurface
 @Composable
 fun SearchHost(state: UiState) {
     val search = state.search
+    // P1-1 · 关闭时焦点交还根节点：这条 return 就是「关闭」的唯一路径。浮层里持有焦点的
+    // 节点（输入域 / 结果行）随浮层一起离开组合，Compose 把焦点还原给上一个焦点节点 ——
+    // AppShell 根部那个 `focusable()` Box（同时是 ⌘K / Esc 的预览键处理者），所以关掉
+    // 浮层后快捷键与 Esc 立刻还在。刻意**不**在这里调 `clearFocus(force = true)`：强制
+    // 清空会把焦点留在 Compose 自己的根节点上，键事件反而到不了 Shell 的处理器，那是比
+    // 「焦点落在哪」更严重的回归。
     if (!search.open) return
 
     // g-back-handler: the overlay owns a back layer while it exists — system back (and
@@ -140,7 +152,15 @@ private fun CompactSearchOverlay(state: UiState, onPick: (SearchHit) -> Unit) {
             .pointerInput(Unit) { detectTapGestures { state.closeSearch() } },
     ) {
         // 12dp side/bottom insets (§9 gap discipline); top clears the floating shell top bar.
-        Box(Modifier.fillMaxSize().padding(start = 12.dp, end = 12.dp, top = 80.dp, bottom = 12.dp)) {
+        // c6-insets · L4：底部再叠导航条余量 —— 固定 12dp 时手势胶囊盖住结果区最后一行。
+        Box(
+            Modifier.fillMaxSize().padding(
+                start = 12.dp,
+                end = 12.dp,
+                top = 80.dp,
+                bottom = 12.dp + bottomSafeClearance(),
+            ),
+        ) {
             GlassSurface(
                 modifier = Modifier.fillMaxWidth().fillMaxHeight(),
                 shape = RoundedCornerShape(skin.shapes.xl),
@@ -265,7 +285,35 @@ private fun TopBarIconButton(icon: ImageVector, onClick: () -> Unit, contentDesc
 @Composable
 private fun SearchInput(search: SearchState) {
     val skin = LocalSkin.current
+    val focusManager = LocalFocusManager.current
+    // P1-1 · 打开即聚焦：⌘K / 搜索按钮把浮层拉出来以后，用户不该再点一次输入框。
+    //
+    // `Skin.TextField` 没有 FocusRequester 形参（C-09 冻结接口，签名一个字都不能动），
+    // 所以请求器挂不到输入域上。这里用**零尺寸焦点锚点**：先把焦点拿到锚点，再沿一维
+    // 遍历顺序前进一步 —— 紧邻锚点之后唯一的焦点目标就是 skin 输入域内部的 BasicTextField
+    // （顶栏的图标按钮在锚点之前，结果行在 ScopeLine 之后，Next 都不经过）。
+    // ChatThread 的 InlineEditCard 是同一族「输入域 + FocusRequester」先例，区别只在于
+    // 那里能直接把请求器挂到 BasicTextField 上。
+    val anchor = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        fun grab(): Boolean = runCatching {
+            anchor.requestFocus()
+            focusManager.moveFocus(FocusDirection.Next)
+        }.getOrDefault(false)
+        // 首次组合时 skin 的输入域可能还没挂上焦点目标（Miuix 先组合一层 Surface），
+        // 失败就退一次重试；再晚就成了和用户抢焦点。
+        if (!grab()) {
+            delay(60)
+            grab()
+        }
+    }
     Column(Modifier.fillMaxWidth()) {
+        Box(
+            Modifier
+                .size(0.dp)
+                .focusRequester(anchor)
+                .focusable(),
+        )
         skin.TextField(
             value = search.query,
             onValueChange = { search.updateQuery(it) },

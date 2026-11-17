@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 亮色档：冷启动首帧的窗口底色（MaterialTokens.light.canvas 的近似）。
+     运行期状态栏条带由 MainActivity 用 skin.colors.canvas 重画（f4-insets · P2），
+     本值不再决定条带颜色。 -->
+<resources>
+    <color name="vade_window_background">#FFF7F7F8</color>
+</resources>

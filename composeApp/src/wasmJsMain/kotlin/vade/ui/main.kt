@@ -15,6 +15,7 @@ import org.w3c.dom.events.Event
 import vade.ui.demo.MotionProbe
 import vade.ui.demo.MotionProbeConfig
 import vade.ui.demo.ProbeContent
+import vade.ui.skin.ReduceMotion
 import vade.ui.skin.VadeFonts
 import vade.ui.skin.glass.MotionBlurKernel
 
@@ -34,6 +35,11 @@ import vade.ui.skin.glass.MotionBlurKernel
  */
 @OptIn(ExperimentalComposeUiApi::class)
 fun main() {
+    // K1 · reduced-motion 的三端入口之一：系统 / 浏览器的 `prefers-reduced-motion: reduce`。
+    // 在 `ComposeViewport` **之前**安装，首帧就按降级时长渲染（不能等组合期再读：那时
+    // 开场动画已经起跑了）。与 `--motion-probe` 分支无关，探针也照常拿到这个值。
+    ReduceMotion.install(prefersReducedMotion())
+
     val params = window.location.search.removePrefix("?")
         .split('&')
         .filter { it.isNotEmpty() }
@@ -231,3 +237,19 @@ private fun installCanvasFixes() {
     pointerFocusFallback = listener
     document.addEventListener("pointerdown", listener)
 }
+
+/**
+ * K1 · 系统「减少动效」：`(prefers-reduced-motion: reduce)` ⇒ `true`。
+ *
+ * 与 `ThemeMode.wasmJs.kt` 读 `prefers-color-scheme` 是同一套 `matchMedia`：浏览器里
+ * 系统动画偏好是**媒体查询**，CMP 1.12 的 wasm 端也没有 `isSystemInDarkTheme` 那类
+ * 现成入口，所以这端自己读。只读一次、在组合前安装（[ReduceMotion.enabled] 是可观察
+ * 状态，首帧即降级）；页面开着时改系统设置需要刷新才生效 —— 这端没有组合期的 listener，
+ * 不为一个「重开页面即解决」的场景引入全局事件源。
+ *
+ * 读失败（老浏览器、被沙箱限制的 media 查询）按**不降级**处理：默认播放动效，不能让
+ * 一次读不到就静默关掉所有动画。
+ */
+private fun prefersReducedMotion(): Boolean =
+    runCatching { window.matchMedia("(prefers-reduced-motion: reduce)").matches }
+        .getOrDefault(false)

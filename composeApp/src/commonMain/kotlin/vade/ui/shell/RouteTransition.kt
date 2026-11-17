@@ -40,7 +40,10 @@ import vade.ui.destinations.SessionDetailScreen
 import vade.ui.destinations.SessionsScreen
 import vade.ui.destinations.settledListStatus
 import vade.ui.meta.MetaGroup
+import vade.ui.skin.LocalReduceMotion
 import vade.ui.skin.LocalSkin
+import vade.ui.skin.ReduceMotion
+import vade.ui.skin.SkinMotion
 
 /**
  * g-route-transition · 手机单栏（<600dp）会话页的「抽屉模型」转场（2026-11-15 口径变更，
@@ -95,12 +98,28 @@ internal const val DRAWER_SCRIM_ALPHA = 0.45f
 internal const val DRAWER_TAG = "sessions-drawer"
 internal const val DRAWER_SCRIM_TAG = "sessions-drawer-scrim"
 
+/** 抽屉滑行时长（口径 260ms；reduced-motion 下位移归零，见 [sessionsDrawerSpec]）。 */
+internal const val DRAWER_SLIDE_MS = 260
+
+/**
+ * 抽屉的「位移需求」。它整层横移（80% 屏宽，见 `translationX`），所以这里问的是
+ * [SkinMotion.travelPx] 这个**开关**而不是某个具体像素：reduced 下归零 = 不许位移。
+ */
+private const val DRAWER_TRAVEL_PX = 1
+
 /**
  * 抽屉转场的可断言配置。测试直接调 [sessionsDrawerSpec] 钉住：
  *  - `animate = true` → 时长落在 220–300ms、缓动**非线性**（FastOutSlowIn）；
  *  - `animate = false` → 时长 = 0（「开关关闭时转场时长为 0，内容立即到位」）；
+ *  - `reduceMotion = true` → 时长 = 0（K1：这是一段**纯位移**转场，`travelPx` 归零就等于
+ *    「没有位移」，再留 100ms 滑行反而是前庭敏感读者唯一会看到的东西 —— 所以直接 snap，
+ *    与 `animate = false` 走同一条 0ms 分支，状态机与组合结构不变）；
  *  - 本文件没有「双栏分支」——双栏根本不组合本宿主，位移/遮罩在那里不存在，
  *    这一点由 `ShellBody` 的分支条件与 UI 测试共同钉住。
+ *
+ * 时长与位移都过 [SkinMotion] 的 K1 门（`durationMs` / `travelPx`），本文件不再留裸数字。
+ * `motion` 默认是 [SkinMotion] 的默认 token 集（`Skin.motion` 的默认实现值），
+ * 调用点传 `LocalSkin.current.motion` 即可随皮肤走。
  */
 internal data class SessionsDrawerSpec(
     val durationMillis: Int,
@@ -108,12 +127,21 @@ internal data class SessionsDrawerSpec(
     val easing: Easing,
 )
 
-internal fun sessionsDrawerSpec(animate: Boolean): SessionsDrawerSpec =
-    if (animate) {
-        SessionsDrawerSpec(durationMillis = 260, scrimAlpha = DRAWER_SCRIM_ALPHA, easing = FastOutSlowInEasing)
-    } else {
-        SessionsDrawerSpec(durationMillis = 0, scrimAlpha = DRAWER_SCRIM_ALPHA, easing = LinearEasing)
-    }
+internal fun sessionsDrawerSpec(
+    animate: Boolean,
+    reduceMotion: Boolean = false,
+    motion: SkinMotion = SkinMotion(),
+): SessionsDrawerSpec {
+    // reduced 下 travelPx(requested) = 0 ⇒ 「这次转场没有位移」，等价于立即到位。
+    val travels = motion.travelPx(DRAWER_TRAVEL_PX, reduceMotion) > 0
+    val duration =
+        if (animate && travels) motion.durationMs(DRAWER_SLIDE_MS, reduceMotion) else 0
+    return SessionsDrawerSpec(
+        durationMillis = duration,
+        scrimAlpha = DRAWER_SCRIM_ALPHA,
+        easing = if (duration == 0) LinearEasing else FastOutSlowInEasing,
+    )
+}
 
 /**
  * 手机单栏会话页宿主：常驻详情（底层）+ 遮罩 + 左滑列表抽屉（顶层）。
@@ -155,9 +183,17 @@ internal fun SessionsDrawerHost(
      */
     overlayHost: (@Composable () -> Unit)? = null,
 ) {
-    val spec = sessionsDrawerSpec(animate)
-    val expanded = state.sessionsDrawerOpen
     val skin = LocalSkin.current
+    val expanded = state.sessionsDrawerOpen
+    // K1 · 动画门：宿主级偏好（桌面 `--reduce-motion` / Android 动画缩放 0 / wasm
+    // `prefers-reduced-motion`）与应用内设置开关取 **OR** —— 任一为 true 就降级
+    // （Skin.kt 里 `ReduceMotion` 的既定读法，不能只读 CompositionLocal）。
+    val reduceMotion = LocalReduceMotion.current || ReduceMotion.enabled
+    val spec = sessionsDrawerSpec(
+        animate = animate,
+        reduceMotion = reduceMotion,
+        motion = skin.motion,
+    )
 
     // g-nav-stack · 本页在返回栈里**恰好一层**，三端一条路（系统返回 / 手势 / Esc / 顶栏返回
     // 都落到这里；不再有第二条 `BackHandler`）：
@@ -177,8 +213,10 @@ internal fun SessionsDrawerHost(
     )
 
     // 转场进度：1 = 抽屉全开，0 = 收起。初值取当前状态，深链直进详情不会播一段开场动画。
+    // `spec.durationMillis` 进 key：运行中把 reduced-motion 打开（系统设置 / 设置页开关）
+    // 会以 0ms 重新落位，不会把已在跑的滑行留在半路。
     val progress = remember { Animatable(if (expanded) 1f else 0f) }
-    LaunchedEffect(expanded) {
+    LaunchedEffect(expanded, spec.durationMillis) {
         val target = if (expanded) 1f else 0f
         if (spec.durationMillis == 0) {
             progress.snapTo(target)

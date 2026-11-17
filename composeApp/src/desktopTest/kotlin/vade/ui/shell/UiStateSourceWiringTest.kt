@@ -6,6 +6,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -13,6 +14,7 @@ import kotlinx.coroutines.test.runTest
 import vade.ui.chat.ChatMessage
 import vade.ui.chat.ChatRole
 import vade.ui.chat.ContentPart
+import vade.ui.data.DisconnectableSource
 import vade.ui.data.FakeSessionSource
 import vade.ui.data.FakeSessions
 import vade.ui.data.SessionSource
@@ -632,6 +634,51 @@ class UiStateSourceWiringTest {
         } finally {
             ui.dispose()
         }
+    }
+
+    // ------------------------------------------------- P1-3 · dispose 真的断开真源
+
+    /**
+     * 一个「能被关停」的真源替身：只数 [disconnect] 次数。
+     *
+     * 用替身而不是 `RealSessionSource` 是为了确定性 —— 这条断言要钉的是 **`UiState.dispose()`
+     * 有没有把断开传下去**，而不是 transport 怎么关（那条链在 `RealSessionLifecycleTest`）。
+     */
+    private class DisconnectingSource : SessionSource, DisconnectableSource {
+        var disconnects = 0
+            private set
+
+        override suspend fun sessions(includeArchived: Boolean): List<SessionSummary> = emptyList()
+
+        override suspend fun messages(sessionId: String): List<ChatMessage> = emptyList()
+
+        override fun observeEvents(): Flow<VadeEvent> = emptyFlow()
+
+        override suspend fun disconnect() {
+            disconnects += 1
+        }
+    }
+
+    @Test
+    fun disposeReallyDisconnectsARealSource() = runTest {
+        // P1-3：只停 loader 时旧源的重连循环还在后台跑（配对成功后换源 = 双连接）。
+        val source = DisconnectingSource()
+        val ui = newUi(source = source, scope = newScope())
+        settle()
+        assertEquals(0, source.disconnects, "还在用时不许断")
+
+        ui.dispose()
+        settle()
+        assertEquals(1, source.disconnects, "dispose() 必须把断开落到真源上")
+    }
+
+    @Test
+    fun disposeOnTheFixturePathHasNothingToDisconnect() = runTest {
+        // 夹具源不实现 DisconnectableSource（没有连接）—— dispose 不得因此崩，也不得建协程。
+        val ui = newUi()
+        settle()
+        ui.dispose()
+        settle()
     }
 
     // ------------------------------------------------- error classification

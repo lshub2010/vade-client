@@ -10,6 +10,7 @@ import vade.ui.data.SessionSummary
 import vade.ui.data.TimeBucket
 import kotlin.test.Test
 import kotlin.test.assertTrue
+import vade.ui.testutil.IsolatedPreferencesTest
 
 /**
  * g-live · the UI-level refutation of the stale `Main.kt` comment.
@@ -22,7 +23,7 @@ import kotlin.test.assertTrue
  * real-core chain is `RealCoreUiE2ETest`; this file isolates the UI read.
  */
 @OptIn(ExperimentalTestApi::class)
-class SourceSwitchUiTest {
+class SourceSwitchUiTest : IsolatedPreferencesTest() {
 
     /** A non-fake [SessionSource]: exactly one row with a title no fixture carries. */
     private class OneRowSource : SessionSource {

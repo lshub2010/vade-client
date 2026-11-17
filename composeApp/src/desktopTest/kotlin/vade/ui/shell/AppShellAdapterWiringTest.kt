@@ -46,6 +46,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.JsonObject
+import vade.ui.testutil.IsolatedPreferencesTest
 
 /**
  * g-activate · `AppShell` actually **hands the adapter bundle down**.
@@ -71,7 +72,7 @@ import kotlinx.serialization.json.JsonObject
  *     test cannot reach (it needs `selectedSessionId` set while `selectedSession` is null).
  */
 @OptIn(ExperimentalTestApi::class)
-class AppShellAdapterWiringTest {
+class AppShellAdapterWiringTest : IsolatedPreferencesTest() {
 
     // ------------------------------------------------------------------ test doubles
 

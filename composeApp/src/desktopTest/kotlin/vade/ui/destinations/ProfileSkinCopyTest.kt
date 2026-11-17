@@ -16,6 +16,7 @@ import kotlin.test.assertTrue
 import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.material.MaterialSkin
+import vade.ui.testutil.IsolatedPreferencesTest
 
 /**
  * g-miuix-slots · D9 —— 设置页「外观」块的文案必须与代码同真。
@@ -27,7 +28,7 @@ import vade.ui.skin.material.MaterialSkin
  *  2. 点名字仍然按内部 id 回调 —— 改名不许把 `SkinRegistry` 的主键改掉。
  */
 @OptIn(ExperimentalTestApi::class)
-class ProfileSkinCopyTest {
+class ProfileSkinCopyTest : IsolatedPreferencesTest() {
 
     @OptIn(ExperimentalTestApi::class)
     private fun ComposeUiTest.setProfile(onSkinChange: (String) -> Unit = {}) {

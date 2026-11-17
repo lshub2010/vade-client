@@ -25,6 +25,7 @@ import vade.ui.skin.ThemeController
 import vade.ui.skin.ThemeMode
 import vade.ui.skin.material.MaterialSkinEntry
 import vade.ui.skin.miuix.MiuixSkinEntry
+import vade.ui.testutil.IsolatedPreferencesTest
 
 /**
  * g-dark-follow · 「切换即时生效且不重建整棵树」的真组合验证（desktopTest JVM）。
@@ -65,7 +66,7 @@ import vade.ui.skin.miuix.MiuixSkinEntry
  *     意图不变：重建 = 新 `UiState` = 抽屉重新滑出 + 当前会话顶栏标题消失。
  */
 @OptIn(ExperimentalTestApi::class)
-class ThemeSwitchUiTest {
+class ThemeSwitchUiTest : IsolatedPreferencesTest() {
 
     private companion object {
         /** 列表首行（置顶 fixture，唯一文本）。 */

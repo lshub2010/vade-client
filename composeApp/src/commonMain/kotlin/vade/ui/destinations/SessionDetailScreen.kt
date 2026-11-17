@@ -102,12 +102,35 @@ fun SessionDetailScreen(
      * `UiState.retryMessages()`, never the list retry.
      */
     banner: (@Composable () -> Unit)? = null,
+    /**
+     * 空态形状（审查 P1-5）。`true` = 单栏 / 手机抽屉宿主（没有「左侧」，列表是盖在详情
+     * 之上的抽屉）；`false` = 左侧真有列表的双栏，文案沿用「在左侧选择一个会话」。
+     *
+     * 默认 `null` = 不额外接线也跟着既有事实走：`showTitle == false` 的调用点（手机
+     * pushed detail、`SessionsDrawerHost` 的常驻详情）全都不是双栏，双栏那一路保留标题。
+     * 宿主想钉死形状时显式传值即可。
+     *
+     * 为什么**不按本屏宽度**猜：双栏时这里拿到的 `maxWidth` 是**详情 pane** 的宽度
+     * （720dp 窗口下只剩 360dp），任何阈值都会把双栏误判成单栏 —— 而双栏的空态是桌面上
+     * 真能看见的那一个。判据只能是「本屏有没有左侧列表」。
+     *
+     * J4 的教训是「别拿布局参数判**数据真假**」；这里判的正是布局本身（本屏有没有左侧
+     * 列表），`showTitle` 在这两条路径上的取值也不是巧合：双栏保留标题、单栏路径都把
+     * 标题让给外壳顶栏。
+     */
+    compactEmpty: Boolean? = null,
+    /**
+     * 单栏空态的唯一出口：滑出会话列表。`null` = 宿主没提供（双栏 / 只做回归的测试）——
+     * 那时不画按钮：一个点了没反应的按钮比没有按钮更糟（§8.5）。
+     */
+    onOpenList: (() -> Unit)? = null,
 ) {
-    val skin = LocalSkin.current
     if (session == null) {
-        Box(modifier.fillMaxSize().background(skin.colors.surface), contentAlignment = Alignment.Center) {
-            UiText("在左侧选择一个会话", size = 12, color = skin.colors.onSurfaceVariant)
-        }
+        EmptyDetail(
+            modifier = modifier.fillMaxSize(),
+            compact = compactEmpty ?: !showTitle,
+            onOpenList = onOpenList,
+        )
         return
     }
 
@@ -179,6 +202,45 @@ fun SessionDetailScreen(
                         ) +
                     modelSeam.degraded?.let { " · $it" }.orEmpty(),
             )
+        }
+    }
+}
+
+/**
+ * 详情空态（审查 P1-5）—— 两种形状说两种**事实**，不共用一句话：
+ *
+ *  - 双栏（`compact = false`）：列表真的在左边，所以「在左侧选择一个会话」是准确的指路；
+ *  - 单栏（`compact = true`，手机抽屉宿主）：屏幕上没有「左侧」，列表是盖在详情之上的
+ *    抽屉。文案换成「选一个会话开始」，并在宿主给了动作时给出唯一出口
+ *    「打开会话列表」—— 否则用户面对的是一句指不到任何东西的提示（审查原话）。
+ */
+@Composable
+private fun EmptyDetail(
+    modifier: Modifier,
+    compact: Boolean,
+    onOpenList: (() -> Unit)?,
+) {
+    val skin = LocalSkin.current
+    Box(modifier.background(skin.colors.surface), contentAlignment = Alignment.Center) {
+        if (!compact) {
+            UiText("在左侧选择一个会话", size = 12, color = skin.colors.onSurfaceVariant)
+        } else {
+            Column(
+                modifier = Modifier.padding(horizontal = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                UiText("选一个会话开始", size = 15, weight = FontWeight.SemiBold)
+                Spacer(Modifier.height(6.dp))
+                UiText(
+                    text = "会话列表盖在这一层上面，挑一条就能开始。",
+                    size = 12,
+                    color = skin.colors.onSurfaceVariant,
+                )
+                if (onOpenList != null) {
+                    Spacer(Modifier.height(14.dp))
+                    skin.Button("打开会话列表", onOpenList)
+                }
+            }
         }
     }
 }

@@ -23,7 +23,7 @@
         android:label="Vade"
         android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        android:theme="@style/Theme.Vade">
         <activity
             android:name=".MainActivity"
             android:exported="true"

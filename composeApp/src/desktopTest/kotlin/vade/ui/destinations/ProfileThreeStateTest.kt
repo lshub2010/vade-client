@@ -35,6 +35,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import vade.ui.testutil.IsolatedPreferencesTest
 
 /**
  * g-state-coverage · 我的页（默认模型区）的 **Loading / Empty / Failed** 三态底线 +
@@ -55,7 +56,7 @@ import kotlin.test.assertTrue
  * 每条测试最后断言语义树上有非空文本 —— 任何状态下不许裸空白。
  */
 @OptIn(ExperimentalTestApi::class)
-class ProfileThreeStateTest {
+class ProfileThreeStateTest : IsolatedPreferencesTest() {
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 

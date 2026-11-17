@@ -17,6 +17,7 @@ import vade.ui.destinations.VadeLicenseEntries
 import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.material.MaterialSkin
+import vade.ui.testutil.IsolatedPreferencesTest
 
 /**
  * A5 · 可分发 — version single source + 关于 subpage.
@@ -27,7 +28,7 @@ import vade.ui.skin.material.MaterialSkin
  * These tests pin the whole chain: property → generated constant → rendered page — any
  * second hardcoded version string in that chain turns one of them red.
  */
-class AboutPageTest {
+class AboutPageTest : IsolatedPreferencesTest() {
 
     /** Module dir: Gradle runs desktopTest with the composeApp module as working dir. */
     private fun repoRoot(): File = File("..")

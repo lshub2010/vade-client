@@ -15,6 +15,7 @@ import vade.ui.skin.glass.MotionBlurKernel
 import vade.ui.destinations.Destination
 import vade.ui.data.sessionSourceFromEnvironment
 import vade.ui.skin.BottomBarStyle
+import vade.ui.skin.ReduceMotion
 import kotlin.system.exitProcess
 
 /**
@@ -60,6 +61,13 @@ import kotlin.system.exitProcess
  *                                  the §2 dark canvas) instead of the app shell. `--light`
  *                                  flips it to the §2 light canvas. Screenshot-only branch.
  *   --light                        with --gallery: use the light token set.
+ *   --reduce-motion                K1: install reduced motion (`ReduceMotion`) before
+ *                                  composition — durations capped at 100ms and travel set to
+ *                                  0, the same degradation Android/wasm read from the OS
+ *                                  (animator scale 0 / `prefers-reduced-motion`). The desktop
+ *                                  has no system-level media query to read, so the flag *is*
+ *                                  the host signal; used for the reduced-motion frames and by
+ *                                  accessibility testers.
  *
  * Default size is deliberately phone-shaped: the U1-a acceptance screenshots are the three
  * bottom-bar forms at 466×893, and a phone-shaped window is the only way to see the
@@ -72,6 +80,12 @@ fun main(args: Array<String>) {
         return
     }
 
+    // K1 · reduced-motion 的三端入口之一：桌面没有系统级的媒体查询可读，`--reduce-motion`
+    // 就是宿主信号。必须在 `application {}` 组合之前安装：`ReduceMotion.enabled` 是可观察
+    // 状态，晚装会让首帧先播满速动画再降级。`--motion-probe` 已在上面返回——探针只量模糊
+    // 半径，不读动效 token。
+    ReduceMotion.install(args.has("--reduce-motion"))
+
     val bar = args.flag("--bar=")?.let(::parseBar) ?: vade.ui.skin.Skins.bootBottomBar()
     val dest = args.flag("--dest=")?.let { Destination.fromId(it) } ?: Destination.Sessions
     val (width, height) = args.flag("--size=")?.let(::parseSize) ?: (466 to 893)
@@ -81,7 +95,17 @@ fun main(args: Array<String>) {
     // U2: skin selection. `--skin=miuix` (or `VADE_SKIN=miuix`, so a shell can pin it without
     // touching the app) selects the Miuix skin; `--dark` / `VADE_DARK=1` picks its dark tokens.
     // The flag starts the real `App()` — not the showcase — so the shots are the product.
-    val skinId = args.flag("--skin=") ?: System.getenv("VADE_SKIN") ?: vade.ui.skin.Skins.bootSkinId()
+    // P1-5 · 旗标值不能裸奔进组合：`--skin=glass`（本轮没注册）以前会直接抛在
+    // `SkinRegistry.get` 里，桌面 = 启动即崩。这里和偏好走同一条收敛（装不上 → 上次选过的
+    // 皮肤 → 出厂 material），并且把「你给的值没人认识」明确打出来，免得用户以为旗标生效了。
+    val requestedSkin = args.flag("--skin=") ?: System.getenv("VADE_SKIN")
+    val skinId = vade.ui.skin.Skins.resolveSkinId(requestedSkin)
+    if (requestedSkin != null && skinId != requestedSkin.trim()) {
+        System.err.println(
+            "vade: skin '${requestedSkin.trim()}' 未安装（可用：`material` / `miuix`），" +
+                "本次用 `$skinId` 启动",
+        )
+    }
     val dark = args.has("--dark") || System.getenv("VADE_DARK") == "1"
     // g-dark-follow · the `--dark` prior becomes a ThemeController override (手选暗) instead of
     // writing the skin factories' plain vars directly: without `--dark` the app now follows the

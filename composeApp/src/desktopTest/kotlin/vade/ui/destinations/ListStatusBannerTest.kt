@@ -21,6 +21,7 @@ import vade.ui.protocol.VadeErrorCodes
 import vade.ui.protocol.VadeException
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.material.MaterialSkin
+import vade.ui.testutil.IsolatedPreferencesTest
 
 /**
  * g-first-run · P1/P2 的渲染侧：列表头那条横幅在**真组合里**说的是真话。
@@ -39,7 +40,7 @@ import vade.ui.skin.material.MaterialSkin
  * 的接线本身。
  */
 @OptIn(ExperimentalTestApi::class)
-class ListStatusBannerTest {
+class ListStatusBannerTest : IsolatedPreferencesTest() {
 
     // ------------------------------------------------------------------ 测试替身
 

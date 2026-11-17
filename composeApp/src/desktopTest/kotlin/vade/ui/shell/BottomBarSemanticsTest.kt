@@ -29,6 +29,7 @@ import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.SkinGlass
 import vade.ui.skin.material.MaterialSkin
+import vade.ui.testutil.IsolatedPreferencesTest
 
 /**
  * g-nav-fix —— `g-nav-visual` 拍到的两个真问题的回归面。
@@ -47,7 +48,7 @@ import vade.ui.skin.material.MaterialSkin
  * （`SkinGlass.tintLight/tintDark`、`colors.surfaceGlass`）像素级不动。
  */
 @OptIn(ExperimentalTestApi::class)
-class BottomBarSemanticsTest {
+class BottomBarSemanticsTest : IsolatedPreferencesTest() {
 
     private fun src(rel: String) = File("src/commonMain/kotlin/vade/ui/$rel")
 
