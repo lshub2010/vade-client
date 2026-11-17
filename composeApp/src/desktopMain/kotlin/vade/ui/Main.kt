@@ -81,7 +81,17 @@ fun main(args: Array<String>) {
     // U2: skin selection. `--skin=miuix` (or `VADE_SKIN=miuix`, so a shell can pin it without
     // touching the app) selects the Miuix skin; `--dark` / `VADE_DARK=1` picks its dark tokens.
     // The flag starts the real `App()` — not the showcase — so the shots are the product.
-    val skinId = args.flag("--skin=") ?: System.getenv("VADE_SKIN") ?: vade.ui.skin.Skins.bootSkinId()
+    // P1-5 · 旗标值不能裸奔进组合：`--skin=glass`（本轮没注册）以前会直接抛在
+    // `SkinRegistry.get` 里，桌面 = 启动即崩。这里和偏好走同一条收敛（装不上 → 上次选过的
+    // 皮肤 → 出厂 material），并且把「你给的值没人认识」明确打出来，免得用户以为旗标生效了。
+    val requestedSkin = args.flag("--skin=") ?: System.getenv("VADE_SKIN")
+    val skinId = vade.ui.skin.Skins.resolveSkinId(requestedSkin)
+    if (requestedSkin != null && skinId != requestedSkin.trim()) {
+        System.err.println(
+            "vade: skin '${requestedSkin.trim()}' 未安装（可用：`material` / `miuix`），" +
+                "本次用 `$skinId` 启动",
+        )
+    }
     val dark = args.has("--dark") || System.getenv("VADE_DARK") == "1"
     // g-dark-follow · the `--dark` prior becomes a ThemeController override (手选暗) instead of
     // writing the skin factories' plain vars directly: without `--dark` the app now follows the

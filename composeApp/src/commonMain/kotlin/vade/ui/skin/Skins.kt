@@ -44,8 +44,8 @@ object Skins {
      * I1 · 启动时要用的皮肤：上次选过、**且真的装在注册表里**才采纳。
      *
      * 两个失效条件都收敛到 [DEFAULT_SKIN]，而不是让它们抛：老版本存过 `glass`（那时它有
-     * 占位实现）、手改过偏好文件、或命令行给了个不存在的 id —— 这三种情况都不该让应用
-     * 起不来。
+     * 占位实现）、手改过偏好文件、或写得半截的值 —— 这些都不该让应用起不来。
+     * 命令行 / 环境变量的显式 id 不走这里，走 [resolveSkinId]（同一条收敛，只是输入不同）。
      *
      * 先 `installBuiltIns()` 再查注册表：这个函数会被用作 `App()` 的**默认实参**，而默认
      * 实参在函数体之前求值——不在这里装，注册表此刻还是空的，任何记忆值都会被误判成
@@ -53,8 +53,32 @@ object Skins {
      */
     fun bootSkinId(): String {
         installBuiltIns()
-        val remembered = AppearancePrefs.skinId() ?: return DEFAULT_SKIN
-        return remembered.takeIf { it in SkinRegistry.installed() } ?: DEFAULT_SKIN
+        return converge(AppearancePrefs.skinId())
+    }
+
+    /**
+     * I1/P1-5 · 把**任意来源**的皮肤 id（命令行 `--skin=` / `VADE_SKIN` / 旧偏好 / 程序化
+     * `UiState.setSkin`）收敛成一定装得上的那一个。
+     *
+     * [bootSkinId] 只回答「上次选过、且还在」；入口的显式旗标一旦绕过它，`--skin=glass`
+     * （本轮没注册）就会直接进 `SkinRegistry.get`，在**组合期**抛 `IllegalStateException`
+     * ——桌面是启动即崩、Android 是闪退。旗标写错不该比偏好写错更致命，所以入口也走这里：
+     * 装得上就采纳该 id；装不上退回「上次选过的」（[bootSkinId]，它自己再兜
+     * [DEFAULT_SKIN]）。空串 / 纯空白按「没给」处理。
+     */
+    fun resolveSkinId(requested: String?): String {
+        installBuiltIns()
+        val id = requested?.trim()?.takeIf { it.isNotEmpty() }
+        if (id != null && id in SkinRegistry.installed()) return id
+        // 显式值不可用 —— 不是让应用起不来，而是退回用户上次选过的外观。
+        return converge(AppearancePrefs.skinId())
+    }
+
+    /** 存过的值 → 装得上的 id；没存过 / 空 / 未安装一律 [DEFAULT_SKIN]。 */
+    private fun converge(stored: String?): String {
+        installBuiltIns()
+        val id = stored?.trim()?.takeIf { it.isNotEmpty() }
+        return id?.takeIf { it in SkinRegistry.installed() } ?: DEFAULT_SKIN
     }
 
     /** I1 · 启动时的底栏形态；没存过 = 贴底（与 `App()` 的历史默认一致）。 */

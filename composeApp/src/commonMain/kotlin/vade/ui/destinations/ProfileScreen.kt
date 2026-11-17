@@ -122,6 +122,9 @@ fun ProfileScreen(
     // 页面就不依赖调用顺序了。
     Skins.installBuiltIns()
     val installedSkins = remember { SkinRegistry.installed() }
+    // P1-5 · 传进来的 skinId 可能来自旧偏好 / 命令行给的失效 id。显示层同样收敛一次，
+    // 否则三个 chip 全不亮 ——「三项会记住」就成了一句假话。真正进组合的 id 在 App.kt 收敛。
+    val currentSkinId = Skins.resolveSkinId(skinId)
     // I1 · chip 干两件事：改本轮状态（shell 的 UiState 随之翻，App 的 remember key 变 →
     // 只换 LocalSkin）+ 落盘（下次启动由 Skins.bootSkinId / Skins.bootBottomBar 恢复）。
     // 没装的皮肤连「点了没反应」都不该发生：chip 已置灰，这里再挡一道程序化调用。
@@ -172,11 +175,11 @@ fun ProfileScreen(
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 UiText("皮肤", size = 13, weight = FontWeight.SemiBold)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SkinChip("material", "经典", skinId, installedSkins, selectSkin)
-                    SkinChip("miuix", "Miuix", skinId, installedSkins, selectSkin)
+                    SkinChip("material", "经典", currentSkinId, installedSkins, selectSkin)
+                    SkinChip("miuix", "Miuix", currentSkinId, installedSkins, selectSkin)
                     // I2 · 玻璃本轮只有「待安装」这一种状态：没注册 = 置灰 + 标签带后缀，
                     // 不再拿 material 换 id 冒充（点选像素不变、暗色还会掉回亮色的那个缺陷）。
-                    SkinChip("glass", "玻璃", skinId, installedSkins, selectSkin)
+                    SkinChip("glass", "玻璃", currentSkinId, installedSkins, selectSkin)
                 }
                 UiText(
                     text = "经典是默认外观；Miuix 更圆更重，接近手机系统。" +

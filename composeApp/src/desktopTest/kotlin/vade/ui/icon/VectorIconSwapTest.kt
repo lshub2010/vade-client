@@ -32,6 +32,7 @@ import vade.ui.skin.NavItem
 import vade.ui.skin.material.MaterialSkin
 import vade.ui.skin.miuix.MiuixShowcasePage
 import vade.ui.skin.miuix.MiuixSkin
+import vade.ui.testutil.IsolatedPreferencesTest
 
 /**
  * w-g-icons 反回归：字符当图标的存量清空后，换过的每个位置渲出的必须是 `ImageVector`
@@ -39,7 +40,7 @@ import vade.ui.skin.miuix.MiuixSkin
  * 断言节点树；纯函数映射直接断言返回值。这是 [vade.ui.IconGuardTest]（父棒守卫，本棒
  * 不许动）之外的、针对本棒改过的文件的补充面。
  */
-class VectorIconSwapTest {
+class VectorIconSwapTest : IsolatedPreferencesTest() {
 
     /** 本棒清掉的字符图标字母表（节点树扫描用；`×`/`↓` 作为运算符/键位名不算图标，另案处理）。 */
     private val bannedGlyphs = "●◉◍◆•←✕↻▾▸■↑⋯＋★⌕"

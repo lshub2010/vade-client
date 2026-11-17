@@ -37,6 +37,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
+import vade.ui.testutil.IsolatedPreferencesTest
 
 /**
  * g-wire-screens · 四个屏幕的「适配器三段回退」测试。
@@ -55,7 +56,7 @@ import kotlinx.coroutines.runBlocking
  *  8. **反向守卫**：`AdapterProvider` 的返回类型仍是六件窄接口之一、四个屏幕的公开签名里
  *     不出现任何 `vade.ui.protocol` 类型（把返回类型换成 `VadeClient` 会立刻红）。
  */
-class ScreenAdapterWiringTest {
+class ScreenAdapterWiringTest : IsolatedPreferencesTest() {
 
     // ------------------------------------------------------------------ 测试替身
 

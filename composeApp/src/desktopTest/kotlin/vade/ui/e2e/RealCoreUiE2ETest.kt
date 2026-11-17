@@ -22,6 +22,7 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import kotlin.test.fail
 import kotlin.time.Duration.Companion.seconds
+import vade.ui.testutil.IsolatedPreferencesTest
 
 /**
  * g-live · THE machine evidence for alpha A1/W4: a **real Python core** (uvicorn +
@@ -44,7 +45,7 @@ import kotlin.time.Duration.Companion.seconds
  * No env = no skip: the core failing to boot is a failure, never a green pass.
  */
 @OptIn(ExperimentalTestApi::class)
-class RealCoreUiE2ETest {
+class RealCoreUiE2ETest : IsolatedPreferencesTest() {
 
     private var handle: CoreHandle? = null
 
