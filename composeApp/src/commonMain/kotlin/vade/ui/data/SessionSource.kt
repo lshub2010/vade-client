@@ -95,6 +95,21 @@ interface SessionSource {
 }
 
 /**
+ * P1-3 · 组合根关停真源的口子。
+ *
+ * `UiState.dispose()` 只停 loader 是不够的：真源的协议 runner 带着自己的重连循环，
+ * 旧源会在后台无限重试，并与新源形成双连接（配对成功后重建 `UiState` 时尤其明显）。
+ * 实现者只关**本次连接**（client + 事件/状态收集器 + 适配器包/清单），**绝不**关
+ * 传进来的 transport factory —— cookie 缓存在 factory 里，桥与下一次 `connect()` 还要用它。
+ *
+ * 夹具源不实现它：没有连接，也就没有可关的东西。
+ */
+interface DisconnectableSource {
+    /** 幂等：重复调用、未连接时调用都是 no-op。 */
+    suspend fun disconnect()
+}
+
+/**
  * The default [SessionSource] is [FakeSessions] (see `FakeSessions.kt`, which implements
  * the interface with its existing fixtures so behaviour is unchanged); the task-book-named
  * instance below exists because `FakeSessions` is an `object` and cannot be written

@@ -200,13 +200,20 @@ fun sessionSourceFrom(raw: RawSourceStrings): SessionSource =
         is SourceSpec.Fake -> {
             val paired = PairingRuntime.state as? PairingRuntimeState.Paired
             if (paired != null) {
-                realAutoConnecting(paired.host, paired.port, paired.factory)
+                realAutoConnecting(VadeClientConfig(host = paired.host, port = paired.port), paired.factory)
             } else {
                 FakeSessionSource()
             }
         }
         is SourceSpec.Real -> {
-            val config = if (spec.pairCode != null) {
+            // P0-1 · 码必须真的进到 [VadeClientConfig] 里。之前这里算出了 config 却在
+            // 构造 [RealSessionSource] 时只传 host/port —— `VADE_PAIR_CODE` / `pair_code`
+            // extra / `?pair_code=` 因此**完全不生效**：WS 升级被当成「设备 peer」，core
+            // 走 Noise 握手，明文 JSON 客户端永远接不上（用户看到的是「core 不可达」）。
+            //
+            // 浏览器（[canBootstrapPairing] = false）不注入：它读不到 `POST /ui/session`
+            // 的 `Set-Cookie`，发这次请求只会把用户的一次性码烧掉（H4）。
+            val config = if (spec.pairCode != null && canBootstrapPairing()) {
                 VadeClientConfig(
                     host = spec.host,
                     port = spec.port,
@@ -219,22 +226,21 @@ fun sessionSourceFrom(raw: RawSourceStrings): SessionSource =
             // cookie 的 transport factory」装进 [PairingRuntime]，这里用它建
             // [RealSessionSource] —— 同一条链、同一次配对（一次性码不会被第二次兑换）。
             // `null`（默认）= 今天的逐字节行为。
-            realAutoConnecting(spec.host, spec.port, PairingRuntime.pairedFactory)
+            realAutoConnecting(config, PairingRuntime.pairedFactory)
         }
     }
 
 /** Budget for the runtime auto-connect wait (the loader's Failed banner shows past it). */
 internal const val AUTO_CONNECT_TIMEOUT_MS = 15_000L
 
-/** 真源装配的唯一形状：shim 包住真源，host/port 只用于报错文案。 */
+/** 真源装配的唯一形状：shim 包住真源，完整 [VadeClientConfig]（含 `browserSession`）一路带进去。 */
 private fun realAutoConnecting(
-    host: String,
-    port: Int,
+    config: VadeClientConfig,
     factory: VadeTransportFactory?,
 ): SessionSource = AutoConnectingSessionSource(
-    RealSessionSource(VadeClientConfig(host = host, port = port), factory),
-    host,
-    port,
+    RealSessionSource(config, factory),
+    config.host,
+    config.port,
 )
 
 /**
@@ -257,9 +263,9 @@ internal class AutoConnectingSessionSource(
     private val host: String,
     private val port: Int,
     private val connectTimeoutMs: Long = AUTO_CONNECT_TIMEOUT_MS,
-) : SessionSource, AdapterHost, ActivitySeamHost, ModuleCatalogProvider {
+) : SessionSource, AdapterHost, ActivitySeamHost, ModuleCatalogProvider, DisconnectableSource {
 
-    /** A1 · 适配器包透传（未连接 = null，与 `RealSessionSource` 的契约逐字一致）。 */
+    /** A1 · 适配器包透传（未连接 = null，与 `RealSessionSource` 的契约逐字一致；snapshot state 读，P1-1）。 */
     override val adapters: AdapterProvider? get() = real.adapters
 
     /**
@@ -310,6 +316,12 @@ internal class AutoConnectingSessionSource(
 
     /** Test/diagnostic access: the wrapped real source (g-pair-first-run wiring tests). */
     internal val delegate: RealSessionSource get() = real
+
+    /**
+     * P1-3 · 关停透传：组合根（`UiState.dispose()`）拿到的是本 shim，断开必须落到真源
+     * 的连接上。只关 client/收集器，桥里的 transport factory 原样保留。
+     */
+    override suspend fun disconnect() = real.disconnect()
 
     /**
      * 等到连上为止，并把**真实原因**带回去（H3）。

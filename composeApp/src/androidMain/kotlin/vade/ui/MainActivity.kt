@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import vade.ui.data.AndroidSourceEnv
 import vade.ui.data.sessionSourceFromEnvironment
@@ -52,7 +53,11 @@ class MainActivity : ComponentActivity() {
             AndroidSourceEnv.intentExtras = intent?.extras
             // P1-4 · 配置解析失败（`--es port 8443x` 之类）= 一张说清原因的屏，
             // 不是启动即闪退。这里兜住解析，`App()` 只接收合法的源。
-            val booted = runCatching { sessionSourceFromEnvironment() }
+            //
+            // P1-3 · 必须 `remember`：源（真源 = 一条 WS + 重连循环）只能建**一次**。
+            // 裸调时每次重组都新建一个 `RealSessionSource`，上一个的连接没人关 ——
+            // 双连接 + 旧连接在后台无限重试。
+            val booted = remember { runCatching { sessionSourceFromEnvironment() } }
             Box(
                 Modifier
                     .fillMaxSize()

@@ -1,5 +1,8 @@
 package vade.ui.data
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -76,9 +79,13 @@ import vade.ui.protocol.ContentPart as ProtocolContentPart
  * `code` intact — classify with [VadeErrorMapping.categoryOf] before showing it.
  */
 class RealSessionSource(
-    private val config: VadeClientConfig,
+    /**
+     * P1-1 · 内部可读：装配断言（码真的进了 `browserSession`）与诊断用，不改变构造口的
+     * 公开形状。配置本身不可变，连接期不会换。
+     */
+    internal val config: VadeClientConfig,
     transportFactory: VadeTransportFactory? = null,
-) : SessionSource, AdapterHost, ActivitySeamHost, ModuleCatalogProvider {
+) : SessionSource, AdapterHost, ActivitySeamHost, ModuleCatalogProvider, DisconnectableSource {
 
     /**
      * 模块清单通道：**连接期非空、断开后回到 `null`**（`connect()` 建，`disconnect()` dispose）。
@@ -86,9 +93,13 @@ class RealSessionSource(
      * g-modulepage-wire 之前这里恒为 `null`（`ui/modules` 还没进 `VadeMethod` 表），能力页
      * 因此在生产形态下永远拿不到清单。现在通道已建出，第一次拉取由能力页的
      * `LaunchedEffect(moduleCatalog)` → `ensureLoaded()` 发起（见 `data/ModuleCatalog.kt`）。
+     *
+     * P1-1 · snapshot state（不是 `@Volatile` 字段）：`AppShell.adaptersOf` / 能力页在
+     * **组合期**读它，冷启动「先组合、后连上」时值才会从 `null` 变成实例并触发重组 ——
+     * 纯 volatile 只在第一次读时为 null，之后永远不再被读到（能力页恒显示未接线）。
+     * 写入发生在 `connect()`/`disconnect()` 的协程线程上；snapshot state 允许跨线程写。
      */
-    @Volatile
-    private var _moduleCatalog: ModuleCatalog? = null
+    private var _moduleCatalog: ModuleCatalog? by mutableStateOf<ModuleCatalog?>(null)
 
     override val moduleCatalog: ModuleCatalog? get() = _moduleCatalog
 
@@ -128,11 +139,15 @@ class RealSessionSource(
      * Rebuilt together with the client instead of kept across reconnects: the protocol
      * client is not restartable after `close()`, so adapters holding a dead client must be
      * dropped — a stale bundle would fail every call with UNAVAILABLE.
+     *
+     * P1-1 · snapshot state（理由同 [moduleCatalog]）：组合根在组合期读
+     * `(source as? AdapterHost)?.adapters`，冷启动时首次读到的是 `null`（连接还没建），
+     * 连接完成后这个值必须能**推**一次重组，五个屏幕才拿得到真适配器。`@Volatile` 只保证
+     * 可见性，不产生任何重组信号 —— 那就是「真模式是假的」的最后一环。
      */
     override val adapters: AdapterProvider? get() = _adapters
 
-    @Volatile
-    private var _adapters: AdapterProvider? = null
+    private var _adapters: AdapterProvider? by mutableStateOf<AdapterProvider?>(null)
 
     /**
      * A5 · 活动页读取窄口：**恒非空、对象身份恒定**（每次调用才去取当前 client，见
@@ -240,8 +255,12 @@ class RealSessionSource(
      * Stops the source: closes the transport, cancels the event/state collectors and
      * drops the client (a fresh one is built on the next [connect]). After this no
      * event can be dispatched and raw calls fail fast with UNAVAILABLE. Idempotent.
+     *
+     * P1-3 · 组合根（`UiState.dispose()`）经 [DisconnectableSource] 调到这里。只关
+     * **本次连接**：注入的 transport factory 不关、不清 —— cookie 缓存在它里面，配对桥
+     * 与下一次 `connect()` 还要用它（`tapFactory.reset()` 只摘掉当前这条 tee 连接）。
      */
-    suspend fun disconnect() = lifecycle.withLock {
+    override suspend fun disconnect() = lifecycle.withLock {
         collectorJobs.forEach { it.cancel() }
         collectorJobs = emptyList()
         _client?.close()

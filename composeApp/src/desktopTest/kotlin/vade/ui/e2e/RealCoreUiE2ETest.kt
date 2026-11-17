@@ -205,13 +205,23 @@ class RealCoreUiE2ETest {
         }
     }
 
+    /**
+     * P1-3 · 探针 UiState 只**借**共享真源读一次。
+     *
+     * `UiState.dispose()` 现在会经 `DisconnectableSource` 真的断开它持有的源；把
+     * [RealSessionSource] 本体传进探针，探针一结束就会把后面组合 UI 要用的连接一起关掉
+     * （`uiStateRows` 就在 `App(source = source)` 之前）。包一层只转发 [SessionSource]
+     * 的口：探针读的仍是同一个连接，但「可关停」被摘掉了 —— 连接的生命周期归测试管。
+     */
+    private class BorrowedSource(delegate: RealSessionSource) : vade.ui.data.SessionSource by delegate
+
     /** 用同一个真源新建一个 UiState，最多等 15 s 到 Ready，返回可读结论（不抛异常）。 */
     private fun uiStateProbe(source: RealSessionSource): String {
         val probe = UiState(
             initialBar = vade.ui.skin.BottomBarStyle.Fixed,
             initialSkinId = "material",
             initialDest = vade.ui.destinations.Destination.Sessions,
-            source = source,
+            source = BorrowedSource(source),
             loaderScope = kotlinx.coroutines.CoroutineScope(
                 kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default,
             ),

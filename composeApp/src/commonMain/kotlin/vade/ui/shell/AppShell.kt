@@ -258,6 +258,12 @@ internal val BOTTOM_BAR_DOCK_PAD = 12.dp
  * One place, two callers ([ShellBody] for the pushed detail, [DestinationHost] for the rest):
  * a per-call `(state.source as? AdapterHost)?.adapters` would drift the moment one of the five
  * call sites is edited.
+ *
+ * P1-1 · 这一行是**组合期的 snapshot state 读**：[RealSessionSource.adapters] 由
+ * `mutableStateOf` 承载，冷启动「先组合、后连上」时值从 `null` 变成适配器包会推一次
+ * 重组 —— 五个屏幕因此真的拿到真适配器（`@Volatile` 时代只有第一次读，之后永远是 null）。
+ * 调用方必须**直接**在组合期调用它：不要把它塞进无 key 的 `remember`/普通字段缓存，
+ * 那会把「可观察」重新变回「一次性快照」。
  */
 internal fun adaptersOf(state: UiState): AdapterProvider? = (state.source as? AdapterHost)?.adapters
 
