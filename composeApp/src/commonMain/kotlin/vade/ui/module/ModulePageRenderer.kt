@@ -24,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -243,17 +244,25 @@ fun ModulePageHost(
     var refresh by remember(current.pageId) { mutableIntStateOf(0) }
 
     /**
-     * g-nav-stack（c2-nav）· 模块页是返回栈里的一层：Esc / 系统返回**退一层**——
-     * 面包屑深度 > 1 时退回上一页，深度 1 时退出模块页回能力页；与顶栏返回按钮
-     * （[HostHeader]）完全同一个动作，不会穿过能力页直接退出 App。
+     * g-nav-stack（c2-nav）· 模块页按**面包屑深度**登记**同等数量**的返回层 ——
+     * 「能关几次 = 注册几层」：一次 dispatch 恰好减一层。
      *
-     * 本宿主只在页面打开时组合 ⇒ `enabled = true`；页面关掉后组合离开，层自动出栈。
+     * 旧实现只登记一层，而 [goBack] 会先退一页面包屑；退页不减少栈深，于是「能关几次」
+     * 与「注册了几层」对不上（深度 3 时按一次返回只退到深度 2，栈深仍是 1）。现在深度 N
+     * 就登记 N 层，每层的动作都是 [goBack]：退一页 ⇒ 深度减一 ⇒ 层数随之减一；深度 1
+     * 时那一层调 [onBack] 退出模块页回能力页，组合离开 ⇒ 最后一层自动出栈。
+     * 顶栏返回按钮（[HostHeader]）与返回键完全同一个动作，不会穿过能力页直接退出 App。
+     *
      * 放在页面内容之前：栈序 = 组合序，页面层必须先于它内部的浮层入栈。
      */
     val goBack: () -> Unit = {
         if (stack.size > 1) stack.removeAt(stack.lastIndex) else onBack()
     }
-    BackLayer(enabled = true, onBack = goBack)
+    val breadcrumbDepth = stack.size
+    for (index in 0 until breadcrumbDepth) {
+        // key(index)：深度变化时按位置配对——退一页只需摘掉栈顶那一层。
+        key(index) { BackLayer(enabled = true, onBack = goBack) }
+    }
 
     // `$input` 只存客户端内存（§5.3）：不进快照、不同步、不落盘，页面销毁即丢。
     val inputs = remember(current.pageId) { mutableStateMapOf<String, String>() }

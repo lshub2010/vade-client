@@ -2,11 +2,20 @@
 <html lang="zh-CN">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <!-- c7-wasm: viewport 只声明常规缩放参数，**不写** maximum-scale。
+         但「去 maximum-scale 就能双指缩放」是错的：canvas 铺满视口，浏览器按 canvas 自己的
+         touch-action 决定要不要缩放，而 CMP 1.12 给 canvas 设的是 `pan-x pan-y`（不含
+         pinch-zoom）。真正的修法在 main.kt 的 ensureCanvasTouchAction()：canvas 建好后把内联
+         touch-action 覆写成 `pan-x pan-y pinch-zoom`，再用 getComputedStyle 校验。
+         这里保持最朴素的 viewport，别再往 meta 上找开关。 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Vade</title>
     <style>
         html, body { height: 100%; margin: 0; background: #f1f3f6; }
-        /* ComposeViewport appends its canvas to body; make it fill the viewport. */
+        /* ComposeViewport appends its canvas to body; make it fill the viewport.
+           outline:none 只去掉浏览器默认描边：canvas 拿到焦点后由应用自己画焦点环。
+           这里也不写 canvas { touch-action: ... } —— CMP 设的是同名内联样式，样式表压不过它，
+           写了只会让人误以为生效了；真正的覆写在 main.kt 里。 */
         canvas { outline: none; }
     </style>
 </head>

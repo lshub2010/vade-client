@@ -152,3 +152,87 @@ fun BackHost(dispatcher: BackDispatcher) {
  */
 @Composable
 expect fun SystemBackHandler(enabled: Boolean, onBack: () -> Unit)
+
+// --- wasm 历史桥的决策（纯函数） -------------------------------------------------
+//
+// 浏览器端的 actual（`BackDispatch.wasmJs.kt`）把返回栈**镜像**成 N 条历史条目，
+// 它所有的「要不要派发 / 要不要补条目」判断都收在这里，好让 desktopTest 能在
+// 没有浏览器的环境里逐条钉住 —— wasm 那一侧只剩「读事件 + 执行命令」。
+
+/**
+ * 一次历史事件（或派发后的一次复检）该做什么。
+ *
+ * 命名按「调用点要做什么」而不是「谁的状态」，因为四个动作彼此不重叠。
+ */
+internal enum class BackAction {
+    /** 模型不可信（两处 state 对不上 / 自发回程踏空）：按浏览器说的重建，不派发。 */
+    RESYNC,
+
+    /** 我们自己 `go(-k)` 的回程，落在期望深度：只对账，不派发。 */
+    ADOPT,
+
+    /** 原地 / 前进 / 栈已经缩到落点或更浅：不派发，收敛即可。 */
+    IGNORE,
+
+    /** 后退了、栈在缩但还没缩到落点：**再**派发一次（同帧多次后退不丢）。 */
+    DISPATCH,
+
+    /**
+     * 后退已经发生、栈一条也没降（层的 `onBack` 不关层，比如抽屉只收抽屉）：
+     * 不派发、也不 push —— 后退之后 `pushState` 会被 Chromium 判成 back-trap，
+     * 新条目被标 `should_skip_on_back_forward_ui_`，后退按钮整条跳过它、
+     * 连 popstate 都不投递。处理办法见 actual 的 `hold()`：
+     * 抬当前条目 + 把补条目推迟到下一次用户手势。
+     */
+    HOLD,
+}
+
+/**
+ * 历史桥的状态机（纯函数）。
+ *
+ * 参数是**四个独立的量**，不是同一时刻的快照 —— 混起来看会读错：
+ *
+ *  - [previous]：上一轮派发时的栈深（没派发过就是历史深度）；
+ *  - [landed]：这次 popstate 落在的历史深度；`-1` = 模型不可信（事件 state 与
+ *    `history.state` 对不上，或自发回程踏空）。基座条目没有 state，折算成 0，
+ *    不是 -1 —— 否则每次退到基座都会被当成「不是我们的」而吞掉。
+ *  - [expected]：在途 `go(-k)` 的期望落点；`null` = 没有自发回程在飞；
+ *  - [desired]：**新的**栈深（`dispatcher.depth`），不是派发前的旧值。
+ *
+ * 为什么 `desired` 必须是新的：层收到 `onBack` 之后可能什么都不关（抽屉收抽屉、
+ * 页面只退一层），也可能关掉不止一层。拿派发前的栈深判「还要不要再派发」，
+ * 要么把同一帧的两次后退判成一次，要么对着已经关掉的层再关一次。
+ *
+ * 调用契约（actual 侧两处）：
+ *
+ *  1. **首次派发不吃 decide**：一次后退一定先给栈顶一次机会（后退 = 关一层，
+ *     三端一致的语义）。decide 回答的是「**再**派发 / 停手 / 能不能补条目」。
+ *  2. 派发之后隔一帧再问一次，`desired` 取那一刻的 `dispatcher.depth`：
+ *     栈降了但还没到 [landed] → [BackAction.DISPATCH]；一条没降 → [BackAction.HOLD]。
+ */
+internal fun decide(previous: Int, landed: Int, expected: Int?, desired: Int): BackAction {
+    // state 不是我们的：别的量怎么摆账都对不上，只能按浏览器说的重建。
+    if (landed < 0) return BackAction.RESYNC
+    // 自发 go(-k) 的回程：命中期望 = 我们自己收的条目；踏空 = 有别人动过历史。
+    if (expected != null) return if (landed == expected) BackAction.ADOPT else BackAction.RESYNC
+    // 没后退（前进 / 原地）：没有要关的层。
+    if (landed >= previous) return BackAction.IGNORE
+    // 栈已经缩到落点或更浅：这次后退已经被消化掉了，再派发会多关一层。
+    if (desired <= landed) return BackAction.IGNORE
+    // 栈一条没降（或反而长高）：层不收 —— 派发解决不了，push 又踩 back-trap。
+    if (desired >= previous) return BackAction.HOLD
+    // 在缩但还没到落点：同一帧的多次后退，继续派发。
+    return BackAction.DISPATCH
+}
+
+/**
+ * `history.go(-k)` 的 k 夹在 `[0, historyLength-1]`。
+ *
+ * 夹的原因不是「怕越界」（越界的 go 静默无效、不抛错），而是**看门狗**：
+ * 一个注定落不了地的 go 会让 `pendingClose` 永远等不到 popstate，桥就卡在
+ * 「等回程」里不再收敛。k 被夹到 0 时调用点直接不发 go。
+ */
+internal fun clampSteps(steps: Int, historyLength: Int): Int {
+    val maxBack = (historyLength - 1).coerceAtLeast(0)
+    return steps.coerceIn(0, maxBack)
+}
