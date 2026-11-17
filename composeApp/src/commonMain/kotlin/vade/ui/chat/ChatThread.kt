@@ -10,6 +10,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -185,29 +186,44 @@ fun ChatThread(
     //
     // `reverseScrolling = true` 让 offset 0 就是内容末端 —— 最新一行从第一帧起就在屏上，
     // 且 `scroll.value` 天然等于「离底距离」。所以：
-    //  - 贴底（≤ [FollowThreshold]）时内容 / 列表底部内边距变了 → `scrollTo(0)`，最新行保持可见；
-    //  - 用户上滚（> 阈值）→ **一次都不许拽回**。旧实现每 45ms 无条件 `scrollTo(0)`，把正在
-    //    读历史的人永久拖回底部（K4）。现在只在屏幕底部举一枚「新内容」胶囊，点它才回底。
+    //  - 贴底（≤ [FollowThreshold]）时内容 / 列表底部内边距变了 → 钉回 0，最新行保持可见；
+    //  - 用户上滚（> 阈值）→ **一次都不许拽回**，也**一个像素都不许漂**：内容在底部长了
+    //    多少，就把 `scroll.value` 平移多少（[FollowScrollGate.onHeightChanged]），
+    //    `maxValue - value` 不变 → 屏幕上读的那段原地不动（j1-scroll P1-9）；
+    //  - 新内容只在**上滚**时举一枚底部胶囊，点它才回底。
     //
-    // 用一个 `snapshotFlow` 而不是 keyed `LaunchedEffect`：内容长度与 composer 的动画高度按
-    // 帧变化，keyed effect 会在每次 key 变更时**取消在途滚动**，写永远落不了地；这里每次发射
-    // 都被处理完，写本身是普通（非挂起）赋值。
+    // 观测拆成两条，**不能合并**（j1-scroll P1-10）：
+    //  1. 位置：消息列 / composer 的实测高度。composer 变高会抬高列表底部内边距，同样
+    //     会把文字上推，所以要补偿 —— 但它只是布局；
+    //  2. 内容：items 数 + 末条正文长度。只有它算「有新内容落地」，才允许举胶囊。
+    // 旧实现把 `composerHeightPx` 塞进同一个 `snapshotFlow`，上滚时输入框一变高就误报。
+    //
+    // 用 `snapshotFlow` 而不是 keyed `LaunchedEffect`：内容长度与高度按帧变化，keyed effect
+    // 会在每次 key 变更时**取消在途滚动**，写永远落不了地。
     val density = LocalDensity.current
     val nearBottomPx = with(density) { FollowThreshold.roundToPx() }
     val follower = remember(nearBottomPx) { FollowScrollGate(nearBottomPx) }
     val reduceMotion = LocalReduceMotion.current || ReduceMotion.enabled
     val capsuleMs = skin.motion.durationMs(skin.motion.quickMs, reduceMotion)
     var composerHeightPx by remember { mutableStateOf(0) }
+    var messagesHeightPx by remember { mutableStateOf(0) }
+
+    LaunchedEffect(animate) {
+        if (!animate) return@LaunchedEffect
+        snapshotFlow { messagesHeightPx to composerHeightPx }.collect { (messages, composer) ->
+            // 两列各记各的账；同一帧里都变了就各补各的增量，总和 = 内容总增长。
+            scroll.applyFollow(follower.onHeightChanged(FollowHeightKind.Messages, messages, scroll.value))
+            scroll.applyFollow(follower.onHeightChanged(FollowHeightKind.Composer, composer, scroll.value))
+        }
+    }
 
     LaunchedEffect(animate) {
         if (!animate) return@LaunchedEffect
         snapshotFlow {
-            Triple(
-                state.items.size,
-                state.messages.lastOrNull()?.bodyText?.length ?: 0,
-                composerHeightPx,
-            )
-        }.collect { if (follower.onContentChanged(scroll.value)) scroll.scrollTo(0) }
+            state.items.size to (state.messages.lastOrNull()?.bodyText?.length ?: 0)
+        }.collect { (items, lastBodyLength) ->
+            follower.onContentChanged(items, lastBodyLength, scroll.value)
+        }
     }
 
     // 用户自己回到底部（滚轮 / 触摸）→ 胶囊收起、跟随恢复。`scroll.value` 每像素一发，
@@ -250,7 +266,13 @@ fun ChatThread(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Column(
-                modifier = Modifier.widthIn(max = 760.dp).fillMaxWidth(),
+                modifier = Modifier
+                    .widthIn(max = 760.dp)
+                    .fillMaxWidth()
+                    // j1-scroll (P1-9)：消息列实高 = 位置补偿的观测量。它只覆盖时间线
+                    // 本体（下面的 composer 内边距是兄弟节点），所以 composer 与内容
+                    // 各自记账、互不冒充 —— 胶囊只认内容那一路。
+                    .onSizeChanged { messagesHeightPx = it.height },
                 // 消息之间 20dp（视觉规范 §4）。
                 verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
@@ -1180,53 +1202,36 @@ private fun rememberCoalescedStreamText(raw: String): String {
 }
 
 // --- K4 · 跟随滚动 -------------------------------------------------------------
+//
+// 决策（阈值 / 补偿 / 胶囊）全在 `FollowScroll.kt` 的 [FollowScrollGate]：纯状态机，
+// 逐帧推进即可测。本文件只留「落到 ScrollState 上」的那一步和胶囊本身。
 
-/**
- * K4 · 「贴近底部」的判定半径：最后 96dp 之内仍算贴底。
- *
- * 不能取 0：`reverseScrolling` 下滚动位置是浮点/像素级量，一次轻微的惯性回弹就会让
- * `scroll.value` 离开 0，若阈值取 0，读者「没动」也会被判定成上滚，胶囊会误报。
- */
-internal val FollowThreshold = 96.dp
-
-/** K4 · 「新内容」胶囊的 testTag（`ChatFollowScrollTest` 用它断言出现 / 消失）。 */
+/** K4 · 「新内容」胶囊的 testTag（`ChatFollowScrollGateTest` / 渲染测试用它断言出现 / 消失）。 */
 internal const val NewContentCapsuleTag = "vade.chat.newContentCapsule"
 
 /**
- * K4 · 跟随滚动的决策 —— **纯状态机**（无窗口、无时钟、无副作用），因此测试可以逐帧推进
- * 而不需要真的滚动一次。
+ * K4 · 把 [FollowScrollDirective] 落到滚动状态上。
  *
- * 时刻表（`scroll.value` = 离底距离，0 = 贴底）：
- *  - 内容变了 + 贴底 → 返回 `true`（调用方 `scrollTo(0)`），胶囊不举；
- *  - 内容变了 + 不贴底 → 返回 `false`（**一个像素都不许动**），胶囊举起；
- *  - 用户自己滚回底部 → 胶囊收起，跟随恢复；
- *  - 点了胶囊 → 立刻收起（滚动由调用方发起）。
+ * 用 [ScrollState.dispatchRawDelta] 而不是 `scrollTo`：补偿按帧发生，`scrollTo` 会去抢
+ * 滚动互斥量（`MutatePriority.Default`）—— 用户正在拖拽 / 惯性滑动时这次调用会被取消，
+ * 而 `CancellationException` 会把收集 `snapshotFlow` 的协程一起带走，跟随滚动从此失效。
+ * `dispatchRawDelta` 是同步、可由 `ScrollState` 按 `[0, maxValue]` 截断的纯位移，
+ * 正好只做「抵消布局增量」这一件事。
  *
- * 「上滚后不拽回」是这里的核心不变式：跟随只在贴底时成立，不是「永远跟随」。
+ * 唯一的例外是 [FollowScrollDirective.PinToBottom]：用户手正在拖 / 惯性还在跑时**不钉**。
+ * 钉底是「替用户回底」，手指明确在往上走的时刻每帧把他按回 0 会变成拔河（旧实现靠
+ * `scrollTo` 抢不到互斥量才碰巧避开这一点）。补偿不受此限：它抵消的是布局增量，
+ * 手指下的内容因此不会被流式增长偷走。
  */
-internal class FollowScrollGate(private val nearBottomPx: Int) {
-
-    /** 上滚期间有新内容落地 —— 底部胶囊的可见性。 */
-    var unseenBelow by mutableStateOf(false)
-        private set
-
-    fun isAtBottom(valuePx: Int): Boolean = valuePx <= nearBottomPx
-
-    /** 滚动位置变了：回到贴底区间就清掉提示（拖回去读新内容 = 用户已经看到它了）。 */
-    fun onScroll(valuePx: Int) {
-        if (unseenBelow && isAtBottom(valuePx)) unseenBelow = false
-    }
-
-    /** 内容 / 列表底部内边距变了：`true` = 调用方应该 `scrollTo(0)`。 */
-    fun onContentChanged(valuePx: Int): Boolean {
-        val atBottom = isAtBottom(valuePx)
-        if (!atBottom && !unseenBelow) unseenBelow = true
-        return atBottom
-    }
-
-    /** 点了胶囊 / 程序性回底：先把提示收掉，避免回滚动画期间还挂着。 */
-    fun onJumpToBottom() {
-        unseenBelow = false
+private fun ScrollState.applyFollow(directive: FollowScrollDirective) {
+    when (directive) {
+        FollowScrollDirective.None -> Unit
+        FollowScrollDirective.PinToBottom -> if (value != 0 && !isScrollInProgress) {
+            dispatchRawDelta(-value.toFloat())
+        }
+        is FollowScrollDirective.ShiftBy -> if (directive.deltaPx != 0) {
+            dispatchRawDelta(directive.deltaPx.toFloat())
+        }
     }
 }
 
