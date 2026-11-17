@@ -187,6 +187,64 @@ class SessionsDrawerTest {
         assertEquals(1, dispatcher.depth, "详情层仍在栈里")
     }
 
+    /**
+     * P0-2（终审）· 「能关几次 = 注册几层」：抽屉与详情各占一层，一次 dispatch 恰好减一层。
+     *
+     * 旧实现只有一层，`onBack` 里按 `drawerOpen` 二选一：收完抽屉栈深不减 —— 层数与可退
+     * 次数对不上（第二次返回才轮到详情）。这里钉住新接线：抽屉开着 = 两层 → 返回 #1 只收
+     * 抽屉（详情与选中都还在）→ 返回 #2 清选中回列表根 → 栈深归零、返回交还系统。
+     */
+    @Test
+    fun drawerAndDetailEachOwnALayerSoEveryBackClosesExactlyOneLevel() = runComposeUiTest {
+        val ui = uiState()
+        val dispatcher = BackDispatcher()
+        setContent {
+            // 抽屉层以自己的 surface 色画底（`skin.colors.surface`），必须提供 LocalSkin。
+            CompositionLocalProvider(
+                LocalSkin provides MaterialSkin(),
+                LocalBackDispatcher provides dispatcher,
+            ) {
+                SessionsDrawerHost(
+                    state = ui,
+                    adapters = null,
+                    contentInsets = PaddingValues(0.dp),
+                    animate = false,
+                    base = {},
+                    drawer = {},
+                )
+            }
+        }
+        waitForIdle()
+
+        // 列表根（无选中）：抽屉开着也不登记（J5：那时收抽屉只会露出没有出路的空详情）。
+        assertEquals(0, dispatcher.depth, "列表根不登记返回层")
+
+        // 详情 → 抽屉：可退的层级数是 2，注册的层数就必须是 2。
+        runOnIdle { ui.open("s-u1a") }
+        waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 1 }
+        runOnIdle { ui.openSessionsDrawer() }
+        waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 2 }
+
+        // 返回 #1：恰好减一层 —— 抽屉关了，详情与选中不受影响。
+        var consumed = false
+        runOnIdle { consumed = dispatcher.dispatch() }
+        assertTrue(consumed)
+        waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 1 }
+        assertFalse(ui.sessionsDrawerOpen, "栈顶是抽屉：一次返回只收抽屉")
+        assertNotNull(ui.selectedSessionId, "收抽屉不销毁详情（不是一次关两层）")
+
+        // 返回 #2：再减一层 —— 清选中回列表根（抽屉按「无选中 ⇒ 开」的规则滑出）。
+        runOnIdle { consumed = dispatcher.dispatch() }
+        assertTrue(consumed)
+        waitUntil(timeoutMillis = 5_000) { ui.selectedSessionId == null }
+        assertTrue(ui.sessionsDrawerOpen, "清选中后回到列表根 ⇒ 抽屉开着")
+        waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 0 }
+
+        // 列表根：层已经关干净，返回交还系统（不再吞返回）。
+        runOnIdle { consumed = dispatcher.dispatch() }
+        assertFalse(consumed, "栈空 ⇒ 未消费（Android 允许退出）")
+    }
+
     // ------------------------------------------------------------ 3. UI：开合 / 遮罩 / 预览消失 / 色点仍在
 
     @Test
