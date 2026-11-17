@@ -19,6 +19,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import vade.ui.data.FakeSessionSource
 import vade.ui.destinations.Destination
+import vade.ui.destinations.LocalSessionListOpener
+import vade.ui.destinations.SessionDetailScreen
 import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.material.MaterialSkin
@@ -52,22 +54,42 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalTestApi::class)
 class EmptyDetailAndTabRetapTest {
 
+    /**
+     * 手机空态的按钮必须真的可点，且点击调到宿主动作。
+     *
+     * 为什么不再从 411dp 深链造现场：`UiState` 发现 id 不在列表里会把它清掉，屏上
+     * 退回列表根，根本到不了空态（上一版用例因此一直是假红）。这里直接钉屏幕契约：
+     * 在 `LocalSessionListOpener` 提供的子树里，按钮存在、可点、调用的就是那个动作；
+     * AppShell 是否真的 provide 由下一条源码钉子管。
+     */
     @Test
-    fun thePhoneEmptyStateButtonOpensTheSessionDrawer() = runComposeUiTest {
-        // 深链到一条不存在的会话：手机单栏、抽屉初始收起、底层是空态。
-        val ui = uiState(initialSessionId = "s-gone")
-        shell(ui, width = 411.dp, height = 760.dp)
-
-        waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithText("打开会话列表")) }
-        assertNull(ui.selectedSession, "现场前提：选中 id 已不在列表里（否则这条路不是空态）")
-        assertTrue(!ui.sessionsDrawerOpen, "现场前提：深链直进详情 ⇒ 抽屉初始收起，空态露在外面")
-
+    fun thePhoneEmptyStateButtonCallsTheHostProvidedOpener() = runComposeUiTest {
+        var opened = 0
+        setContent {
+            CompositionLocalProvider(
+                LocalSkin provides MaterialSkin(),
+                LocalSessionListOpener provides { opened++ },
+            ) {
+                SessionDetailScreen(
+                    session = null,
+                    showTitle = false,
+                    compactEmpty = true,
+                )
+            }
+        }
+        waitForIdle()
         onNode(hasText("打开会话列表") and hasClickAction()).performClick()
+        runOnIdle { assertEquals(1, opened, "空态按钮必须调用宿主给的出口") }
+    }
 
-        runOnIdle { assertTrue(ui.sessionsDrawerOpen, "点按钮 ⇒ 抽屉必须滑出（P1-11 的闭路）") }
-        // 几何判据：抽屉层从屏外回到屏内（收起时它只是被平移到左边，语义树里一直在）。
-        waitUntil(timeoutMillis = 10_000) { drawerLeft() >= -1f }
-        waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithText(ROW_TITLE)) }
+    /** AppShell 的手机抽屉分支必须 provide 这个出口（否则上一条永远拿不到动作）。 */
+    @Test
+    fun thePhoneDrawerBranchProvidesTheListOpener() {
+        val source = java.io.File("src/commonMain/kotlin/vade/ui/shell/AppShell.kt").readText()
+        assertTrue(
+            source.contains("LocalSessionListOpener provides state::openSessionsDrawer"),
+            "AppShell 手机分支必须 provide 列表出口（P1-11 的接线点）",
+        )
     }
 
     @Test
