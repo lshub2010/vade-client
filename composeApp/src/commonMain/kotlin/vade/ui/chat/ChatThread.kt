@@ -140,10 +140,10 @@ internal const val GlassSourceThreadTag = "vade.glass.source.chatThread"
  * composes them from Compose-foundation primitives only (same escape hatch as `UiText`,
  * `StatusPill` and the markdown renderer) — no toolkit widgets, no direct toolkit colours.
  */
-@Composable
 /** m-bar：composer 浮层的测试锚点（底边 = 窗口底 − 栏区 − 16dp）。 */
 internal const val ComposerOverlayTag = "vade.chat.composer.overlay"
 
+@Composable
 fun ChatThread(
     state: ChatState,
     modifier: Modifier = Modifier,
