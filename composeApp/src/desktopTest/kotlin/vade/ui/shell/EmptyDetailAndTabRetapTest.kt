@@ -103,11 +103,19 @@ class EmptyDetailAndTabRetapTest {
         }
         onNode(button).performClick()
 
-        waitUntil(timeoutMillis = 5_000) { ui.sessionsDrawerOpen }
-        // 抽屉是否真的滑出来：不看具体位移实现，只看「行可见且可点」——
-        // 收起时行即便在语义树里也不该 displayed。
-        waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithText(ROW_TITLE)) }
-        onNodeWithText(ROW_TITLE).assertIsDisplayed()
+        try {
+            waitUntil(timeoutMillis = 5_000) { ui.sessionsDrawerOpen }
+            // 抽屉是否真的滑出来：不看具体位移实现，只看「行可见且可点」——
+            // 收起时行即便在语义树里也不该 displayed。
+            waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithText(ROW_TITLE)) }
+            onNodeWithText(ROW_TITLE).assertIsDisplayed()
+        } catch (failure: Throwable) {
+            println("=== after click dump ===")
+            println("drawerOpen=${ui.sessionsDrawerOpen} id=${ui.selectedSessionId}")
+            println("rows=${onAllNodesWithText(ROW_TITLE).fetchSemanticsNodes().size}")
+            println(onRoot(useUnmergedTree = true).printToString(maxDepth = 40))
+            throw failure
+        }
     }
 
     /**
