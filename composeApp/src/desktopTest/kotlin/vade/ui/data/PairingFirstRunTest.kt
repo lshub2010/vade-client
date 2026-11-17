@@ -9,6 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,6 +20,7 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import vade.ui.protocol.BrowserPairing
 import vade.ui.protocol.FakeTransportFactory
 import vade.ui.protocol.VadeClientConfig
 import vade.ui.protocol.VadeErrorCodes
@@ -210,6 +212,37 @@ class PairingFirstRunTest {
     }
 
     // ------------------------------------------------------------- 运行期桥的消费点
+
+    /**
+     * P0-1 · 启动参数里的码必须真的落到 [VadeClientConfig.browserSession]。
+     *
+     * 之前 `sessionSourceFrom` 的 Real 分支算出了带 [BrowserPairing] 的 config，却在构造
+     * 真源时只传 host/port —— 于是 `VADE_PAIR_CODE` / Android `--es pair_code` /
+     * wasm `?pair_code=` **完全不生效**：WS 升级被当成「设备 peer」，core 走 Noise 握手，
+     * 明文 JSON 客户端永远接不上（用户看到的是「core 不可达」，码白烧）。
+     */
+    @Test
+    fun realSourceCarriesTheRawPairCodeIntoItsConfig() {
+        val auto = assertIs<AutoConnectingSessionSource>(
+            sessionSourceFrom(realWithCode),
+            "真源唯一的装配形状是 shim（AutoConnectingSessionSource）",
+        )
+        val config = auto.delegate.config
+        assertEquals("127.0.0.1", config.host)
+        assertEquals(8443, config.port)
+        val pairing = assertIs<BrowserPairing>(
+            config.browserSession,
+            "码没进配置 = VADE_PAIR_CODE / pair_code 完全不生效（WS 会按设备 peer 升级）",
+        )
+        assertEquals("青松-ABC123", pairing.pairCode)
+    }
+
+    /** 没码时不许凭空造一个浏览器会话：那是「假装已配对」的另一种假接线。 */
+    @Test
+    fun realSourceWithoutACodeStaysADeviceSession() {
+        val auto = assertIs<AutoConnectingSessionSource>(sessionSourceFrom(realNoCode))
+        assertNull(auto.delegate.config.browserSession, "无码 = 设备会话（不做 POST /ui/session）")
+    }
 
     @Test
     fun pairedFactoryReachesTheRealChain() {

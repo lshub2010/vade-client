@@ -13,6 +13,7 @@ import kotlinx.coroutines.launch
 import kotlin.concurrent.Volatile
 import vade.ui.chat.ChatMessage
 import vade.ui.chat.ChatPreset
+import vade.ui.data.DisconnectableSource
 import vade.ui.data.FakeSessionSource
 import vade.ui.data.FakeSessions
 import vade.ui.data.SessionSource
@@ -186,11 +187,26 @@ class UiState(
      * w-wire: stops every async read and event subscription; no further state writes.
      * The fixture path has nothing to stop. A4-1：在飞的新建协程一并取消 —— 取消只会
      * 落在 `createSession()` 的挂起点上，结果不会写进已销毁的 state，更不会伪造会话。
+     *
+     * P1-3 · 真源也在这里**真的断开**（[DisconnectableSource]）。只停 loader 的话，协议
+     * runner 的重连循环还在后台跑：配对成功后 `App` 用新源重建 `UiState`，旧源继续无限
+     * 重试，和新源形成双连接（同一个浏览器会话两条 WS）。断开只关 client 与收集器，
+     * **不**关共享的 transport factory —— cookie 缓存在里面，桥/下一次连接还要用。
+     *
+     * `dispose()` 不是挂起函数（组合根的 `onDispose` 调它），而 `disconnect()` 要拿
+     * `RealSessionSource` 的生命周期锁，所以在 loader 的同一个 scope 上 fire-and-forget；
+     * 该 scope 由本对象持有（或调用方注入），`loader.dispose()` 只取消 loader 自己的 job，
+     * 不会取消它，断开因此不会半路被丢掉。
      */
     fun dispose() {
         newSessionJob?.cancel()
         newSessionJob = null
         loader?.dispose()
+        val real = source as? DisconnectableSource
+        if (real != null) {
+            // 夹具源不实现该接口（没有连接可关）；真源路径的 scope 必然存在（同上文的不变式）。
+            asyncScope?.launch { runCatching { real.disconnect() } }
+        }
     }
 
     // --- A4-1 · 新建会话（真源异步路径；夹具路径没有这个动作的异步态） ----------------
