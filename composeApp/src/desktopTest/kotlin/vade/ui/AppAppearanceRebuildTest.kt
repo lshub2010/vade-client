@@ -80,16 +80,18 @@ class AppAppearanceRebuildTest : IsolatedPreferencesTest() {
 
     private fun source(path: String) = File("src/$path")
 
+    /** 与 `WindowTitleTest` 同一个理由：守卫匹配**代码**，不匹配病历 / 说明里的引用。 */
     private fun stripComments(text: String): String =
-        text.replace(Regex("""/\*.*?\*/"""), "").replace(Regex("""//.*"""), "")
+        text.replace(Regex("""/\*.*?\*/""", RegexOption.DOT_MATCHES_ALL), "")
+            .replace(Regex("""//.*"""), "")
 
     @Test
     fun appKtCarriesTheCurrentAppearanceIntoTheRebuiltUiState() {
         val app = stripComments(source("commonMain/kotlin/vade/ui/App.kt").readText())
 
         assertTrue(
-            "appearanceOnRebuild(" in app,
-            "App.kt 没走 appearanceOnRebuild：重建 UiState 时又会拿启动实参 → 外观回滚（P1-13）",
+            "initialSkinId = appearanceOnRebuild(carriedAppearance.skinId" in app,
+            "UiState 构造没走 appearanceOnRebuild(carriedAppearance.skinId, …)：重建时又会拿启动实参 → 外观回滚（P1-13）",
         )
         assertTrue(
             "carriedAppearance.skinId = state.skinId" in app,
