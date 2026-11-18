@@ -104,14 +104,14 @@ internal val BAND_FADE_GAP = 8.dp
  *     `DstIn` 的竖向渐变矩形**乘**上去：alpha = 1 的那头原样保留，alpha = 0 的那头
  *     整层透明 —— 模糊、染色一起从「满」衰减到「看不见」，不会留下一条硬边（用户要的
  *     「归零」，不是「突然截断」）。
- *  3. 每个像素每帧只有一次 haze 采样 + 一次渐变乘法；brush 在 `drawWithCache` 里建一次、
- *     只有尺寸变化才重建（每帧重建 brush 是 [GlassBand] 之外另一处容易漏的分配点）。
+ *  3. 每个像素每帧只有一次 haze 采样 + 一次渐变乘法；渐变 brush 在 `remember(stops)` 里
+ *     建一次（它只跟方向有关，不随尺寸重建），每帧零分配。
  *
  * ## 退化的形状（不崩、不白屏）
  *
- * [hazeState] 为 `null`（未提供 `GlassScope` 的预览 / 单测）时与 [GlassBand] 同构退化：
- * 不建 haze 节点，只剩染色 —— 而染色的 alpha 也被同一条渐变乘过，所以那条带子会**淡到
- * 几乎没有**。这是诚实的退化：没有背景可采时「渐变模糊」本来就是不存在的东西，画一条
+ * [hazeState] 为 `null`（未提供 `GlassScope` 的预览 / 单测）时与 [GlassBand] 同构：用一个
+ * 私有空 state 走同一条 haze 链 —— 采不到背景时它画不出模糊，只剩被同一条渐变乘过的染色，
+ * 近乎不可见。这是诚实的退化：没有背景可采时「渐变模糊」本来就是不存在的东西，画一条
  * 平淡的同色带子只会假装有模糊。
  *
  * @param hazeState 环境共享的 [HazeState]（`LocalGlassHazeState`）；`null` = 退化。
