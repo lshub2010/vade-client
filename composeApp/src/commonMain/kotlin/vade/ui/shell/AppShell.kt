@@ -1105,9 +1105,10 @@ private fun navItems(): List<BottomBarItem> = Destination.entries.map {
  *  - `⌘K` / `Ctrl+K`: toggle the command palette (desktop shape of search).
  *  - `↑` / `↓`: move the selection (wraps), `Enter`: open the selected session.
  *  - `Esc`: 「返回」的桌面形态。g-nav-stack：**先交给返回栈**（[BackDispatcher.dispatch]），
- *    栈顶那一层消费它（浮层 / 模块页 / 关于 / 抽屉 / 详情）；只有栈空时才回落本函数的
- *    兜底分支 —— 而现在兜底也只有一句话：有选中会话就 `state.back()`，与栈里那一层
- *    完全同一个动作（孤立调用、或组合根没 provide provider 时才会走到）。
+ *    栈顶那一层消费它（浮层 / 模块页 / 关于 / 详情）。**有返回栈时栈空 = 不消费**：那一层
+ *    「没有可退的页面」，返回交还系统（Android 退出 App）—— 手机抽屉开着就是这形态
+ *    （用户 2026-11-18 拍板「列表返回 = 退应用」），此时绝不许把 Esc 偷换成 `state.back()`
+ *    去清选中。兜底分支只服务没有 dispatcher 的孤立调用（组件预览 / 纯函数测试）。
  *    这也意味着 Esc 不再按断点分叉（旧的「双栏退详情 / 单栏 toggle 抽屉」已删除）。
  *
  * `⌘N`, `⌘1–4`, `⌘B`, `⌘,`, `⌘\` deliberately stay with U1-g: this handler does not touch
@@ -1135,11 +1136,14 @@ internal fun handleShellKeys(
     }
 
     if (!search.open) {
-        if (event.key == Key.Escape && state.selectedSessionId != null) {
-            // 栈空的兜底（只有孤立调用 / 组合根没 provide provider 才会到这里）：本函数
-            // 不知道布局，取「没有抽屉」那一档语义（清选中回列表根）。生产树上手机抽屉
-            // 由 `SessionsDrawerHost` 登记的层处理，走的是 `back(drawerModel = true)`
-            // （滑出列表、选中保留），不会落到这一行。
+        // 栈空的兜底**只服务没有返回栈的孤立调用**（`backDispatcher == null`：组件预览、
+        // 单独的纯函数测试）。有 dispatcher 时「栈空」是一个确定语义：这一层没有可退的
+        // 页面 ⇒ 返回交还系统（Android 允许退出 App）。用户 2026-11-18 拍板「列表返回 =
+        // 退应用」正是这个形态（手机抽屉开着 + 有选中 = 0 层）：这条兜底若还认 Esc，就会
+        // 把「退应用」偷换成「悄悄清选中」—— 抽屉与选中都不许动，所以这里必须返回 false。
+        if (backDispatcher == null && event.key == Key.Escape && state.selectedSessionId != null) {
+            // 只有孤立调用才到这里：本函数不知道布局，取「没有抽屉」那一档语义
+            // （清选中回列表根）。生产树上详情 / 浮层都由各自登记的层处理。
             state.back()
             return true
         }

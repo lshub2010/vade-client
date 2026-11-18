@@ -47,9 +47,9 @@ import kotlin.test.assertTrue
  * g-route-transition · 手机单栏抽屉的验收钉子（2026-11-15 口径变更）：
  *
  *  1. **转场配置**：`animate = true` → 时长 220–300ms、非线性缓动；`animate = false` → 0ms；
- *  2. **开合状态**（n1-nav 口径）：点行收抽屉露出详情；详情（抽屉收）→ 返回 = **滑出列表、
- *     选中保留**；列表（抽屉开）→ 返回 = **收起列表、回到原来那个会话**（不清选中、不退
- *     App）；只有会话页列表根（无选中）才交还系统（允许退出）。详情始终不销毁；
+ *  2. **开合状态**（n1-nav 口径 + 用户 2026-11-18 拍板）：点行收抽屉露出详情；详情（抽屉收）→
+ *     返回 = **滑出列表、选中保留**；列表（抽屉开）→ 返回 = **交还系统（退 App）**，列表层
+ *     出栈（depth 0）、抽屉与选中一条都不改；会话页列表根（无选中）同样交还系统；详情始终不销毁；
  *  3. **抽屉宽度**：手机单栏恒**满宽**（与未选中时的列表同宽）；peek（0.8 + 右缘圆角 +
  *     浮层阴影）只属于双栏并排形态，本宿主不渲染；
  *  4. **遮罩存在**：抽屉开着有遮罩（压暗底下的详情）；收起后消失；
@@ -194,11 +194,14 @@ class SessionsDrawerTest {
     }
 
     /**
-     * n1-nav #2（真机反馈）：手机上的返回是**可逆切换**，不是单向销毁。
+     * n1-nav #2（真机反馈）+ 用户 2026-11-18 拍板：手机上的返回**只往列表方向退一层**，
+     * 到了列表就交还系统。
      *
-     *  - 列表根（无选中）：不登记层 ⇒ 返回交还系统（允许退出 App）——这是**唯一**退应用的形态；
+     *  - 列表根（无选中）：不登记层 ⇒ 返回交还系统（允许退出 App）；
      *  - 详情 → 返回：抽屉滑出，**选中保留**（旧实现这里清选中，再返回详情就没了）；
-     *  - 列表 → 返回：抽屉收起，**回到原来那个会话**（不是清选中、不是退 App）。
+     *  - 列表 → 返回：**交还系统（退 App）**，抽屉与选中一条都不改。列表层必须**真的出栈**
+     *    （depth = 0），否则栈顶那层会把 Esc / 系统返回吃掉，「退应用」变成「按了没反应」；
+     *    也不能让 `handleShellKeys` 的旧兜底把这次返回偷换成「清选中」。
      */
     @Test
     fun backFromTheListGoesToTheSystemAndKeepsTheSession() = runComposeUiTest {
@@ -241,22 +244,28 @@ class SessionsDrawerTest {
         assertTrue(consumed)
         waitUntil(timeoutMillis = 5_000) { ui.sessionsDrawerOpen }
         assertEquals("s-u1a", ui.selectedSessionId, "退回列表不许把原来那个会话取消掉")
-        // 用户拍板「列表返回退应用」：抽屉开着时不再登记返回层。
-        waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 1 }
+        // 用户拍板「列表返回退应用」：抽屉开着 ⇒ 列表层必须**真的出栈**（不是「还在栈里、
+        // 照旧吃掉一次返回」）。这里必须等 depth 落到 0 再派发：抽屉一开的同一帧里旧层还在栈上，
+        // 不等就 dispatch 会读到旧深度 —— 「列表层没出栈」和「出栈了但还没应用」被混成一样，
+        // 用例也就钉不住任何东西。
+        waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 0 }
+        assertEquals(0, dispatcher.depth, "列表层不登记 BackLayer：抽屉一开 depth 必须回 0")
 
         // 返回 #2（抽屉开着）：没有可退层级 ⇒ 交还系统（退 App），选中与抽屉都不被改。
         runOnIdle { consumed = handleShellKeys(keyDown(Key.Escape), ui, backDispatcher = dispatcher) }
         assertFalse(consumed, "列表层不再登记 BackLayer，返回必须交还系统")
         assertTrue(ui.sessionsDrawerOpen, "退应用前不许偷偷收起列表")
         assertEquals("s-u1a", ui.selectedSessionId, "退应用前选中也必须保留")
+        assertEquals(0, dispatcher.depth, "交还系统后栈仍然是 0：没有偷偷补一层，也没有被清成负值")
     }
 
     /**
-     * 「能关几次 = 注册几层」：抽屉与详情各占一层，两态各自消费一次 dispatch。
+     * 「能关几次 = 注册几层」：手机单栏本宿主**最多一层**，而列表打开时是 0 层。
      *
-     * 旧实现只有一层，`onBack` 里按 `drawerOpen` 二选一：收完抽屉栈深不减 —— 层数与可退
-     * 次数对不上。现在：详情 = 1 层、抽屉开着 = 2 层；返回 #1 只收抽屉（详情与选中都还在），
-     * 返回 #2 又滑出列表（选中仍不动）。真正让栈归零的只有「离开会话页」（选中被清）。
+     * 层数必须恒等于「此刻能退几层」：详情在屏、抽屉收着 = 1 层（返回滑出列表）；抽屉开着
+     * = 0 层（用户 2026-11-18 拍板「列表返回 = 退应用」，列表是最后一层）；列表根（无选中）
+     * 也是 0 层。旧实现的第二层（抽屉层）已删除 —— 那一层让列表永远退不出去。
+     * 真正让栈归零的还有「离开会话页」（选中被清）。
      */
     @Test
     fun theListIsNotABackLayerAndTheSystemOwnsBackWhenItIsOpen() = runComposeUiTest {
@@ -343,12 +352,19 @@ class SessionsDrawerTest {
         waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithText(ROW_TITLE)) }
         assertNotNull(ui.selectedSessionId, "返回后详情必须还在底层（不是退出详情页）")
 
-        // n1-nav #1：抽屉满宽 ⇒ 没有「点遮罩」这一手（遮罩被抽屉完全盖住）；退出去列表
-        // 只剩返回一条路 —— 返回一次 = 收抽屉、回到原来那个会话（选中不清）。
+        // 用户 2026-11-18 拍板「列表返回 = 退应用」：抽屉开着时 `back(drawerModel = true)`
+        // 不再收抽屉 —— 状态一条都不改（真机上这一下由系统吃下、App 退出）。
         runOnIdle { ui.back(drawerModel = true) }
+        assertTrue(ui.sessionsDrawerOpen, "列表返回 = 退应用：抽屉不许被偷偷收起")
+        assertEquals("s-u1a", ui.selectedSessionId, "退应用前选中不许被偷偷清掉")
+        waitUntil(timeoutMillis = 5_000) { !drawerOffscreen() }
+
+        // 满宽抽屉没有「点遮罩」这一手（遮罩被抽屉完全盖住），但列表仍然能回到原会话：
+        // 手动收起（行点选 / 顶栏入口同一条路径）⇒ 抽屉滑出屏、选中全程不动。
+        runOnIdle { ui.closeSessionsDrawer() }
         waitUntil(timeoutMillis = 10_000) { drawerOffscreen() }
-        assertFalse(ui.sessionsDrawerOpen, "返回 = 收起满宽列表")
-        assertNotNull(ui.selectedSessionId, "收列表 = 回到原会话（不是清选中）")
+        assertFalse(ui.sessionsDrawerOpen, "收抽屉 = 抽屉真的滑出屏")
+        assertEquals("s-u1a", ui.selectedSessionId, "收列表 = 回到原会话（不是清选中）")
     }
 
     /** 抽屉层是否已完全平移到屏幕左缘之外（收起态的几何判据）。 */
