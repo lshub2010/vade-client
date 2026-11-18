@@ -3,7 +3,9 @@ package vade.ui.destinations
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import kotlinx.serialization.json.JsonObject
 import vade.ui.chat.AttachmentUploader
@@ -555,9 +557,13 @@ class ScreenAdapterWiringTest : IsolatedPreferencesTest() {
         onNodeWithText(PROBE_MODEL_NAME).assertExists()
     }
 
+    /**
+     * g-header-model-line：会话详情上模型名**只由 composer 内的 chip 承载**（表头那行
+     * 「模型 …」已删除）。chip 默认收起，所以先点输入区 —— 这也是产品里唯一的手势入口。
+     */
     @Test
     @OptIn(ExperimentalTestApi::class)
-    fun sessionDetailHeaderShowsTheProvidedModelAndTheDegradationNote() = runComposeUiTest {
+    fun sessionDetailChipShowsTheProvidedModel() = runComposeUiTest {
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
                 SessionDetailScreen(
@@ -568,11 +574,17 @@ class ScreenAdapterWiringTest : IsolatedPreferencesTest() {
                 )
             }
         }
-        // g-model-chip：会话详情上模型名由 header 行与 composer chip 共同承载 —— 断言「出现」，
-        // 不再断言「唯一」。
+        // 表头不在拼模型名：收起态下一个字都不出现（正向断言在下面，防止「哪儿都没有」）。
+        assertTrue(
+            onAllNodesWithText(PROBE_MODEL_NAME, substring = true).fetchSemanticsNodes().isEmpty(),
+            "表头模型行已删除：composer 收起时模型名不该出现",
+        )
+
+        // 展开 composer → chip 的文案就是适配器给出的显示名。
+        onNodeWithText("输入消息…").performClick()
         assertTrue(
             onAllNodesWithText(PROBE_MODEL_NAME, substring = true).fetchSemanticsNodes().isNotEmpty(),
-            "适配器给出的模型名必须出现在会话详情上",
+            "适配器给出的模型名必须出现在 composer 的模型 chip 上",
         )
         onNodeWithText(SEAM_FALLBACK_NOTE, substring = true).assertDoesNotExist()
     }
@@ -590,7 +602,10 @@ class ScreenAdapterWiringTest : IsolatedPreferencesTest() {
                 )
             }
         }
-        // 不崩、也不静默：header 的模型行里出现「已退回内存假数据」。
+        // 不崩、也不静默：退化原因现在由**模型面板的脚注**给出（表头模型行已随
+        // g-header-model-line 删除）—— 展开 composer、点开 chip 才能读到那句诚实正文。
+        onNodeWithText("输入消息…").performClick()
+        onNodeWithContentDescription("更改会话模型").performClick()
         onNodeWithText(SEAM_FALLBACK_NOTE, substring = true).assertExists()
     }
 }

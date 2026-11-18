@@ -3,9 +3,15 @@
 // 用户拍板的行为：模型控件**默认隐藏**；点输入区 → composer 变双行（输入行在上、页面控件
 // 在下）；点 composer 外部收起；发送后保持展开；每次进入会话 / 切会话都收起。
 //
+// 第二行的位置（g-inline-second-row 后的契约）：它在**输入面板内部** —— 由
+// `Skin.InputBar(secondRow = …)` 画在面板里、输入行下方，与输入行共享同一块玻璃底与
+// 圆角；不再是面板外另起一条带 surface 的独立行。几何断言因此多一条：chip 的矩形必须被
+// 面板（`ComposerPanelTag`）的矩形**包含**。
+//
 // 这一组同时钉两件事：
 //  1. `ChatThread` 的形参契约 —— `modelRow != null && expanded` 才组成第二行；不传
-//     `modelRow` 时（AppShell 那些老调用点）composer 仍是原来那一行，一个节点都不多；
+//     `modelRow` 时（AppShell 那些老调用点）composer 仍是原来那一行：没有第二行节点，
+//     也没有面板锚点节点；
 //  2. `SessionDetailScreen` 的页面行为 —— 展开态由页面持有（`remember(session.id)`），
 //     指针信号从哪儿来（点输入区 / 点外部）与切会话后的重置。
 //
@@ -72,6 +78,8 @@ class ComposerTwoRowTest {
         waitForIdle()
 
         onNodeWithTag(ComposerModelRowTag).assertDoesNotExist()
+        // 面板锚点也不挂：默认路径连一个语义节点都不多。
+        onNodeWithTag(ComposerPanelTag).assertDoesNotExist()
         // 原来的一行还在：输入框（占位文案）与发送球。
         onNodeWithText("输入消息…").assertExists()
         onNodeWithContentDescription("发送消息").assertExists()
@@ -100,6 +108,7 @@ class ComposerTwoRowTest {
             }
             waitForIdle()
             onNodeWithTag(ComposerModelRowTag).assertDoesNotExist()
+            onNodeWithTag(ComposerPanelTag).assertDoesNotExist()
             onNodeWithText("模型行标记").assertDoesNotExist()
         }
 
@@ -120,12 +129,22 @@ class ComposerTwoRowTest {
             onNodeWithTag(ComposerModelRowTag).assertExists()
             onNodeWithText("模型行标记").assertExists()
 
-            // 第二行在输入行之下：发送球垂直居中于输入行，所以它的下沿必在模型行上沿之上。
-            val orb = onNodeWithContentDescription("发送消息").fetchSemanticsNode().boundsInRoot
+            // 第二行在输入行之下：用输入行的占位文案量（发送球现在垂直居中于**整块面板**，
+            // 双行时它的下沿会落到第二行那一带的右侧，不能再当「输入行下沿」的代理）。
+            val field = onNodeWithText("输入消息…").fetchSemanticsNode().boundsInRoot
             val row = onNodeWithTag(ComposerModelRowTag).fetchSemanticsNode().boundsInRoot
             assertTrue(
-                row.top >= orb.bottom,
-                "模型行必须在输入行之下（row.top=${row.top} < orb.bottom=${orb.bottom}）",
+                row.top >= field.bottom,
+                "模型行必须在输入行之下（row.top=${row.top} < field.bottom=${field.bottom}）",
+            )
+
+            // 新契约：第二行在**输入面板内部** —— 它的矩形被面板矩形包含（不再有面板外
+            // 那层带 surface 的独立行）。
+            val panel = onNodeWithTag(ComposerPanelTag).fetchSemanticsNode().boundsInRoot
+            assertTrue(
+                row.top >= panel.top && row.bottom <= panel.bottom &&
+                    row.left >= panel.left && row.right <= panel.right,
+                "第二行必须被输入面板包含（panel=$panel, row=$row）",
             )
         }
     }
@@ -133,12 +152,13 @@ class ComposerTwoRowTest {
     // --- 会话页的页面行为 ------------------------------------------------------------
 
     /**
-     * ① 默认收起 ② 点输入区展开 ③ 模型行在输入行下方。
+     * ① 默认收起 ② 点输入区展开 ③ 模型 chip 在输入面板内部、输入行下方。
      */
     @Test
     fun sessionPageHidesTheModelRowUntilTheComposerIsTouched() = runPage { _ ->
-        // ① 进会话：composer 只有一行，模型 chip 不在语义树里。
+        // ① 进会话：composer 只有一行，模型 chip 不在语义树里，也没有面板锚点。
         onNodeWithTag(ComposerModelRowTag).assertDoesNotExist()
+        onNodeWithTag(ComposerPanelTag).assertDoesNotExist()
         onNodeWithContentDescription("更改会话模型").assertDoesNotExist()
 
         // ② 点输入框（占位文案就是输入区的中心）→ 展开。
@@ -148,12 +168,19 @@ class ComposerTwoRowTest {
         onNodeWithTag(ComposerModelRowTag).assertExists()
         onNodeWithContentDescription("更改会话模型").assertExists()
 
-        // ③ 第二行在输入行之下 —— 不是「与发送球同一行」的旧形态。
-        val orb = onNodeWithContentDescription("发送消息").fetchSemanticsNode().boundsInRoot
+        // ③ chip 在输入行之下，且被输入面板的矩形**包含**（同一块面板的第二行）。
+        // 「输入行」用占位文案量：发送球是整块面板的垂直中心，不再是输入行下沿的代理。
+        val field = onNodeWithText("输入消息…").fetchSemanticsNode().boundsInRoot
         val chip = onNodeWithContentDescription("更改会话模型").fetchSemanticsNode().boundsInRoot
         assertTrue(
-            chip.top >= orb.bottom,
-            "模型 chip 必须在输入行之下（chip.top=${chip.top} < orb.bottom=${orb.bottom}）",
+            chip.top >= field.bottom,
+            "模型 chip 必须在输入行之下（chip.top=${chip.top} < field.bottom=${field.bottom}）",
+        )
+        val panel = onNodeWithTag(ComposerPanelTag).fetchSemanticsNode().boundsInRoot
+        assertTrue(
+            chip.top >= panel.top && chip.bottom <= panel.bottom &&
+                chip.left >= panel.left && chip.right <= panel.right,
+            "模型 chip 必须被输入面板包含（panel=$panel, chip=$chip）",
         )
     }
 
