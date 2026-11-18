@@ -405,9 +405,11 @@ class UiState(
             sessionsDrawerOpen = true
             return
         }
-        // 手机抽屉：列表根无事可退（不登记返回层）；否则详情 ⇄ 列表，选中不动。
+        // 手机抽屉：详情 → 列表（选中不动）；已经在列表上则不再切换 ——
+        // 用户拍板「列表返回退应用」，那一层不再登记 BackLayer，系统返回直接退出。
         if (selectedSessionId == null) return
-        sessionsDrawerOpen = !sessionsDrawerOpen
+        if (sessionsDrawerOpen) return
+        sessionsDrawerOpen = true
     }
 
     // --- U1-c · search ---------------------------------------------------------

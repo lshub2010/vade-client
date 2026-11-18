@@ -90,8 +90,8 @@ class UiStateSelectRetapTest {
         assertEquals("s-u1a", state.selectedSessionId, "滑出列表不许清选中")
 
         state.back(drawerModel = true)
-        assertFalse(state.sessionsDrawerOpen, "列表 → 返回 = 收起列表")
-        assertEquals("s-u1a", state.selectedSessionId, "收起列表 = 回到原会话，选中还在")
+        assertTrue(state.sessionsDrawerOpen, "列表 → 返回 = 退应用（状态不再改动）")
+        assertEquals("s-u1a", state.selectedSessionId, "退应用前选中仍在")
 
         // 列表根（无选中）是唯一「没有可退层级」的形态：手机模型下是 no-op。
         state.select(Destination.Activity) // 离开会话页 ⇒ 清选中（旧行为）

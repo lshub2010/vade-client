@@ -201,7 +201,7 @@ class SessionsDrawerTest {
      *  - 列表 → 返回：抽屉收起，**回到原来那个会话**（不是清选中、不是退 App）。
      */
     @Test
-    fun backTogglesTheListAndTheDetailWithoutDroppingTheSession() = runComposeUiTest {
+    fun backFromTheListGoesToTheSystemAndKeepsTheSession() = runComposeUiTest {
         val ui = uiState()
         val dispatcher = BackDispatcher()
         setContent {
@@ -241,20 +241,14 @@ class SessionsDrawerTest {
         assertTrue(consumed)
         waitUntil(timeoutMillis = 5_000) { ui.sessionsDrawerOpen }
         assertEquals("s-u1a", ui.selectedSessionId, "退回列表不许把原来那个会话取消掉")
-        waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 2 } // 抽屉层入栈
-
-        // 返回 #2（抽屉开着）：收起抽屉，**回到原来那个会话**（详情从未销毁）。
-        runOnIdle { consumed = handleShellKeys(keyDown(Key.Escape), ui, backDispatcher = dispatcher) }
-        assertTrue(consumed)
-        waitUntil(timeoutMillis = 5_000) { !ui.sessionsDrawerOpen }
-        assertEquals("s-u1a", ui.selectedSessionId, "收抽屉 = 回到原会话，不是清选中")
+        // 用户拍板「列表返回退应用」：抽屉开着时不再登记返回层。
         waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 1 }
 
-        // 返回 #3：又滑出列表（可逆）；再 #4 又回到会话。两态 ⇄ 两层，不产生第三态。
+        // 返回 #2（抽屉开着）：没有可退层级 ⇒ 交还系统（退 App），选中与抽屉都不被改。
         runOnIdle { consumed = handleShellKeys(keyDown(Key.Escape), ui, backDispatcher = dispatcher) }
-        assertTrue(consumed)
-        waitUntil(timeoutMillis = 5_000) { ui.sessionsDrawerOpen }
-        assertEquals("s-u1a", ui.selectedSessionId)
+        assertFalse(consumed, "列表层不再登记 BackLayer，返回必须交还系统")
+        assertTrue(ui.sessionsDrawerOpen, "退应用前不许偷偷收起列表")
+        assertEquals("s-u1a", ui.selectedSessionId, "退应用前选中也必须保留")
     }
 
     /**
@@ -265,7 +259,7 @@ class SessionsDrawerTest {
      * 返回 #2 又滑出列表（选中仍不动）。真正让栈归零的只有「离开会话页」（选中被清）。
      */
     @Test
-    fun drawerAndDetailEachOwnALayerAndBackTogglesBetweenThem() = runComposeUiTest {
+    fun theListIsNotABackLayerAndTheSystemOwnsBackWhenItIsOpen() = runComposeUiTest {
         val ui = uiState()
         val dispatcher = BackDispatcher()
         setContent {
@@ -289,32 +283,27 @@ class SessionsDrawerTest {
         // 列表根（无选中）：抽屉开着也不登记（那时收抽屉只会露出手机上没有出路的空详情）。
         assertEquals(0, dispatcher.depth, "列表根不登记返回层")
 
-        // 详情 → 抽屉：可退的层级数是 2，注册的层数就必须是 2。
+        // 详情：登记一层（返回 = 滑出列表）。
         runOnIdle { ui.open("s-u1a") }
         waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 1 }
+
+        // 列表打开：用户拍板「列表返回退应用」⇒ 不再登记返回层（深度回到 0）。
         runOnIdle { ui.openSessionsDrawer() }
-        waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 2 }
+        waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 0 }
 
-        // 返回 #1：栈顶是抽屉 ⇒ 只收抽屉；详情与选中不受影响。
-        var consumed = false
+        var consumed = true
         runOnIdle { consumed = dispatcher.dispatch() }
-        assertTrue(consumed)
+        assertFalse(consumed, "列表是最后一层：返回交还系统（退 App）")
+        assertTrue(ui.sessionsDrawerOpen, "退 App 前抽屉不被偷偷收起")
+        assertEquals("s-u1a", ui.selectedSessionId, "退 App 前选中不被清掉")
+
+        // 手动关抽屉 = 回到原会话，详情层重新登记。
+        runOnIdle { ui.closeSessionsDrawer() }
         waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 1 }
-        assertFalse(ui.sessionsDrawerOpen, "栈顶是抽屉：一次返回只收抽屉")
-        assertEquals("s-u1a", ui.selectedSessionId, "收抽屉不销毁详情（不是一次关两层）")
 
-        // 返回 #2：落到详情层 ⇒ 滑出列表，选中仍然保留（不是清选中、不是退 App）。
-        runOnIdle { consumed = dispatcher.dispatch() }
-        assertTrue(consumed)
-        waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 2 }
-        assertTrue(ui.sessionsDrawerOpen, "详情层返回 = 滑出列表（n1-nav 口径）")
-        assertEquals("s-u1a", ui.selectedSessionId, "滑出列表后原会话必须还在")
-
-        // 唯一让栈归零的形态：离开会话页（选中被清）⇒ 两层自动出栈，返回交还系统。
+        // 离开会话页 ⇒ 层自动出栈，返回交还系统。
         runOnIdle { ui.select(Destination.Activity) }
         waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 0 }
-        runOnIdle { consumed = dispatcher.dispatch() }
-        assertFalse(consumed, "栈空 ⇒ 未消费（Android 允许退出）")
     }
 
     // ------------------------------------------------------------ 3. UI：开合 / 遮罩 / 预览消失 / 色点仍在
