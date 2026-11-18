@@ -762,10 +762,10 @@ internal fun MiuixInputBar(
                         )
                         .padding(horizontal = 14.dp, vertical = 10.dp),
                         ) {
-                        // 面板内容是一列：输入行在上，`secondRow`（追加槽，见 Skin.InputBar
-                        // KDoc）在下 —— 同一块玻璃面板内，共享底/发丝线/xl 圆角。这里
-                        // 只有一列的布局节点，不改变任何像素；null 时那一行不组成。
-                        Column {
+                        // 输入行（冻结形态）抽成一个 composable lambda：默认路径
+                        // （secondRow == null）原样调用它 —— 冻结布局的节点与像素一个都不多。
+                        // secondRow 是追加上屏的那一行（见 Skin.InputBar KDoc）。
+                        val inputRow: @Composable () -> Unit = {
                         Row(verticalAlignment = Alignment.Bottom) {
                             // `leading` 槽（C-09 追加，见 Skin.InputBar KDoc）：行首、与文本域
                             // 同一行；null 时整段不组成，冻结布局逐像素不变。
@@ -804,17 +804,23 @@ internal fun MiuixInputBar(
                             )
                         }
                         }
-                        // 第二行（追加槽）：面板内部、输入行下方。null 时整段不组成。
-                        if (secondRow != null) {
-                            Spacer(Modifier.height(8.dp))
-                            secondRow()
+                        }
+                        if (secondRow == null) {
+                            // 默认路径：与冻结实现完全同构（没有 Column、没有 Spacer）。
+                            inputRow()
+                        } else {
+                            // 第二行在**同一块面板内部**、输入行下方，共享底/发丝线/xl 圆角。
+                            Column {
+                                inputRow()
+                                Spacer(Modifier.height(8.dp))
+                                secondRow()
+                            }
                         }
                     }
                 }
             }
         }
     }
-}
 
 /**
  * The §2 send ball (RFC-0011 · C-09 component 12): 48 dp, *outside* the field — the page
