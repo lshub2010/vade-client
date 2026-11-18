@@ -1,7 +1,8 @@
 // g-model-chip · 会话页模型选择的合规形态验收（compose UI，桌面测试窗口）。
 //
 // 五个验收点（任务书【测试】节）：
-//  1. chip 在 composer 区域内、与发送球同一行（几何断言，不是只看文字存在）；
+//  1. chip 在 composer 区域内、输入行**下方**的第二行（g-composer-2row 后的几何断言，
+//     不是「与发送球同一行」的旧形态）；
 //  2. 会话内容区顶部不再出现 ModelPickerCard（回归：内联卡被消掉；且开浮层时
 //     首条消息一个像素都不动 —— 不再把会话往下顶）；
 //  3. 点 chip → 出现浮层卡片（有把手提示、有标题、有模型行）；点遮罩 / Esc 关闭；
@@ -112,18 +113,32 @@ class ModelChipSheetUiTest {
             onAllNodesWithContentDescription("停止生成").fetchSemanticsNodes())
             .first().boundsInRoot
 
-    // --- 1 · chip 在 composer 区域内、与发送球同一行 ------------------------------------
+    /**
+     * g-composer-2row · 模型 chip 默认**收起**：先点输入框把第二行展开。
+     *
+     * 用真手势（点输入区的占位文案）而不是去改页面内部状态 —— 这条路径正是用户的那一下，
+     * 也是「展开」唯一的产品入口（页面自己持有 `composerExpanded`）。
+     */
+    private fun ComposeUiTest.expandComposer() {
+        onNodeWithText("输入消息…").performClick()
+        waitForIdle()
+    }
+
+    // --- 1 · chip 在 composer 区域内、输入行下方的第二行 --------------------------------
 
     @Test
-    fun chipSitsInTheComposerRowBesideTheSendOrb() = runScreenTest {
+    fun chipSitsInTheComposerSecondRowUnderTheInput() = runScreenTest {
+        expandComposer()
         val chip = onNodeWithContentDescription("更改会话模型").fetchSemanticsNode().boundsInRoot
         val orb = orbBounds()
         val headerLine = onNodeWithText("模型 Claude Sonnet", substring = true)
             .fetchSemanticsNode().boundsInRoot
 
-        // 同一行：chip 与发送球的垂直区间必须重叠（不是 composer 上方再起一行）。
-        val verticalOverlap = minOf(chip.bottom, orb.bottom) - maxOf(chip.top, orb.top)
-        assertTrue(verticalOverlap > 0, "chip 与发送球必须同一行（垂直重叠 $verticalOverlap px）")
+        // g-composer-2row：chip 不再与发送球同一行 —— 它在输入行**下方**的第二行。
+        assertTrue(
+            chip.top >= orb.bottom,
+            "chip 必须在输入行之下（chip.top=${chip.top} < orb.bottom=${orb.bottom}）",
+        )
 
         // chip 在 header 之下 = composer 区域内，不在会话内容区顶部。
         assertTrue(chip.top > headerLine.bottom, "chip 必须在 header 之下（composer 内）")
@@ -148,6 +163,7 @@ class ModelChipSheetUiTest {
 
     @Test
     fun firstMessageDoesNotMoveWhenTheSheetOpens() = runScreenTest {
+        expandComposer()
         val firstMessageBefore = onNodeWithText("本会话使用假数据", substring = true)
             .fetchSemanticsNode().boundsInRoot.top
 
@@ -163,6 +179,7 @@ class ModelChipSheetUiTest {
 
     @Test
     fun chipOpensTheBottomAnchoredSheetWithHonestBody() = runScreenTest {
+        expandComposer()
         onNodeWithContentDescription("更改会话模型").performClick()
 
         // 卡片结构：标题行（图标+标题+✕）→ 「跟随全局默认」行 → 模型行 → 出处脚注。
@@ -182,18 +199,21 @@ class ModelChipSheetUiTest {
 
     @Test
     fun maskTapClosesTheSheet() = runScreenTest {
+        expandComposer()
         onNodeWithContentDescription("更改会话模型").performClick()
         onNodeWithText("会话模型").assertExists()
 
         // 遮罩节点中心会被底部的卡片盖住 —— 点卡片上方的真遮罩区域（与真人操作一致）。
         onNodeWithContentDescription("模型选择遮罩").performTouchInput { click(Offset(205f, 60f)) }
         onNodeWithText("会话模型").assertDoesNotExist()
-        // 关掉后 chip 还在（触发点没有消失）。
+        // 关掉后 chip 还在（触发点没有消失）：浮层打开期间的点击不算「点 composer 外部」，
+        // 所以第二行仍是展开态。
         onNodeWithContentDescription("更改会话模型").assertExists()
     }
 
     @Test
     fun escapeClosesTheSheet() = runScreenTest {
+        expandComposer()
         onNodeWithContentDescription("更改会话模型").performClick()
         onNodeWithText("会话模型").assertExists()
 
@@ -216,6 +236,7 @@ class ModelChipSheetUiTest {
             initialSessionOverrides = mapOf(sessionId to ModelFixtures.claudeSonnet.id),
         )
         runScreenTest(recording = actions) {
+            expandComposer()
             onNodeWithContentDescription("更改会话模型").performClick()
             // 选中行展开 11 行 detail，Qwen 行可能被压出 360dp 滚动视口 —— 先滚到可见再点。
             onNodeWithText("Qwen2.5 32B").performScrollTo()
@@ -273,6 +294,7 @@ class ModelChipSheetUiTest {
             }
             waitForIdle()
 
+            expandComposer()
             val chip = onNodeWithContentDescription("更改会话模型").fetchSemanticsNode().boundsInRoot
             val orb = orbBounds()
             val capPx = with(density) { 148.dp.toPx() }
@@ -301,6 +323,7 @@ class ModelChipSheetUiTest {
                 }
             }
             waitForIdle()
+            expandComposer()
             onNodeWithText("无可用模型").assertExists() // chip 文案
             onNodeWithContentDescription("更改会话模型").performClick()
             onNodeWithText("当前没有可路由的模型 provider", substring = true).assertExists() // 浮层诚实正文
@@ -321,6 +344,7 @@ class ModelChipSheetUiTest {
                 }
             }
             waitForIdle()
+            expandComposer()
             onNodeWithText("只读").assertExists()
             onNodeWithContentDescription("更改会话模型").performClick()
             onNodeWithText("此 core 不支持模型选择").assertExists()
@@ -332,9 +356,12 @@ class ModelChipSheetUiTest {
 
     @Test
     fun closedStateCarriesNoSheetNodes() = runScreenTest {
-        // 关态：浮层不存在、遮罩不存在 —— 屏幕只有一个 chip 触发点。
+        // 关态：浮层不存在、遮罩不存在 —— 屏幕只有一个 chip 触发点（展开后）。
         assertTrue(onAllNodesWithText("会话模型").fetchSemanticsNodes().isEmpty())
         assertTrue(onAllNodesWithContentDescription("模型选择遮罩").fetchSemanticsNodes().isEmpty())
+        // g-composer-2row：chip 默认收起（见 ComposerTwoRowTest），展开后才是唯一触发点。
+        onNodeWithContentDescription("更改会话模型").assertDoesNotExist()
+        expandComposer()
         onNodeWithContentDescription("更改会话模型").assertExists()
     }
 }

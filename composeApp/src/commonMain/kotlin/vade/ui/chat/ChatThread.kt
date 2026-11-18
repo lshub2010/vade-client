@@ -56,6 +56,10 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.draw.alpha
@@ -76,6 +80,9 @@ import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
@@ -136,6 +143,12 @@ internal const val GlassSourceThreadTag = "vade.glass.source.chatThread"
  *  - motion: composer height 200ms, ball press 180ms, card insert fade + 12dp slide 180ms,
  *    all on `Skin.motion.easing`. No motion blur on this page (§11 dropped — plain scroll).
  *
+ * **双行 composer**（g-composer-2row，默认路径不变）：`modelRow` + `expanded` 都不传 /
+ * `expanded = false` 时，composer 就是上面那一行，与今天逐字节一致。两者同时成立时，
+ * 布局多出**第二行**：输入行（`InputBar` + `SendOrb`）在上，页面控件（模型 chip 等）
+ * 在下。展开 / 收起由页面持有（`expanded` 是纯形参），页面也只能通过指针近似焦点 ——
+ * 见 [observePointerTap]。
+ *
  * Every control goes through `Skin.*` tokens or `skin/glass/GlassSurface`; the page
  * composes them from Compose-foundation primitives only (same escape hatch as `UiText`,
  * `StatusPill` and the markdown renderer) — no toolkit widgets, no direct toolkit colours.
@@ -153,6 +166,9 @@ fun ChatThread(
      * additive `Skin.InputBar(leading = …)` slot (g-model-chip): the session model chip
      * shares the send orb's visual line without adding composer height. Null = the frozen
      * composer row, byte-for-byte (AppShell callers that pass nothing are untouched).
+     *
+     * g-composer-2row：会话页已改走 [modelRow]（默认收起、点输入区才出现的第二行），
+     * 这条槽位保留 —— 它描述的仍是「输入框底行」那个位置，其它调用点按需使用。
      */
     inputLeading: (@Composable () -> Unit)? = null,
     /**
@@ -163,6 +179,25 @@ fun ChatThread(
      * `barZone − composerNavClearance()`，导航条只算一次。
      */
     bottomBarInset: Dp = 0.dp,
+    /**
+     * g-composer-2row · 第二行的页面控件（模型 chip 等）。与 [expanded] 同时成立才组成；
+     * null = 完全不组成第二行，composer 与今天逐字节一致（默认路径）。
+     */
+    modelRow: (@Composable () -> Unit)? = null,
+    /**
+     * g-composer-2row · 第二行是否展开。**页面的状态**（形参，不是本组件的内部记忆）：
+     * 进会话 / 切会话由上层的 remember key 重建成 `false`，发送后保持 `true`。
+     */
+    expanded: Boolean = false,
+    /**
+     * g-composer-2row · 「用户点了 composer」的信号 —— 页面据此把 [expanded] 置 true。
+     *
+     * 现在只会收到 `true`（点在 composer 区域内）。`false` 是留给将来接真焦点的位置：
+     * 冻结的 `Skin.InputBar` 没有 `onFocusChanged`，本组件只能从指针近似（见
+     * [observePointerTap]），「点外部」由页面根的同一个观察者负责。null = 不观察指针，
+     * 事件处理器一个都不挂（默认路径无副作用）。
+     */
+    onComposerFocusChange: ((Boolean) -> Unit)? = null,
 ) {
     val skin = LocalSkin.current
 
@@ -333,6 +368,14 @@ fun ChatThread(
             onHeightChanged = { viewport.composerHeightPx = it },
             inputLeading = inputLeading,
             bottomBarInset = bottomBarInset,
+            modelRow = modelRow,
+            expanded = expanded,
+            // 只把「点了 composer」这一路送上去；页面自己的根节点负责「点外部」。
+            onComposerTap = onComposerFocusChange?.let { report -> { report(true) } },
+            // 键盘/读屏进入不了「点输入区」这条指针路径；给 composer 一个无障碍动作，
+            // 否则模型切换退化成仅指针可达（审查 P1-2）。
+            onExpandRequest = onComposerFocusChange?.takeIf { modelRow != null && !expanded }
+                ?.let { report -> { report(true) } },
         )
 
         // K4 · 「新内容」胶囊：只在**上滚且有新内容落地**时出现，贴在输入区上沿。入场是
@@ -963,6 +1006,14 @@ private fun BoxScope.ComposerOverlay(
     inputLeading: (@Composable () -> Unit)? = null,
     /** m-bar：底栏区在 composer 之外的高度（见 [ChatThread] 的同名参数）。 */
     bottomBarInset: Dp = 0.dp,
+    /** g-composer-2row：展开时的第二行页面控件（模型 chip 等）。 */
+    modelRow: (@Composable () -> Unit)? = null,
+    /** g-composer-2row：第二行是否展开（页面状态）。 */
+    expanded: Boolean = false,
+    /** g-composer-2row：在浮层里点一下（抬起）→ 页面把 [expanded] 置 true；null = 不观察指针。 */
+    onComposerTap: (() -> Unit)? = null,
+    /** 非指针入口（读屏自定义动作）：展开第二行；null = 已展开 / 没有第二行。 */
+    onExpandRequest: (() -> Unit)? = null,
 ) {
     val skin = LocalSkin.current
     val uploadScope = rememberCoroutineScope()
@@ -991,6 +1042,30 @@ private fun BoxScope.ComposerOverlay(
             .testTag(ComposerOverlayTag)
             .align(Alignment.BottomCenter)
             .fillMaxWidth()
+            // 非指针入口：读屏用户可以把「显示模型选项」当自定义动作触发，
+            // 与点输入区展开走同一个回调（审查 P1-2）。
+            .semantics {
+                val action = onExpandRequest
+                if (action != null) {
+                    customActions = listOf(
+                        CustomAccessibilityAction("显示模型选项") {
+                            action()
+                            true
+                        },
+                    )
+                }
+            }
+            // g-composer-2row：整块浮层（队列条 / 输入行 / 第二行 / 底部留白）都算
+            // 「composer 区域」。Initial 观察一次点击（按下+抬起、位移在 slop 内）、不消费
+            // ⇒ 输入框焦点与点击不受影响；
+            // 默认路径（onComposerTap == null）连这个节点都不挂。
+            .then(
+                if (onComposerTap != null) {
+                    Modifier.observePointerTap(onComposerTap)
+                } else {
+                    Modifier
+                },
+            )
             // c6-insets (P1-3)：高度必须在 padding 的**外侧**量。`onSizeChanged` 报的是
             // 它之后那条 modifier 链的尺寸——挂在 `.padding` 后面只能拿到内容高度，
             // 列表尾距因此少了 `16dp + 导航条 clearance`，最后一条被胶囊压住。
@@ -1094,8 +1169,107 @@ private fun BoxScope.ComposerOverlay(
                     onClick = { if (state.isStreaming) state.stop() else state.submit() },
                 )
             }
+
+            // g-composer-2row · 第二行：页面控件（模型 chip 等）。
+            //
+            // 条件与 `ChatThread` 的约定一致：只有 `expanded && modelRow != null` 才组成。
+            // 默认路径（不传 modelRow / expanded=false）**一个节点都不多** —— 与改造前
+            // 逐字节一致，这也是 AppShell 那些老调用点不用改的前提。
+            //
+            // 间距 8dp：视觉规范 §四 的间距刻度（4/8/12/16/20/24/32）里本文件已在用的
+            // 同一档（队列条、暂存附件都是 8dp），不新造数。
+            if (expanded && modelRow != null) {
+                Spacer(Modifier.height(8.dp))
+                // 第二行必须有**实体底**：它已经不在输入面板内，半透明 chip 直接浮在
+                // 消息列上，滚动时正文会从 chip 底下穿过（审查 P1-1）。这里用皮肤的不透明
+                // surface + hairline + pill 圆角，和输入面板同一套质感，但不引入玻璃。
+                val rowShape = RoundedCornerShape(skin.shapes.pill)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag(ComposerModelRowTag)
+                        .clip(rowShape)
+                        .background(skin.colors.surface)
+                        .border(1.dp, skin.colors.hairline, rowShape)
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                    // 行首对齐：chip 与原来的 `leading` 槽同一侧，不随宽度漂到中间。
+                ) {
+                    modelRow()
+                }
+            }
         }
     }
+}
+
+/**
+ * g-composer-2row · composer 第二行容器的 testTag —— 测试用它断言「模型行在 / 不在」，
+ * 而不是去数 chip 的文案（文案会随模型名变）。
+ */
+internal const val ComposerModelRowTag = "vade.chat.composerModelRow"
+
+/**
+ * g-composer-2row · 「点在这里」的**近似焦点**信号（一次**点击**，不是按下）。
+ *
+ * 为什么是近似：`Skin.InputBar` 是 C-09 冻结接口（只有 value / onValueChange / mode /
+ * attachments / enabled / voiceAvailable / maxLines / leading），页面既不能给它挂
+ * `Modifier` 也拿不到 `onFocusChanged` —— 输入域的真焦点事件到不了页面。
+ *
+ * 所以从指针上读：在 [PointerEventPass.Initial] 阶段等一次**按下 + 抬起且位移在
+ * touch slop 内**，**不消费**（一次 `consume()` 都不调）—— 输入框的焦点、点击、拖选、
+ * 长按全部照旧；外层也不许包 `clickable`（那会抢走输入框的焦点）。
+ *
+ * 为什么等抬起而不是按下：展开会把输入行整体上移一行（约 44dp）。在按下那一刻就改布局
+ * 等于在同一个手势里把被点的节点搬走 —— 手指随后的几个像素抖动会命中 tap 判定的
+ * 「越界即取消」，第一次点输入框可能只展开、不给焦点（键盘不弹）。抬起时再展开，则是
+ * **这一次点击已经判定完**才改布局：焦点 / 发送 / 拖选都不受影响。
+ *
+ * 为什么还要量位移：同一套观察者挂在页面根上，而消息列表的滚动、圈选也是「按下-抬起」。
+ * 位移超过 touch slop 的一律不算点击 —— 滚列表不会把 composer 收起来。
+ *
+ * 为什么 Initial 能分辨内外：同一手势里父节点先于子节点收到 Initial（Main 才是
+ * 子 → 父）。页面根先把「展开」关掉、composer 自己再打开 ⇒ 点输入区 = 展开；点别处 =
+ * 只有根那一下 ⇒ 收起。两个观察者都不消费，谁也拦不住底下的交互。
+ */
+@Composable
+internal fun Modifier.observePointerTap(onTap: () -> Unit): Modifier {
+    // 回调每帧都可能是新 lambda：用 rememberUpdatedState 钉住，pointerInput 不因此重启
+    // （重启会丢掉进行中的手势状态）。
+    val latest by rememberUpdatedState(onTap)
+    // 位移必须在**窗口坐标**里比：Android 上 IME 弹起时整个 composer 会随根布局上移，
+    // 局部坐标里同一根手指的 Press/Release 会差出一个 IME 高度，被判成拖拽 —— 首点
+    // 输入框时「键盘弹了但第二行没出来」正是这条（审查 P0）。多指手势一律作废。
+    var coordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    return this
+        .onGloballyPositioned { coordinates = it }
+        .pointerInput(Unit) {
+            awaitPointerEventScope {
+                var downPosition: Offset? = null
+                fun windowOf(local: Offset): Offset =
+                    coordinates?.localToWindow(local) ?: local
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    val change = event.changes.singleOrNull()
+                    if (change == null) {
+                        downPosition = null
+                        continue
+                    }
+                    when (event.type) {
+                        PointerEventType.Press -> downPosition = windowOf(change.position)
+                        PointerEventType.Release -> {
+                            val down = downPosition
+                            downPosition = null
+                            // 位移 ≤ touch slop 才算「点在这里」；更大 = 拖拽（滚动 / 圈选）。
+                            if (down != null &&
+                                (windowOf(change.position) - down).getDistance() <= viewConfiguration.touchSlop
+                            ) {
+                                latest()
+                            }
+                        }
+                        else -> Unit
+                    }
+                }
+            }
+        }
 }
 
 /**
