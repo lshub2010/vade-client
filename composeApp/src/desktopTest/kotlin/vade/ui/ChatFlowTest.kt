@@ -12,6 +12,7 @@ import vade.ui.chat.ChatRole
 import vade.ui.chat.ChatPreset
 import vade.ui.chat.ChatState
 import vade.ui.chat.ContentPart
+import vade.ui.chat.DraftStore
 import vade.ui.chat.MessageState
 import vade.ui.chat.ToolCall
 import vade.ui.chat.ToolResult
@@ -46,7 +47,13 @@ import kotlin.test.assertTrue
  */
 class ChatFlowTest {
 
-    private fun state(preset: ChatPreset = ChatPreset.Live) = ChatState("s-rfc0004", preset = preset)
+    /**
+     * 每条用例注入**自己的** [DraftStore]，不摸进程单例：这一类的用例共用 `s-rfc0004`，
+     * 靠 `shared.clearAll()` 清场只是补症状（审查 P2-2）——用例重排、`--tests` 过滤或
+     * 新类复用同一 id 都会再红。真单例只由 `DraftStoreTest` 的一条用例覆盖。
+     */
+    private fun state(preset: ChatPreset = ChatPreset.Live) =
+        ChatState("s-rfc0004", preset = preset, drafts = DraftStore())
 
     private fun lastMessage(state: ChatState): ChatMessage =
         state.items.filterIsInstance<ChatItem.Message>().last().message
