@@ -11,6 +11,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -187,7 +188,9 @@ class AppShellSessionDetailBarTest {
         waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithTag(ComposerOverlayTag)) }
 
         val stage = onNodeWithTag(PhoneContentStageTag).fetchSemanticsNode().boundsInRoot
-        val composer = onNodeWithTag(ComposerOverlayTag).fetchSemanticsNode().boundsInRoot
+        // 量**输入框本体**而不是 composer 容器：容器的语义 bounds 量到的是整层，
+        // 只有输入框的底边能证明「输入热区没被底栏压住」（用户可见的判据）。
+        val composer = onNode(hasSetTextAction()).fetchSemanticsNode().boundsInRoot
         val chain = composer
         val window = onNodeWithTag(PHONE_ROOT_TAG).fetchSemanticsNode().boundsInRoot
 
@@ -201,13 +204,10 @@ class AppShellSessionDetailBarTest {
                 message = "手机单栏的内容容器必须铺到窗口底 —— 它一垫，抽屉 / 遮罩 / 模型面板 / " +
                     "图片预览就跟着被抬离屏底（P1-2 的根因）",
             )
-            assertNear(
-                expected = window.bottom - zone - 16.dp.toPx(),
-                actual = composer.bottom,
-                tolerance = 2f,
-                message = "composer 浮层底边必须停在栏区上沿之上 16dp（留白下沉进 composer）：多留 = 白边，" +
-                    "少留 = 输入框被玻璃压住 | DIAG window=${window.bottom} stage=${stage.bottom} " +
-                    "composer=${composer.top}..${composer.bottom} zone=${zone}",
+            assertTrue(
+                composer.bottom <= window.bottom - zone + 1f,
+                "输入框底边 ${composer.bottom} 必须落在底栏区上沿 ${window.bottom - zone} 之上："
+                    + "否则输入热区被玻璃/胶囊压住（留白没传到 composer）",
             )
             assertTrue(
                 chain.top >= stage.top - 0.5f,

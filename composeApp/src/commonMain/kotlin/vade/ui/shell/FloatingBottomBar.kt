@@ -151,7 +151,9 @@ internal fun shouldReportTabRelease(
     currentIndex: Int,
     travelPx: Float,
     touchSlopPx: Float,
-): Boolean = targetIndex != currentIndex || travelPx <= touchSlopPx
+    // 严格小于 slop 才算点击；位移恰等于 slop 已经是拖动的起点。零位移必须算点击
+    //（`touchSlop == 0` 的测试环境里 0 < 0 为假，会把一次真实点按吞掉）。
+): Boolean = targetIndex != currentIndex || travelPx <= 0f || travelPx < touchSlopPx
 
 /**
  * KernelSU's floating liquid-glass pill, parameter-for-parameter:
