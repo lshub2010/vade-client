@@ -103,3 +103,14 @@ jobs:
 
       - name: Assemble debug APK
         run: gradle :composeApp:assembleDebug --no-daemon --console=plain
+
+      # 每次 CI 都留一个可直接安装的包：用户要看效果时不必本地跑 Gradle
+      # （本机 8 核 5GB，Gradle 会把机器压垮）。
+      - name: Upload debug APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vade-debug-apk
+          path: composeApp/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
