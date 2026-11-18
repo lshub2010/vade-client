@@ -290,6 +290,10 @@ class AppShellAdapterWiringTest : IsolatedPreferencesTest() {
         // pushed detail got the provider.
         // g-model-chip：会话详情上模型名由 header 行与 composer chip 共同承载（设置页仍只有
         // 卡片一处）—— 统一断言「出现」，不再断言「唯一」。
+        // n2-composer：会话页的模型信息栏已删除，模型名只在 composer 第二行的 chip 上；
+        // chip 默认收起，必须先点输入区展开再断言。
+        onNodeWithText("输入消息…").performClick()
+        waitForIdle()
         assertTrue(
             onAllNodesWithText(PROBE_MODEL_NAME, substring = true).fetchSemanticsNodes().isNotEmpty(),
             "接线束提供的模型名必须出现在会话详情上",
@@ -319,6 +323,10 @@ class AppShellAdapterWiringTest : IsolatedPreferencesTest() {
         onAllNodesWithText("tokens", substring = true).assertCountEquals(0)
         // g-model-chip：会话详情上模型名由 header 行与 composer chip 共同承载（设置页仍只有
         // 卡片一处）—— 统一断言「出现」，不再断言「唯一」。
+        // n2-composer：会话页的模型信息栏已删除，模型名只在 composer 第二行的 chip 上；
+        // chip 默认收起，必须先点输入区展开再断言。
+        onNodeWithText("输入消息…").performClick()
+        waitForIdle()
         assertTrue(
             onAllNodesWithText(PROBE_MODEL_NAME, substring = true).fetchSemanticsNodes().isNotEmpty(),
             "接线束提供的模型名必须出现在会话详情上",
@@ -341,6 +349,10 @@ class AppShellAdapterWiringTest : IsolatedPreferencesTest() {
 
         // g-model-chip：会话详情上模型名由 header 行与 composer chip 共同承载（设置页仍只有
         // 卡片一处）—— 统一断言「出现」，不再断言「唯一」。
+        // n2-composer：会话页的模型信息栏已删除，模型名只在 composer 第二行的 chip 上；
+        // chip 默认收起，必须先点输入区展开再断言。
+        onNodeWithText("输入消息…").performClick()
+        waitForIdle()
         assertTrue(
             onAllNodesWithText(PROBE_MODEL_NAME, substring = true).fetchSemanticsNodes().isNotEmpty(),
             "接线束提供的模型名必须出现在会话详情上",
@@ -413,6 +425,10 @@ class AppShellAdapterWiringTest : IsolatedPreferencesTest() {
         assertEquals(emptyList(), provider.modelIds, "model(\"\") 会拿到会话级适配器——这不是设置页要的")
         // g-model-chip：会话详情上模型名由 header 行与 composer chip 共同承载（设置页仍只有
         // 卡片一处）—— 统一断言「出现」，不再断言「唯一」。
+        // n2-composer：会话页的模型信息栏已删除，模型名只在 composer 第二行的 chip 上；
+        // chip 默认收起，必须先点输入区展开再断言。
+        onNodeWithText("输入消息…").performClick()
+        waitForIdle()
         assertTrue(
             onAllNodesWithText(PROBE_MODEL_NAME, substring = true).fetchSemanticsNodes().isNotEmpty(),
             "接线束提供的模型名必须出现在会话详情上",
