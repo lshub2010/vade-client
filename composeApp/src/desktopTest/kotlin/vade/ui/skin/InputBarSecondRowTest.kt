@@ -60,9 +60,10 @@ class InputBarSecondRowTest {
         skins.forEach { (name, skin) ->
             runComposeUiTest {
                 var secondRowOn by mutableStateOf(false)
-                var density: Density = Density(1f)
+                // 面板内部的密度：miuix 在桌面会放大 1.18×（MiuixScope），所以「28dp 是多少
+                // 像素」必须在**第二行自己的组合里**读，不能用外层的密度算。
+                var rowDensity: Density = Density(1f)
                 setContent {
-                    density = LocalDensity.current
                     CompositionLocalProvider(LocalSkin provides skin) {
                         Box(Modifier.testTag(PanelProbeTag)) {
                             skin.InputBar(
@@ -71,6 +72,7 @@ class InputBarSecondRowTest {
                                 mode = InputMode.Idle,
                                 secondRow = if (secondRowOn) {
                                     {
+                                        rowDensity = LocalDensity.current
                                         Box(
                                             Modifier
                                                 .size(20.dp)
@@ -89,7 +91,6 @@ class InputBarSecondRowTest {
                 // ① 默认（null）：没有第二行节点，面板就是冻结的单行面板。
                 onNodeWithTag(SecondRowProbeTag).assertDoesNotExist()
                 val collapsed = onNodeWithTag(PanelProbeTag).fetchSemanticsNode().boundsInRoot
-                val fieldTop = onNodeWithText("输入消息…").fetchSemanticsNode().boundsInRoot
 
                 // ② 给第二行：面板内部多出一行。
                 runOnIdle { secondRowOn = true }
@@ -98,8 +99,9 @@ class InputBarSecondRowTest {
 
                 val expanded = onNodeWithTag(PanelProbeTag).fetchSemanticsNode().boundsInRoot
                 val row = onNodeWithTag(SecondRowProbeTag).fetchSemanticsNode().boundsInRoot
+                val field = onNodeWithText("输入消息…").fetchSemanticsNode().boundsInRoot
 
-                val expectedDelta = with(density) { 28.dp.toPx() } // 8dp 间距 + 20dp 内容
+                val expectedDelta = with(rowDensity) { 28.dp.toPx() } // 8dp 间距 + 20dp 内容
                 assertEquals(
                     expectedDelta,
                     expanded.height - collapsed.height,
@@ -107,8 +109,8 @@ class InputBarSecondRowTest {
                     "$name：面板只该长高「间距 + 第二行」这一截（20dp + 8dp）",
                 )
                 assertTrue(
-                    row.top >= fieldTop.bottom,
-                    "$name：第二行必须在输入行之下（row.top=${row.top} < field.bottom=${fieldTop.bottom}）",
+                    row.top >= field.bottom,
+                    "$name：第二行必须在输入行之下（row.top=${row.top} < field.bottom=${field.bottom}）",
                 )
                 assertTrue(
                     row.top >= expanded.top && row.bottom <= expanded.bottom &&
