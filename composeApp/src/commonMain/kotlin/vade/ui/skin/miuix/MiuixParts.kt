@@ -723,6 +723,9 @@ internal fun MiuixInputBar(
     // Post-freeze additive slot (see Skin.InputBar KDoc): page-level control sharing the
     // panel's existing bottom row. null = frozen bottom row, byte-for-byte.
     leading: (@Composable () -> Unit)?,
+    // Post-freeze additive slot #2 (see Skin.InputBar KDoc): page-level controls on a
+    // SECOND line, inside this same panel (model chip). null = nothing drawn at all.
+    secondRow: (@Composable () -> Unit)?,
     colors: SkinColors,
     shapes: SkinShapes,
     typography: SkinTypography,
@@ -759,6 +762,10 @@ internal fun MiuixInputBar(
                         )
                         .padding(horizontal = 14.dp, vertical = 10.dp),
                         ) {
+                        // 输入行（冻结形态）抽成一个 composable lambda：默认路径
+                        // （secondRow == null）原样调用它 —— 冻结布局的节点与像素一个都不多。
+                        // secondRow 是追加上屏的那一行（见 Skin.InputBar KDoc）。
+                        val inputRow: @Composable () -> Unit = {
                         Row(verticalAlignment = Alignment.Bottom) {
                             // `leading` 槽（C-09 追加，见 Skin.InputBar KDoc）：行首、与文本域
                             // 同一行；null 时整段不组成，冻结布局逐像素不变。
@@ -796,12 +803,24 @@ internal fun MiuixInputBar(
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         }
+                        }
+                        }
+                        if (secondRow == null) {
+                            // 默认路径：与冻结实现完全同构（没有 Column、没有 Spacer）。
+                            inputRow()
+                        } else {
+                            // 第二行在**同一块面板内部**、输入行下方，共享底/发丝线/xl 圆角。
+                            Column {
+                                inputRow()
+                                Spacer(Modifier.height(8.dp))
+                                secondRow()
+                            }
+                        }
                     }
                 }
             }
         }
     }
-}
 
 /**
  * The §2 send ball (RFC-0011 · C-09 component 12): 48 dp, *outside* the field — the page

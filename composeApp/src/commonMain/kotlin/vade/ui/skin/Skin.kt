@@ -214,6 +214,13 @@ interface Skin {
      * visual line the send orb sits on — without adding a line of height. The skin renders
      * it at the row START (left of the text field, before the voice button); null keeps
      * the frozen bottom row byte-for-byte.
+     *
+     * [secondRow] is the optional **second line inside the panel** (added after the C-09
+     * freeze, 2026-11-18, same additive rule): the page passes the controls it used to
+     * stack in its own row *below* the panel — the session model chip — and the skin
+     * renders them under the input row **inside the same panel**, sharing its base,
+     * hairline and `xl` corners (no second surface, no extra frame). Null draws nothing at
+     * all: no spacer, no node, the frozen panel byte-for-byte.
      */
     @Composable
     fun InputBar(
@@ -225,6 +232,7 @@ interface Skin {
         voiceAvailable: Boolean = false,
         maxLines: Int = 6,
         leading: (@Composable () -> Unit)? = null,
+        secondRow: (@Composable () -> Unit)? = null,
     )
 
     /**

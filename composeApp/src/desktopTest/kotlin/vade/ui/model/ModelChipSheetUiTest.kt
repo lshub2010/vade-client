@@ -1,8 +1,8 @@
 // g-model-chip · 会话页模型选择的合规形态验收（compose UI，桌面测试窗口）。
 //
 // 五个验收点（任务书【测试】节）：
-//  1. chip 在 composer 区域内、输入行**下方**的第二行（g-composer-2row 后的几何断言，
-//     不是「与发送球同一行」的旧形态）；
+//  1. chip 在输入面板**内部**、输入行**下方**的第二行（g-inline-second-row 后的几何断言：
+//     chip 矩形被面板矩形包含，不是面板外另起一行）；
 //  2. 会话内容区顶部不再出现 ModelPickerCard（回归：内联卡被消掉；且开浮层时
 //     首条消息一个像素都不动 —— 不再把会话往下顶）；
 //  3. 点 chip → 出现浮层卡片（有把手提示、有标题、有模型行）；点遮罩 / Esc 关闭；
@@ -30,6 +30,7 @@ import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
@@ -43,6 +44,7 @@ import kotlin.math.ceil
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import vade.ui.chat.ComposerPanelTag
 import vade.ui.data.SessionSummary
 import vade.ui.data.TimeBucket
 import vade.ui.destinations.SessionDetailScreen
@@ -124,24 +126,29 @@ class ModelChipSheetUiTest {
         waitForIdle()
     }
 
-    // --- 1 · chip 在 composer 区域内、输入行下方的第二行 --------------------------------
+    // --- 1 · chip 在输入面板内部、输入行下方的第二行 --------------------------------
 
     @Test
-    fun chipSitsInTheComposerSecondRowUnderTheInput() = runScreenTest {
+    fun chipSitsInsideTheComposerPanelUnderTheInput() = runScreenTest {
         expandComposer()
         val chip = onNodeWithContentDescription("更改会话模型").fetchSemanticsNode().boundsInRoot
-        val orb = orbBounds()
-        val headerLine = onNodeWithText("模型 Claude Sonnet", substring = true)
-            .fetchSemanticsNode().boundsInRoot
+        val field = onNodeWithText("输入消息…").fetchSemanticsNode().boundsInRoot
+        val panel = onNodeWithTag(ComposerPanelTag).fetchSemanticsNode().boundsInRoot
 
         // g-composer-2row：chip 不再与发送球同一行 —— 它在输入行**下方**的第二行。
+        // 「输入行」量占位文案：发送球垂直居中于整块面板，双行时不再代表输入行下沿。
         assertTrue(
-            chip.top >= orb.bottom,
-            "chip 必须在输入行之下（chip.top=${chip.top} < orb.bottom=${orb.bottom}）",
+            chip.top >= field.bottom,
+            "chip 必须在输入行之下（chip.top=${chip.top} < field.bottom=${field.bottom}）",
         )
 
-        // chip 在 header 之下 = composer 区域内，不在会话内容区顶部。
-        assertTrue(chip.top > headerLine.bottom, "chip 必须在 header 之下（composer 内）")
+        // g-inline-second-row：第二行在**输入面板内部** —— chip 的矩形被面板矩形包含
+        // （同一块玻璃底与圆角，不再是面板外那层带 surface 的独立行）。
+        assertTrue(
+            chip.top >= panel.top && chip.bottom <= panel.bottom &&
+                chip.left >= panel.left && chip.right <= panel.right,
+            "chip 必须被输入面板包含（panel=$panel, chip=$chip）",
+        )
     }
 
     // --- 2 · 回归：内容区顶部不再出现内联 ModelPickerCard；消息不被往下顶 --------------
@@ -157,8 +164,12 @@ class ModelChipSheetUiTest {
             onAllNodesWithContentDescription("收起模型列表").fetchSemanticsNodes().isEmpty(),
             "内联 ModelPickerCard 必须从会话页消失",
         )
-        // header 模型行退化为纯信息行：文本仍在，但不再承载切换入口。
-        onNodeWithText("模型 Claude Sonnet", substring = true).assertExists()
+        // g-header-model-line：表头不再拼「模型 …」信息行 —— 那句话整段退役，模型名只由
+        // composer 内的 chip 承载（默认收起时连它都不在，见上一条）。
+        assertTrue(
+            onAllNodesWithText("模型 Claude Sonnet", substring = true).fetchSemanticsNodes().isEmpty(),
+            "会话页表头不许再出现「模型 …」信息行（g-header-model-line）",
+        )
     }
 
     @Test
@@ -190,11 +201,11 @@ class ModelChipSheetUiTest {
         onNodeWithText("跟随全局默认").assertExists()
         onNodeWithText("仅本会话生效", substring = true).assertExists()
 
-        // §334 的形态是 bottom sheet：标题在 header 区域之下很远（绝不是插在 header 列里）。
+        // §334 的形态是 bottom sheet：标题在会话标题栏（header）之下很远，绝不是插在
+        // header 列里。
         val title = onNodeWithText("会话模型").fetchSemanticsNode().boundsInRoot
-        val headerLine = onNodeWithText("模型 Claude Sonnet", substring = true)
-            .fetchSemanticsNode().boundsInRoot
-        assertTrue(title.top > headerLine.bottom, "浮层必须浮在整屏之上，不贴在会话顶部")
+        val headerTitle = onNodeWithText("模型芯片测试会话").fetchSemanticsNode().boundsInRoot
+        assertTrue(title.top > headerTitle.bottom, "浮层必须浮在整屏之上，不贴在会话顶部")
     }
 
     @Test

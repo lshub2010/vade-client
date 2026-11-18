@@ -58,9 +58,10 @@ internal fun modelChipLabel(state: ModelState): String = when (val content = sta
 }
 
 /**
- * The composer model chip. Rendered through `Skin.InputBar(leading = …)` — inside the
- * panel, row start. [expanded] tints the border accent while the sheet is open (the only
- * visual feedback the chip owes; the sheet itself carries the state).
+ * The composer model chip. Rendered through `Skin.InputBar(secondRow = …)` — inside the
+ * panel, on the second line under the input row, sharing the panel's base and corners.
+ * [expanded] tints the border accent while the sheet is open (the only visual feedback the
+ * chip owes; the sheet itself carries the state).
  */
 @Composable
 fun ModelComposerChip(

@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
@@ -290,6 +291,10 @@ class AppShellAdapterWiringTest : IsolatedPreferencesTest() {
         // pushed detail got the provider.
         // g-model-chip：会话详情上模型名由 header 行与 composer chip 共同承载（设置页仍只有
         // 卡片一处）—— 统一断言「出现」，不再断言「唯一」。
+        // n2-composer：会话页的模型信息栏已删除，模型名只在 composer 第二行的 chip 上；
+        // chip 默认收起，必须先点输入区展开再断言。
+        onNodeWithText("输入消息…").performClick()
+        waitForIdle()
         assertTrue(
             onAllNodesWithText(PROBE_MODEL_NAME, substring = true).fetchSemanticsNodes().isNotEmpty(),
             "接线束提供的模型名必须出现在会话详情上",
@@ -319,6 +324,10 @@ class AppShellAdapterWiringTest : IsolatedPreferencesTest() {
         onAllNodesWithText("tokens", substring = true).assertCountEquals(0)
         // g-model-chip：会话详情上模型名由 header 行与 composer chip 共同承载（设置页仍只有
         // 卡片一处）—— 统一断言「出现」，不再断言「唯一」。
+        // n2-composer：会话页的模型信息栏已删除，模型名只在 composer 第二行的 chip 上；
+        // chip 默认收起，必须先点输入区展开再断言。
+        onNodeWithText("输入消息…").performClick()
+        waitForIdle()
         assertTrue(
             onAllNodesWithText(PROBE_MODEL_NAME, substring = true).fetchSemanticsNodes().isNotEmpty(),
             "接线束提供的模型名必须出现在会话详情上",
@@ -343,7 +352,7 @@ class AppShellAdapterWiringTest : IsolatedPreferencesTest() {
         // 卡片一处）—— 统一断言「出现」，不再断言「唯一」。
         assertTrue(
             onAllNodesWithText(PROBE_MODEL_NAME, substring = true).fetchSemanticsNodes().isNotEmpty(),
-            "接线束提供的模型名必须出现在会话详情上",
+            "设置页的模型名必须出现",
         )
         assertEquals(1, provider.modelDefaultCalls, "设置页必须走 modelDefault()")
         assertEquals(emptyList(), provider.modelIds, "设置页不得调用 model(...)——包括 model(\"\")")
@@ -415,7 +424,7 @@ class AppShellAdapterWiringTest : IsolatedPreferencesTest() {
         // 卡片一处）—— 统一断言「出现」，不再断言「唯一」。
         assertTrue(
             onAllNodesWithText(PROBE_MODEL_NAME, substring = true).fetchSemanticsNodes().isNotEmpty(),
-            "接线束提供的模型名必须出现在会话详情上",
+            "设置页的模型名必须出现",
         )
     }
 
