@@ -151,7 +151,7 @@ internal fun shouldReportTabRelease(
     currentIndex: Int,
     travelPx: Float,
     touchSlopPx: Float,
-): Boolean = targetIndex != currentIndex || travelPx < touchSlopPx
+): Boolean = targetIndex != currentIndex || travelPx <= touchSlopPx
 
 /**
  * KernelSU's floating liquid-glass pill, parameter-for-parameter:

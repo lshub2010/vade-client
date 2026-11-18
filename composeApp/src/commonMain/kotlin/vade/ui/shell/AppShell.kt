@@ -179,7 +179,7 @@ internal const val GlassSourceRightPanelTag = "vade.glass.source.rightPanel"
  * `contentInsets` 滚到栏后），**不再**把底栏区垫在自己身上 —— 审查 P1-2 的根因就是容器
  * 留白把详情子树里的抽屉 / 模型面板 / 图片预览一起抬离屏底。
  *
- * 详情态的下留白现在走内容链：`SessionDetailScreen(bottomBarInset = …)` 只把
+ * 详情态的下留白现在走内容链：`SessionDetailScreen` 的 `bottomBarInset` 只把
  * [detailContentBottomInset] 加到「消息列表 + composer」那一层上（`RouteTransition` 的
  * `DrawerDetailBase` 把值传下去），浮层与抽屉仍是 `fillMaxSize` 的兄弟 ⇒ 贴屏底。
  *
@@ -364,7 +364,7 @@ private fun ShellBody(state: UiState) {
         // window edge). Rows still pass *through* the bar zone mid-scroll, which is what
         // gives the glass something to blur — both behaviours come from content padding.
         // 详情页是这条规则的**唯一**例外形态（它的 composer 是贴屏底的浮层）：那里走
-        // [detailContentBottomInset] + `SessionDetailScreen(bottomBarInset = …)`，仍然不是
+        // [detailContentBottomInset] + `SessionDetailScreen` 的 `bottomBarInset`，仍然不是
         // 容器留白 —— 容器一垫，抽屉 / 遮罩 / 面板就一起离屏（审查 P1-2）。
         val contentInsets = PaddingValues(
             top = TOP_BAR_ZONE,
@@ -373,7 +373,7 @@ private fun ShellBody(state: UiState) {
         // m-bar P1-2：详情里的**模态浮层**（模型面板 / 图片预览）开着时，内容链整体抬到底栏
         // 之上 —— 遮罩因此真的盖住底栏（变暗 + 吃掉点按），而不是让胶囊漂在遮罩外面继续被
         // 点到（旧行为：面板开着还能点底栏切页，把面板连人一起端掉）。
-        // 由详情自己上报（`SessionDetailScreen(onOverlayChange = …)`）：两个浮层的状态都在
+        // 由详情自己上报（`SessionDetailScreen` 的 `onOverlayChange`）：两个浮层的状态都在
         // 页面内部（`modelPickerOpen`）与 ChatState 里（`chat.preview`），ShellBody 看不到。
         // 抽屉（`SessionsDrawerHost` 自带遮罩）**不**走这条：抽屉只占 80% 宽，抬上来会让胶囊
         // 被抽屉的左 80% 埋掉一半、右 20% 露一条残影；它的遮罩已经铺满窗口，底栏留在最上层
@@ -438,7 +438,7 @@ private fun ShellBody(state: UiState) {
                     // 容器一垫，整棵「详情 + 抽屉」都被切在栏区上沿：抽屉 / 遮罩 / 模型面板 /
                     // 图片预览（全是 `fillMaxSize` 的兄弟）一起被抬离屏底 104–132 dp，遮罩在
                     // 屏底上方硬切一刀，面板开着时底栏还浮在遮罩外面能点。
-                    // 现在留白只走内容链：`SessionDetailScreen(bottomBarInset = …)` 把
+                    // 现在留白只走内容链：`SessionDetailScreen` 的 `bottomBarInset` 把
                     // [detailContentBottomInset]（= 栏区 − composer 自带的导航条余量，导航条
                     // 只算一次）加在「消息列表 + composer」那一层上；抽屉与浮层留在外面，
                     // 因此永远贴屏底。抽屉展开（屏上是列表）时不垫：它自己的列表把完整

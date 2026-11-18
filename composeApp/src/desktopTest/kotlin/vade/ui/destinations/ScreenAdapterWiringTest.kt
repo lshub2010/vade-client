@@ -477,7 +477,9 @@ class ScreenAdapterWiringTest : IsolatedPreferencesTest() {
 
         screens.forEach { (name, ktClass) ->
             val methods = ktClass.declaredMethods
-                .filter { !it.isSynthetic && it.name == name }
+                // 签名里出现值类（如 Dp）时 Kotlin 会给 JVM 名加后缀（`Foo-xxxx`）；
+                // 只要还是这个入口就算命中，不能因为加了一个 Dp 形参就判「入口没了」。
+                .filter { !it.isSynthetic && (it.name == name || it.name.startsWith("$name-")) }
                 .filter { method -> method.parameterTypes.none { it.name == "kotlin.jvm.internal.DefaultConstructorMarker" } }
             assertTrue(methods.isNotEmpty(), "$name 的 JVM 入口没找到")
 

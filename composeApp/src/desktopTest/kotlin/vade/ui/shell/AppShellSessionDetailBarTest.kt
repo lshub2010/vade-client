@@ -206,7 +206,8 @@ class AppShellSessionDetailBarTest {
                 actual = composer.bottom,
                 tolerance = 2f,
                 message = "composer 浮层底边必须停在栏区上沿之上 16dp（留白下沉进 composer）：多留 = 白边，" +
-                    "少留 = 输入框被玻璃压住",
+                    "少留 = 输入框被玻璃压住 | DIAG window=${window.bottom} stage=${stage.bottom} " +
+                    "composer=${composer.top}..${composer.bottom} zone=${zone}",
             )
             assertTrue(
                 chain.top >= stage.top - 0.5f,
