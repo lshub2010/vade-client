@@ -14,15 +14,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import vade.ui.UiText
 import vade.ui.chat.ChatPreset
@@ -55,6 +60,15 @@ import vade.ui.skin.LocalSkin
  * 没人 provide ⇒ 空态**不画**按钮：点了没反应的按钮比没有按钮更糟（§8.5）。
  */
 internal val LocalSessionListOpener = staticCompositionLocalOf<(() -> Unit)?> { null }
+
+/**
+ * 「消息列表 + composer」这条**内容链**的 testTag（m-bar · 审查 P1-1）。
+ *
+ * 底栏的下留白只加在这一层上（[SessionDetailScreen] 的 `bottomBarInset`），它是容器满高与
+ * 「内容让栏」两件事的分界线：测试量它的底边 = 窗口底 − (barZone − composer 的导航条余量)，
+ * 同时量抽屉 / 遮罩 / 模型面板仍然是**满高**（它们的底边 == 窗口底）。
+ */
+internal const val DetailContentInsetTag = "vade.detail.content.inset"
 
 /**
  * 会话 · 详情 (U1-b).
@@ -112,6 +126,28 @@ fun SessionDetailScreen(
      * under it.
      */
     contentPadding: PaddingValues = PaddingValues(0.dp),
+    /**
+     * 消息列表 + composer 这条**内容链**的下内边距（m-bar · 审查 P1-1/P1-2）。
+     *
+     * 为什么是形参而不是 `contentPadding.bottom`：composer 是贴屏底的浮层，它自己已经加了
+     * `16.dp + composerNavClearance()`；把栏区塞进 `contentPadding` 既到不了 composer
+     * （本屏只读 `contentPadding.top`），也会让 `ModelPickerSheet` / 图片预览这些 `fillMaxSize`
+     * 的兄弟跟着一起被抬离屏底。所以留白只加在**装着 ChatThread 的那一层**上，浮层与遮罩
+     * 留在它外面 ⇒ 永远贴屏底。
+     *
+     * 期望值 = `barZone − composer 自己的导航条余量`（导航条只算一次，见
+     * `shell/AppShell.kt` 的 `detailContentBottomInset`）；默认 0 dp = 不垫（双栏 / rail /
+     * 抽屉展开态）。
+     */
+    bottomBarInset: Dp = 0.dp,
+    /**
+     * 本屏有**模态浮层**（模型面板 / 图片预览）开着时上报 `true`（m-bar · 审查 P1-2）。
+     *
+     * 浮层的状态在页面内部（`modelPickerOpen`）与 ChatState 里（`chat.preview`），布局宿主
+     * 看不到；底栏却是宿主的兄弟、画在整条内容链之上 —— 不上报的话面板开着还能点底栏切页，
+     * 把面板连人一起端掉（模态泄漏）。宿主据此把内容链抬到底栏之上，遮罩才真的盖住底栏。
+     */
+    onOverlayChange: ((Boolean) -> Unit)? = null,
     /**
      * Shell-owned failure banner (g-error-retry) for the **message-thread** read. A slot, so
      * the screen keeps knowing nothing about the loader; the retry inside it calls
@@ -177,19 +213,37 @@ fun SessionDetailScreen(
     // stays opaque, so its own content remains readable while rows slide under it.
     // g-model-chip: the model sheet is the TOPMOST sibling — an overlay over everything
     // (header, thread, composer), never an inline block in the header column.
+    //
+    // m-bar（审查 P1-2）：下留白只加在**装着 ChatThread 的那一层**（消息列表 + composer 的
+    // 内容链）上。表头、模型面板、图片预览都是它的**兄弟**，所以浮层永远是满屏的 —— 容器
+    // 留白时代它们会跟着被抬离屏底 104–132 dp（遮罩在屏底上方硬切一刀）。
+    val overlayOpen = modelPickerOpen || chat.preview != null
+    val latestOnOverlayChange = rememberUpdatedState(onOverlayChange)
+    // 上报给布局宿主（底栏据此让路）。`chat.preview` 是 ChatState 的 snapshot 字段，读出即观察。
+    LaunchedEffect(overlayOpen) { latestOnOverlayChange.value?.invoke(overlayOpen) }
+    // 离开组合（切会话 / 退出详情）时把宿主的状态收回 false：否则底栏会永久被压在下面。
+    DisposableEffect(Unit) { onDispose { latestOnOverlayChange.value?.invoke(false) } }
+
     Box(modifier.fillMaxSize()) {
-        ChatThread(
-            state = chat,
-            modifier = Modifier.fillMaxSize(),
-            animate = animate,
-            inputLeading = {
-                ModelComposerChip(
-                    state = modelState,
-                    expanded = modelPickerOpen,
-                    onClick = { modelPickerOpen = true },
-                )
-            },
-        )
+        Box(
+            Modifier
+                .fillMaxSize()
+                .testTag(DetailContentInsetTag),
+        ) {
+            ChatThread(
+                state = chat,
+                modifier = Modifier.fillMaxSize(),
+                animate = animate,
+                bottomBarInset = bottomBarInset,
+                inputLeading = {
+                    ModelComposerChip(
+                        state = modelState,
+                        expanded = modelPickerOpen,
+                        onClick = { modelPickerOpen = true },
+                    )
+                },
+            )
+        }
         Column(Modifier.padding(top = contentPadding.calculateTopPadding())) {
             DetailHeader(
                 session = session,

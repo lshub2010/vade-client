@@ -157,6 +157,20 @@ internal fun SessionsDrawerHost(
     contentInsets: PaddingValues,
     animate: Boolean,
     /**
+     * 常驻详情**内容链**（消息列表 + composer）的下内边距（m-bar · 审查 P1-1/P1-2）。
+     *
+     * 由 `AppShell` 算好传下来（`detailContentBottomInset`：栏区 − composer 自带的导航条
+     * 余量，导航条只算一次）。**不是容器留白**：抽屉与遮罩是本宿主的 `fillMaxSize` 兄弟，
+     * 永远贴屏底；只有详情内部那条链让位给底栏。抽屉展开时传 0 dp（屏上是列表，详情被盖住，
+     * 且列表自己用 [contentInsets] 让行滚到胶囊后）。
+     */
+    detailBottomInset: Dp = 0.dp,
+    /**
+     * 详情里的模态浮层（模型面板 / 图片预览）开合上报（m-bar · 审查 P1-2），由 `AppShell`
+     * 用来把内容链压到底栏之上。默认 null = 不上报（测试与旧调用点行为不变）。
+     */
+    onDetailOverlayChange: ((Boolean) -> Unit)? = null,
+    /**
      * 测试注入口（同 `UiState.loaderScope` 的先例）：非 null 时替代真实详情层，
      * 供「内容只组合一次」探针使用。生产调用点一律不传。
      */
@@ -255,7 +269,13 @@ internal fun SessionsDrawerHost(
                 .focusRequester(baseFocus)
                 .focusable(),
         ) {
-            base?.invoke() ?: DrawerDetailBase(state = state, adapters = adapters, animate = animate)
+            base?.invoke() ?: DrawerDetailBase(
+                state = state,
+                adapters = adapters,
+                animate = animate,
+                bottomInset = detailBottomInset,
+                onOverlayChange = onDetailOverlayChange,
+            )
         }
 
         // --- 遮罩：常驻但收起后 alpha=0 且不可点；点它 = 收抽屉。 ---
@@ -318,14 +338,20 @@ internal fun drawerShape(): RoundedCornerShape =
     RoundedCornerShape(topEnd = DRAWER_END_CORNER, bottomEnd = DRAWER_END_CORNER)
 
 /**
- * 常驻底层的详情接线（从 `ShellBody` 的 pushed-detail 分支原样搬来）：full-bleed、
- * TOP_BAR_ZONE 作为 content padding、顶栏画标题所以这里 `showTitle = false`。
+ * 常驻底层的详情接线（从 `ShellBody` 的 pushed-detail 分支原样搬来）：full-bleed、`TOP_BAR_ZONE`
+ * 作为 content padding、顶栏画标题所以这里 `showTitle = false`。
+ *
+ * m-bar（审查 P1-2）：底栏的下留白经 [bottomInset] 只落在详情的内容链上（composer / 消息
+ * 列表），宿主的抽屉与遮罩仍是满高；[onOverlayChange] 让页面把「模态浮层开着」报回
+ * `AppShell`（底栏让路）。
  */
 @Composable
 private fun DrawerDetailBase(
     state: UiState,
     adapters: AdapterProvider?,
     animate: Boolean,
+    bottomInset: Dp,
+    onOverlayChange: ((Boolean) -> Unit)?,
 ) {
     SessionDetailScreen(
         session = state.selectedSession,
@@ -335,6 +361,8 @@ private fun DrawerDetailBase(
         showTitle = false,
         adapters = adapters,
         contentPadding = PaddingValues(top = TOP_BAR_ZONE),
+        bottomBarInset = bottomInset,
+        onOverlayChange = onOverlayChange,
     )
 }
 

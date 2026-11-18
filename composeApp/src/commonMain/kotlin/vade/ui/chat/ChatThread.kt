@@ -140,6 +140,9 @@ internal const val GlassSourceThreadTag = "vade.glass.source.chatThread"
  * composes them from Compose-foundation primitives only (same escape hatch as `UiText`,
  * `StatusPill` and the markdown renderer) — no toolkit widgets, no direct toolkit colours.
  */
+/** m-bar：composer 浮层的测试锚点（底边 = 窗口底 − 栏区 − 16dp）。 */
+internal const val ComposerOverlayTag = "vade.chat.composer.overlay"
+
 @Composable
 fun ChatThread(
     state: ChatState,
@@ -152,6 +155,14 @@ fun ChatThread(
      * composer row, byte-for-byte (AppShell callers that pass nothing are untouched).
      */
     inputLeading: (@Composable () -> Unit)? = null,
+    /**
+     * m-bar 审查 P1-2/P1-3：底栏区在 composer 之外还要让出的高度（默认 0 = 旧行为）。
+     *
+     * 只加在 composer 浮层的底部 padding 上，**不**加在整个页面上：图片预览是 ChatThread
+     * 内部的 fillMaxSize 兄弟，垫页面会把它一起抬离屏底。宿主传
+     * `barZone − composerNavClearance()`，导航条只算一次。
+     */
+    bottomBarInset: Dp = 0.dp,
 ) {
     val skin = LocalSkin.current
 
@@ -321,6 +332,7 @@ fun ChatThread(
             animate = animate,
             onHeightChanged = { viewport.composerHeightPx = it },
             inputLeading = inputLeading,
+            bottomBarInset = bottomBarInset,
         )
 
         // K4 · 「新内容」胶囊：只在**上滚且有新内容落地**时出现，贴在输入区上沿。入场是
@@ -949,6 +961,8 @@ private fun BoxScope.ComposerOverlay(
     onHeightChanged: (Int) -> Unit,
     /** g-model-chip：经 `Skin.InputBar(leading = …)` 进面板底行的页面控件（模型 chip）。 */
     inputLeading: (@Composable () -> Unit)? = null,
+    /** m-bar：底栏区在 composer 之外的高度（见 [ChatThread] 的同名参数）。 */
+    bottomBarInset: Dp = 0.dp,
 ) {
     val skin = LocalSkin.current
     val uploadScope = rememberCoroutineScope()
@@ -974,6 +988,7 @@ private fun BoxScope.ComposerOverlay(
 
     Column(
         modifier = Modifier
+            .testTag(ComposerOverlayTag)
             .align(Alignment.BottomCenter)
             .fillMaxWidth()
             // c6-insets (P1-3)：高度必须在 padding 的**外侧**量。`onSizeChanged` 报的是
@@ -990,7 +1005,13 @@ private fun BoxScope.ComposerOverlay(
             // ComposerInsetsTest 钉住）。
             .imePadding()
             .onPreviewKeyEvent { event -> handleComposerKeys(event, state) }
-            .padding(start = gutter, end = gutter, bottom = 16.dp + composerNavClearance()),
+            // m-bar：底栏区（宿主已扣掉导航条 clearance）叠在 16dp 之下，胶囊底边落在
+            // 栏区上沿之上 16dp；图片预览/抽屉/模型面板不经过这里，保持满屏。
+            .padding(
+                start = gutter,
+                end = gutter,
+                bottom = 16.dp + composerNavClearance() + bottomBarInset,
+            ),
     ) {
         Column(
             modifier = Modifier.widthIn(max = 760.dp).fillMaxWidth(),
