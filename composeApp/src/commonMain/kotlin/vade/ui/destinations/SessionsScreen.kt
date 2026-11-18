@@ -49,6 +49,7 @@ import vade.ui.icon.VadeIcons
 import vade.ui.meta.MetaColors
 import vade.ui.meta.MetaGroup
 import vade.ui.skin.LocalSkin
+import vade.ui.skin.SkinColors
 import vade.ui.skin.glass.LocalGlassHazeState
 import kotlin.math.roundToInt
 
@@ -79,6 +80,22 @@ internal const val GlassSourceSessionsTag = "vade.glass.source.sessionsList"
  *
  * 选中态 = 带圆角的强调色块（[SELECTED_BLOCK_CORNER] 一组常量），左右各内缩 8dp，
  * 不是通栏满矩形、也没有 §12 旧口径的 3dp 左条。列表靠间距分层、没有分隔线。
+ *
+ * ## 行内文字色（n1-nav · 深色模式真机反馈）
+ *
+ * 列表是**唯一**一处「黑字/暗底」事故最容易漏的地方：行里的文本没有一处写死颜色，
+ * 全部经 [sessionRowInk] 从当前皮肤取：
+ *
+ *  - 标题 = `onSurface`（深色 `#EDEDF0` / 亮色 `#17171A`，`MaterialTokens` 两套都已核对）；
+ *  - 时间 = `onSurfaceVariant`（深色 `#9A9AA3` / 亮色 `#6B6B73`）；
+ *  - 分组头（标签 + 计数）= `onSurfaceVariant`；
+ *  - 空态卡（标题 `onSurface` / 正文 `onSurfaceVariant`，见 [EmptyStateCard]）；
+ *  - 列表横幅（[ListStatusBanner] 的三条分支全部显式取 token）。
+ *
+ * 标题此前只靠 `UiText` 的默认参数（恰好也是 `onSurface`），读代码时看不出它跟深色
+ * 主题有关，也就没有人能在评审里核对；现在它和其余几处一样**显式**写出来，并由
+ * `SessionsScreenDarkInkTest` 在深色皮肤下逐像素断言（深色必须出现亮字形、亮色必须
+ * 出现暗字形），「深色下标题/副标题是黑的」这类回归因此会红在测试里而不是真机上。
  *
  * ## 空态（alpha 审查 J1）
  *
@@ -158,6 +175,9 @@ fun SessionsScreen(
     selectedRowFocus: FocusRequester? = null,
 ) {
     val skin = LocalSkin.current
+    // 行内 / 分组头的文字墨色只从这里取（见 [sessionRowInk]）；深色两档由
+    // `MaterialTokens.darkColors` 提供，测试逐像素核对字形颜色。
+    val ink = sessionRowInk(skin.colors)
     LazyColumn(
         // g-haze-structure: this list is the page's haze **source** — rows scroll under the
         // glass top bar / bottom pill and the search overlay (a SIBLING of the source, at
@@ -221,13 +241,13 @@ fun SessionsScreen(
                         text = group.bucket.label,
                         size = 11,
                         weight = FontWeight.SemiBold,
-                        color = skin.colors.onSurfaceVariant,
+                        color = ink.meta,
                     )
                     Spacer(Modifier.width(6.dp))
                     UiText(
                         text = "${group.sessions.size}",
                         size = 11,
-                        color = skin.colors.onSurfaceVariant,
+                        color = ink.meta,
                     )
                 }
             }
@@ -269,6 +289,7 @@ private fun SessionRow(
     onLongPress: (SessionSummary, IntRect) -> Unit = { _, _ -> },
 ) {
     val skin = LocalSkin.current
+    val ink = sessionRowInk(skin.colors)
     // 长按瞬间的窗口矩形：`onGloballyPositioned` 在布局后写、长按一定发生在布局之后，
     // 所以取到的就是用户手指/指针按下的那一行（滚动后也会随重组更新）。
     var bounds by remember { mutableStateOf(IntRect.Zero) }
@@ -359,6 +380,9 @@ private fun SessionRow(
             modifier = Modifier.weight(1f).padding(end = 8.dp),
             size = 15,
             weight = FontWeight.SemiBold,
+            // n1-nav #3：显式取 token（不再借 `UiText` 的默认值）——深色下来自主文本色，
+            // 与列表其余文字同一套；`SessionsScreenDarkInkTest` 逐像素钉住。
+            color = ink.title,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -368,7 +392,7 @@ private fun SessionRow(
             UiText(
                 text = session.updatedLabel,
                 size = 11,
-                color = skin.colors.onSurfaceVariant,
+                color = ink.meta,
                 maxLines = 1,
             )
         }
@@ -420,6 +444,26 @@ internal const val SELECTED_BLOCK_ALPHA_DARK = 0.16f
  * 逐像素断言这个高度，改数字必须同时改测试（否则「行高被悄悄改回去」无人接住）。
  */
 internal val SESSION_ROW_HEIGHT = 56.dp
+
+/**
+ * 会话行的**文字墨色** —— 行内（以及分组头）唯一的取色点。
+ *
+ * 为什么需要一个具名映射而不是到处写 `skin.colors.onSurface`：深色模式「标题还是黑的」
+ * 这类事故，评审能核对的前提是**同一屏上所有文字都能一眼看出取自哪个 token**。
+ * 两档色值都来自皮肤的 `SkinColors`（`MaterialTokens` / `MiuixTokens` 的亮暗两套），
+ * 这里不发明颜色，也不做任何增亮/压暗：
+ *
+ *  - [title] = `onSurface`：深色 `#EDEDF0`、亮色 `#17171A`；
+ *  - [meta] = `onSurfaceVariant`：深色 `#9A9AA3`、亮色 `#6B6B73`。
+ *
+ * `SessionsScreenDarkInkTest` 直接用 `MaterialTokens.darkColors` / `lightColors` 比对它，
+ * 并在真组合里逐像素断言字形（深色必须出现亮字形、亮色必须出现暗字形）。
+ */
+internal data class SessionRowInk(val title: Color, val meta: Color)
+
+/** 当前皮肤 → 行的文字墨色（见 [SessionRowInk] 的两档来源）。 */
+internal fun sessionRowInk(colors: SkinColors): SessionRowInk =
+    SessionRowInk(title = colors.onSurface, meta = colors.onSurfaceVariant)
 
 /**
  * 会话行上的「分类」展示值：组名（or 裸 id）+ 组色。

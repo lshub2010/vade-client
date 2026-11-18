@@ -153,9 +153,12 @@ class AppShellSessionDetailBarTest {
         }
     }
 
-    /** 点回**会话 tab 本身**也走同一条路：先离开会话，再落到列表根（手机 = 抽屉滑出）。 */
+    /**
+     * 点回**会话 tab 本身**也走同一条路：手机抽屉模型下它把列表滑出来，**选中保留**
+     * （n1-nav 口径：退回列表不再销毁原来那个会话；详情还在底下，返回一次就回到它）。
+     */
     @Test
-    fun tappingTheSessionsTabFromDetailBacksOutToTheListRoot() = runComposeUiTest {
+    fun tappingTheSessionsTabFromDetailSlidesTheListInAndKeepsTheSession() = runComposeUiTest {
         val ui = detailState()
         phoneShell(ui)
         waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithContentDescription("返回")) }
@@ -163,7 +166,7 @@ class AppShellSessionDetailBarTest {
         onNodeWithContentDescription("会话").performClick()
         waitForIdle()
 
-        assertNull(ui.selectedSessionId, "重复点会话 tab = 退一层（P2-1 的既有语义）")
+        assertEquals("s-u1a", ui.selectedSessionId, "退回列表不许把原来那个会话取消掉")
         assertTrue(ui.sessionsDrawerOpen, "手机上退回列表 = 抽屉滑出（列表是唯一出口）")
         assertEquals(Destination.Sessions, ui.dest)
     }
@@ -255,7 +258,8 @@ class AppShellSessionDetailBarTest {
      *
      * 量的是**几何**：遮罩铺满整个窗口，所以底栏的矩形被它覆盖。抽屉这一态的**画序**是
      * 底栏在上（`AppShell` 只在模型面板 / 图片预览那种整屏模态里把内容链抬到底栏之上）——
-     * 抽屉只占 80% 宽，抬上来会埋掉半个胶囊；底栏留在最上层才仍能从抽屉里一键切 tab。
+     * 抽屉满宽（n1-nav）时底栏被它完全盖住，但底栏**仍在最上层**：从列表里一键切 tab 是
+     * 常驻底栏的语义，抽屉自己不做拦截。
      * 模态浮层（模型面板 / 预览）那一半由 `theModelSheetScrimCoversTheBottomBar` 用真触摸钉。
      */
     @Test
@@ -354,7 +358,7 @@ class AppShellSessionDetailBarTest {
         onNodeWithContentDescription("主页").performClick()
         waitForIdle()
 
-        assertNull(ui.selectedSessionId, "「主页」必须离开会话，回到会话列表")
+        assertEquals("s-u1a", ui.selectedSessionId, "「主页」只把列表滑出来，不销毁会话（详情留在底下）")
         assertTrue(ui.sessionsDrawerOpen, "手机上回到会话列表 = 列表抽屉滑出")
         assertEquals(Destination.Sessions, ui.dest)
         assertEquals(0, countWithDescription("返回"), "回到列表后详情 chrome 必须消失")
@@ -399,14 +403,21 @@ class AppShellSessionDetailBarTest {
         assertEquals(Destination.Sessions, ui.dest)
     }
 
-    /** 单栏重复点会话 tab 仍是「退一层」——删掉那句 back() 之后语义不变（`select` 自己调）。 */
+    /**
+     * 单栏重复点会话 tab：**rail**（没有抽屉）仍是「退一层、清选中」；**手机抽屉**则是
+     * 滑出列表、选中保留。差别只由宿主传进来的 `phoneDrawer` 决定（state 不猜布局）。
+     */
     @Test
-    fun retappingSessionsOnAPhoneStillBacksOutOneLayer() {
-        val ui = detailState()
-        switchDestination(ui, Destination.Sessions, listBesideDetail = false)
+    fun retappingSessionsOnASinglePaneBacksOutOneLayer() {
+        val rail = detailState()
+        switchDestination(rail, Destination.Sessions, listBesideDetail = false)
+        assertNull(rail.selectedSessionId, "rail 单栏重复点会话 tab = 退一层（由 UiState.select 内部 back() 保证）")
+        assertTrue(rail.sessionsDrawerOpen, "退一层 = 抽屉滑出（rail 上是死状态，规则仍统一）")
 
-        assertNull(ui.selectedSessionId, "单栏重复点会话 tab = 退一层（由 UiState.select 内部 back() 保证）")
-        assertTrue(ui.sessionsDrawerOpen, "退一层 = 抽屉滑出")
+        val phone = detailState()
+        switchDestination(phone, Destination.Sessions, listBesideDetail = false, phoneDrawer = true)
+        assertEquals("s-u1a", phone.selectedSessionId, "手机抽屉：重复点会话 tab 只滑出列表，不销毁会话")
+        assertTrue(phone.sessionsDrawerOpen, "手机抽屉：列表滑出")
     }
 
     // ------------------------------------------------------------ 5 · 拖动不是点击

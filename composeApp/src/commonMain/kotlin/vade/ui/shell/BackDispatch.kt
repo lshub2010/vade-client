@@ -42,9 +42,11 @@ import androidx.compose.runtime.staticCompositionLocalOf
  * 已接清单（g-nav-stack / c2-nav 收口）：
  *  - 搜索浮层（`SearchOverlay`）、附件预览（`ChatThread`）、模型选择浮层
  *    （`ModelPickerSheet`）；
- *  - 会话抽屉 + 详情：手机单栏由 `SessionsDrawerHost` 登记一层（抽屉开着 → 收抽屉；
- *    收着 → `state.back()` 清选中回列表根），≥600dp 的双栏 / rail 详情由
- *    `DestinationHost` 登记同一个 `state.back()` 动作；
+ *  - 会话抽屉 + 详情：手机单栏由 `SessionsDrawerHost` 登记两层（抽屉开着 → 收抽屉、选中保留；
+ *    收着 → `back(drawerModel = true)` 滑出列表、选中保留）；≥600dp 的双栏 / rail 详情由
+ *    `DestinationHost` 登记同一个 `state.back()` 动作（清选中回列表根）；
+ *  - 列表根（会话页 + 无选中）不登记任何层 ⇒ `dispatch()` 返回 false，返回交还系统
+ *    （允许退出 App）。
  *  - 模块页（`ModulePageHost`）：返回退一层 —— 面包屑 >1 退回上一页，深度 1 退出模块页
  *    回能力页，与顶栏返回按钮同一个动作；
  *  - 关于子页（`ProfileScreen`）：返回关子页回我的页。

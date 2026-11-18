@@ -375,9 +375,9 @@ private fun ShellBody(state: UiState) {
         // 点到（旧行为：面板开着还能点底栏切页，把面板连人一起端掉）。
         // 由详情自己上报（`SessionDetailScreen` 的 `onOverlayChange`）：两个浮层的状态都在
         // 页面内部（`modelPickerOpen`）与 ChatState 里（`chat.preview`），ShellBody 看不到。
-        // 抽屉（`SessionsDrawerHost` 自带遮罩）**不**走这条：抽屉只占 80% 宽，抬上来会让胶囊
-        // 被抽屉的左 80% 埋掉一半、右 20% 露一条残影；它的遮罩已经铺满窗口，底栏留在最上层
-        // 才仍能从抽屉里一键切 tab（m-bar 的常驻语义）。
+        // 抽屉（`SessionsDrawerHost` 自带遮罩）**不**走这条：抽屉满宽（n1-nav），抬上来
+        // 会把底栏整个盖住；它的遮罩已经铺满窗口，底栏留在最上层才仍能从抽屉里一键切
+        // tab（m-bar 的常驻语义）。
         val detailOverlayOpen = remember { mutableStateOf(false) }
         val contentZIndex = if (detailOverlayOpen.value) 1f else 0f
 
@@ -419,7 +419,7 @@ private fun ShellBody(state: UiState) {
             Column(Modifier.weight(1f).fillMaxHeight()) {
                 if (!metrics.useRail && state.dest == Destination.Sessions) {
                     // g-route-transition（口径变更 2026-11-15）：手机单栏（<600dp）改抽屉模型
-                    // —— 详情常驻底层、列表是盖在上面的抽屉（80% 宽 + 右缘圆角 + 遮罩）。
+                    // —— 详情常驻底层、列表是盖在上面的抽屉（n1-nav：满宽 + 遮罩）。
                     // 双栏与 600–719 rail 单栏仍走 DestinationHost，行为不变。
                     // B2（s-meta-host）：抽屉这条路**不经过** `DestinationHost`，而元数据宿主
                     // 原本只在那里创建 ⇒ 手机上分组/长按会整块丢失。这里在分支内再取一份：
@@ -558,9 +558,16 @@ private fun ShellBody(state: UiState) {
                 else -> rememberSessionUsageSubtitleLine(state.source, session.id)
             }
             val detailLeading: (@Composable () -> Unit)? = if (detailVisible) {
-                // g-nav-stack：返回 = `state.back()`（清选中）。手机单栏上它会带回列表抽屉，
-                // 双栏/rail 上它退出右栏详情 —— 三端同一个动作，不再有 sessionDetailBack 分叉。
-                { TopBarButton(VadeIcons.Back, onClick = state::back, contentDescription = "返回") }
+                // n1-nav：返回 = 手机抽屉模型下「滑出列表、选中保留」（`back(drawerModel = true)`）；
+                // 600–719 rail 没有抽屉，仍是清选中回列表根。与系统返回 / 返回手势 / Esc
+                // 走同一个 UiState.back —— 四个入口不是一个按钮一套语义。
+                {
+                    TopBarButton(
+                        VadeIcons.Back,
+                        onClick = { state.back(drawerModel = !metrics.useRail) },
+                        contentDescription = "返回",
+                    )
+                }
             } else null
             // m-bar：动作栏收敛成**一个** lambda（不再 if/else 两个组合组）。
             //  - 「主页」：不在会话列表根时出现（会话详情 / 其他三个 tab），回到会话 tab；
@@ -579,7 +586,14 @@ private fun ShellBody(state: UiState) {
                 if (showHome) {
                     TopBarButton(
                         HomeIcon,
-                        onClick = { switchDestination(state, Destination.Sessions, metrics.twoPane) },
+                        onClick = {
+                            switchDestination(
+                                state,
+                                Destination.Sessions,
+                                listBesideDetail = metrics.twoPane,
+                                phoneDrawer = !metrics.useRail,
+                            )
+                        },
                         contentDescription = "主页",
                     )
                 }
@@ -641,6 +655,8 @@ private fun ShellBody(state: UiState) {
                             state,
                             Destination.entries[index],
                             listBesideDetail = metrics.twoPane,
+                            // 手机抽屉模型：重复点会话 tab = 滑出列表、选中保留。
+                            phoneDrawer = !metrics.useRail,
                         )
                     },
                     style = state.barStyle,
@@ -797,7 +813,8 @@ private fun DestinationHost(
     // 放在 when 之前：栈序 = 组合序，页面层必须先于详情屏内部的浮层（模型选择）入栈。
     BackLayer(
         enabled = state.dest == Destination.Sessions && state.selectedSessionId != null,
-        onBack = state::back,
+        // 双栏 / rail 没有抽屉：`back()` 的默认档（清选中回列表根）。
+        onBack = { state.back() },
     )
     // B2（s-meta-host）：一个元数据宿主喂两处 —— 会话行上的「组名」（g-meta-groups）
     // 与行**长按**菜单 / 分组管理（本棒挂载）。构造与「什么时候不拉表」的规则在
@@ -1059,15 +1076,17 @@ private val HomeIcon: ImageVector get() = MetaIcons["home"] ?: VadeIcons.Chat
  * `remember(session.id, …)` 决定（草稿跨屏幕存活靠 `DraftStore`，另一棒），本函数既不清空
  * 也不重建它。
  *
- * [listBesideDetail] 由布局宿主传入（`ShellMetrics.twoPane`）：双栏里重复点会话 tab 是
- * no-op，不该把用户正在读的会话关掉（P1-12）。
+ * [listBesideDetail] / [phoneDrawer] 由布局宿主传入（`ShellMetrics`）：双栏里重复点会话
+ * tab 是 no-op，不该把用户正在读的会话关掉（P1-12）；手机抽屉里重复点会话 tab =
+ * **滑出列表、选中保留**（n1-nav 口径：退回列表不再销毁原来那个会话）。
  */
 internal fun switchDestination(
     state: UiState,
     target: Destination,
     listBesideDetail: Boolean,
+    phoneDrawer: Boolean = false,
 ) {
-    state.select(target, listBesideDetail = listBesideDetail)
+    state.select(target, listBesideDetail = listBesideDetail, phoneDrawer = phoneDrawer)
 }
 
 /** Bottom-bar rows: the four destinations, in contract order (FR-8.77). */
@@ -1117,7 +1136,10 @@ internal fun handleShellKeys(
 
     if (!search.open) {
         if (event.key == Key.Escape && state.selectedSessionId != null) {
-            // 栈空的兜底：与返回栈里「详情那一层」同一个动作（清选中回列表）。
+            // 栈空的兜底（只有孤立调用 / 组合根没 provide provider 才会到这里）：本函数
+            // 不知道布局，取「没有抽屉」那一档语义（清选中回列表根）。生产树上手机抽屉
+            // 由 `SessionsDrawerHost` 登记的层处理，走的是 `back(drawerModel = true)`
+            // （滑出列表、选中保留），不会落到这一行。
             state.back()
             return true
         }

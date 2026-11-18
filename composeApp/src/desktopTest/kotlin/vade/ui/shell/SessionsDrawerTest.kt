@@ -47,14 +47,17 @@ import kotlin.test.assertTrue
  * g-route-transition · 手机单栏抽屉的验收钉子（2026-11-15 口径变更）：
  *
  *  1. **转场配置**：`animate = true` → 时长 220–300ms、非线性缓动；`animate = false` → 0ms；
- *  2. **开合状态**：点行收抽屉露出详情；返回 = 收抽屉（详情还在）→ 清选中（回列表根，
- *     抽屉重新滑出）→ 列表根交还系统（不吞返回、允许退出 App）；详情始终不销毁；
- *  3. **遮罩存在**：抽屉开着有遮罩（点它收抽屉），收起后消失；
- *  4. **不重复组合**：两层内容跨开合是**同一个组合实例**（探针计数）——这正是列表滚动
+ *  2. **开合状态**（n1-nav 口径）：点行收抽屉露出详情；详情（抽屉收）→ 返回 = **滑出列表、
+ *     选中保留**；列表（抽屉开）→ 返回 = **收起列表、回到原来那个会话**（不清选中、不退
+ *     App）；只有会话页列表根（无选中）才交还系统（允许退出）。详情始终不销毁；
+ *  3. **抽屉宽度**：手机单栏恒**满宽**（与未选中时的列表同宽）；peek（0.8 + 右缘圆角 +
+ *     浮层阴影）只属于双栏并排形态，本宿主不渲染；
+ *  4. **遮罩存在**：抽屉开着有遮罩（压暗底下的详情）；收起后消失；
+ *  5. **不重复组合**：两层内容跨开合是**同一个组合实例**（探针计数）——这正是列表滚动
  *     位置保留的机制；
- *  5. **滚动保留**：滚到列表深处 → 开详情 → 返回，那一行**不滚动就仍在原处可见**；
- *  6. **双栏无抽屉**：≥840dp 两栏布局里不存在任何抽屉/遮罩元素；
- *  7. **无障碍焦点**：抽屉重新滑出后焦点回到原来那一行。
+ *  6. **滚动保留**：滚到列表深处 → 开详情 → 返回，那一行**不滚动就仍在原处可见**；
+ *  7. **双栏无抽屉**：≥840dp 两栏布局里不存在任何抽屉/遮罩元素；
+ *  8. **无障碍焦点**：抽屉重新滑出后焦点回到原来那一行。
  */
 @OptIn(ExperimentalTestApi::class)
 class SessionsDrawerTest {
@@ -82,7 +85,7 @@ class SessionsDrawerTest {
     }
 
     /**
-     * K1 · reduced-motion：抽屉是一段**纯位移**转场（整层横移 80% 屏宽），位移归零就等于
+     * K1 · reduced-motion：抽屉是一段**纯位移**转场（整层横移满屏宽），位移归零就等于
      * 「这次转场没有位移」，再留 260ms 的滑行反而是前庭敏感读者唯一会看到的东西 ——
      * 所以 reduced 直接走 0ms 分支（与 `animate = false` 同一条，状态机与组合结构不变）。
      *
@@ -115,14 +118,44 @@ class SessionsDrawerTest {
         )
     }
 
+    /**
+     * n1-nav #1（真机反馈）：抽屉宽 = **窗口宽**。未选中会话时列表是满宽的一页，选中后
+     * 再退回列表必须还是同一宽度 —— 旧的 0.8 只属于「列表与详情并排」的 peek。
+     */
     @Test
-    fun theDrawerGeometryIsTheContractedOne() {
-        assertEquals(0.8f, DRAWER_WIDTH_FRACTION, "抽屉宽 = 80% 屏宽（口径）")
-        assertEquals(28.dp, DRAWER_END_CORNER, "右缘两个大圆角 ≈28dp（口径）")
-        val shape = drawerShape()
-        assertEquals(CornerSize(28.dp), shape.topEnd, "topEnd 圆角")
-        assertEquals(CornerSize(28.dp), shape.bottomEnd, "bottomEnd 圆角")
-        assertEquals(CornerSize(0.dp), shape.topStart, "左缘贴屏幕，直角")
+    fun theDrawerGeometryIsFullWidthOnAPhone() {
+        assertEquals(1f, DRAWER_WIDTH_FRACTION, "手机单栏抽屉 = 满宽（与未选中时的列表同宽）")
+        assertEquals(0.8f, DRAWER_PEEK_FRACTION, "peek 口径保留 0.8，但只给双栏并排形态")
+        // 满宽 ⇒ 没有可露出的底层：直角、零阴影。
+        val full = drawerShape()
+        assertEquals(CornerSize(0.dp), full.topEnd, "满宽时右上是直角（留圆角会露出底下的详情）")
+        assertEquals(CornerSize(0.dp), full.bottomEnd, "满宽时右下是直角")
+        assertEquals(CornerSize(0.dp), full.topStart, "左缘贴屏幕，直角")
+        assertEquals(0.dp, drawerElevation(), "满宽 = 一页，不画浮层阴影")
+        // peek（双栏）那一档保持 28dp 右缘圆角 + 浮层阴影。
+        val peek = drawerShape(DRAWER_PEEK_FRACTION)
+        assertEquals(CornerSize(28.dp), peek.topEnd, "peek：topEnd 28dp 圆角")
+        assertEquals(CornerSize(28.dp), peek.bottomEnd, "peek：bottomEnd 28dp 圆角")
+        assertEquals(CornerSize(0.dp), peek.topStart, "peek：左缘贴屏幕，直角")
+        assertEquals(DRAWER_ELEVATION, drawerElevation(DRAWER_PEEK_FRACTION), "peek：浮层阴影还在")
+    }
+
+    /**
+     * 真组合里的宽度钉子：抽屉节点的宽度必须等于宿主内容区（`PhoneContentStageTag`）的宽度
+     * —— 也就是「未选中会话时列表占满的那一屏」。少 1dp 都说明还在旧的 peek（0.8）。
+     */
+    @Test
+    fun theDrawerNodeIsAsWideAsTheWindow() = runComposeUiTest {
+        val ui = uiState()
+        shellContent(ui, width = 466.dp, height = 800.dp)
+        waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithTag(DRAWER_TAG)) }
+        waitForIdle()
+
+        val stage = onNodeWithTag(PhoneContentStageTag).fetchSemanticsNode().boundsInRoot
+        val drawer = onNodeWithTag(DRAWER_TAG).fetchSemanticsNode().boundsInRoot
+        assertEquals(stage.width, drawer.width, 0.5f, "抽屉宽必须 == 窗口宽：实测 ${drawer.width} / ${stage.width}")
+        assertEquals(stage.left, drawer.left, 0.5f, "抽屉贴窗口左缘")
+        assertEquals(stage.right, drawer.right, 0.5f, "抽屉右缘必须到窗口右缘（peek 会让它缩回 80%）")
     }
 
     // ------------------------------------------------------------ 2. 状态机（纯逻辑）
@@ -160,8 +193,15 @@ class SessionsDrawerTest {
         assertFalse(deepLink.sessionsDrawerOpen, "深链直进详情 ⇒ 初始抽屉收起")
     }
 
+    /**
+     * n1-nav #2（真机反馈）：手机上的返回是**可逆切换**，不是单向销毁。
+     *
+     *  - 列表根（无选中）：不登记层 ⇒ 返回交还系统（允许退出 App）——这是**唯一**退应用的形态；
+     *  - 详情 → 返回：抽屉滑出，**选中保留**（旧实现这里清选中，再返回详情就没了）；
+     *  - 列表 → 返回：抽屉收起，**回到原来那个会话**（不是清选中、不是退 App）。
+     */
     @Test
-    fun backClosesTheDrawerThenClearsSelectionThenGoesBackToTheSystem() = runComposeUiTest {
+    fun backTogglesTheListAndTheDetailWithoutDroppingTheSession() = runComposeUiTest {
         val ui = uiState()
         val dispatcher = BackDispatcher()
         setContent {
@@ -196,40 +236,36 @@ class SessionsDrawerTest {
         waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 1 }
         assertFalse(ui.sessionsDrawerOpen)
 
-        // 返回 #1（抽屉收着）：清选中回列表根 —— 不是 toggle 抽屉、更不是退 App。
+        // 返回 #1（抽屉收着）：滑出列表 —— **选中保留**（真机反馈 #2：旧实现这里把会话取消掉）。
         runOnIdle { consumed = handleShellKeys(keyDown(Key.Escape), ui, backDispatcher = dispatcher) }
         assertTrue(consumed)
-        waitUntil(timeoutMillis = 5_000) { ui.selectedSessionId == null }
-        assertTrue(ui.sessionsDrawerOpen, "清选中后回到列表根 ⇒ 抽屉开着")
-        // 没有选中 ⇒ 详情那一层自动出栈（开关不泄漏）。
-        waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 0 }
+        waitUntil(timeoutMillis = 5_000) { ui.sessionsDrawerOpen }
+        assertEquals("s-u1a", ui.selectedSessionId, "退回列表不许把原来那个会话取消掉")
+        waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 2 } // 抽屉层入栈
 
-        // 返回 #2（列表根）：栈空 ⇒ 交还系统。
+        // 返回 #2（抽屉开着）：收起抽屉，**回到原来那个会话**（详情从未销毁）。
         runOnIdle { consumed = handleShellKeys(keyDown(Key.Escape), ui, backDispatcher = dispatcher) }
-        assertFalse(consumed, "列表根再次返回 ⇒ 未消费（Android 允许退出）")
-
-        // 抽屉开着 + 详情在底层：返回只收抽屉，详情不销毁。
-        runOnIdle { ui.open("s-u1a") }
+        assertTrue(consumed)
+        waitUntil(timeoutMillis = 5_000) { !ui.sessionsDrawerOpen }
+        assertEquals("s-u1a", ui.selectedSessionId, "收抽屉 = 回到原会话，不是清选中")
         waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 1 }
-        runOnIdle { ui.openSessionsDrawer() }
-        waitForIdle()
+
+        // 返回 #3：又滑出列表（可逆）；再 #4 又回到会话。两态 ⇄ 两层，不产生第三态。
         runOnIdle { consumed = handleShellKeys(keyDown(Key.Escape), ui, backDispatcher = dispatcher) }
         assertTrue(consumed)
-        waitForIdle()
-        assertFalse(ui.sessionsDrawerOpen, "抽屉开着时返回 = 收回抽屉")
-        assertNotNull(ui.selectedSessionId, "收抽屉不销毁详情")
-        assertEquals(1, dispatcher.depth, "详情层仍在栈里")
+        waitUntil(timeoutMillis = 5_000) { ui.sessionsDrawerOpen }
+        assertEquals("s-u1a", ui.selectedSessionId)
     }
 
     /**
-     * P0-2（终审）· 「能关几次 = 注册几层」：抽屉与详情各占一层，一次 dispatch 恰好减一层。
+     * 「能关几次 = 注册几层」：抽屉与详情各占一层，两态各自消费一次 dispatch。
      *
      * 旧实现只有一层，`onBack` 里按 `drawerOpen` 二选一：收完抽屉栈深不减 —— 层数与可退
-     * 次数对不上（第二次返回才轮到详情）。这里钉住新接线：抽屉开着 = 两层 → 返回 #1 只收
-     * 抽屉（详情与选中都还在）→ 返回 #2 清选中回列表根 → 栈深归零、返回交还系统。
+     * 次数对不上。现在：详情 = 1 层、抽屉开着 = 2 层；返回 #1 只收抽屉（详情与选中都还在），
+     * 返回 #2 又滑出列表（选中仍不动）。真正让栈归零的只有「离开会话页」（选中被清）。
      */
     @Test
-    fun drawerAndDetailEachOwnALayerSoEveryBackClosesExactlyOneLevel() = runComposeUiTest {
+    fun drawerAndDetailEachOwnALayerAndBackTogglesBetweenThem() = runComposeUiTest {
         val ui = uiState()
         val dispatcher = BackDispatcher()
         setContent {
@@ -250,7 +286,7 @@ class SessionsDrawerTest {
         }
         waitForIdle()
 
-        // 列表根（无选中）：抽屉开着也不登记（J5：那时收抽屉只会露出没有出路的空详情）。
+        // 列表根（无选中）：抽屉开着也不登记（那时收抽屉只会露出手机上没有出路的空详情）。
         assertEquals(0, dispatcher.depth, "列表根不登记返回层")
 
         // 详情 → 抽屉：可退的层级数是 2，注册的层数就必须是 2。
@@ -259,22 +295,24 @@ class SessionsDrawerTest {
         runOnIdle { ui.openSessionsDrawer() }
         waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 2 }
 
-        // 返回 #1：恰好减一层 —— 抽屉关了，详情与选中不受影响。
+        // 返回 #1：栈顶是抽屉 ⇒ 只收抽屉；详情与选中不受影响。
         var consumed = false
         runOnIdle { consumed = dispatcher.dispatch() }
         assertTrue(consumed)
         waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 1 }
         assertFalse(ui.sessionsDrawerOpen, "栈顶是抽屉：一次返回只收抽屉")
-        assertNotNull(ui.selectedSessionId, "收抽屉不销毁详情（不是一次关两层）")
+        assertEquals("s-u1a", ui.selectedSessionId, "收抽屉不销毁详情（不是一次关两层）")
 
-        // 返回 #2：再减一层 —— 清选中回列表根（抽屉按「无选中 ⇒ 开」的规则滑出）。
+        // 返回 #2：落到详情层 ⇒ 滑出列表，选中仍然保留（不是清选中、不是退 App）。
         runOnIdle { consumed = dispatcher.dispatch() }
         assertTrue(consumed)
-        waitUntil(timeoutMillis = 5_000) { ui.selectedSessionId == null }
-        assertTrue(ui.sessionsDrawerOpen, "清选中后回到列表根 ⇒ 抽屉开着")
-        waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 0 }
+        waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 2 }
+        assertTrue(ui.sessionsDrawerOpen, "详情层返回 = 滑出列表（n1-nav 口径）")
+        assertEquals("s-u1a", ui.selectedSessionId, "滑出列表后原会话必须还在")
 
-        // 列表根：层已经关干净，返回交还系统（不再吞返回）。
+        // 唯一让栈归零的形态：离开会话页（选中被清）⇒ 两层自动出栈，返回交还系统。
+        runOnIdle { ui.select(Destination.Activity) }
+        waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 0 }
         runOnIdle { consumed = dispatcher.dispatch() }
         assertFalse(consumed, "栈空 ⇒ 未消费（Android 允许退出）")
     }
@@ -316,10 +354,12 @@ class SessionsDrawerTest {
         waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithText(ROW_TITLE)) }
         assertNotNull(ui.selectedSessionId, "返回后详情必须还在底层（不是退出详情页）")
 
-        // 点遮罩 = 收抽屉（露出详情）。
-        onNodeWithTag(DRAWER_SCRIM_TAG).performClick()
+        // n1-nav #1：抽屉满宽 ⇒ 没有「点遮罩」这一手（遮罩被抽屉完全盖住）；退出去列表
+        // 只剩返回一条路 —— 返回一次 = 收抽屉、回到原来那个会话（选中不清）。
+        runOnIdle { ui.back(drawerModel = true) }
         waitUntil(timeoutMillis = 10_000) { drawerOffscreen() }
-        assertFalse(ui.sessionsDrawerOpen)
+        assertFalse(ui.sessionsDrawerOpen, "返回 = 收起满宽列表")
+        assertNotNull(ui.selectedSessionId, "收列表 = 回到原会话（不是清选中）")
     }
 
     /** 抽屉层是否已完全平移到屏幕左缘之外（收起态的几何判据）。 */
