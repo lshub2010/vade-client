@@ -13,6 +13,7 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
@@ -305,6 +306,10 @@ class AppShellSessionDetailBarTest {
     fun theModelSheetScrimCoversTheBottomBar() = runComposeUiTest {
         val ui = detailState()
         phoneShell(ui)
+        // 合并 m1-composer 后模型 chip 默认收起：先点输入区展开第二行，再点 chip。
+        waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithText("输入消息…")) }
+        onNodeWithText("输入消息…").performClick()
+        waitForIdle()
         waitUntil(timeoutMillis = 10_000) { nodePresent(onNodeWithContentDescription("更改会话模型")) }
 
         onNodeWithContentDescription("更改会话模型").performClick()
