@@ -142,19 +142,20 @@ fun GradientHazeBand(
         }
     }
     val stops = remember(ramp) { bandRampStops(ramp) }
+    // 缓存 brush：它只跟方向有关（不给 startY/endY ⇒ 默认按被绘制形状的高度铺满，
+    // 与 `GlassTokens.highlight` 同一个读法），所以**不随尺寸重建**，每帧零分配。
+    val mask = remember(stops) {
+        Brush.verticalGradient(
+            *Array(stops.size) { i ->
+                stops[i].first to Color.White.copy(alpha = stops[i].second)
+            },
+        )
+    }
     Box(
         modifier
             // 离屏层 = DstIn 的作用边界：渐变只允许吃这条带子自己的像素。
             .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
             .drawWithCache {
-                // brush 只在**尺寸/方向**变化时重建（每帧新建 Brush 是纯分配）。
-                val mask = Brush.verticalGradient(
-                    colorStops = Array(stops.size) { i ->
-                        stops[i].first to Color.White.copy(alpha = stops[i].second)
-                    },
-                    startY = 0f,
-                    endY = size.height,
-                )
                 onDrawWithContent {
                     drawContent()
                     drawRect(brush = mask, blendMode = BlendMode.DstIn)
