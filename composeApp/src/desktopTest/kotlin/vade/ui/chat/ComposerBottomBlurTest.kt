@@ -147,9 +147,10 @@ class ComposerBottomBlurTest {
         val barZonePx = barZone.value * d
 
         // 下沿 = 底栏上沿（不压进底栏）。基准是**窗口底**，不是 composer 底：
-        // composer 整块浮层还含它自己的底部 padding，两者的差正是那 16dp 呼吸 +
-        // 栏区。带子节点必须是**带子自己**的矩形 —— 用 padding 把节点顶到窗口底
-        // 的那种写法会让这里永远读到 760（= 窗口底），几何基准整个漂掉。
+        // composer 整块浮层还含它自己的底部 padding，两者的差正是那 16dp 呼吸 + 栏区。
+        // 量到的节点必须是**带子自己**的矩形：把 testTag 挂在套了 padding 的摆放层上
+        // （或把 offset 写进同一个节点的链里）都会让这里永远读到 760 —— 节点外框垂到
+        // 窗口底，几何的基准整个漂掉，而其它断言因为上沿/高度都对，一个字都不会说。
         assertNear(root.bottom - barZonePx, band.bottom, "带子下沿必须贴底栏上沿", tolerancePx = 2f * d)
         // 上沿 = composer 上沿 − 8dp（不遮输入热区）
         assertNear(composer.top - 8f * d, band.top, "带子上沿必须在 composer 上沿之上 8dp", tolerancePx = 2f * d)

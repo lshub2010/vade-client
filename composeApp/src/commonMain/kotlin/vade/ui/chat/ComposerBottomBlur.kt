@@ -1,9 +1,10 @@
 package vade.ui.chat
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -146,27 +147,34 @@ internal fun BoxScope.ComposerBottomBlurBand(
     val geometry = composerBottomBandGeometry(composerHeight = composerHeight, barZone = barZone)
     if (geometry.height <= 0.dp) return
 
-    GradientHazeBand(
-        modifier = Modifier
+    Box(
+        Modifier
             .align(Alignment.BottomCenter)
-            .testTag(ComposerBottomBlurTag)
             .fillMaxWidth()
-            .height(geometry.height)
-            // 下沿贴底栏上沿 = 窗口底 − barZone。**用 offset 而不用 padding**：
-            // padding(bottom = barZone) 会让这个节点自己的矩形一直垂到窗口底（外框 =
-            // 带子 + 下沿留白），`boundsInRoot` 量到的「带子下沿」就永远是窗口底
-            // （实测期望 656.0 / 实际 760.0 就是它），几何的基准从「栏区上沿」漂成
-            // 「窗口底」。offset 只挪位置、不改矩形：节点 == 可见带子 ==
-            // [窗口底 − barZone − height, 窗口底 − barZone]，与 composerBottomBandGeometry
-            // 的 zeroY/bottomY 逐点一致。
-            .offset(y = -geometry.bottomInset),
-        hazeState = LocalGlassHazeState.current,
-        // 现成 token：`colors.surfaceGlass` 就是本皮肤的玻璃染色
-        // （glass 皮肤里它就是 `GlassTokens.tint(isDark)`，见 `colorsFrom`）。
-        tint = skin.colors.surfaceGlass,
-        blurRadiusDp = skin.glass.blurRadiusDp,
-        // 底栏带的方向：底部最强、向上递减到 0。改这一行之前先看 BlurBandRampTest。
-        // 这条带子**不需要**「满强度平台段」：它的强端就是底栏上沿，那里没有缝。
-        ramp = BandRamp.BottomHeavy,
-    )
+            // 摆放层：padding 在外、height 在内 —— 整块贴屏底对齐后，内容区（= 带子）
+            // 的下沿正好是 `窗口底 − barZone`（底栏上沿），而不是被自己的高度顶上去。
+            .padding(bottom = geometry.bottomInset),
+    ) {
+        GradientHazeBand(
+            modifier = Modifier
+                // testTag **必须挂在带子自己这一层**，不能挂在上面那个摆放层上：
+                // padding 会把节点的外框一直拉到窗口底，`boundsInRoot` 量到的「带子下沿」
+                // 就永远是窗口底（实测期望 656.0 / 实际 760.0，几何的基准从「栏区上沿」
+                // 漂成「窗口底」）。同一类坑：把 offset 写进**同一个**节点的链里也不行 ——
+                // offset 只挪绘制/摆放的内层，不挪这个节点自己的 semantics 矩形。所以摆放
+                // 与「谁是带子」分成两层，节点矩形 == 可见带子 ==
+                // [窗口底 − barZone − height, 窗口底 − barZone]。
+                .testTag(ComposerBottomBlurTag)
+                .fillMaxWidth()
+                .height(geometry.height),
+            hazeState = LocalGlassHazeState.current,
+            // 现成 token：`colors.surfaceGlass` 就是本皮肤的玻璃染色
+            // （glass 皮肤里它就是 `GlassTokens.tint(isDark)`，见 `colorsFrom`）。
+            tint = skin.colors.surfaceGlass,
+            blurRadiusDp = skin.glass.blurRadiusDp,
+            // 底栏带的方向：底部最强、向上递减到 0。改这一行之前先看 BlurBandRampTest。
+            // 这条带子**不需要**「满强度平台段」：它的强端就是底栏上沿，那里没有缝。
+            ramp = BandRamp.BottomHeavy,
+        )
+    }
 }
