@@ -90,6 +90,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -358,8 +359,21 @@ fun ChatThread(
             // （见 [ComposerOverlay]；c6-insets 把原先挂在 `.padding` 后面的量法修了），
             // 所以 g-inset2 给 composer 底部叠的导航条 clearance 也 1:1 算进来：最后一条
             // 始终滚出 composer + 导航条区域。公式提成 [composerListSpacer] 供测试钉住。
-            Spacer(Modifier.height(with(density) { composerListSpacer(viewport.composerHeightPx.toDp()) }))
+            //
+            // IME 性能（用户 2026-11-18「弹输入法卡」）：这个 Spacer **必须**单独成为
+            // 一个组合作用域（[ComposerTailSpacer]）。以前 `viewport.composerHeightPx`
+            // 是在 `ChatThread` 自己的内容 lambda 里读的 —— 键盘动画每帧都会推高
+            // composer（`imePadding` + clearance），每次写入都会让**整个消息列**
+            // （items.forEach { MessageRow(…) }）重组一遍。下沉之后每帧只重组这一个
+            // Spacer，消息列表一帧都不重组。
+            ComposerTailSpacer(viewport)
         }
+
+        // 底栏**界限之外**的渐变模糊（用户 2026-11-18 第 2 条）：贴在底栏上沿、向上一路
+        // 递减到输入框上沿 +8dp。只读本函数内部的 composer 高度，作用域不外溢；桌面 /
+        // rail（没有底栏，`bottomBarInset == 0`）根本不组合。画在 composer **之前**：
+        // 它是 composer 的背景，不能盖住输入热区。
+        ComposerBottomBlurBand(viewport = viewport, bottomBarInset = bottomBarInset)
 
         ComposerOverlay(
             state = state,
@@ -380,28 +394,18 @@ fun ChatThread(
 
         // K4 · 「新内容」胶囊：只在**上滚且有新内容落地**时出现，贴在输入区上沿。入场是
         // 淡入 + 0.92 缩放（不是位移 —— reduced-motion 下位移类一律改纯淡入，K1）。
-        AnimatedVisibility(
-            visible = follower.unseenBelow,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = with(density) { viewport.composerHeightPx.toDp() } + 8.dp),
-            enter = fadeIn(tween(durationMillis = capsuleMs, easing = skin.motion.easing)) +
-                scaleIn(
-                    initialScale = 0.92f,
-                    animationSpec = tween(durationMillis = capsuleMs, easing = skin.motion.easing),
-                ),
-            exit = fadeOut(tween(durationMillis = capsuleMs, easing = skin.motion.easing)),
-        ) {
-            NewContentCapsule(
-                onClick = {
-                    follower.onJumpToBottom()
-                    // reduced-motion 下不做「飞回去」的滚动动画：一帧到位。
-                    pageScope.launch {
-                        if (reduceMotion) scroll.scrollTo(0) else scroll.animateScrollTo(0)
-                    }
-                },
-            )
-        }
+        //
+        // IME 性能（n3-blur）：它读 composer 实测高度（键盘动画每帧变化），所以和
+        // [ComposerTailSpacer] 一样必须自成一个组合作用域 —— 否则这一读会把整棵消息列
+        // 一起拖进每帧重组。
+        NewContentCapsuleHost(
+            viewport = viewport,
+            follower = follower,
+            capsuleMs = capsuleMs,
+            reduceMotion = reduceMotion,
+            scroll = scroll,
+            pageScope = pageScope,
+        )
 
         // Fullscreen preview is an overlay of the page, not a platform dialog: the skin must
         // not decide windowing (same reasoning as the approval card above).
@@ -988,6 +992,25 @@ private fun Modifier.glassFallback(skin: vade.ui.skin.Skin, shape: Shape = Recta
 internal fun composerListSpacer(composerHeight: Dp): Dp = composerHeight + 24.dp
 
 /**
+ * 消息列尾部的让位块（`composerListSpacer` 的唯一读取点）。
+ *
+ * **为什么要单独一个 composable**：composer 在键盘动画期间每帧都会变高
+ * （`imePadding` + `composerNavClearance()` 每帧变化 → `onSizeChanged` 每帧写
+ * `viewport.composerHeightPx`）。这个 snapshot state 之前是在 `ChatThread` 的内容
+ * lambda 里读的，于是它的每一次写入都会让**整棵消息列**（`items.forEach { MessageRow }`
+ * + 每条 Markdown 的布局）重组一遍 —— 这就是用户反馈的「点输入框弹键盘卡」里最贵的
+ * 那一段（证据链见 `ChatThread` 尾部的 [ComposerTailSpacer] 注释与 `n3-blur` 报告）。
+ *
+ * 把读点下沉到这一个叶子节点之后：键盘动画每帧只让 8dp 高的一个 Spacer 重组，消息列
+ * 的重组次数归零。**行为逐像素不变**：高度值仍是 `composerListSpacer(实测高度)`。
+ */
+@Composable
+private fun ComposerTailSpacer(viewport: ChatViewport) {
+    val height = with(LocalDensity.current) { composerListSpacer(viewport.composerHeightPx.toDp()) }
+    Spacer(Modifier.height(height))
+}
+
+/**
  * The independent floating layer: queue strip + the skin's InputBar + the out-of-frame
  * SendOrb (both C-09 components — RFC-0011 removed the page-built composer).
  * Measures itself into [onHeightChanged] so the list can pad by 高度 + 24dp (§1).
@@ -1238,14 +1261,18 @@ internal fun Modifier.observePointerTap(onTap: () -> Unit): Modifier {
     // 位移必须在**窗口坐标**里比：Android 上 IME 弹起时整个 composer 会随根布局上移，
     // 局部坐标里同一根手指的 Press/Release 会差出一个 IME 高度，被判成拖拽 —— 首点
     // 输入框时「键盘弹了但第二行没出来」正是这条（审查 P0）。多指手势一律作废。
-    var coordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    //
+    // n3-blur 性能：坐标只在**指针回调**里读，从不参与组合，所以这里用一个普通引用而不是
+    // `mutableStateOf`。后者会让每一次布局（键盘动画期间每帧一次）都写一次快照状态 ——
+    // 一个 observer 都没有的写入仍然要走一次快照 apply，纯属白烧 CPU。
+    val coordinates = remember { LayoutCoordinatesRef() }
     return this
-        .onGloballyPositioned { coordinates = it }
+        .onGloballyPositioned { coordinates.value = it }
         .pointerInput(Unit) {
             awaitPointerEventScope {
                 var downPosition: Offset? = null
                 fun windowOf(local: Offset): Offset =
-                    coordinates?.localToWindow(local) ?: local
+                    coordinates.value?.localToWindow(local) ?: local
                 while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Initial)
                     val change = event.changes.singleOrNull()
@@ -1270,6 +1297,16 @@ internal fun Modifier.observePointerTap(onTap: () -> Unit): Modifier {
                 }
             }
         }
+}
+
+/**
+ * [observePointerTap] 的坐标持有者：**布局期写、指针期读**，两个阶段都不需要快照。
+ *
+ * 用 `mutableStateOf` 存它时，键盘动画的每一下布局都会写一次快照状态（observer 数量为 0），
+ * 那是纯粹的白烧；换成一个普通引用之后，每帧少一次 snapshot apply。
+ */
+private class LayoutCoordinatesRef {
+    var value: LayoutCoordinates? = null
 }
 
 /**
@@ -1491,6 +1528,49 @@ private fun ScrollState.applyFollow(directive: FollowScrollDirective) {
         is FollowScrollDirective.ShiftBy -> if (directive.deltaPx != 0) {
             dispatchRawDelta(directive.deltaPx.toFloat())
         }
+    }
+}
+
+/**
+ * K4 · 「新内容」胶囊的宿主（`AnimatedVisibility` + 贴输入区上沿的定位）。
+ *
+ * 与 [ComposerTailSpacer] 同一条理由独立成函数：它读 `viewport.composerHeightPx`
+ * （键盘动画每帧变化），读点必须自成一个组合作用域，否则整棵消息列会跟着每帧重组。
+ * 行为与原来逐字段一致：`fadeIn + scaleIn(0.92)` 进场、`fadeOut` 退场，时长
+ * [capsuleMs]（已过 K1 门），点击回底（reduced-motion 下一帧到位）。
+ */
+@Composable
+private fun BoxScope.NewContentCapsuleHost(
+    viewport: ChatViewport,
+    follower: FollowScrollGate,
+    capsuleMs: Int,
+    reduceMotion: Boolean,
+    scroll: ScrollState,
+    pageScope: CoroutineScope,
+) {
+    val skin = LocalSkin.current
+    val bottomPad = with(LocalDensity.current) { viewport.composerHeightPx.toDp() } + 8.dp
+    AnimatedVisibility(
+        visible = follower.unseenBelow,
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .padding(bottom = bottomPad),
+        enter = fadeIn(tween(durationMillis = capsuleMs, easing = skin.motion.easing)) +
+            scaleIn(
+                initialScale = 0.92f,
+                animationSpec = tween(durationMillis = capsuleMs, easing = skin.motion.easing),
+            ),
+        exit = fadeOut(tween(durationMillis = capsuleMs, easing = skin.motion.easing)),
+    ) {
+        NewContentCapsule(
+            onClick = {
+                follower.onJumpToBottom()
+                // reduced-motion 下不做「飞回去」的滚动动画：一帧到位。
+                pageScope.launch {
+                    if (reduceMotion) scroll.scrollTo(0) else scroll.animateScrollTo(0)
+                }
+            },
+        )
     }
 }
 

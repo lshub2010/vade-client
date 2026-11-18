@@ -347,6 +347,19 @@ private fun ShellBody(state: UiState) {
         // 详情 → 详情 chrome（底栏**不再**跟着它显隐，m-bar 起手机单栏常驻）。
         val detailVisible = detailOpen && (metrics.useRail || !state.sessionsDrawerOpen)
 
+        // 页面切换动画（用户 2026-11-18：「页面切换动画缺失」）：**一个** key 覆盖
+        // 四个 tab 与「列表 ⇄ 会话」两种切换 —— 断点决定 key 里要不要带会话 id：
+        //  - rail / 双栏：会话在右栏里换页，`selectedSessionId` 参与 key；
+        //  - 手机单栏：列表是抽屉、详情常驻，切会话**不换页**（换的是抽屉进度），
+        //    所以 key 只认目的地 —— 否则拉开抽屉看列表也会重播一次进场。
+        // 挂在下面 Column 的 modifier 上（一条 `graphicsLayer`，动画期间零重组），
+        // 不是覆盖层，也不碰任何点击热区。
+        val pageKey: Any = if (metrics.useRail) {
+            state.dest to state.selectedSessionId
+        } else {
+            state.dest
+        }
+
         // m-bar：手机单栏的底栏**常驻**——会话详情开着也照样组合。旧 D88 的「详情 push 时
         // 整条栏不组合」已废弃：详情页要能一键切去别的 tab，底栏不在就没有这个出口。
         // rail / 双栏断点仍然没有底栏（切换由 `NavRail` / 左列承担，`metrics.useRail`）。
@@ -416,7 +429,14 @@ private fun ShellBody(state: UiState) {
                 }
             }
 
-            Column(Modifier.weight(1f).fillMaxHeight()) {
+            Column(
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    // 页面进场：淡入 + 8dp 上浮，≤220ms，reduced-motion 下退化成纯淡入
+                    // （见 `PageTransition.kt`）。挂在内容列自己身上 —— 顶栏/底栏不跟着动。
+                    .pageEnter(key = pageKey, animate = state.chatPreset == vade.ui.chat.ChatPreset.Live),
+            ) {
                 if (!metrics.useRail && state.dest == Destination.Sessions) {
                     // g-route-transition（口径变更 2026-11-15）：手机单栏（<600dp）改抽屉模型
                     // —— 详情常驻底层、列表是盖在上面的抽屉（80% 宽 + 右缘圆角 + 遮罩）。
