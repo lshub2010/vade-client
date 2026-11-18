@@ -498,6 +498,7 @@ class MaterialSkin(
         voiceAvailable: Boolean,
         maxLines: Int,
         leading: (@Composable () -> Unit)?,
+        secondRow: (@Composable () -> Unit)?,
     ) = MaterialInputBar(
         value = value,
         onValueChange = onValueChange,
@@ -507,6 +508,7 @@ class MaterialSkin(
         voiceAvailable = voiceAvailable,
         maxLines = maxLines,
         leading = leading,
+        secondRow = secondRow,
         colors = colors,
         shapes = shapes,
         typography = typography,

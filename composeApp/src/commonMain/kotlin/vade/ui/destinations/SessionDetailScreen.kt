@@ -82,10 +82,10 @@ internal const val DetailContentInsetTag = "vade.detail.content.inset"
  * [preset] / [animate] exist for the real-window screenshot loop and for tests; `Live` is what
  * the app uses, and it is the only mode where the stream advances by itself.
  *
- * U1-model → g-model-chip · the model switcher moved OUT of the page flow: the header model
- * line is plain information again (what would answer, message count, degraded reason), the
- * TRIGGER is the [ModelComposerChip] the composer hosts in a **second row** (see
- * g-composer-2row below), and tapping it opens the [ModelPickerSheet] — the §9 floating
+ * U1-model → g-model-chip · the model switcher moved OUT of the page flow: the header carries
+ * the title only (g-header-model-line removed the 「模型 … · N 条消息」 line for good), the
+ * TRIGGER is the [ModelComposerChip] the composer hosts **inside its panel, on a second row**
+ * (see g-composer-2row below), and tapping it opens the [ModelPickerSheet] — the §9 floating
  * sheet card — over the whole screen. Nothing pushes the transcript anymore. All model
  * reads/writes go through the injected [modelActions] seam; when the shell has not wired
  * one yet (this round), an in-memory fixture implementation keeps the picker fully
@@ -97,7 +97,8 @@ internal const val DetailContentInsetTag = "vade.detail.content.inset"
  * the page root reports taps outside it — both by observing a pointer tap (press + release
  * within touch slop) in the Initial pass without consuming (the frozen `Skin.InputBar` has no
  * focus/modifier slot, so a real focus signal is not available; see
- * `vade.ui.chat.observePointerTap` for the approximation and its limits).
+ * `vade.ui.chat.observePointerTap` for the approximation and its limits). The row itself is
+ * rendered by `Skin.InputBar(secondRow = …)` **inside** the input panel.
  */
 @Composable
 fun SessionDetailScreen(
@@ -107,8 +108,9 @@ fun SessionDetailScreen(
     animate: Boolean = true,
     /**
      * `false` when the shell's top bar already shows this session's title (the `<600dp`
-     * pushed-detail case): the page then draws only the model/count line, so the title is
-     * not printed twice within 80dp. Two-pane keeps it — there the top bar reads 会话.
+     * pushed-detail case): the header would then hold nothing but an avatar, so it is **not
+     * drawn at all** (g-header-model-line — the model/count line is gone). Two-pane keeps it —
+     * there the top bar reads 会话.
      */
     showTitle: Boolean = true,
     /**
@@ -216,12 +218,10 @@ fun SessionDetailScreen(
     //  - 点输入区展开：由 `ChatThread(onComposerFocusChange = …)` 从指针近似焦点报上来。
     var composerExpanded by remember(session.id) { mutableStateOf(false) }
 
-    // J4（alpha 审查）· 「假数据」只由**数据来源**决定，与布局无关：
-    //  - 没有适配器包 = 三段回退落到内存假实现（`pickScreenSeam`）；
-    //  - 适配器查找抛过异常 = 已退回假实现（`degraded` 非 null）。
-    // 以前这句话挂在 `showTitle` 上（手机 pushed detail 传 false）→ 真源也显示、
-    // 手机反而不显示，正好与事实相反。现在标题仍受 showTitle 控制，事实行不受。
-    val fixtureData = adapters == null || modelSeam.degraded != null || chatSeam.degraded != null
+    // J4（alpha 审查）· 「假数据 / 未接 core」这句话曾经拼在表头的模型信息行里；那一行已
+    // 随 g-header-model-line 删除，诚实正文只剩**模型面板脚注**一处（见下方
+    // `ModelPickerSheet(footerNote = …)`）—— 判据仍是数据来源（`adapters == null` 或
+    // 适配器查找退回过），与本屏的布局参数无关，所以不随 showTitle 变。
 
     // Full-bleed stack: the thread spans the whole window (scrolling under glass bar and
     // header alike); the header floats *below* the glass bar zone as the later sibling and
@@ -280,9 +280,6 @@ fun SessionDetailScreen(
                 session = session,
                 chat = chat,
                 showTitle = showTitle,
-                fixtureData = fixtureData,
-                modelState = modelState,
-                degraded = modelSeam.degraded ?: chatSeam.degraded,
             )
             // Load-failure banner sits right under the header, above the thread: the reader
             // sees *why* the thread is empty before the (kept) old messages.
@@ -349,45 +346,33 @@ private fun EmptyDetail(
 }
 
 /**
- * Title + the two facts a chat header owes the reader in this slice: which model would answer
- * (D101 — read from [modelState], so a picker switch updates the line immediately) and whether
- * the data is fake. No 「已连接」 badge — U1-b has no socket, and a green dot
- * that means nothing is exactly the kind of lie §8.5 forbids.
+ * The chat header: avatar + session title (+ the live status pill). That is all it owes —
+ * see g-header-model-line below.
  *
- * g-model-chip: the model line is INFORMATION again — the switcher affordance moved into the
- * composer chip (`ModelComposerChip`), so this row is no longer clickable and carries no
- * chevron (a tap affordance on a row that no longer toggles anything would be a lie).
+ * g-header-model-line: the 「模型 … · N 条消息」 line is **gone** — on both layouts. It was
+ * neither a title nor a control: the model switcher already lives in the composer's second
+ * row ([ModelComposerChip]), so repeating 「模型 全局默认」 under the title was a permanent,
+ * unclickable strip of noise (real-device report). Switching the model still updates the
+ * chip immediately (D101 reads through the same [ModelState]).
  *
- * J4（alpha 审查）：[fixtureData] **只**由数据来源决定（`adapters == null` 或适配器查找
- * 退回过），与 [showTitle] 无关 —— 布局参数曾经兼职当「假数据」的判据，于是真源也显示、
- * 手机 pushed detail 反而静默。
+ * When [showTitle] is false (phone pushed detail — the shell top bar already names the
+ * session) the only thing left would be the avatar, which carries no readable fact: the
+ * whole header is then **not drawn at all**, so no empty strip and no hairline floats
+ * under the glass bar.
  */
 @Composable
 private fun DetailHeader(
     session: SessionSummary,
     chat: ChatState,
     showTitle: Boolean,
-    /** 本页是否真的跑在内存假实现上（判据在 [SessionDetailScreen]，不看布局）。 */
-    fixtureData: Boolean,
-    modelState: ModelState,
-    /** 非 null = 适配器查找失败、本页已退回内存假实现；直接拼进模型行（不静默吞）。 */
-    degraded: String? = null,
 ) {
+    if (!showTitle) return
     val skin = LocalSkin.current
-    // With the shell top bar already naming the session, a second 15sp copy of the same
-    // title 80dp lower reads as a rendering bug — so the compact form keeps the avatar and
-    // one metadata line.
-    val modelLine = buildString {
-        append("模型 ${modelState.currentLabel()}")
-        if (fixtureData) append(" · 假数据（未接 core）")
-        append(" · ${chat.messages.size} 条消息")
-        if (degraded != null) append(" · $degraded")
-    }
     Column(Modifier.fillMaxWidth().background(skin.colors.surface)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
+                .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
@@ -405,25 +390,13 @@ private fun DetailHeader(
                 )
             }
             Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                if (showTitle) {
-                    UiText(session.title, size = 15, weight = FontWeight.SemiBold, maxLines = 1)
-                }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    UiText(
-                        text = modelLine,
-                        size = 11,
-                        color = skin.colors.onSurfaceVariant,
-                        maxLines = 1,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
+            UiText(
+                text = session.title,
+                size = 15,
+                weight = FontWeight.SemiBold,
+                maxLines = 1,
+                modifier = Modifier.weight(1f),
+            )
             if (chat.isStreaming) {
                 StatusPill("流式中", Tone.Accent)
             } else if (chat.queue.isNotEmpty()) {

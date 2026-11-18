@@ -622,6 +622,9 @@ internal fun MaterialInputBar(
     // Post-freeze additive slot (see Skin.InputBar KDoc): page-level control sharing the
     // panel's existing bottom row. null = frozen bottom row, byte-for-byte.
     leading: (@Composable () -> Unit)?,
+    // Post-freeze additive slot #2 (see Skin.InputBar KDoc): page-level controls on a
+    // SECOND line, inside this same panel (model chip). null = nothing drawn at all.
+    secondRow: (@Composable () -> Unit)?,
     colors: SkinColors,
     shapes: SkinShapes,
     typography: SkinTypography,
@@ -721,6 +724,13 @@ internal fun MaterialInputBar(
                         VadeIcon(VadeIcons.Mic, contentDescription = "语音输入", size = 16.dp, tint = colors.onSurfaceVariant)
                     }
                 }
+            }
+            // 第二行（C-09 追加槽 secondRow）：**同一块面板内**、输入行下方 —— 共享
+            // 玻璃底 / 发丝线 / xl 圆角，不是另起一层 surface。null 时这一段整块不组成
+            // （没有 Spacer、没有节点），冻结布局逐像素不变。
+            if (secondRow != null) {
+                Spacer(Modifier.height(8.dp))
+                secondRow()
             }
         }
     }

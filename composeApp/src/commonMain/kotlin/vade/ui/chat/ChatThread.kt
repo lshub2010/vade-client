@@ -145,9 +145,10 @@ internal const val GlassSourceThreadTag = "vade.glass.source.chatThread"
  *
  * **双行 composer**（g-composer-2row，默认路径不变）：`modelRow` + `expanded` 都不传 /
  * `expanded = false` 时，composer 就是上面那一行，与今天逐字节一致。两者同时成立时，
- * 布局多出**第二行**：输入行（`InputBar` + `SendOrb`）在上，页面控件（模型 chip 等）
- * 在下。展开 / 收起由页面持有（`expanded` 是纯形参），页面也只能通过指针近似焦点 ——
- * 见 [observePointerTap]。
+ * 输入面板内部多出**第二行**（`Skin.InputBar(secondRow = …)` 追加槽）：输入行（附件 /
+ * 输入 / 语音）在上，页面控件（模型 chip 等）在下，**共用同一块面板底与圆角** —— 不是
+ * 面板外另起一层 surface。展开 / 收起由页面持有（`expanded` 是纯形参），页面也只能通过
+ * 指针近似焦点 —— 见 [observePointerTap]。
  *
  * Every control goes through `Skin.*` tokens or `skin/glass/GlassSurface`; the page
  * composes them from Compose-foundation primitives only (same escape hatch as `UiText`,
@@ -180,8 +181,9 @@ fun ChatThread(
      */
     bottomBarInset: Dp = 0.dp,
     /**
-     * g-composer-2row · 第二行的页面控件（模型 chip 等）。与 [expanded] 同时成立才组成；
-     * null = 完全不组成第二行，composer 与今天逐字节一致（默认路径）。
+     * g-composer-2row · 第二行的页面控件（模型 chip 等），经 `Skin.InputBar(secondRow = …)`
+     * 画在**输入面板内部**、输入行下方。与 [expanded] 同时成立才组成；null = 完全不组成
+     * 第二行（没有 Spacer、没有节点），composer 与今天逐字节一致（默认路径）。
      */
     modelRow: (@Composable () -> Unit)? = null,
     /**
@@ -1006,7 +1008,7 @@ private fun BoxScope.ComposerOverlay(
     inputLeading: (@Composable () -> Unit)? = null,
     /** m-bar：底栏区在 composer 之外的高度（见 [ChatThread] 的同名参数）。 */
     bottomBarInset: Dp = 0.dp,
-    /** g-composer-2row：展开时的第二行页面控件（模型 chip 等）。 */
+    /** g-composer-2row：展开时的第二行页面控件（模型 chip 等），传给 `InputBar(secondRow)`。 */
     modelRow: (@Composable () -> Unit)? = null,
     /** g-composer-2row：第二行是否展开（页面状态）。 */
     expanded: Boolean = false,
@@ -1132,7 +1134,17 @@ private fun BoxScope.ComposerOverlay(
                 Spacer(Modifier.width(6.dp))
                 Box(
                     modifier = Modifier
-                        .weight(1f),
+                        .weight(1f)
+                        // g-composer-2row · 面板锚点：只在真的组成第二行时挂。测试用它断言
+                        // chip 的矩形被**这块面板**的矩形包含（第二行在面板内，不是面板外
+                        // 另起一层）。默认路径（不收 / 没传 modelRow）一个节点都不多。
+                        .then(
+                            if (expanded && modelRow != null) {
+                                Modifier.testTag(ComposerPanelTag)
+                            } else {
+                                Modifier
+                            },
+                        ),
                 ) {
                     // 输入区 = C-09 组件 11（RFC-0011 后为纯输入区）：玻璃面板、hairline、
                     // 浮层阴影、多行封顶都在皮肤里；页面只传语义状态。已暂存附件走
@@ -1148,6 +1160,23 @@ private fun BoxScope.ComposerOverlay(
                     } else {
                         null
                     }
+                    // g-composer-2row · 第二行走 `secondRow` 追加槽，由**皮肤**画在面板内部、
+                    // 输入行下方：同一块玻璃底 / 发丝线 / 圆角，不再有面板外那一层 surface。
+                    // 条件仍由页面决定（`expanded && modelRow != null`）；不成立时传 null，
+                    // 皮肤整段不组成 ⇒ 冻结的单行 composer 逐像素不变。
+                    val row = modelRow
+                    val secondRowSlot: (@Composable () -> Unit)? =
+                        if (expanded && row != null) {
+                            {
+                                // testTag 挂在**面板内**这一层：测试照旧按 tag 找「第二行在
+                                // 不在」，几何断言再拿 [ComposerPanelTag] 的矩形验包含关系。
+                                Box(Modifier.fillMaxWidth().testTag(ComposerModelRowTag)) {
+                                    row()
+                                }
+                            }
+                        } else {
+                            null
+                        }
                     skin.InputBar(
                         value = state.draft,
                         onValueChange = state::updateDraft,
@@ -1158,6 +1187,8 @@ private fun BoxScope.ComposerOverlay(
                         maxLines = 6,
                         // g-model-chip：composer 底行槽位 —— 模型 chip（页面经此形参传入）。
                         leading = inputLeading,
+                        // g-composer-2row：第二行（模型 chip）在面板内部、输入行之下。
+                        secondRow = secondRowSlot,
                     )
                 }
                 // 发送球在**框外**（v2 §2 / RFC-0011）：与输入框间距 12dp、垂直居中的独立
@@ -1169,41 +1200,22 @@ private fun BoxScope.ComposerOverlay(
                     onClick = { if (state.isStreaming) state.stop() else state.submit() },
                 )
             }
-
-            // g-composer-2row · 第二行：页面控件（模型 chip 等）。
-            //
-            // 条件与 `ChatThread` 的约定一致：只有 `expanded && modelRow != null` 才组成。
-            // 默认路径（不传 modelRow / expanded=false）**一个节点都不多** —— 与改造前
-            // 逐字节一致，这也是 AppShell 那些老调用点不用改的前提。
-            //
-            // 间距 8dp：视觉规范 §四 的间距刻度（4/8/12/16/20/24/32）里本文件已在用的
-            // 同一档（队列条、暂存附件都是 8dp），不新造数。
-            if (expanded && modelRow != null) {
-                Spacer(Modifier.height(8.dp))
-                // 第二行必须有**实体底**：它已经不在输入面板内，半透明 chip 直接浮在
-                // 消息列上，滚动时正文会从 chip 底下穿过（审查 P1-1）。这里用皮肤的不透明
-                // surface + hairline + pill 圆角，和输入面板同一套质感，但不引入玻璃。
-                val rowShape = RoundedCornerShape(skin.shapes.pill)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag(ComposerModelRowTag)
-                        .clip(rowShape)
-                        .background(skin.colors.surface)
-                        .border(1.dp, skin.colors.hairline, rowShape)
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
-                    // 行首对齐：chip 与原来的 `leading` 槽同一侧，不随宽度漂到中间。
-                ) {
-                    modelRow()
-                }
-            }
         }
     }
 }
 
 /**
- * g-composer-2row · composer 第二行容器的 testTag —— 测试用它断言「模型行在 / 不在」，
- * 而不是去数 chip 的文案（文案会随模型名变）。
+ * g-composer-2row · composer **面板**的测试锚点（只在第二行真的组成时挂）。
+ *
+ * 面板是皮肤画的（`Skin.InputBar`），页面只在它外面那一层 Box 上挂 tag —— 那一层与面板
+ * 同宽同高（面板无外边距，RFC-0011 D5），所以测试可以拿它当「面板矩形」，断言第二行
+ * 被面板**包含**、且在输入行下方，而不是原来那层面板外的独立 surface。
+ */
+internal const val ComposerPanelTag = "vade.chat.composer.panel"
+
+/**
+ * g-composer-2row · composer 第二行（面板内）的 testTag —— 测试用它断言「模型行在 / 不在」，
+ * 而不是去数 chip 的文案（文案会随模型名变）。节点现在位于输入面板**内部**。
  */
 internal const val ComposerModelRowTag = "vade.chat.composerModelRow"
 

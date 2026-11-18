@@ -258,6 +258,7 @@ class GlassSkin(
         voiceAvailable: Boolean,
         maxLines: Int,
         leading: (@Composable () -> Unit)?,
+        secondRow: (@Composable () -> Unit)?,
     ) {
         val interaction = remember { MutableInteractionSource() }
         val focused by interaction.collectIsFocusedAsState()
@@ -331,6 +332,13 @@ class GlassSkin(
                             )
                         }
                     }
+                }
+                // 第二行（C-09 追加槽 secondRow）：**同一块玻璃面板内**、输入行下方 ——
+                // 与输入行共享玻璃底 / 描边 / xl 圆角，不再另起一层 surface。null 时这
+                // 一段整块不组成（没有 Spacer、没有节点），冻结面板逐像素不变。
+                if (secondRow != null) {
+                    Spacer(Modifier.height(8.dp))
+                    secondRow()
                 }
             }
         }

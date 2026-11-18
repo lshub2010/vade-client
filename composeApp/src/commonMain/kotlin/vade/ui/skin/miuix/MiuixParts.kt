@@ -723,6 +723,9 @@ internal fun MiuixInputBar(
     // Post-freeze additive slot (see Skin.InputBar KDoc): page-level control sharing the
     // panel's existing bottom row. null = frozen bottom row, byte-for-byte.
     leading: (@Composable () -> Unit)?,
+    // Post-freeze additive slot #2 (see Skin.InputBar KDoc): page-level controls on a
+    // SECOND line, inside this same panel (model chip). null = nothing drawn at all.
+    secondRow: (@Composable () -> Unit)?,
     colors: SkinColors,
     shapes: SkinShapes,
     typography: SkinTypography,
@@ -759,6 +762,10 @@ internal fun MiuixInputBar(
                         )
                         .padding(horizontal = 14.dp, vertical = 10.dp),
                         ) {
+                        // 面板内容是一列：输入行在上，`secondRow`（追加槽，见 Skin.InputBar
+                        // KDoc）在下 —— 同一块玻璃面板内，共享底/发丝线/xl 圆角。这里
+                        // 只有一列的布局节点，不改变任何像素；null 时那一行不组成。
+                        Column {
                         Row(verticalAlignment = Alignment.Bottom) {
                             // `leading` 槽（C-09 追加，见 Skin.InputBar KDoc）：行首、与文本域
                             // 同一行；null 时整段不组成，冻结布局逐像素不变。
@@ -795,6 +802,12 @@ internal fun MiuixInputBar(
                                 maxLines = maxLines,
                                 modifier = Modifier.fillMaxWidth(),
                             )
+                        }
+                        }
+                        // 第二行（追加槽）：面板内部、输入行下方。null 时整段不组成。
+                        if (secondRow != null) {
+                            Spacer(Modifier.height(8.dp))
+                            secondRow()
                         }
                     }
                 }
