@@ -582,6 +582,7 @@ class ScreenAdapterWiringTest : IsolatedPreferencesTest() {
 
         // 展开 composer → chip 的文案就是适配器给出的显示名。
         onNodeWithText("输入消息…").performClick()
+        waitForIdle()
         assertTrue(
             onAllNodesWithText(PROBE_MODEL_NAME, substring = true).fetchSemanticsNodes().isNotEmpty(),
             "适配器给出的模型名必须出现在 composer 的模型 chip 上",
@@ -605,7 +606,9 @@ class ScreenAdapterWiringTest : IsolatedPreferencesTest() {
         // 不崩、也不静默：退化原因现在由**模型面板的脚注**给出（表头模型行已随
         // g-header-model-line 删除）—— 展开 composer、点开 chip 才能读到那句诚实正文。
         onNodeWithText("输入消息…").performClick()
+        waitForIdle()
         onNodeWithContentDescription("更改会话模型").performClick()
+        waitForIdle()
         onNodeWithText(SEAM_FALLBACK_NOTE, substring = true).assertExists()
     }
 }
