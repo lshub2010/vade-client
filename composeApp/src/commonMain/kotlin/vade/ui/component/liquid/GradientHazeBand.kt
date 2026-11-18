@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
@@ -38,19 +39,34 @@ enum class BandRamp { TopHeavy, BottomHeavy }
 /**
  * 带子两端的采样位置（竖轴比例，0 = 顶边，1 = 底边）与对应的层不透明度。
  *
- * **两站、线性、无中间站**是刻意的：任何一个中间站都是一个新的魔法数，而这条带子
- * 的语义只有「这头满、那头零」。线性在 8dp/72dp 这种薄带上与缓动曲线的差别不到
- * 一个 8bit 量化台阶，没什么可调的。
+ * **默认只有两站**是刻意的：语义只有「这头满、那头零」，线性在 8dp/72dp 这种薄带上与
+ * 缓动曲线的差别不到一个 8bit 量化台阶，没什么可调的。
+ *
+ * [holdFraction] 是**唯一允许的中间站**，而且它不是审美参数，是一条**几何约束**：
+ * 顶栏带满强度必须一直保持到胶囊上沿（卡片上方那条缝的下沿），再向下递减到 0。
+ * 只写 `(0,1) → (1,0)` 时，缝里还漏着 `1 − alpha(y)` 的锐利背板 —— 上空隙量到
+ * 2.14 而卡内只有 0.16，差的那 13 倍就是这 5% 的漏光，用户看到的就是「胶囊上面那条缝
+ * 比卡里清楚」。**比例由调用方按自己的实测高度算**（见 [GradientHazeBand] 的
+ * `rampHoldDp`），这里只吃一个 0..1 的比例，不认任何 dp 常量。
  *
  * 返回 `List<Pair<Float, Float>>`（位置 → alpha）而不是 [Brush]，是为了让
  * 「方向对不对」能被一个**纯函数单测**钉住 —— 截图只能证明「看起来像」，钉不住
  * 「top 是 1 还是 0」，而方向反了的那一版截图同样「看起来像一条渐变」。
  */
-internal fun bandRampStops(ramp: BandRamp): List<Pair<Float, Float>> = when (ramp) {
-    // 顶栏：从 y=0 的满强度向下递减，带底 = 0。
-    BandRamp.TopHeavy -> listOf(0f to 1f, 1f to 0f)
-    // 底栏：从带顶的 0 向下**递增**，带底 = 满强度。
-    BandRamp.BottomHeavy -> listOf(0f to 0f, 1f to 1f)
+internal fun bandRampStops(ramp: BandRamp, holdFraction: Float = 0f): List<Pair<Float, Float>> {
+    // 夹进 0..1：hold = 1 表示整条带子满强度（没有递减段，退化为一条均匀带），
+    // hold ≤ 0 表示没有平台段 —— 两种退化都是合法输入，不抛。
+    val hold = holdFraction.coerceIn(0f, 1f)
+    return when (ramp) {
+        // 顶栏：从 y=0 的满强度向下递减，带底 = 0。hold > 0 时先平铺到 hold 再递减。
+        BandRamp.TopHeavy ->
+            if (hold <= 0f) listOf(0f to 1f, 1f to 0f)
+            else listOf(0f to 1f, hold to 1f, 1f to 0f)
+        // 底栏：从带顶的 0 向下**递增**，带底 = 满强度。hold 对称地落在强的那一端。
+        BandRamp.BottomHeavy ->
+            if (hold <= 0f) listOf(0f to 0f, 1f to 1f)
+            else listOf(0f to 0f, (1f - hold) to 0f, 1f to 1f)
+    }
 }
 
 /**
@@ -104,8 +120,8 @@ internal val BAND_FADE_GAP = 8.dp
  *     `DstIn` 的竖向渐变矩形**乘**上去：alpha = 1 的那头原样保留，alpha = 0 的那头
  *     整层透明 —— 模糊、染色一起从「满」衰减到「看不见」，不会留下一条硬边（用户要的
  *     「归零」，不是「突然截断」）。
- *  3. 每个像素每帧只有一次 haze 采样 + 一次渐变乘法；渐变 brush 在 `remember(stops)` 里
- *     建一次（它只跟方向有关，不随尺寸重建），每帧零分配。
+ *  3. 每个像素每帧只有一次 haze 采样 + 一次渐变乘法；渐变 brush 在 `drawWithCache` 的
+ *     build 块里建一次（只在「尺寸或 [rampHoldDp] 变了」时重建，稳态每帧零分配）。
  *
  * ## 退化的形状（不崩、不白屏）
  *
@@ -118,6 +134,11 @@ internal val BAND_FADE_GAP = 8.dp
  * @param tint 叠在模糊层之上的染色；透明度由调用方决定（带子应当比卡片更淡）。
  * @param blurRadiusDp 高斯半径，取皮肤给玻璃条的同一个数（§5: 24dp）。
  * @param ramp 渐变方向 —— 见 [BandRamp]；**这是本组件唯一的方向输入**。
+ * @param rampHoldDp 从**强的那一端**量起的满强度距离（0 = 纯两端线性）。
+ *   它是「这一段必须和卡片内部一样糊」的几何表达，不是审美参数：顶栏带传
+ *   `TopBarTopGap`（= 卡片上方那条缝的高度），胶囊上沿之上因此拿到 alpha = 1，
+ *   缝里不再漏出锐利背板。传 0 = 行为与只有两端站时逐点一致（底栏带就是这一档）。
+ *   它按**实测高度**换算成比例（`rampHoldDp / 带子高`），所以与带子多高无关。
  * @param shape 默认矩形：带子要贴到窗口/内容列边缘，圆角会露出四个角。
  */
 @Composable
@@ -127,6 +148,7 @@ fun GradientHazeBand(
     tint: Color,
     blurRadiusDp: Float,
     ramp: BandRamp,
+    rampHoldDp: Dp = 0.dp,
     shape: Shape = RectangleShape,
 ) {
     val state = hazeState ?: rememberHazeState()
@@ -141,21 +163,27 @@ fun GradientHazeBand(
             blurredEdgeTreatment(BlurredEdgeTreatment(shape))
         }
     }
-    val stops = remember(ramp) { bandRampStops(ramp) }
-    // 缓存 brush：它只跟方向有关（不给 startY/endY ⇒ 默认按被绘制形状的高度铺满，
-    // 与 `GlassTokens.highlight` 同一个读法），所以**不随尺寸重建**，每帧零分配。
-    val mask = remember(stops) {
-        Brush.verticalGradient(
-            *Array(stops.size) { i ->
-                stops[i].first to Color.White.copy(alpha = stops[i].second)
-            },
-        )
-    }
     Box(
         modifier
             // 离屏层 = DstIn 的作用边界：渐变只允许吃这条带子自己的像素。
             .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
             .drawWithCache {
+                // 掩膜在 build 块里建：hold 是**距离**，比例 = rampHoldDp / 带子实测高度，
+                // 只有这里手里有 size。build 块只在尺寸/参数变了时重跑一次，稳态每帧仍然
+                // 只有「一次 haze 采样 + 一次乘法」，零分配、零重建。
+                //   没有 hold ⇒ stops 就是两端线性（与上一版逐点相同，底栏带走的就是这档）；
+                //   有 hold ⇒ 强端先平铺 rampHoldDp，再线性递减到 0。
+                val holdFraction =
+                    if (rampHoldDp <= 0.dp || size.height <= 0f) 0f
+                    else (rampHoldDp.toPx() / size.height).coerceIn(0f, 1f)
+                val stops = bandRampStops(ramp, holdFraction)
+                // 不给 startY/endY ⇒ 按被绘制形状的高度铺满（与 `GlassTokens.highlight`
+                // 同一个读法）；这里是 DstIn 掩膜，只有 alpha 有意义。
+                val mask = Brush.verticalGradient(
+                    *Array(stops.size) { i ->
+                        stops[i].first to Color.White.copy(alpha = stops[i].second)
+                    },
+                )
                 onDrawWithContent {
                     drawContent()
                     drawRect(brush = mask, blendMode = BlendMode.DstIn)

@@ -1,11 +1,9 @@
 package vade.ui.chat
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -72,6 +70,21 @@ internal data class ComposerBottomBandGeometry(
  * bottomY(窗口高) == 窗口高 − barZone
  * ```
  *
+ * ## 两个参数的符号（订正过一次的基准）
+ *
+ * 宿主（`AppShell`）传进来的 `bottomBarInset` **不是**栏区本身，而是
+ * `barZone − composerNavClearance()`（`ChatThread` 的形参注释写的就是这一条）；
+ * `ComposerBottomBlurBand` 再把 clearance 加回来得到 `barZone`。所以：
+ *
+ *  - 符号是**加**（`＋ clearance`），不是减：宿主已经扣过一次，这里只负责还原；
+ *  - 基准是**窗口底**，不是 composer 底：`bottomY = 窗口高 − barZone`，而 composer 的
+ *    底边还要再高 16dp（胶囊与栏区之间的呼吸）。用 composer 底当基准会整条带子下沉
+ *    16dp，压进底栏。
+ *
+ * 桌面 / Wasm 上 `WindowInsets.navigationBars` 与 `ime` 都读到 0（`InsetsGuardTest` 钉住），
+ * clearance 因此是 0，`barZone == bottomBarInset` —— 这也是 `ComposerBottomBlurTest`
+ * 敢直接用宿主传的 104dp 当栏区的理由。
+ *
  * 夹到 0：桌面 / rail 上 `barZone = 0`（没有底栏，调用方本来也不组合这条带子），以及
  * 极窄屏上 composer 比栏区还矮的病态输入，都只让带子退化，绝不给负高度。
  */
@@ -133,25 +146,27 @@ internal fun BoxScope.ComposerBottomBlurBand(
     val geometry = composerBottomBandGeometry(composerHeight = composerHeight, barZone = barZone)
     if (geometry.height <= 0.dp) return
 
-    Box(
-        Modifier
+    GradientHazeBand(
+        modifier = Modifier
             .align(Alignment.BottomCenter)
             .testTag(ComposerBottomBlurTag)
             .fillMaxWidth()
-            // padding 在外、height 在内：整块贴屏底对齐后，带子下沿正好落在
-            // `窗口底 − barZone`（= 底栏上沿），而不是被自己的高度顶上去。
-            .padding(bottom = geometry.bottomInset)
-            .height(geometry.height),
-    ) {
-        GradientHazeBand(
-            modifier = Modifier.fillMaxSize(),
-            hazeState = LocalGlassHazeState.current,
-            // 现成 token：`colors.surfaceGlass` 就是本皮肤的玻璃染色
-            // （glass 皮肤里它就是 `GlassTokens.tint(isDark)`，见 `colorsFrom`）。
-            tint = skin.colors.surfaceGlass,
-            blurRadiusDp = skin.glass.blurRadiusDp,
-            // 底栏带的方向：底部最强、向上递减到 0。改这一行之前先看 BlurBandRampTest。
-            ramp = BandRamp.BottomHeavy,
-        )
-    }
+            .height(geometry.height)
+            // 下沿贴底栏上沿 = 窗口底 − barZone。**用 offset 而不用 padding**：
+            // padding(bottom = barZone) 会让这个节点自己的矩形一直垂到窗口底（外框 =
+            // 带子 + 下沿留白），`boundsInRoot` 量到的「带子下沿」就永远是窗口底
+            // （实测期望 656.0 / 实际 760.0 就是它），几何的基准从「栏区上沿」漂成
+            // 「窗口底」。offset 只挪位置、不改矩形：节点 == 可见带子 ==
+            // [窗口底 − barZone − height, 窗口底 − barZone]，与 composerBottomBandGeometry
+            // 的 zeroY/bottomY 逐点一致。
+            .offset(y = -geometry.bottomInset),
+        hazeState = LocalGlassHazeState.current,
+        // 现成 token：`colors.surfaceGlass` 就是本皮肤的玻璃染色
+        // （glass 皮肤里它就是 `GlassTokens.tint(isDark)`，见 `colorsFrom`）。
+        tint = skin.colors.surfaceGlass,
+        blurRadiusDp = skin.glass.blurRadiusDp,
+        // 底栏带的方向：底部最强、向上递减到 0。改这一行之前先看 BlurBandRampTest。
+        // 这条带子**不需要**「满强度平台段」：它的强端就是底栏上沿，那里没有缝。
+        ramp = BandRamp.BottomHeavy,
+    )
 }

@@ -203,11 +203,19 @@ private fun TopBarTitlePair(title: String, subtitle: String?, onSubtitleClick: (
  *  - 颜色取卡片用的同一个 `Skin.glass` 染色（`tintLight` / `tintDark`），再按
  *    [TopBarBandTintScale] 减淡 —— 同色系、不同浓度，浮卡才还看得出是浮卡；
  *  - 模糊半径取 `Skin.glass.blurRadiusDp`，与卡片逐点相同：带子与卡内是同一套料；
- *  - **渐变方向固定 [BandRamp.TopHeavy]**（用户 2026-11-18 真机反馈）：窗口顶
- *    （`y = 0`）模糊量最大，向下递减，到带子底边（`TOP_BAR_ZONE`）归零。上一版是
- *    「贴卡片那条边最糊、越往上越清」—— 方向反了，看上去像一条「从下往上长的雾」。
- *    方向现在由 [bandRampStops] 这一个纯函数定义、`BlurBandRampTest` 逐点钉住，
- *    不再靠调用方记得把 stops 写对。
+ *  - **渐变方向固定 [BandRamp.TopHeavy]，且满强度一直保持到胶囊上沿**
+ *    （用户 2026-11-18 真机反馈）：窗口顶（`y = 0`）模糊量最大，**整条 `TopBarTopGap`
+ *    （卡片上方那条缝）都是满强度**，从胶囊上沿（`y = TopBarTopGap`，= 带子顶 + 缝高）
+ *    才开始向下递减，到带子底边（`TOP_BAR_ZONE`）归零。上一版是「贴卡片那条边最糊、
+ *    越往上越清」—— 方向反了，看上去像一条「从下往上长的雾」；再上一版是「1→0 拉满
+ *    整条 72dp」，缝里漏着 `1 − alpha ≈ 5%` 的锐利字形，用户看到的就是「胶囊上面那条缝
+ *    比卡里清楚」（`TopBarBandTest` 量到空隙 2.14 / 卡内 0.16 就是这个漏光）。
+ *    方向由 [bandRampStops] 这一个纯函数定义、`BlurBandRampTest` 逐点钉住，
+ *    平台段的长度直接取 `TopBarTopGap`（缝的常量），不是新造的魔法数。
+ *
+ * 平台段**终止于胶囊上沿**，所以带子绝不会在胶囊内部再糊一遍：那 8dp 之上是卡的背景，
+ * 之下由卡片自己的玻璃（不透明）盖住 —— 双向都不会出现「同一块内容被糊两次」。像素证据
+ * 是 `TopBarBandTest` 的「卡片本体逐像素不变（≤2/255）」。
  *
  * 不画描边、不画阴影、不加圆角（三条理由见 [vade.ui.component.liquid.GlassBand] 的 KDoc）。
  * 没有 `GlassScope` 的环境（孤立预览、不注册 backdrop 的单测）退化为「只有染色」——那时
@@ -224,6 +232,10 @@ fun TopBarBand(modifier: Modifier = Modifier) {
         blurRadiusDp = skin.glass.blurRadiusDp,
         // 顶栏带的方向：顶部最强、向下递减到 0。改这一行之前先看 BlurBandRampTest。
         ramp = BandRamp.TopHeavy,
+        // 满强度 = 卡片上方那条缝的完整高度（`TopBarTopGap`，也是卡片的上边距）。
+        // 带子由 AppShell 钉在 `TOP_BAR_ZONE` 高（结构测试只有一处 `.height(TOP_BAR_ZONE)`），
+        // 平台段因此正好停在胶囊上沿 8dp 处：缝内 alpha = 1，缝下才开始递减。
+        rampHoldDp = TopBarTopGap,
     )
 }
 
