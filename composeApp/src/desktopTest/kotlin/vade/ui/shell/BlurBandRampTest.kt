@@ -67,6 +67,7 @@ class BlurBandRampTest {
     @Test
     fun aRampHasExactlyTwoStopsAtTheTwoEdges() {
         BandRamp.entries.forEach { ramp ->
+            // 默认（调用方不要平台段）= 两端两站：任何中间站都是一个新魔法数。
             val stops = bandRampStops(ramp)
             assertEquals(2, stops.size, "$ramp 只允许两端两个站（任何中间站都是一个新魔法数）")
             assertEquals(0f, stops.first().first, "$ramp 的第一站必须在顶边")
@@ -78,6 +79,32 @@ class BlurBandRampTest {
             )
             assertEquals(0f, stops.minOf { it.second }, "$ramp 必须有一端归零")
         }
+    }
+
+    /**
+     * 满强度平台段（`TopBarBand` 的 `rampHoldDp = TopBarTopGap`）：胶囊**上面那条缝**
+     * 必须和卡内一样糊。纯 1→0 的直线在缝里会漏出 `1 − alpha` 的锐利背板 —— 全长 72dp
+     * 时缝里 alpha ≈ 0.94，那 6% 就是「胶囊上面那条缝比卡里清楚」的全部来源。
+     *
+     * 平台段的长度用两个**既有**常量表达（`TopBarTopGap / TOP_BAR_ZONE`），不引入新数；
+     * 这里钉三件事：缝内恒等于 1、缝下才开始掉、底边仍然归零（方向没被平台段弄丢）。
+     */
+    @Test
+    fun aHoldCoversTheGapAtFullStrengthAndStillZeroesAtTheFarEdge() {
+        val hold = TopBarTopGap / TOP_BAR_ZONE
+        val stops = bandRampStops(BandRamp.TopHeavy, holdFraction = hold)
+        assertEquals(3, stops.size, "有 hold 时只允许多出**一个**站（平台段的下沿）")
+        assertEquals(1f, bandRampAlphaAt(stops, 0f), "窗口顶仍是满强度")
+        assertEquals(1f, bandRampAlphaAt(stops, hold / 2f), "缝的中间必须满强度")
+        assertEquals(1f, bandRampAlphaAt(stops, hold), "缝的下沿（= 胶囊上沿）仍是满强度")
+        assertEquals(0f, bandRampAlphaAt(stops, 1f), "带子底边仍然归零 —— 方向没被平台段弄丢")
+        assertMonotonic(stops, increasing = false)
+        // 平台段之后仍然是严格递减（不是「先平后不动」）。
+        val afterHold = bandRampAlphaAt(stops, (hold + 1f) / 2f)
+        assertTrue(afterHold > 0f && afterHold < 1f, "平台段与底边之间必须落在 (0,1)：实际 $afterHold")
+        // 不传 hold 的调用点（底栏带）逐点还是那条两端直线。
+        val plain = bandRampStops(BandRamp.TopHeavy)
+        assertEquals(0.5f, bandRampAlphaAt(plain, 0.5f), "没有 hold 时必须还是两端线性")
     }
 
     @Test

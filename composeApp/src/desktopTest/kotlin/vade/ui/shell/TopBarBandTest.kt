@@ -40,11 +40,18 @@ import vade.ui.skin.material.MaterialSkin
  * 卡片外观不变」）。
  *
  * **2026-11-18 口径变更（用户真机反馈第 1 条）**：带子不再是均匀模糊，而是**顶部最强、
- * 向下递减到 0** 的渐变（`BandRamp.TopHeavy`）。所以上空隙（0–8dp）仍是糊的，下空隙
- * （64–72dp）会跟着渐变回到接近锐利 —— 这不是回归，是用户要的方向：上一版「贴卡片那条边
- * 最糊」才是反的。这条测试因此改成**量方向**（上比下糊），并把「带子被删掉 / 被调成
- * 装饰」与「方向被写反」两类错误都钉住。方向的**纯函数**版本在 `BlurBandRampTest`，
- * 这里只负责「真的画出来了」。
+ * 向下递减到 0** 的渐变（`BandRamp.TopHeavy`），而且**满强度一直保持到胶囊上沿**：只写
+ * `(0,1) → (1,0)` 拉满整条 72dp 的那一版，缝里还漏着 `1 − alpha(y) ≈ 5%` 的锐利背板
+ * （量到空隙 2.14 / 卡内 0.16，差的那 13 倍就是这 5% 的漏光），用户看到的就是「胶囊
+ * 上面那条缝比卡里清楚」。所以上空隙（0–8dp）现在落在 `rampHoldDp = TopBarTopGap`
+ * 的**满强度平台段**里，必须糊到与卡内同一量级；下空隙（64–72dp）则跟着递减回到接近
+ * 锐利 —— 这不是回归，是用户要的方向：上一版「贴卡片那条边最糊」才是反的。
+ *
+ * 这条测试因此**量方向**（上比下糊、且上与卡内同量级），并把「带子被删掉 / 被调成装饰」
+ * 「带子没盖住缝」「方向被写反」三类错误都钉住。度量点全部由**带子的实测 boundsInRoot**
+ * 夹出来（不是拿 `TOP_BAR_ZONE` 这个期望常量拍），量到带外就会变成空转 —— 那是这条测试
+ * 最容易骗过自己的一种绿。方向的**纯函数**版本在 `BlurBandRampTest`，这里只负责「真的
+ * 画出来了」。
  *
  * ## 这条测试盯的到底是什么
  *
@@ -77,8 +84,8 @@ class TopBarBandTest {
     private val shotW = 360.dp
     private val shotH = 220.dp
 
-    /** 一帧截图：像素 + 卡片节点的根坐标 + 一个 dp→px 的换算器。 */
-    private class Shot(val px: PixelMap, val card: Rect, val density: Float) {
+    /** 一帧截图：像素 + 卡片节点的根坐标 + 带子节点的根坐标（无带子时为 null）+ dp→px 换算器。 */
+    private class Shot(val px: PixelMap, val card: Rect, val band: Rect?, val density: Float) {
         fun toPx(dp: Float) = (dp * density).toInt()
     }
 
@@ -100,7 +107,12 @@ class TopBarBandTest {
         }
     }
 
-    /** 与 AppShell 同构的一摞：背板（haze source）→ 带子 → 浮卡。 */
+    /**
+     * 与 AppShell 同构的一摞：背板（haze source）→ 带子 → 浮卡。
+     *
+     * 带子的高度和位置照抄 AppShell（`align(TopCenter) + height(TOP_BAR_ZONE)`）——
+     * 这条测试要量的「缝」是**带子里**的那 8dp，带子一旦铺不到位，空隙的能量就掉不下来。
+     */
     private fun ComposeUiTest.shot(withBand: Boolean): Shot {
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
@@ -128,6 +140,7 @@ class TopBarBandTest {
         return Shot(
             px = onRoot().captureToImage().toPixelMap(),
             card = onNodeWithTag(TopBarGlassTag).fetchSemanticsNode().boundsInRoot,
+            band = if (withBand) onNodeWithTag(TopBarBandTag).fetchSemanticsNode().boundsInRoot else null,
             density = density.density,
         )
     }
@@ -193,51 +206,76 @@ class TopBarBandTest {
         val left = after.card.left.toInt()
         val right = after.card.right.toInt()
 
-        // 上空隙：带顶 → 卡片上沿；下空隙：卡片下沿 → 带底（TOP_BAR_ZONE）。
-        val beforeTopGap = before.px.energy(left, pad, right, top - pad)
-        val afterTopGap = after.px.energy(left, pad, right, top - pad)
-        val beforeBottomGap = before.px.energy(left, bottom + pad, right, (TOP_BAR_ZONE.value * d).toInt() - pad)
-        val afterBottomGap = after.px.energy(left, bottom + pad, right, (TOP_BAR_ZONE.value * d).toInt() - pad)
+        // 度量点必须落在**带子的实测矩形**里：量的若是带外，空隙「不锐了」只是假象
+        // （像素没被任何东西盖过）。所以先取带子的 boundsInRoot，再据它夹出两条缝，
+        // 顺便钉住「带子从窗口顶开始、盖过胶囊下沿」这条位置前提。
+        val band = requireNotNull(after.band) { "带子节点不存在：TopBarBand 没组合" }
+        val bandTop = band.top.toInt()
+        val bandBottom = band.bottom.toInt()
+        assertTrue(
+            bandTop <= pad && bandBottom >= bottom + (8 * d).toInt(),
+            "带子没有盖住 [窗口顶 .. 胶囊底 + 8dp]：带子 ${bandTop}..${bandBottom}，卡片 ${top}..${bottom}",
+        )
+
+        // 上空隙 = 带顶 → 卡片上沿（带子的满强度平台段）；下空隙 = 卡片下沿 → 带底。
+        val topL = bandTop + pad
+        val topB = top - pad
+        val botT = bottom + pad
+        val botB = bandBottom - pad
+        assertTrue(
+            topB > topL && botB > botT,
+            "两条缝的采样矩形空了（上 $topL..$topB，下 $botT..$botB）—— 这条测试会变成空转",
+        )
+
+        val beforeTopGap = before.px.energy(left, topL, right, topB)
+        val afterTopGap = after.px.energy(left, topL, right, topB)
+        val beforeBottomGap = before.px.energy(left, botT, right, botB)
+        val afterBottomGap = after.px.energy(left, botT, right, botB)
 
         // 参照：卡内**没有文字**的右半区（纯模糊背景）——「同一量级」的标尺。
         val cardRefLeft = (right - 60 * d).toInt()
         val cardRef = after.px.energy(cardRefLeft, top + (8 * d).toInt(), right - (10 * d).toInt(), bottom - (8 * d).toInt())
 
-        println(
-            "g-topbar-band 梯度能量（每像素平均，0..255）: " +
-                "上空隙 修前=${"%.2f".format(beforeTopGap)} 修后=${"%.2f".format(afterTopGap)} | " +
-                "下空隙 修前=${"%.2f".format(beforeBottomGap)} 修后=${"%.2f".format(afterBottomGap)} | " +
-                "卡内模糊区=${"%.2f".format(cardRef)}",
-        )
+        // 一次失败就把全部数字带出来（CI 只留断言 message，不留 println）。
+        val numbers =
+            "上空隙 修前=${"%.2f".format(beforeTopGap)} 修后=${"%.2f".format(afterTopGap)} " +
+                "| 下空隙 修前=${"%.2f".format(beforeBottomGap)} 修后=${"%.2f".format(afterBottomGap)} " +
+                "| 卡内模糊区=${"%.2f".format(cardRef)} " +
+                "| 采样 上 $topL..$topB 下 $botT..$botB 带子 ${bandTop}..${bandBottom} 卡片 ${top}..${bottom}"
+        println("g-topbar-band 梯度能量（每像素平均，0..255）: $numbers")
 
         // 修前两条缝都必须「锐」——否则这条测试是空转的（背板没铺到空隙里，比值再大也没意义）。
         assertTrue(
             beforeTopGap > 8f && beforeBottomGap > 8f,
-            "对照帧的空隙不够锐（上=${beforeTopGap}, 下=${beforeBottomGap}）—— 测试背板没有铺进空隙，这条会变成空转",
+            "对照帧的空隙不够锐（上=$beforeTopGap, 下=$beforeBottomGap）—— 测试背板没有铺进空隙，这条会变成空转。" +
+                numbers,
         )
         // 修后：**上沿**那条缝必须掉下来，至少 3 倍；实测在 10 倍以上，3 倍是留给渲染差异的余量。
         assertTrue(
             afterTopGap * 3f <= beforeTopGap,
-            "上空隙仍然是锐的：修前 ${beforeTopGap} → 修后 ${afterTopGap}（要求 ≤ 1/3）—— 带子没盖住 0..8dp 那条缝",
+            "上空隙仍然是锐的：修前 ${beforeTopGap} → 修后 ${afterTopGap}（要求 ≤ 1/3）—— 带子没盖住 0..8dp 那条缝。" +
+                numbers,
         )
-        // 与卡内模糊区同一量级（同一套 blur radius + 同色系染色）。上空隙在渐变的最强端，
-        // 它与卡内的落差只允许来自「带子染色更淡」这一条。
+        // 与卡内模糊区同一量级（同一套 blur radius + 同色系染色）。上空隙落在带子的**满强度
+        // 平台段**上（`rampHoldDp = TopBarTopGap`），所以它与卡内的落差只允许来自「带子染色
+        // 更淡」这一条 —— 3 倍是留给染色差与渲染差异的余量。
         assertTrue(
             afterTopGap <= cardRef * 3f + 1f,
-            "上空隙 ${afterTopGap} 与卡内模糊区 ${cardRef} 不同量级（卡外比卡内清楚太多）—— 两条缝的模糊半径/染色已经漂了",
+            "上空隙 ${afterTopGap} 与卡内模糊区 ${cardRef} 不同量级（卡外比卡内清楚太多）—— " +
+                "缝里的 alpha 没到 1，或两条缝的模糊半径/染色已经漂了。" + numbers,
         )
         // 方向（2026-11-18 口径）：顶部最强、向下递减到 0 ⇒ 下空隙必须比上空隙**锐**得多。
         // 这一条同时是「渐变方向写反」的哨兵：顶部 0 / 底部满时它立刻红。
         assertTrue(
             afterTopGap * 2f <= afterBottomGap,
             "渐变方向不对：上空隙 ${afterTopGap} 必须明显比下空隙 ${afterBottomGap} 更糊" +
-                "（顶部最强、向下递减到 0）—— 两者反过来就是用户看到的「模糊方向反了」",
+                "（顶部最强、向下递减到 0）—— 两者反过来就是用户看到的「模糊方向反了」。" + numbers,
         )
         // 下空隙回到接近修前的锐利（渐变在这里已经归零）：允许 20% 的残余染色/抗锯齿余量，
         // 但必须明显比「整条均匀糊」的时代锐（那一版这个比值是 1/10 以下）。
         assertTrue(
             afterBottomGap >= beforeBottomGap * 0.6f,
-            "下空隙 ${afterBottomGap} 仍被糊住了（修前 ${beforeBottomGap}）—— 渐变没有在带子底部归零",
+            "下空隙 ${afterBottomGap} 仍被糊住了（修前 ${beforeBottomGap}）—— 渐变没有在带子底部归零。" + numbers,
         )
 
         // 卡片本体：28dp 圆角内侧的矩形（水平 8dp / 垂直 14dp 起，四角都在形状里）必须与

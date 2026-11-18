@@ -123,6 +123,9 @@ class ComposerBottomBlurTest {
 
     @Test
     fun theBandSitsBetweenTheBarTopAndTheComposerTop() = runComposeUiTest {
+        // 桌面 / Wasm 上 navigationBars 与 ime 都读到 0（InsetsGuardTest 钉住），
+        // 所以 `composerNavClearance()` = 0、`barZone == bottomBarInset` ——
+        // 生产里那个「加回 clearance」的换算在这台渲染台上是恒等，104dp 就是栏区。
         val barZone = 104.dp
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
@@ -143,7 +146,10 @@ class ComposerBottomBlurTest {
         val d = density.density
         val barZonePx = barZone.value * d
 
-        // 下沿 = 底栏上沿（不压进底栏）
+        // 下沿 = 底栏上沿（不压进底栏）。基准是**窗口底**，不是 composer 底：
+        // composer 整块浮层还含它自己的底部 padding，两者的差正是那 16dp 呼吸 +
+        // 栏区。带子节点必须是**带子自己**的矩形 —— 用 padding 把节点顶到窗口底
+        // 的那种写法会让这里永远读到 760（= 窗口底），几何基准整个漂掉。
         assertNear(root.bottom - barZonePx, band.bottom, "带子下沿必须贴底栏上沿", tolerancePx = 2f * d)
         // 上沿 = composer 上沿 − 8dp（不遮输入热区）
         assertNear(composer.top - 8f * d, band.top, "带子上沿必须在 composer 上沿之上 8dp", tolerancePx = 2f * d)
@@ -151,6 +157,12 @@ class ComposerBottomBlurTest {
         assertTrue(
             band.height > 24f * d,
             "带子高度只有 ${band.height}px —— 渐变区间被压没了（composer 高度没量到？）",
+        )
+        // 「下沿落到窗口底」这个 bug 的哨兵：它曾经把 656 量成 760，而其它两条断言
+        // 因为上沿是对的、高度也是对的，一个字都没说。
+        assertTrue(
+            abs(band.bottom - root.bottom) > 1f,
+            "带子下沿落在窗口底 ${band.bottom} —— 几何基准错了（应贴底栏上沿 ${root.bottom - barZonePx}）",
         )
     }
 
