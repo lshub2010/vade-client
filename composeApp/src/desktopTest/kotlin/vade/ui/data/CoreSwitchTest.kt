@@ -323,6 +323,7 @@ class CoreSwitchTest {
             wire.statesAtConnect.single(),
             "新 core 收到 POST 时旧凭据必须已经清掉（clear 先于 POST）",
         )
+        Unit
     }
 
     @Test
