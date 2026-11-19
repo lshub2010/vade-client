@@ -33,6 +33,7 @@ import kotlinx.coroutines.launch
 import vade.ui.UiText
 import vade.ui.buildconfig.VadeBuildConfig
 import vade.ui.data.AdapterProvider
+import vade.ui.data.PairingRuntime
 import vade.ui.glass.asGlassSource
 import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
@@ -150,6 +151,15 @@ fun ProfileScreen(
     // 不做弹层). The state stays local to this page — the shell must not learn about
     // settings subpages.
     var showAbout by remember { mutableStateOf(false) }
+    // 缺陷⑩ · 「连接 / 更换 Core」也是同一形态的全屏子页。已配对时入口**照样可点**：
+    // 它就是「换一台 core」的唯一入口（换 core 的吊销/清理/重连顺序在 PairingRuntime）。
+    var showCoreSwitch by remember { mutableStateOf(false) }
+    // 读桥：未配对显示「未连接 · 点按配对」，已配对显示实际 endpoint；换 core 后随
+    // PairingRuntime.state 刷新（compose state）。
+    val coreEndpoint = PairingRuntime.pairedEndpoint
+    // 上一次换 core / 断开的回执（含「旧凭证吊销失败」）：换 core 会重建 UiState，
+    // 子页可能因此离开组合 —— 所以这里也留一行，回来还看得见。
+    val coreSwitchNotice = CoreSwitchNotice.text
     Box(
         modifier
             .fillMaxSize()
@@ -281,7 +291,12 @@ fun ProfileScreen(
         GroupCard {
             Column(Modifier.padding(vertical = 4.dp)) {
                 skin.ListItem(title = "设备与通知", subtitle = "设备吊销 FR-8.68（U1-f）", enabled = false)
-                skin.ListItem(title = "管理此 Core", subtitle = "内置 WebView，只加载本地资源（T5b）", enabled = false)
+                // 缺陷⑩ · 不再是灰的占位：未配对 = 配对入口，已配对 = 换一台 core 的入口。
+                skin.ListItem(
+                    title = CORE_SWITCH_TITLE,
+                    subtitle = coreEndpoint?.let { "已连接 $it · 点按更换" } ?: "未连接 · 点按配对",
+                    onClick = { showCoreSwitch = true },
+                )
                 // A5 · was a disabled U1-f placeholder; now opens the full-screen 关于 subpage.
                 skin.ListItem(
                     title = "关于",
@@ -290,8 +305,20 @@ fun ProfileScreen(
                 )
             }
         }
+            coreSwitchNotice?.let { text ->
+                UiText(
+                    text = text,
+                    size = 11,
+                    color = if (text.startsWith(REVOKE_FAILED_NOTICE)) {
+                        skin.colors.error
+                    } else {
+                        skin.colors.onSurfaceVariant
+                    },
+                )
+            }
             UiText(
-                text = "设置项打开为全屏子页（D91），不做弹层——关于已落地（A5），其余随 U1-f。",
+                text = "设置项打开为全屏子页（D91），不做弹层——关于已落地（A5），" +
+                    "连接 / 更换 core 已落地（缺陷⑩），其余随 U1-f。",
                 size = 11,
                 color = skin.colors.onSurfaceVariant,
             )
@@ -303,6 +330,13 @@ fun ProfileScreen(
             // 与顶栏「返回」按钮同一个动作。
             BackLayer(enabled = showAbout, onBack = { showAbout = false })
             AboutPage(onBack = { showAbout = false }, contentPadding = contentPadding)
+        }
+        if (showCoreSwitch) {
+            // 缺陷⑩ · 同一个返回栈口径：Esc / 系统返回先退「连接 / 更换 core」子页。
+            // 取消（返回）只是关掉子页 —— **一个请求都不发、配置一个字节都不动**；
+            // 吊销/清理只发生在用户真的点了「配对并切换」之后（PairingRuntime.switchCore）。
+            BackLayer(enabled = showCoreSwitch, onBack = { showCoreSwitch = false })
+            CoreSwitchPanel(onBack = { showCoreSwitch = false }, contentPadding = contentPadding)
         }
     }
 }
