@@ -333,6 +333,10 @@ internal fun CoreSwitchPanel(
     var pending by remember { mutableStateOf(false) }
     // 本次提交里旧 core 的吊销结果 —— [PairingForm] 的 onSubmit 写入、onConnected 读出。
     var revocation by remember { mutableStateOf<SessionRevocation?>(null) }
+    // 提交过的目标地址。换 core 成功后桥会先退回 Unpaired，`paired` 随即变 null；
+    // 若表单直接以 `paired?.host` 为初值，重组会把用户刚填的地址重置成默认值，
+    // 失败文案指错主机、重试还会把同一个一次性码打到默认地址（可能把码烧掉）。
+    var lastTarget by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     Column(
         modifier
@@ -409,11 +413,14 @@ internal fun CoreSwitchPanel(
                     color = skin.colors.onSurfaceVariant,
                 )
                 PairingForm(
-                    initialHost = paired?.host ?: SourceConfig.DEFAULT_HOST,
-                    initialPort = (paired?.port ?: SourceConfig.DEFAULT_PORT).toString(),
+                    initialHost = lastTarget?.first ?: paired?.host ?: SourceConfig.DEFAULT_HOST,
+                    initialPort = lastTarget?.second
+                        ?: (paired?.port ?: SourceConfig.DEFAULT_PORT).toString(),
                     submitLabel = SWITCH_BUTTON_LABEL,
                     submittingLabel = SWITCH_SUBMITTING,
                     onSubmit = { host, enteredPort, enteredCode ->
+                        // 快照本次目标：之后桥退回 Unpaired 也不让表单回落到默认地址。
+                        lastTarget = host to enteredPort
                         revocation = null
                         val outcome = PairingRuntime.switchCore(
                             RawSourceStrings(
@@ -425,6 +432,18 @@ internal fun CoreSwitchPanel(
                             enteredCode,
                         )
                         revocation = outcome.revocation
+                        // 双失败：新 core 被拒 + 旧凭证吊销也失败时，onConnected 永远不会被调用，
+                        // 若只在那里写 notice，「旧凭证吊销失败」会被静默吞掉。这里先落地。
+                        if (outcome.attempt !is PairingAttempt.Connected &&
+                            outcome.revocation is SessionRevocation.Failed
+                        ) {
+                            val text = revocationNotice(
+                                outcome.revocation,
+                                "旧 core 的会话可能仍然有效，请手动断开或等它过期",
+                            )
+                            CoreSwitchNotice.text = text
+                            notice = text
+                        }
                         outcome.attempt
                     },
                     onConnected = { connected ->
