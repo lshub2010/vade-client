@@ -109,6 +109,34 @@ class MaterialSkinDarkTest {
         assertTrue(contrast(light.onPrimary, light.primary) >= 4.5, "亮色 onPrimary/accent")
     }
 
+    /**
+     * r3-a11y · 亮色 `error` 是**文字**（输入框错误行、配对失败标题、断开失败提示），
+     * 也是危险按钮的实底（白字 `onError` 压在上面）。审计量到 #D93A3A 只在纯白上
+     * 勉强 4.55:1，压在输入框的 `surfaceVariant`(#F0F0F2) 上只有 4.00:1 —— 破 WCAG AA。
+     *
+     * 修正后 #C93030：白 5.32 / canvas 4.97 / surfaceVariant 4.67，三档都过 4.6 的余量线。
+     * 这条测试是**常驻探针**：任何人把它调浅一点，这里立刻红，不靠人眼看截图。
+     */
+    @Test
+    fun lightErrorTextClearsWcagAaOnEveryLightBackground() {
+        val backgrounds = listOf(
+            "surface #FFFFFF" to light.surface,
+            "canvas #F7F7F8" to light.canvas,
+            "surfaceVariant #F0F0F2" to light.surfaceVariant,
+        )
+        backgrounds.forEach { (name, bg) ->
+            val ratio = contrast(light.error, bg)
+            assertTrue(
+                ratio >= 4.6,
+                "亮色 error 文字压在 $name 上只有 $ratio:1 —— 错误行/失败文案是正文，要求 ≥4.6:1（WCAG AA 4.5 + 余量）",
+            )
+        }
+        assertTrue(
+            contrast(light.onError, light.error) >= 4.5,
+            "亮色 onError/error（危险按钮上的白字）只有 ${contrast(light.onError, light.error)}:1",
+        )
+    }
+
     // --- 4 · dark accent is brighter ------------------------------------------------
 
     @Test

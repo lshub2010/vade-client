@@ -18,10 +18,13 @@ import vade.ui.skin.miuix.MiuixSkin
  * 在 [vade.ui.ThemeSwitchUiTest] 里走真组合验证；这里再加一条源码钉子，防止
  * App.kt 的接线被「简化」掉。
  *
- * 亮色 golden 表：本批不改任何 token 文件，这张表把改动前（origin/main 53625dc）
- * 的亮色值逐槽钉死——接线处任何意外漏进 token 的改动都会红。值来源是
- * `MaterialTokens.lightColors` / `MiuixTokens.lightColors` 原文，与
- * docs/visual-language.md §2 亮色表一致。
+ * 亮色 golden 表：把改动前（origin/main 53625dc）的亮色值逐槽钉死——接线处任何意外
+ * 漏进 token 的改动都会红。值来源是 `MaterialTokens.lightColors` /
+ * `MiuixTokens.lightColors` 原文，与 docs/visual-language.md §2 亮色表一致。
+ *
+ * r3-a11y（2026-11-19）是这张表的**一处**有意例外：material 亮色 `error` 由 #D93A3A
+ * 提到 #C93030（原值压在输入框的 #F0F0F2 上只有 4.00:1，错误行是正文）。其余槽位仍然
+ * 逐槽钉死，这一处也在断言旁写明了理由。
  */
 class ThemeModeTest {
 
@@ -78,10 +81,10 @@ class ThemeModeTest {
         )
     }
 
-    // --- 亮色 token golden（与改前一致，逐槽钉值）----------------------------------
+    // --- 亮色 token golden（逐槽钉值；error 一处见 r3-a11y）------------------------
 
     @Test
-    fun materialLightTokensAreUnchanged() {
+    fun materialLightTokensStayPinned() {
         val c = MaterialSkin(dark = false).colors
         assertEquals(Color(0xFF5B5BD6), c.primary, "material 亮 primary")
         assertEquals(Color(0xFFFFFFFF), c.onPrimary)
@@ -90,7 +93,9 @@ class ThemeModeTest {
         assertEquals(Color(0xFF17171A), c.onSurface)
         assertEquals(Color(0xFF6B6B73), c.onSurfaceVariant)
         assertEquals(Color(0xFFE6E6E9), c.outline)
-        assertEquals(Color(0xFFD93A3A), c.error)
+        // r3-a11y · 亮色 error #D93A3A → #C93030：原值压在实际用到的 surfaceVariant(#F0F0F2)
+        // 上只有 4.00:1，错误行是正文文字。新值三档底（白/canvas/输入底）分别 5.32 / 4.97 / 4.67。
+        assertEquals(Color(0xFFC93030), c.error)
         assertEquals(Color(0xFFFFFFFF), c.onError)
         assertEquals(Color(0xFFF7F7F8), c.canvas, "§2 亮色画布")
         assertEquals(Color(0xFFE6E6E9), c.hairline)

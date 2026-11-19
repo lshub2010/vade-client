@@ -147,8 +147,9 @@ class GlassTokensContrastTest {
      * 就算哪天有人把顶部高光加回实心按钮，label 上沿那一条也要 ≥4.5:1。
      *
      * label 不是压在"底座"上，而是压在「底座 ⊕ 高光」。44dp 高的按钮里 13sp 文字的上沿
-     * 落在 ~31% 高度处，那里仍有 [highlightAlphaAt] ≈8% 白 —— 正是它把 Danger 从 4.55
-     * 拖到 4.09。这条断言让"加回高光"这个改动必须自己把颜色再压深。
+     * 落在 ~31% 高度处，那里仍有 [highlightAlphaAt] ≈8% 白 —— #D93A3A 时代正是它把 Danger
+     * 从 4.55 拖到 4.09（r3-a11y 提深到 #C93030 之后余量变大，但这条高光叠加的账仍然要算）。
+     * 这条断言让"加回高光"这个改动必须自己把颜色再压深。
      */
     @Test
     fun actionLabelsSurviveTheSheenBand() {
@@ -244,8 +245,8 @@ class GlassTokensContrastTest {
         val fill = actionFill(light, danger = true)
         assertTrue(
             relativeLuminance(fill) < relativeLuminance(light.error),
-            "亮色 Danger 底座必须比 colors.error 更深 —— `colors.error` 配白字只有 4.55:1，" +
-                "余量薄到一次调色就破线（审查 P1-2）",
+            "亮色 Danger 底座必须比 colors.error 更深 —— 白字压在 colors.error 上只有 5.32:1，" +
+                "顶上还有一条 ~8% 白高光，余量薄到一次调色就破线（审查 P1-2）",
         )
         assertFalse(
             fill == light.error,

@@ -86,7 +86,16 @@ interface Skin {
         enabled: Boolean = true,
     )
 
-    /** 2 · TextField. States: default / disabled / error ([error] non-null). */
+    /**
+     * 2 · TextField. States: default / disabled / error ([error] non-null).
+     *
+     * [label] is the field's **accessible name** (r3-a11y, additive — default null keeps
+     * the frozen behaviour byte-for-byte): the skin draws it as a small visible caption
+     * above the field *and* exposes it to semantics (`contentDescription`), so a screen
+     * reader announces "地址, 编辑框" instead of a bare "编辑框". A placeholder cannot do
+     * that job: it disappears as soon as the field has a value, which is exactly the state
+     * the pairing form ships in (host / port are pre-filled).
+     */
     @Composable
     fun TextField(
         value: String,
@@ -94,6 +103,7 @@ interface Skin {
         placeholder: String? = null,
         error: String? = null,
         enabled: Boolean = true,
+        label: String? = null,
     )
 
     /** 3 · Card — a plain container; the page owns the content. */
