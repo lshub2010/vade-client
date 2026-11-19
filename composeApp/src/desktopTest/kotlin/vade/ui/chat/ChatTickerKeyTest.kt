@@ -133,7 +133,7 @@ class ChatTickerKeyTest {
         assertTrue(chat.streamingTickerKey, "delta 期间键必须一直是 true")
 
         // 回合收尾 —— 这是**唯一**该翻转的边沿（旧实现的循环在这里退出）。
-        runOnIdle { chat.applyLiveEvent(completed(30, "t-h2")) }
+        runOnIdle { chat.applyLiveEvent(completed(14, "t-h2")) }
         waitForIdle()
 
         assertEquals(false, chat.streamingTickerKey, "turn.completed 之后键必须翻转")
@@ -200,12 +200,13 @@ class ChatTickerKeyTest {
             chat.applyLiveEvent(delta(2L + step, "t-h2", "x"))
             flush()
         }
-        chat.applyLiveEvent(completed(20, "t-h2"))
+        chat.applyLiveEvent(completed(10, "t-h2"))
         flush()
 
         job.cancel()
         assertEquals(
-            listOf(true, false),
+            // snapshotFlow 先发射当前值 false，再是回合开始 true、结束 false。
+            listOf(false, true, false),
             keyChanges,
             "键只许在「开始 / 结束」各翻一次；delta 一次都不许让它变",
         )
