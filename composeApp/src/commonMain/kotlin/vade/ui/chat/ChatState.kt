@@ -173,7 +173,23 @@ class ChatState(
     private val wireScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
 
     private val clientMsgIdByTurnId = HashMap<String, String>()
-    private var runningTurnId: String? = null
+
+    /**
+     * 最近一个 `turn.started` 的回合 —— `ui/interrupt` 的目标。
+     *
+     * **必须是 snapshot state（与 [runningId] 同型）**：它经 [isStreaming] →
+     * [streamingTickerKey] / [inputMode] 两个 `derivedStateOf` 被组合读取。早先是普通 `var`，
+     * 派生状态**观察不到**它的写入，只能靠「同一事件顺带写了 `items`」碰巧重算：
+     *  - `turn.started` 恰恰一个字节都不动 `items`（投影器对 started 是刻意的 no-op），
+     *    于是开始回合后 `isStreaming` 仍是 false —— composer 把 ■ 画成 ↑（发不出去也停不下）；
+     *  - 收尾事件若没有可见行变化（行已是终态 / 被 else 吞掉），`runningTurnId = null`
+     *    同样不会被察觉，界面永久停在 Streaming。
+     *
+     * 加上 `turn.completed` / `turn.failed` / `turn.interrupted` 的收尾，这条边沿就是
+     * 「回到 Idle」的唯一真源（`R3InputModeTest` 用真实组合钉住）。
+     */
+    private var runningTurnId by mutableStateOf<String?>(null)
+
     private var interruptInFlight: String? = null
 
     val isStreaming: Boolean get() = runningId != null || (isRealSource && realRunningTurnId() != null)

@@ -12,8 +12,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -22,11 +26,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import vade.ui.UiText
+import vade.ui.data.CoreSwitchOutcome
 import vade.ui.data.PairingAttempt
 import vade.ui.data.PairingFailureKind
 import vade.ui.data.PairingRuntime
@@ -41,6 +54,7 @@ import vade.ui.data.pairingEndpointOf
 import vade.ui.data.rawSourceStrings
 import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
+import vade.ui.shell.BackLayer
 import vade.ui.skin.LocalSkin
 
 /**
@@ -141,6 +155,12 @@ internal fun FirstRunPairingCard(
  * 提交回调拿到的 host / port 已经过本地校验（端口必须是 1..65535 的整数；越界不发请求，
  * 直接在 [showFailure] 里给出 [PAIRING_PORT_INVALID]）。成功时调用 [onConnected]，
  * 由调用方决定「装进桥」还是「换成新 core」。
+ *
+ * ## 提交态与作用域都**可从宿主注入**（R3）
+ * 「换 core」的宿主要拿两样东西，所以它们从表单内部提升成形参、默认值保持旧行为：
+ *  - [submittingState] —— 宿主据它禁用顶栏返回与系统返回（提交中离开 = 停在「旧已吊销、
+ *    新未装」的中间态）；
+ *  - [submitScope] —— 宿主给一个**不挂在组合上**的作用域，面板先离开组合也不取消提交。
  */
 @Composable
 internal fun PairingForm(
@@ -152,15 +172,24 @@ internal fun PairingForm(
     onSubmit: suspend (host: String, port: String, code: String) -> PairingAttempt,
     /** 成功后的落地动作（首配 = install；换 core 已在 [onSubmit] 里装好，这里是空实现）。 */
     onConnected: (PairingAttempt.Connected) -> Unit = {},
+    /**
+     * 提交中的真源。宿主传自己 held 的一份来观察；不传 = 表单自持（首配卡就是这样，
+     * 行为与提升之前逐字节相同）。
+     */
+    submittingState: MutableState<Boolean> = remember { mutableStateOf(false) },
+    /**
+     * 跑 [onSubmit] 的作用域。默认 = 组合作用域（页面在，提交就在）；「换 core」宿主要传一个
+     * 长生命周期的，否则面板一离开组合提交就被取消（见 [coreSwitchScope]）。
+     */
+    submitScope: CoroutineScope = rememberCoroutineScope(),
 ) {
     val skin = LocalSkin.current
-    val scope = rememberCoroutineScope()
+    var submitting by submittingState
 
     // 输入值只在这里 —— 组合内存。不写盘、不进 URL、不进日志（见 KDoc 与守卫测试）。
     var host by remember(initialHost) { mutableStateOf(initialHost) }
     var port by remember(initialPort) { mutableStateOf(initialPort) }
     var code by remember { mutableStateOf("") }
-    var submitting by remember { mutableStateOf(false) }
     var failure by remember { mutableStateOf<PairingFailureKind?>(null) }
     var failureDetail by remember { mutableStateOf<String?>(null) }
 
@@ -235,7 +264,7 @@ internal fun PairingForm(
                 submitting = true
                 failure = null
                 failureDetail = null
-                scope.launch {
+                submitScope.launch {
                     // 端口先本地校验：越界/非数字不发网络请求，直接在卡里说清楚
                     // （P1-4 的同一条口径：配置错误不许把应用掀掉）。
                     val enteredHost = host.trim().ifEmpty { SourceConfig.DEFAULT_HOST }
@@ -315,6 +344,16 @@ internal fun PairingForm(
  * 「旧凭证吊销失败」必须让用户看见：它在面板里显示，也写进 [CoreSwitchNotice]，换 core
  * 成功会重建 `UiState`（面板可能随之离开组合），设置页入口的副标题仍然读得到。
  *
+ * ## R3 · 提交中不许被「返回」取消
+ * 换 core 是三段式（吊销旧 → 清本地 → 连新）。旧实现把 `submitting` 关在 [PairingForm]
+ * 里、把提交跑在 `rememberCoroutineScope()` 上，于是面板一离开组合（成功的重建、或用户按
+ * 返回）协程就被取消 —— 用户停在「旧已吊销、新未装、零提示」。现在三处一起改：
+ *  1. [submittingState] 提升到本面板：顶栏返回在提交中**不挂 clickable**（不是
+ *     `enabled=false`：禁用态仍是一个吃掉命中的节点），给读屏也不留「可点」的假语义；
+ *  2. 系统返回由本面板再压一层 [BackLayer]，提交中以 no-op 消费掉（[busy]）；
+ *  3. 提交跑在 [coreSwitchScope]（不挂在组合上），结果一律回执 [CoreSwitchNotice] ——
+ *     面板真的先走了，设置页入口那一行仍然看得见「旧凭证吊销失败 / 已切换到 …」。
+ *
  * ## 玻璃
  * 本页是**不透明**的全屏子页（与关于页同一形态），自身没有 GlassSurface，因此不注册
  * haze source —— 注册点白名单（`GlassStructureGuardTest`）保持「每页内容层一处」不变。
@@ -324,19 +363,48 @@ internal fun CoreSwitchPanel(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
+    /**
+     * 提交动作（默认 = 真的换 core）。形状与 [PairingRuntime.switchCore] 一致，只收它需要
+     * 的那两个参数 —— 注入缝只给测试用，生产默认逐字节不变。
+     */
+    onSwitch: suspend (RawSourceStrings, String) -> CoreSwitchOutcome = { raw, code ->
+        PairingRuntime.switchCore(raw, code)
+    },
+    /** 断开动作（默认 = [PairingRuntime.unpair]，同样是最小形状的注入缝）。 */
+    onDisconnect: suspend () -> SessionRevocation = { PairingRuntime.unpair() },
 ) {
     val skin = LocalSkin.current
-    val scope = rememberCoroutineScope()
     val paired = PairingRuntime.state as? PairingRuntimeState.Paired
     val endpoint = PairingRuntime.pairedEndpoint
     var notice by remember { mutableStateOf(CoreSwitchNotice.text) }
+    // 断开在途（与 submitting 分开：一个是换 core，一个是只断开）。
     var pending by remember { mutableStateOf(false) }
+    // **提交态提升到这里**：顶栏返回与系统返回都据它停手（见 KDoc 的 R3 一节）。
+    val submittingState = remember { mutableStateOf(false) }
+    val submitting = submittingState.value
     // 本次提交里旧 core 的吊销结果 —— [PairingForm] 的 onSubmit 写入、onConnected 读出。
     var revocation by remember { mutableStateOf<SessionRevocation?>(null) }
     // 提交过的目标地址。换 core 成功后桥会先退回 Unpaired，`paired` 随即变 null；
     // 若表单直接以 `paired?.host` 为初值，重组会把用户刚填的地址重置成默认值，
     // 失败文案指错主机、重试还会把同一个一次性码打到默认地址（可能把码烧掉）。
     var lastTarget by remember { mutableStateOf<Pair<String, String>?>(null) }
+    // 「断开当前 core」的两步确认：同卡内的闸门，不是弹层。
+    val disconnectConfirm = remember { TwoStepConfirm() }
+    val busy = submitting || pending
+    // 回执的视口锚（[BringIntoViewRequester]）：见下面那一块的注释。
+    val noticeViewport = remember { BringIntoViewRequester() }
+
+    // 两步确认的窗口：窗口内不再点一次就自动回退（3 秒）。
+    LaunchedEffect(disconnectConfirm.armed) {
+        if (!disconnectConfirm.armed) return@LaunchedEffect
+        delay(disconnectConfirm.window)
+        disconnectConfirm.expire()
+    }
+
+    // 换 core / 断开在途：**系统返回也关不掉本页**。本层压在宿主那一层之上（同一 Box 里
+    // 后组成的在上），把返回消费成 no-op —— 否则一次返回就让提交协程随组合离开被取消，
+    // 留下「旧已吊销、新未装、零提示」。
+    BackLayer(enabled = busy, onBack = {})
 
     Column(
         modifier
@@ -357,7 +425,15 @@ internal fun CoreSwitchPanel(
                 Modifier
                     // c2-nav：返回热区 ≥44dp（v2 §3 触摸目标），图标仍 20dp 居中。
                     .size(44.dp)
-                    .clickable(onClickLabel = "返回") { onBack() },
+                    .then(
+                        // 提交中**完全不挂 clickable**（不是 `enabled = false`：那仍是一个
+                        // 命中测试节点，会从兄弟节点手里吃掉点击，语义树上还留着 OnClick）。
+                        if (busy) {
+                            Modifier
+                        } else {
+                            Modifier.clickable(onClickLabel = "返回") { onBack() }
+                        },
+                    ),
                 contentAlignment = Alignment.Center,
             ) {
                 VadeIcon(
@@ -385,26 +461,72 @@ internal fun CoreSwitchPanel(
                 )
                 if (endpoint != null) {
                     skin.Button(
-                        text = CORE_SWITCH_DISCONNECT,
+                        // 两步确认：同一个按钮换文案，第一次点只开闸门（不执行、不发请求）。
+                        text = if (disconnectConfirm.armed) {
+                            CORE_SWITCH_DISCONNECT_CONFIRM
+                        } else {
+                            CORE_SWITCH_DISCONNECT
+                        },
                         onClick = {
-                            if (pending) return@Button
-                            pending = true
+                            if (busy) return@Button
+                            if (!disconnectConfirm.tap()) return@Button
                             notice = null
-                            scope.launch {
-                                val result = PairingRuntime.unpair()
+                            pending = true
+                            coreSwitchScope.launch {
+                                val result = onDisconnect()
                                 val text = revocationNotice(result, CORE_SWITCH_DISCONNECTED)
                                 CoreSwitchNotice.text = text
                                 notice = text
                                 pending = false
                             }
                         },
-                        enabled = !pending,
+                        enabled = !busy,
                     )
+                    if (disconnectConfirm.armed) {
+                        UiText(
+                            text = CORE_SWITCH_DISCONNECT_HINT,
+                            size = 11,
+                            color = skin.colors.onSurfaceVariant,
+                        )
+                    }
                 }
             }
         }
 
         SectionLabel("连接到另一台 core")
+        // R3 · 回执（「旧凭证吊销失败」/「已切换到 …」）放在**表单正上方**。
+        // 旧位置是页尾：双失败时表单里的失败文案在下面、吊销提示隔着一整张卡在最后，
+        // 用户只看得见一条 —— 「双失败必须可见」在长屏上就是空话。两条保障：
+        //  - liveRegion = Assertive：这是用户动作的**结果**，读屏必须立刻播报（polite 会
+        //    排在页面其它播报之后）；
+        //  - bringIntoView：面板是滚动列，提示与失败文案可能分处视口上下两半，谁都不许
+        //    停在屏外（真的滚不动也不阻塞提示本身 —— 见下面的 catch）。
+        notice?.let { text ->
+            LaunchedEffect(text) {
+                try {
+                    noticeViewport.bringIntoView()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    // 没有可接的滚动容器（孤立组合 / 预览）：提示本身照常渲染。
+                }
+            }
+            UiText(
+                text = text,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .bringIntoViewRequester(noticeViewport)
+                    .semantics { liveRegion = LiveRegionMode.Assertive }
+                    .testTag(CORE_SWITCH_NOTICE_TAG),
+                size = 12,
+                weight = FontWeight.Medium,
+                color = if (text.startsWith(REVOKE_FAILED_NOTICE)) {
+                    skin.colors.error
+                } else {
+                    skin.colors.onSurfaceVariant
+                },
+            )
+        }
         GroupCard {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 UiText(
@@ -418,11 +540,13 @@ internal fun CoreSwitchPanel(
                         ?: (paired?.port ?: SourceConfig.DEFAULT_PORT).toString(),
                     submitLabel = SWITCH_BUTTON_LABEL,
                     submittingLabel = SWITCH_SUBMITTING,
+                    submittingState = submittingState,
+                    submitScope = coreSwitchScope,
                     onSubmit = { host, enteredPort, enteredCode ->
                         // 快照本次目标：之后桥退回 Unpaired 也不让表单回落到默认地址。
                         lastTarget = host to enteredPort
                         revocation = null
-                        val outcome = PairingRuntime.switchCore(
+                        val outcome = onSwitch(
                             RawSourceStrings(
                                 source = SourceConfig.REAL,
                                 host = host,
@@ -459,19 +583,53 @@ internal fun CoreSwitchPanel(
                 )
             }
         }
+    }
+}
 
-        notice?.let { text ->
-            UiText(
-                text = text,
-                size = 12,
-                weight = FontWeight.Medium,
-                color = if (text.startsWith(REVOKE_FAILED_NOTICE)) {
-                    skin.colors.error
-                } else {
-                    skin.colors.onSurfaceVariant
-                },
-            )
+/**
+ * 「换 core / 断开」的提交作用域：**不挂在组合上**。
+ *
+ * `rememberCoroutineScope()` 会随面板离开组合被取消，而换 core 是三段式
+ * （吊销旧 → 清本地 → 连新）。面板先走一步（成功会重建 `UiState`；用户也可能按了返回），
+ * 协程就停在「旧已吊销、新未装」的中间态，`onConnected` 永不执行 —— 一句提示都没有。
+ * 这个作用域活到进程结束；结果一律写进 [CoreSwitchNotice]，设置页入口那一行读得到。
+ *
+ * `Dispatchers.Unconfined` 与 `ChatState` 的出网作用域同一口径：提交是挂起式的网络往返，
+ * 不会在调用线程上阻塞。
+ */
+private val coreSwitchScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+
+/**
+ * 同一张卡里的「再点一次才执行」闸门（不引入弹层）。
+ *
+ * 第一次 [tap] 只把闸门打开（按钮换文案 + 一句说明），[window] 之内的第二次才返回 true
+ * （调用方执行动作）；窗口到期由组合里的 `LaunchedEffect` + `delay` 调 [expire] 回退。
+ *
+ * 抽成纯逻辑是为了让「第一次不执行 / 第二次执行 / 超时回退」三条都能直接推，
+ * 不必为了一个 3 秒的等待去驱动组合时钟。
+ */
+internal class TwoStepConfirm(private val windowMs: Long = DISCONNECT_CONFIRM_WINDOW_MS) {
+
+    /** 闸门是否已打开（按钮文案与 `LaunchedEffect` 的键都读它）。 */
+    var armed: Boolean by mutableStateOf(false)
+        private set
+
+    /** 窗口长度（组合里的 `delay` 用它）。 */
+    val window: Long get() = windowMs
+
+    /** @return true = 窗口内的第二次点击，调用方执行动作（闸门随即复位）。 */
+    fun tap(): Boolean {
+        if (armed) {
+            armed = false
+            return true
         }
+        armed = true
+        return false
+    }
+
+    /** 窗口到期：自动回退，下一次点击重新从头确认。 */
+    fun expire() {
+        armed = false
     }
 }
 
@@ -536,6 +694,21 @@ internal const val CORE_SWITCH_HOW =
 
 /** 断开按钮。 */
 internal const val CORE_SWITCH_DISCONNECT = "断开当前 core（吊销本机凭证）"
+
+/**
+ * 两步确认的第二步文案（R3）：同一个按钮换句话，**不是**弹层、不是第二个按钮。
+ * 第一次点只到这里（一个请求都不发）；[DISCONNECT_CONFIRM_WINDOW_MS] 内再点一次才真的断开。
+ */
+internal const val CORE_SWITCH_DISCONNECT_CONFIRM = "再点一次确认断开"
+
+/** 第一步之后的说明：把「窗口」与「自动取消」讲清楚，用户才知道自己还剩多少时间。 */
+internal const val CORE_SWITCH_DISCONNECT_HINT = "3 秒内再点一次才会断开；超过 3 秒自动取消。"
+
+/** 两步确认的窗口（与旧 core 吊销预算同一量级：够点第二下，又不至于挂着一个待执行的破坏性动作）。 */
+internal const val DISCONNECT_CONFIRM_WINDOW_MS: Long = 3_000L
+
+/** 换 core / 断开回执的测试 tag（断言「在表单上方」与 liveRegion 用）。 */
+internal const val CORE_SWITCH_NOTICE_TAG = "core-switch-notice"
 
 /** 断开成功的回执。 */
 internal const val CORE_SWITCH_DISCONNECTED = "已断开当前 core。"
