@@ -258,11 +258,22 @@ internal class SessionUsageBarLoader(
  * **source 引用必须稳定**（生产恒真：`UiState.source` 是 val）：holder 以 [source] 为
  * remember 键，调用方若每帧构造新 source 实例，holder 会被反复重建而 [LaunchedEffect]
  * 不重启（键只有 sessionId）→ 副标题永远 None —— 测试里要先把 source 提升到组合外。
+ *
+ * ## [sessionId] 为 `null` = 「这一帧不订阅」（审查 P1-3）
+ *
+ * 以前这个函数只在「详情可见」的 `when` 分支里调用 —— 手机抽屉一开，`detailVisible`
+ * 翻 false ⇒ 组合组被移出 ⇒ holder 连同自建 scope 一起销毁；抽屉一关再建一个 ⇒
+ * `LaunchedEffect(sessionId)` 重跑 ⇒ **每次开合多一次 `session/usage.get`**，副标题
+ * 还会先闪一下 None。
+ *
+ * 现在调用方**无条件**调用它（顶栏常驻），只把「要不要订阅」表达成 `null`：
+ * holder 与 scope 全程只有一个，开合抽屉只让 effect 从「不 start」走到「start 一次」。
+ * `null` 时不会发任何请求、也不订阅事件流（[SessionUsageBarLoader.start] 根本没跑）。
  */
 @Composable
 internal fun rememberSessionUsageSubtitleLine(
     source: SessionSource,
-    sessionId: String,
+    sessionId: String?,
     /** 测试注入；生产恒为 null。 */
     scope: CoroutineScope? = null,
     /** 测试注入的窄口覆盖；生产恒为 null。 */
@@ -277,10 +288,12 @@ internal fun rememberSessionUsageSubtitleLine(
             if (scopeIsOwned) ownedScope.cancel()
         }
     }
-    // 键 = sessionId：进入/切会话各 start 一次。**前提：source 引用稳定** —— 生产传
-    // `state.source`（UiState 的 val，实例恒定）；若调用方每帧造新 source 实例，
-    // `remember(source)` 会换 holder 而这里不重启 → 永远 None（探针实测踩过，KDoc 写明）。
-    LaunchedEffect(sessionId) { holder.start(sessionId) }
+    // 键 = sessionId：进入/切会话各 start 一次；`null` = 不订阅（抽屉开着 / 列表根 /
+    // 其它 tab / 草稿）—— holder 与 scope 不因此销毁（审查 P1-3）。
+    // **前提：source 引用稳定** —— 生产传 `state.source`（UiState 的 val，实例恒定）；
+    // 若调用方每帧造新 source 实例，`remember(source)` 会换 holder 而这里不重启 →
+    // 永远 None（探针实测踩过，KDoc 写明）。
+    LaunchedEffect(sessionId) { if (sessionId != null) holder.start(sessionId) }
 
     val key = holder.sessionId
     val current: UsageLoadState? = holder.state

@@ -78,7 +78,6 @@ import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.NavItem
 import vade.ui.skin.glass.LocalGlassHazeState
-import vade.ui.component.insets.composerNavClearance
 import vade.ui.component.liquid.captureGlassBackdrop
 import vade.ui.component.liquid.rememberGlassBackdrop
 
@@ -191,26 +190,29 @@ internal const val PhoneContentStageTag = "vade.shell.phone.content"
  * 详情内容链（消息列表 + composer）的下内边距 —— 手机单栏详情态唯一的一处「给内容让栏」
  * （审查 P1-1）。
  *
- * 为什么必须减掉 `clearance`：composer 自己已经加了一层 `16.dp + composerNavClearance()`
- * （`ChatThread.kt` 的 composer 浮层）。若这里直接给整条 [barZoneFor]（含导航条），
- * Android 上手势 24 / 三键 48 的导航条就被算**两遍** —— 胶囊与 composer 之间永久多出
- * 24/48 dp 白边（桌面 `navInset` 恒 0，所以桌面用例看不见）。
+ * ## 为什么返回的是**整条栏区**，且与 IME 无关（审查 P1-1 的修法）
  *
- * 不变式（`DetailBarInsetTest` 纯算术钉 0/24/48 三档）：
- * ```
- * inset + 16 + clearance == barZone + 16
- * ```
- * 即 composer 的胶囊底边恒在栏区上沿之上 16 dp，与导航条形态无关；导航条只出现一次。
+ * 旧实现返回 `barZone − composerNavClearance()`，而两个消费者各自把那个 clearance 加回：
+ * ① `ChatThread` 的 composer 浮层 `16 + clearance + inset`；② `ComposerBottomBlur` 的
+ * `barZone = bottomBarInset + clearance`。净值恒等于 `barZone`，但代价是**组合期读
+ * `WindowInsets.ime`**：键盘动画期间作用域里的整条手机内容链（`SessionsDrawerHost` →
+ * `DrawerSessionList` → `SessionsScreen` 的 LazyColumn，以及 `state.groups()`）每帧重组一次。
  *
- * [clearance] 由调用点用 `composerNavClearance()`（与 composer 同一个公式：`max(0, nav − ime)`）
- * 传进来 —— 键盘收起 = nav，键盘弹起 = 0（IME 已由根部 `imePadding` 抬起整页），所以
- * 键盘开合两种几何各只有一项导航条，不会相加。
+ * 现在这里只给 [barZoneFor]（只依赖 `navigationBars`，不读 IME），消费者不再加 clearance：
+ * `composer` 底边恒为 `barZone + 16`，与旧的 `(barZone − c) + 16 + c` 逐像素相同。
+ *
+ * 不变式（`DetailBarInsetTest` 钉 0/24/48 三档 + 键盘开合两种几何）：
+ * ```
+ * inset == barZoneFor(style, navInset)      // 与 IME 无关
+ * composer 底边到窗口底 == inset + 16 == barZone + 16
+ * ```
+ * rail / 双栏没有底栏（宿主传 0），composer 自己的导航条余量由它自己兜底 —— 见
+ * `ChatThread` 的 `bottomReserve`。
  */
 internal fun detailContentBottomInset(
     style: BottomBarStyle,
     navInset: Dp,
-    clearance: Dp,
-): Dp = (barZoneFor(style, navInset) - clearance).coerceAtLeast(0.dp)
+): Dp = barZoneFor(style, navInset)
 
 /**
  * Bottom-bar zone **per form**. The two forms do not share a footprint, so they must not
@@ -347,18 +349,15 @@ private fun ShellBody(state: UiState) {
         // 详情 → 详情 chrome（底栏**不再**跟着它显隐，m-bar 起手机单栏常驻）。
         val detailVisible = detailOpen && (metrics.useRail || !state.sessionsDrawerOpen)
 
-        // 页面切换动画（用户 2026-11-18：「页面切换动画缺失」）：**一个** key 覆盖
-        // 四个 tab 与「列表 ⇄ 会话」两种切换 —— 断点决定 key 里要不要带会话 id：
-        //  - rail / 双栏：会话在右栏里换页，`selectedSessionId` 参与 key；
-        //  - 手机单栏：列表是抽屉、详情常驻，切会话**不换页**（换的是抽屉进度），
-        //    所以 key 只认目的地 —— 否则拉开抽屉看列表也会重播一次进场。
-        // 挂在下面 Column 的 modifier 上（一条 `graphicsLayer`，动画期间零重组），
-        // 不是覆盖层，也不碰任何点击热区。
-        val pageKey: Any = if (metrics.useRail) {
-            state.dest to state.selectedSessionId
-        } else {
-            state.dest
-        }
+        // 页面切换动画（用户 2026-11-18：「页面切换动画缺失」）：**两层**键，各管各的切换
+        // （审查 P1-2 的修法）：
+        //  - 内容列（下面 Column 的 modifier）：键只认**目的地** —— 四个 tab 之间换页；
+        //  - 详情 pane（双栏 / rail 单栏）：键认识**会话 id** —— 会话在右栏里换页。
+        // 旧写法在 rail 下把 sessionId 也塞进列键，整列（含左边的列表 pane）跟着淡出：
+        // ≥720dp 上点任意一行，左栏列表闪一次。键分开之后列表 pane 永不参与过渡。
+        // 手机单栏（<600dp）是抽屉模型：列表是抽屉、详情常驻，切会话不换页 ——
+        // 列键只认目的地，否则拉开抽屉看列表也会重播一次进场。
+        // 两条都挂在 `graphicsLayer` 上（动画期间零重组），不是覆盖层，也不碰点击热区。
 
         // m-bar：手机单栏的底栏**常驻**——会话详情开着也照样组合。旧 D88 的「详情 push 时
         // 整条栏不组合」已废弃：详情页要能一键切去别的 tab，底栏不在就没有这个出口。
@@ -433,9 +432,8 @@ private fun ShellBody(state: UiState) {
                 Modifier
                     .weight(1f)
                     .fillMaxHeight()
-                    // 页面进场：淡入 + 8dp 上浮，≤220ms，reduced-motion 下退化成纯淡入
-                    // （见 `PageTransition.kt`）。挂在内容列自己身上 —— 顶栏/底栏不跟着动。
-                    .pageEnter(key = pageKey, animate = state.chatPreset == vade.ui.chat.ChatPreset.Live),
+                    // 页面进场：列键 = 目的地（tab 切换），见上面两层键的注释。
+                    .pageEnter(key = state.dest, animate = state.chatPreset == vade.ui.chat.ChatPreset.Live),
             ) {
                 if (!metrics.useRail && state.dest == Destination.Sessions) {
                     // g-route-transition（口径变更 2026-11-15）：手机单栏（<600dp）改抽屉模型
@@ -459,17 +457,21 @@ private fun ShellBody(state: UiState) {
                     // 图片预览（全是 `fillMaxSize` 的兄弟）一起被抬离屏底 104–132 dp，遮罩在
                     // 屏底上方硬切一刀，面板开着时底栏还浮在遮罩外面能点。
                     // 现在留白只走内容链：`SessionDetailScreen` 的 `bottomBarInset` 把
-                    // [detailContentBottomInset]（= 栏区 − composer 自带的导航条余量，导航条
-                    // 只算一次）加在「消息列表 + composer」那一层上；抽屉与浮层留在外面，
-                    // 因此永远贴屏底。抽屉展开（屏上是列表）时不垫：它自己的列表把完整
-                    // `contentInsets` 当内容留白，行照旧能滚到胶囊后。
+                    // [detailContentBottomInset]（= 整条栏区，**不读 IME**）加在「消息列表 +
+                    // composer」那一层上；抽屉与浮层留在外面，因此永远贴屏底。抽屉展开
+                    //（屏上是列表）时不垫：它自己的列表把完整 `contentInsets` 当内容留白，
+                    // 行照旧能滚到胶囊后。
+                    //
+                    // 审查 P1-1 的修法：这里以前传 `detailContentBottomInset(…, clearance =
+                    // composerNavClearance())`。那是**组合期的 `WindowInsets.ime` 读**，键盘
+                    // 动画期间每帧都变 ⇒ 整个 `if` 所在的重启作用域（这条 Column 的 content
+                    // lambda：SessionsDrawerHost / 抽屉列表 / SessionsScreen / groups()）每帧
+                    // 重跑一遍。而那个 clearance 在渲染上恒等消掉（composer 与底栏带各自把它
+                    // 加回），所以直接给栏区即可 —— 像素不变，读数消失。
                     val detailBarInset = if (detailOpen && !state.sessionsDrawerOpen) {
                         detailContentBottomInset(
                             style = state.barStyle,
                             navInset = navInset,
-                            // 与 composer 同一个公式（`ChatThread` 的 composer 浮层用的就是它）：
-                            // 键盘收起 = nav，键盘弹起 = 0。同一个数只出现一次。
-                            clearance = composerNavClearance(),
                         )
                     } else {
                         0.dp
@@ -479,6 +481,12 @@ private fun ShellBody(state: UiState) {
                             .fillMaxSize()
                             .testTag(PhoneContentStageTag),
                     ) {
+                        // 审查 P1-4：一次组合只取**一次**权威分组 —— 分组投影、长按菜单的行列表
+                        // 共用同一个 List。旧写法在这里调了两次 `state.groups()`（各自一遍
+                        // 「5 桶 × filter + 排序」），加上 `selectedSession` 那次一共 3 遍；
+                        // 叠上 P1-1 的每帧重组，键盘动画期间每帧 15~45 次全表扫描。
+                        val drawerGroups = state.groups()
+                        val drawerRows = drawerGroups.flatMap { it.sessions }
                         CompositionLocalProvider(
                             LocalSessionListOpener provides state::openSessionsDrawer,
                         ) {
@@ -498,11 +506,11 @@ private fun ShellBody(state: UiState) {
                                 // B2：分组真相在 state 机（含乐观投影），长按开菜单。
                                 metaGroups = drawerMetaOverlay.meta.groups,
                                 onLongPress = { session, anchor -> drawerMetaOverlay.openSessionMenu(session, anchor) },
-                                groups = drawerMetaOverlay.projectGroups(state.groups()),
+                                groups = drawerMetaOverlay.projectGroups(drawerGroups),
                                 overlayHost = {
                                     SessionMetaOverlayHost(
                                         overlay = drawerMetaOverlay,
-                                        rows = state.groups().flatMap { it.sessions },
+                                        rows = drawerRows,
                                     )
                                 },
                             )
@@ -571,12 +579,20 @@ private fun ShellBody(state: UiState) {
             // 顶栏跟随 **detailVisible**（不是 detailOpen）：手机上详情被抽屉盖住时，顶栏必须回到
             // 列表 chrome —— 否则顶栏标题与列表里那一行同文案，读屏与测试都会撞成「两个同名节点」，
             // 用户也会看到「抽屉盖着详情、顶栏却写着详情标题」的错位。
-            // 用量副标题（g-topbar-usage）：详情态才持有 loader；草稿没有服务端用量，
+            // 用量副标题（g-topbar-usage）：详情态才**订阅**，草稿没有服务端用量，
             // 也不发注定失败的请求 —— 不显示副标题。
-            val usageLine: UsageSubtitleLine = when {
-                !detailVisible || session == null || session.isDraft -> UsageSubtitleLine.None
-                else -> rememberSessionUsageSubtitleLine(state.source, session.id)
-            }
+            //
+            // 审查 P1-3：holder 必须**常驻**在顶栏这一层，不能放进 `when` 的分支里。
+            // 放进去 ⇒ 抽屉一开（`detailVisible` 翻 false）整组被移出组合 ⇒
+            // `DisposableEffect` 销毁 holder 并取消它自建的 scope；抽屉一关再重建一个
+            // `SessionUsageBarLoader` ⇒ `LaunchedEffect(sessionId)` 重新跑 ⇒ 每次开合
+            // 多一次 `session/usage.get`，副标题还先闪一下 None。现在 holder 的键只有
+            // `source`（`UiState.source` 是 val），开合抽屉只改「要不要 start」，
+            // 不重建任何东西。`sessionId == null` = 不订阅（列表根 / 其它 tab / 草稿）。
+            val usageSessionId: String? =
+                if (detailVisible && session != null && !session.isDraft) session.id else null
+            val usageLine: UsageSubtitleLine =
+                rememberSessionUsageSubtitleLine(state.source, usageSessionId)
             val detailLeading: (@Composable () -> Unit)? = if (detailVisible) {
                 // n1-nav：返回 = 手机抽屉模型下「滑出列表、选中保留」（`back(drawerModel = true)`）；
                 // 600–719 rail 没有抽屉，仍是清选中回列表根。与系统返回 / 返回手势 / Esc
@@ -921,11 +937,20 @@ private fun DestinationHost(
                     VerticalRule()
                     // Two-pane detail: same content-padding contract as the pushed detail —
                     // the thread scrolls under the glass top bar, not below it.
+                    //
+                    // 审查 P1-2：会话换页的过渡挂在**详情 pane 自己**身上（键 = 会话 id）。
+                    // 列表 pane 是它的兄弟，因此永不参与淡入 / 上浮 —— 旧写法把 sessionId
+                    // 塞进整列的键，点一行会话时左栏列表跟着闪一次。
                     SessionDetailScreen(
                         session = state.selectedSession,
                         preset = state.chatPreset,
                         animate = state.chatPreset == vade.ui.chat.ChatPreset.Live,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .pageEnter(
+                                key = state.selectedSessionId ?: "",
+                                animate = state.chatPreset == vade.ui.chat.ChatPreset.Live,
+                            ),
                         adapters = adapters,
                         contentPadding = PaddingValues(top = TOP_BAR_ZONE),
                         banner = messageThreadBanner,
@@ -940,6 +965,14 @@ private fun DestinationHost(
                     session = state.selectedSession,
                     preset = state.chatPreset,
                     animate = state.chatPreset == vade.ui.chat.ChatPreset.Live,
+                    // 审查 P1-2：rail 单栏的详情也是「一页」—— 会话 id 作键，挂在详情自己
+                    // 身上；列键（目的地）不变，所以列表 ⇄ 详情之外的重组不会重播进场。
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pageEnter(
+                            key = state.selectedSessionId ?: "",
+                            animate = state.chatPreset == vade.ui.chat.ChatPreset.Live,
+                        ),
                     // The pushed-detail top bar above already carries this title.
                     showTitle = false,
                     adapters = adapters,

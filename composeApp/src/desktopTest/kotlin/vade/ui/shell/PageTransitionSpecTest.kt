@@ -77,23 +77,28 @@ class PageTransitionSpecTest {
             .split('\n').joinToString("\n") { it.substringBefore("//") }
     }
 
+    /**
+     * 接线：内容列的过渡只认目的地，会话换页的过渡挂在详情 pane 自己身上（审查 P1-2）。
+     *
+     * 旧写法把 `sessionId` 也塞进列键，双栏点一行会话时整列（含左边的列表）一起淡出。
+     * 这条与 `ShellPerfGuardsTest.theContentColumnKeyIsTheDestinationOnly` 同口径 ——
+     * 这里从「过渡契约」一侧钉，那里从「壳层实现」一侧钉。
+     */
     @Test
-    fun theShellWiresExactlyOnePageEnterOnTheContentColumn() {
+    fun theShellWiresTheColumnTransitionToTheDestinationOnly() {
         val shell = codeOf("vade/ui/shell/AppShell.kt")
+        assertTrue(
+            Regex("""\.pageEnter\(key = state\.dest\b""").containsMatchIn(shell),
+            "内容列必须用 `.pageEnter(key = state.dest` —— 键只认目的地",
+        )
+        assertFalse(
+            shell.contains("state.dest to state.selectedSessionId"),
+            "列键又带上了会话 id ⇒ 双栏切会话会把列表 pane 一起淡出",
+        )
         assertEquals(
-            1,
-            Regex("""\.pageEnter\(""").findAll(shell).count(),
-            "AppShell 必须恰好有一个 .pageEnter( —— 多一个就是两段过渡互相打架",
-        )
-        // 它必须挂在内容列（weight(1f) + fillMaxHeight 的那一列）上：顶栏/底栏不跟着动。
-        assertTrue(
-            Regex("""\.pageEnter\(key = pageKey""").containsMatchIn(shell),
-            "pageEnter 必须挂在内容列上（key = pageKey）",
-        )
-        // key 必须来自目的地：四个 tab 之间切换才有过渡。
-        assertTrue(
-            Regex("""pageKey: Any = if \(metrics\.useRail\)""").containsMatchIn(shell),
-            "pageKey 的推导丢了 —— 页面过渡会退化成「只有单栏动」或「完全不动」",
+            2,
+            Regex("""key = state\.selectedSessionId""").findAll(shell).count(),
+            "详情 pane（双栏 + rail 单栏）各要一条 pageEnter(key = sessionId)",
         )
     }
 
