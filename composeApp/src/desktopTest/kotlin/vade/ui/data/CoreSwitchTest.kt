@@ -26,6 +26,8 @@ import vade.ui.protocol.BrowserPairing
 import vade.ui.protocol.FakeTransport
 import vade.ui.protocol.KtorTransportFactory
 import vade.ui.protocol.VadeClientConfig
+import vade.ui.protocol.VadeErrorCodes
+import vade.ui.protocol.VadeException
 import vade.ui.protocol.VadeTransport
 import vade.ui.protocol.VadeTransportFactory
 
@@ -49,6 +51,8 @@ class CoreSwitchTest {
     private class Wire {
         val log: MutableList<String> = mutableListOf()
         val cookieOnDelete: MutableList<String?> = mutableListOf()
+        /** 新 core 收到配对请求的那一刻，桥处于什么状态（钉住「clear 先于 POST」）。 */
+        val statesAtConnect: MutableList<PairingRuntimeState> = mutableListOf()
     }
 
     /** 旧 core 的 factory：真 [KtorTransportFactory] + [MockEngine]（DELETE 真的走 HTTP 层）。 */
@@ -94,8 +98,18 @@ class CoreSwitchTest {
         private val wire: Wire,
     ) : VadeTransportFactory {
         override suspend fun connect(): VadeTransport {
+            wire.statesAtConnect += PairingRuntime.state
             wire.log += "$label POST /ui/session"
             return FakeTransport()
+        }
+    }
+
+    /** 新 core 拒绝配对：请求确实发出去了，但连接链抛错。 */
+    private class RejectingFactory(private val wire: Wire) : VadeTransportFactory {
+        override suspend fun connect(): VadeTransport {
+            wire.statesAtConnect += PairingRuntime.state
+            wire.log += "new POST /ui/session"
+            throw VadeException(VadeErrorCodes.AUTH_FAILED, "code was rejected")
         }
     }
 
@@ -275,6 +289,41 @@ class CoreSwitchTest {
         assertEquals(SessionRevocation.NotNeeded, outcome.revocation, "本地就能判死的错误不该先吊销旧 core")
         assertTrue(wire.log.isEmpty(), "不许发任何请求：${wire.log}")
         assertEquals("old.local:8443", PairingRuntime.pairedEndpoint, "旧配置原样保留（填错不是断线）")
+    }
+
+    @Test
+    fun aRejectedNewCoreLeavesTheBridgeUnpairedAndDisposesTheOld() = runBlocking {
+        val wire = Wire()
+        val old = oldCoreFactory(wire)
+        old.ensureSessionCookie()
+        var disposed = false
+        val counting = object : VadeTransportFactory {
+            override suspend fun connect(): VadeTransport = old.connect()
+            override suspend fun revokeSession() = old.revokeSession()
+            override suspend fun dispose() {
+                disposed = true
+                old.dispose()
+            }
+        }
+        PairingRuntime.install(counting, "old.local", 8443)
+        wire.log.clear()
+
+        val outcome = PairingRuntime.switchCore(newRaw, "青松-NEW123") { RejectingFactory(wire) }
+
+        assertIs<PairingAttempt.Rejected>(outcome.attempt, "新 core 拒绝配对，必须是可重试的 Rejected")
+        assertEquals(SessionRevocation.Revoked, outcome.revocation)
+        assertEquals(
+            PairingRuntimeState.Unpaired(),
+            PairingRuntime.state,
+            "新 core 失败后停在未配对（引导卡可重试），不能留一个假的已连接态",
+        )
+        assertNull(PairingRuntime.pairedFactory, "旧 factory 不许继续挂在桥上")
+        assertTrue(disposed, "旧 factory 的资源必须在换 core 时释放")
+        assertIs<PairingRuntimeState.Unpaired>(
+            wire.statesAtConnect.single(),
+            "新 core 收到 POST 时旧凭据必须已经清掉（clear 先于 POST）",
+        )
+        Unit
     }
 
     @Test
