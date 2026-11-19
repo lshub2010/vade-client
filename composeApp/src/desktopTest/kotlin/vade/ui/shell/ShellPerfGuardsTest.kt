@@ -191,4 +191,138 @@ class ShellPerfGuardsTest {
             "groups() 必须是记忆化值的转发（不要再现算）",
         )
     }
+
+    // ================================================================ 第 2 轮 · H3 / H5 / H6 / H9 / H11
+    //
+    // 与上面三条同一个口径：症状（每帧每行写快照、每次重组重排全表、屏外列表仍在组合）
+    // 在纯像素/纯算术用例里全绿，所以钉**源码形状**；行为由配套的运行时用例接住
+    //（`SessionRowBoundsTest` / `SessionProjectionMemoTest` / `SessionsDrawerTest.
+    // theListLayerStaysUncomposedUntilTheDrawerIsOpenedOnce`）。
+
+    /**
+     * H3 · 行长按锚点必须是**普通引用**，不许是快照状态。
+     *
+     * 旧写法 `var bounds by remember { mutableStateOf(IntRect.Zero) }` +
+     * `onGloballyPositioned { bounds = IntRect(...) }`：滚动时每帧每行一次快照写入。
+     * 正确模板是 `ChatThread.kt` 的 `observePointerTap`（普通引用，只在指针回调里读）。
+     */
+    @Test
+    fun theRowAnchorIsAPlainReference() {
+        val screen = codeOf("vade/ui/destinations/SessionsScreen.kt")
+        assertTrue(
+            screen.contains("val bounds = remember { SessionRowBounds() }"),
+            "行长按锚点必须用普通引用持有者（H3）",
+        )
+        assertTrue(screen.contains(".sessionRowBounds(bounds)"), "布局回调必须走那条不碰快照的 modifier")
+        assertFalse(
+            screen.contains("mutableStateOf(IntRect.Zero)"),
+            "行矩形又变回快照状态了 —— 滚动时每帧每行一次写入（H3 的原缺陷）",
+        )
+        assertTrue(
+            screen.contains("onLongPress(session, bounds.value)"),
+            "长按必须在**指针回调**里读锚点（组合期读会让每帧写入都重组）",
+        )
+    }
+
+    /**
+     * H5 / H6 · 投影必须带缓存与「一次 associateBy / 一次时钟」，行列表必须随 groups 记忆化。
+     *
+     * 反例分别是：`projectGroups` 里每行 `firstOrNull` + 每行 `nowMs()`（原实现），
+     * 以及 `AppShell` 里裸的 `flatMap { it.sessions }`（每次重组一个新 List）。
+     */
+    @Test
+    fun theProjectionAndTheRowListAreMemoized() {
+        val overlay = codeOf("vade/ui/meta/SessionMetaOverlay.kt")
+        assertTrue(
+            overlay.contains("return cached"),
+            "projectGroups 少了缓存命中分支（H5：每次重组一遍 flatMap + 5 桶排序）",
+        )
+        assertTrue(
+            overlay.contains("sameInstances(sessions, projectionSessions)"),
+            "缓存键必须含 meta.sessions 的逐元素引用比较（否则乐观改动看不到）",
+        )
+        assertTrue(
+            overlay.contains("val known = sessions.associateBy { it.id }"),
+            "每行 O(M) 线性查必须换成一次 associateBy（H5：O(N·M) → O(N)）",
+        )
+        assertEquals(
+            1,
+            Regex("""nowMs\(\)""").findAll(overlay).count(),
+            "时钟只许有一个读点（旧实现是每行一次 bucketFor(nowMs = nowMs())）",
+        )
+        assertTrue(
+            overlay.contains("remember(groups) { groups.flatMap { it.sessions } }"),
+            "行列表必须提进 remember(groups)（H6：每次重组造一个新 List）",
+        )
+
+        val shell = shell()
+        assertFalse(
+            shell.contains(".flatMap { it.sessions }"),
+            "AppShell 里又出现裸 flatMap —— 行列表必须走 rememberSessionRows(groups)（H6）",
+        )
+        assertEquals(
+            3,
+            Regex("""rememberSessionRows\(""").findAll(shell).count(),
+            "三处调用点（抽屉分支 / 列表分支 / 活动页）都必须用 rememberSessionRows",
+        )
+    }
+
+    /**
+     * H9 · 列表里的**不同骨架**必须各自声明 `contentType`。
+     *
+     * 没有 contentType 时 LazyColumn 认为所有项是同一类，组头与行（以及横幅/空态卡）
+     * 无法各用一批可组合槽 —— 每滚过一个组界都要重建一次行。
+     */
+    @Test
+    fun everyListDeclaresItsContentTypes() {
+        val screen = codeOf("vade/ui/destinations/SessionsScreen.kt")
+        assertTrue(
+            screen.contains("""item(key = "hdr-${'$'}{group.bucket.name}", contentType = "session-group-header")"""),
+            "组头必须与行分开（SessionsScreen）",
+        )
+        assertTrue(
+            screen.contains("""items(group.sessions, key = { it.id }, contentType = { "session-row" })"""),
+            "会话行必须声明 contentType（SessionsScreen）",
+        )
+
+        val search = codeOf("vade/ui/search/SearchOverlay.kt")
+        assertTrue(
+            search.contains("""contentType = { _, _ -> "search-result-row" }"""),
+            "搜索结果行必须声明 contentType（SearchOverlay）",
+        )
+
+        val metaHost = codeOf("vade/ui/meta/SessionMetaHost.kt")
+        assertTrue(
+            metaHost.contains("""item(key = "group-${'$'}{group.id}", contentType = "meta-group-card")"""),
+            "分组卡必须声明 contentType（SessionMetaHost）",
+        )
+        assertTrue(
+            metaHost.contains("""item(key = "group-ungrouped", contentType = "meta-group-card")"""),
+            "未分组卡与分组卡同类（SessionMetaHost）",
+        )
+    }
+
+    /**
+     * H11 · 抽屉层按「**开过**」门控，不按动画值门控。
+     *
+     *  - `expanded || 开过` ⇒ 首次打开之前不组合（冷启动/深链的省项），打开过之后永久常驻
+     *    （滚动位置靠 `LazyListState` 不离开组合来保留）；
+     *  - `progress.value > 0f` 之类的动画值进条件 ⇒ 动画期间每帧拆装列表，比现状更糟。
+     */
+    @Test
+    fun theDrawerLayerIsGatedOnHavingBeenOpenedOnce() {
+        val route = codeOf("vade/ui/shell/RouteTransition.kt")
+        assertTrue(
+            route.contains("if (expanded || drawerEverOpened.value)"),
+            "抽屉列表必须按「开过」锁存门控（H11）",
+        )
+        assertTrue(
+            route.contains("SideEffect { if (expanded) drawerEverOpened.value = true }"),
+            "锁存必须是单向的（打开即置真，永不复位）",
+        )
+        assertFalse(
+            route.contains("progress.value > 0f"),
+            "动画值不许进组合条件 —— 那会在转场期间每帧拆装列表",
+        )
+    }
 }
