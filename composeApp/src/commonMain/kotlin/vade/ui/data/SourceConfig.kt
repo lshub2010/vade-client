@@ -610,6 +610,47 @@ sealed interface PairingRuntimeState {
     ) : PairingRuntimeState
 }
 
+/**
+ * 旧 core 的 `DELETE /ui/session` 预算。3 s：够一次局域网往返，又不至于让「换 core」在
+ * 一台已经关机的旧 core 上卡住（超时后照样切换，只是 UI 提示吊销失败）。
+ */
+const val SESSION_REVOKE_TIMEOUT_MS: Long = 3_000L
+
+/**
+ * 旧 core 的 `DELETE /ui/session` 结局（换 core / 断开时，**best-effort**）。
+ *
+ * 三种值的分工是「用户要不要被告知」：
+ *  - [Revoked]：旧 core 确认吊销，或旧 core 本来就没有本进程的 UI 会话（device 会话 /
+ *    device 直连 / 未配对）——**不需要**提示；
+ *  - [NotNeeded]：一个请求都没发（没有旧 core、目标配置填错了、本平台不能兑换码）；
+ *  - [Failed]：发了但没成功（超时 / 网络 / 旧 core 拒绝）。切换 / 断开**照样**发生，
+ *    UI 必须提示「旧凭证吊销失败」，否则用户以为旧 core 上那张 cookie 已经没了。
+ */
+sealed interface SessionRevocation {
+
+    /** 旧 core 确认吊销（2xx），或它本来就没持有 UI 会话 —— 无事可做就是成功。 */
+    data object Revoked : SessionRevocation
+
+    /** 没有旧 core 可吊销：未配对、目标配置不合法、本平台不能配对 —— 一次请求都不发。 */
+    data object NotNeeded : SessionRevocation
+
+    /** best-effort 失败：[cause] 是传输原话 / [SessionRevokeTimeoutException]。 */
+    data class Failed(val cause: Throwable) : SessionRevocation
+}
+
+/**
+ * 旧 core 在预算内没答复 `DELETE /ui/session`。单独一个类型是为了让 UI 能说清
+ * 「超时」而不是把 Ktor 的取消细节原样抛给用户（取消本身仍然原样向上传播）。
+ */
+class SessionRevokeTimeoutException(timeoutMs: Long) :
+    Exception("DELETE /ui/session did not answer within ${timeoutMs}ms")
+
+/** 「换 core」的完整结局：旧凭证吊销结果 + 新 core 的配对结果（两者都要给 UI 看）。 */
+data class CoreSwitchOutcome(
+    val revocation: SessionRevocation,
+    val attempt: PairingAttempt,
+)
+
 object PairingRuntime {
 
     /** 桥的唯一可变字段（守卫测试钉住「码不进任何字段」：类型里没有 String 码）。 */
@@ -642,6 +683,111 @@ object PairingRuntime {
      */
     fun noteCodeRejected() {
         if (state !is PairingRuntimeState.Paired) state = PairingRuntimeState.Unpaired(codeRejected = true)
+    }
+
+    /**
+     * 断开当前 core / 取消配对：先 **best-effort** 吊销旧 core 上这张 `__Host-ac_ui`
+     * （`DELETE /ui/session`），再把桥清回「未配对」。
+     *
+     * 「best-effort」是契约的一部分：旧 core 已经下线、超时、拒绝都**不阻塞**断开 ——
+     * 本地凭证该清就清。返回值让调用方决定要不要提示「旧凭证吊销失败」。
+     *
+     * 取消（[CancellationException]）不是失败：它原样向上抛，且**不清**任何本地配置 ——
+     * 「点了取消结果 core 被清掉了」是不允许的状态。
+     */
+    suspend fun unpair(revokeTimeoutMs: Long = SESSION_REVOKE_TIMEOUT_MS): SessionRevocation {
+        val previous = state as? PairingRuntimeState.Paired ?: return SessionRevocation.NotNeeded
+        val revocation = revokeBestEffort(previous.factory, revokeTimeoutMs)
+        clearPaired(previous)
+        return revocation
+    }
+
+    /**
+     * 换 core：**先吊销旧 core，再清本地，再配新 core，最后装新配置**。
+     *
+     * 顺序是用户能观察到的语义（也由 `CoreSwitchTest` 用 MockEngine 钉住）：
+     *  1. 目标配置先解析：端口越界这类**本地**错误原地拒绝，一个请求都不发，旧配置原样保留；
+     *  2. `DELETE /ui/session` → 旧 core（best-effort，超时 / 失败不阻塞，结果回传 UI）；
+     *  3. 清本地旧配置与 cookie：桥退回「未配对」，旧 factory 不再被任何人读取；
+     *  4. 用用户填的新地址 + 码走**同一条**连接链（[firstRunPairingAttempt]，恰好一次
+     *     `POST /ui/session`）；成功才 [install] 新配置 —— 失败就停在未配对态，引导卡可重试。
+     *
+     * 第 3 步先于第 4 步是刻意的：一次性码只在「已经在换」的时候才烧，而本地旧凭据不许
+     * 在新 core 失败时偷偷留下的「假连接」。代价是失败后旧 core 也没了 —— 但它上一步已经
+     * 被吊销，这正是「换 core」这个动作的语义（调用方要保留旧连接就别调它）。
+     */
+    suspend fun switchCore(
+        raw: RawSourceStrings,
+        enteredCode: String,
+        revokeTimeoutMs: Long = SESSION_REVOKE_TIMEOUT_MS,
+        transportFactory: (VadeClientConfig) -> VadeTransportFactory = { config ->
+            KtorTransportFactory(config)
+        },
+    ): CoreSwitchOutcome {
+        // 1) 目标配置：本地就能判死的错误不许先动旧 core（也不许烧掉用户的一次性码）。
+        runCatching { SourceConfig.parse(raw.source, raw.host, raw.port, enteredCode) }
+            .getOrElse {
+                return CoreSwitchOutcome(
+                    SessionRevocation.NotNeeded,
+                    PairingAttempt.Rejected(PairingFailureKind.BadConfig, it),
+                )
+            }
+        // H4 · 本平台不能兑换码（浏览器读不到 Set-Cookie）：同样原地拒绝 —— 不许先把旧
+        // core 的会话吊销掉再告诉用户「这里不能配对」。[firstRunPairingAttempt] 自己不发明
+        // 网络请求，复用它同一条文案，不在这里抄第二份。
+        if (!canBootstrapPairing()) {
+            return CoreSwitchOutcome(
+                SessionRevocation.NotNeeded,
+                firstRunPairingAttempt(raw, enteredCode, transportFactory),
+            )
+        }
+        // 2) 旧 core 的 UI 会话：能吊销就吊销，吊销不了也继续（记下来给 UI 提示）。
+        val previous = state as? PairingRuntimeState.Paired
+        val revocation = revokeBestEffort(previous?.factory, revokeTimeoutMs)
+        // 3) 清本地旧配置 + cookie（旧 factory 的 cookie 已在 revokeSession 里作废）。
+        clearPaired(previous)
+        // 4) 新 core：同一条连接链，成功才装。
+        val attempt = firstRunPairingAttempt(raw, enteredCode, transportFactory)
+        if (attempt is PairingAttempt.Connected) install(attempt.factory, attempt.host, attempt.port)
+        return CoreSwitchOutcome(revocation, attempt)
+    }
+
+    /**
+     * best-effort 吊销：**任何**失败（超时 / 网络 / 旧 core 拒绝）都收敛成
+     * [SessionRevocation.Failed]；只有调用方的取消会穿出去（并且此时配置一个字节都还没动）。
+     */
+    private suspend fun revokeBestEffort(
+        factory: VadeTransportFactory?,
+        timeoutMs: Long,
+    ): SessionRevocation {
+        if (factory == null) return SessionRevocation.NotNeeded
+        // `null` 只可能是**本函数自己的**超时：外层取消会以 CancellationException 抛出
+        // （[revokeOnce] 原样穿透），不会被吞成一次「失败」。
+        val attempt: SessionRevocation? = withTimeoutOrNull(timeoutMs) { revokeOnce(factory) }
+        return attempt ?: SessionRevocation.Failed(SessionRevokeTimeoutException(timeoutMs))
+    }
+
+    /** 一次 `DELETE /ui/session`：成功 / 失败都收敛成 [SessionRevocation]，取消照样穿透。 */
+    private suspend fun revokeOnce(factory: VadeTransportFactory): SessionRevocation =
+        try {
+            factory.revokeSession()
+            SessionRevocation.Revoked
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (t: Throwable) {
+            SessionRevocation.Failed(t)
+        }
+
+    /**
+     * 清本地凭据：桥退回「未配对」，旧 factory 的资源顺手放掉。
+     *
+     * 旧 factory 归桥所有（`RealSessionSource` 对**注入**的 factory 从不 dispose，见其
+     * KDoc），换 core 之后不会再有引用 —— 这里关掉它的 `HttpClient`，不然每换一次 core
+     * 就漏一个连接池。dispose 失败不影响清配置。
+     */
+    private suspend fun clearPaired(previous: PairingRuntimeState.Paired?) {
+        state = PairingRuntimeState.Unpaired()
+        previous?.let { runCatching { it.factory.dispose() } }
     }
 
     /** 测试专用：把桥清回「未启动」（桥是全局单例，用例之间必须互不污染）。 */

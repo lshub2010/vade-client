@@ -3,6 +3,7 @@ package vade.ui.protocol
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocketSession
+import io.ktor.client.request.delete
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -48,6 +49,16 @@ interface VadeTransportFactory {
     /** Open a new transport. Throws on failure; the client treats any throw as "retry later". */
     suspend fun connect(): VadeTransport
 
+    /**
+     * 吊销本 factory 持有的 UI 会话（`DELETE /ui/session`，契约：204 no body）——「换 core /
+     * 断开」时把旧 core 上这张 `__Host-ac_ui` 凭证作废，别让它一直挂到过期。
+     *
+     * 默认 no-op：device 会话、页面壳自带的 cookie、测试替身**没有**本进程 mint 的 UI
+     * 会话可吊销，对它们「无事可做」就是成功。校验（超时 / 失败不许阻塞切换）在
+     * `PairingRuntime` 一侧，这里只负责把这一次请求发出去。
+     */
+    suspend fun revokeSession() {}
+
     /** Release factory-owned resources (the shared [HttpClient]); called from [VadeClient.close]. */
     suspend fun dispose() {}
 }
@@ -91,7 +102,7 @@ class KtorTransportFactory(
     private val bootstrapMutex = Mutex()
 
     override suspend fun connect(): VadeTransport {
-        val cookie = config.browserSession?.let { ensureCookie() }
+        val cookie = ensureSessionCookie()
         val session = client.webSocketSession {
             url(websocketUrl())
             if (cookie != null) {
@@ -106,6 +117,42 @@ class KtorTransportFactory(
 
     override suspend fun dispose() {
         client.close()
+    }
+
+    /**
+     * `POST /ui/session` 那一步（换 `__Host-ac_ui` cookie），单独成函数以便 [connect] 在 WS
+     * 升级前调用、[revokeSession] 的用例也能只走 HTTP。device 会话（[VadeClientConfig.browserSession]
+     * 为 null）没有可引导的 UI 会话 → `null`，一次请求都不发。
+     */
+    internal suspend fun ensureSessionCookie(): String? = config.browserSession?.let { ensureCookie() }
+
+    /**
+     * `DELETE /ui/session`（契约：204）—— 吊销本 factory 名下的 UI 会话。
+     *
+     * 只在**已经**拿到 cookie 时发：没 bootstrap 过就没有本进程的 UI 会话可吊销，再拿一次性
+     * 配对码去 POST 只会白烧一个码（[ensureCookie] 的 memo 里没有码可用）。
+     *
+     * 无论成功失败都把本地 cookie 清掉（`finally`）：调用它的场景是「旧 core 不再使用」，
+     * 留着一张已经/即将失效的凭证只会在下一次重连时冒充登录态。失败原样抛给
+     * `PairingRuntime` 的 best-effort 包装（超时 / 失败不阻塞切换，只记录 + 提示）。
+     */
+    override suspend fun revokeSession() {
+        val cookie = cookieHeader ?: return
+        try {
+            val response = client.delete {
+                url(httpUrl() + "/ui/session")
+                header(HttpHeaders.Cookie, cookie)
+            }
+            if (response.status.value !in 200..299) {
+                throw VadeException(
+                    code = VadeErrorCodes.AUTH_FAILED,
+                    message = "DELETE /ui/session failed with HTTP ${response.status.value}: " +
+                        response.bodyAsText().take(200),
+                )
+            }
+        } finally {
+            cookieHeader = null
+        }
     }
 
     private suspend fun ensureCookie(): String = bootstrapMutex.withLock {
