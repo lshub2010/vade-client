@@ -25,6 +25,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -184,6 +186,10 @@ class MiuixSkin(
      * Miuix `TextField` is a filled, rounded field with a floating label; the skin keeps
      * that but forces the *stroke* to carry state (focus → primary, error → red) instead of
      * a Material underline + helper row. The error copy sits under the field, 10 sp.
+     *
+     * [label] (r3-a11y) is drawn as a visible caption above the field and pushed into the
+     * field's semantics as `contentDescription` — Miuix's own `label` slot stays the
+     * placeholder (it floats away once the field has a value, so it cannot name the field).
      */
     @Composable
     override fun TextField(
@@ -192,14 +198,26 @@ class MiuixSkin(
         placeholder: String?,
         error: String?,
         enabled: Boolean,
+        label: String?,
     ) {
         val c = colors
+        val labelSemantics = label
+            ?.let { text -> Modifier.semantics { contentDescription = text } }
+            ?: Modifier
         MiuixScope(c) {
             Column(Modifier.fillMaxWidth()) {
+                label?.let { caption ->
+                    Text(
+                        text = caption,
+                        color = c.onSurfaceVariant,
+                        fontSize = MiuixTokens.tinySize,
+                        modifier = Modifier.padding(start = 4.dp, bottom = 4.dp),
+                    )
+                }
                 TextField(
                     value = value,
                     onValueChange = onValueChange,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().then(labelSemantics),
                     colors = TextFieldDefaults.textFieldColors(
                         backgroundColor = if (c.isDark) Color(0xFF26262A) else c.surfaceVariant,
                         labelColor = c.onSurfaceVariant,

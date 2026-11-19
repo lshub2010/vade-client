@@ -30,6 +30,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -170,6 +172,7 @@ class MaterialSkin(
         placeholder: String?,
         error: String?,
         enabled: Boolean,
+        label: String?,
     ) {
         // Foundation 原语重写：M3 OutlinedTextField 无主题时的聚焦描边正是被禁的
         // Material 默认紫；这里聚焦 = 2dp accent（视觉规范 §5，不是发光）。
@@ -181,7 +184,20 @@ class MaterialSkin(
             focused -> colors.primary
             else -> colors.hairline
         }
+        // r3-a11y · 可访问名：label 是**输入框本身**的 contentDescription（不是旁边那段字），
+        // 读屏聚焦到框里时才会念「地址，编辑框」。null 时不加任何语义节点。
+        val labelSemantics = label
+            ?.let { text -> Modifier.semantics { contentDescription = text } }
+            ?: Modifier
         Column {
+            label?.let { caption ->
+                Text(
+                    text = caption,
+                    fontSize = 11.sp,
+                    color = colors.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 4.dp, bottom = 4.dp),
+                )
+            }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -204,7 +220,7 @@ class MaterialSkin(
                     interactionSource = interaction,
                     textStyle = typography.body.copy(color = colors.onSurface),
                     cursorBrush = SolidColor(colors.primary),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().then(labelSemantics),
                 )
             }
             if (error != null) {

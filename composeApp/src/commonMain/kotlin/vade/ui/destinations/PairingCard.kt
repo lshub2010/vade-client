@@ -208,6 +208,8 @@ internal fun PairingForm(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         // skin.TextField 是 C-09 冻结组件，没有 modifier 形参 —— 由外层 Box 吃 weight。
+        // r3-a11y · host / port 的值永远非空（初值就是默认地址），占位永不显示 —— 这两个框
+        // 此前在语义树上只是「可输入文本」，没有任何名字。label 给它们可视小字 + 可访问名。
         Box(modifier = Modifier.weight(2f)) {
             skin.TextField(
                 value = host,
@@ -218,6 +220,7 @@ internal fun PairingForm(
                 },
                 placeholder = PAIRING_HOST_PLACEHOLDER,
                 enabled = !submitting,
+                label = PAIRING_HOST_LABEL,
             )
         }
         Box(modifier = Modifier.weight(1f)) {
@@ -230,6 +233,7 @@ internal fun PairingForm(
                 },
                 placeholder = PAIRING_PORT_PLACEHOLDER,
                 enabled = !submitting,
+                label = PAIRING_PORT_LABEL,
             )
         }
     }
@@ -734,6 +738,13 @@ internal const val PAIRING_CODE_FIELD_TAG = "pairing-code-field"
 /** host / port 输入框占位（默认值本身就是值，占位只在清空后提示）。 */
 internal const val PAIRING_HOST_PLACEHOLDER = "host（默认 127.0.0.1）"
 internal const val PAIRING_PORT_PLACEHOLDER = "port（默认 8443）"
+
+/**
+ * r3-a11y · host / port 的**可访问名**（可视小字 + semantics contentDescription）。
+ * 占位文案不能当名字：值非空时占位根本不渲染（默认启动就非空），读屏只会念「可输入文本」。
+ */
+internal const val PAIRING_HOST_LABEL = "地址"
+internal const val PAIRING_PORT_LABEL = "端口"
 
 /** 提交按钮。 */
 internal const val PAIRING_BUTTON_LABEL = "配对"

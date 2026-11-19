@@ -78,10 +78,11 @@ class GlassComponentContrastTest {
     @Test
     fun statusInkIsDeepenedBecauseTheRawTokensWouldFail() {
         val rawError = inkOnGlassBase(light, light.error, Color.Black)
+        // r3：亮色 error 已从 #D93A3A 压深到 #C93030（surfaceVariant 上 4.67:1）。
+        // 原色本身达标后，errorInk 的 0.86 压深只是余量；success/warning 仍依赖它。
         assertTrue(
-            rawError < 4.5,
-            "对照失败：亮色 error 压在玻璃上算出来 ${rawError.rounded()}:1 —— 若已达标，" +
-                "statusInk 的 0.86 压深就是多余的（任务书仍要求它，因为实测是 3.89）",
+            rawError >= 4.5,
+            "对照失败：亮色 error 令牌应已达标，实测 ${rawError.rounded()}:1 —— 令牌被改回去了？",
         )
         assertTrue(
             inkOnGlassBase(light, light.success, Color.Black) < 4.5 &&
@@ -146,10 +147,12 @@ class GlassComponentContrastTest {
             )
             val rawOnBadge = contrastRatio(colors.error, colors.surfaceVariant)
             if (!colors.isDark) {
+                // 新 error 令牌（#C93030）在不透明 surfaceVariant 上已是 4.67:1，
+                // 徽标不再依赖 errorInk 才读得出来；这里钉住令牌本身的下限。
                 assertTrue(
-                    rawOnBadge < 4.5,
-                    "对照失败：亮色 error 直接压在不透明 surfaceVariant 上算出来 " +
-                        "${rawOnBadge.rounded()}:1 —— 实测 4.00，若已达标说明徽标底不是不透明的",
+                    rawOnBadge >= 4.5,
+                    "亮色 error 直接压在不透明 surfaceVariant 上只有 " +
+                        "${rawOnBadge.rounded()}:1 —— 令牌被改回浅红了吗？",
                 )
             }
             for ((name, backdrop) in backdrops(colors)) {

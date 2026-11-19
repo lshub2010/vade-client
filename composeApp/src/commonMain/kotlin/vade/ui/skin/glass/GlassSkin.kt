@@ -468,6 +468,8 @@ class GlassSkin(
     // --- 2 · TextField（唯一仍转发 material 的组件）------------------------------
     // 页内表单输入（不是 composer）：玻璃底上的光标、内描边、错误行要先各自定一套语义，
     // 留给下一批。其余 11 个组件都是真玻璃。
+    // r3-a11y · `label` 也原样转发：可视标签 + contentDescription 的可访问名只写在
+    // material 的实现里（单一真相），玻璃这里不复制第二份画法。
 
     @Composable
     override fun TextField(
@@ -476,12 +478,14 @@ class GlassSkin(
         placeholder: String?,
         error: String?,
         enabled: Boolean,
+        label: String?,
     ) = base.TextField(
         value = value,
         onValueChange = onValueChange,
         placeholder = placeholder,
         error = error,
         enabled = enabled,
+        label = label,
     )
 
     // --- 4/5/6/7/9/10/12 · T2 的七个真玻璃组件 ----------------------------------

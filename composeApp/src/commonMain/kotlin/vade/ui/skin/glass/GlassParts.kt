@@ -411,7 +411,8 @@ internal fun GlassBottomBar(
                                 modifier = Modifier
                                     .size(14.dp)
                                     .clip(CircleShape)
-                                    // 徽标是 8sp 的字，红底比 token 红再深一档（4.55 → 6.0 级）。
+                                    // 徽标是 8sp 的字，红底比 token 红再深一档（走 errorInk 的
+                                    // 0.86 压深，白字余量更大；r3-a11y 之后 token 本身已是 #C93030）。
                                     .background(errorInk(colors)),
                                 contentAlignment = Alignment.Center,
                             ) {

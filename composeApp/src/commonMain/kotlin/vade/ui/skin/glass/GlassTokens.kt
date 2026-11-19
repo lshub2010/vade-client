@@ -112,9 +112,10 @@ object GlassTokens {
     /**
      * 亮色 Danger 实心填充的压深比例（见 [actionFill]）。
      *
-     * `colors.error`(#D93A3A) 配白字本身 4.55:1，余量薄到一次调色就会破线；压深 10%
-     * 之后 5.42:1。**material 的 error token 不动**（亮色是截图基线），只有玻璃皮肤的
-     * 大面积实心按钮走这条推导。
+     * 历史判据：`colors.error`(#D93A3A) 配白字只有 4.55:1，余量薄到一次调色就会破线。
+     * r3-a11y 之后 material 亮色 error 已是 #C93030（配白字 5.32:1），这一档**仍然保留**：
+     * 实心按钮顶上还有一条 [highlightAlphaAt] 白色高光，压深后的 #B42B2B 配白字 6.32:1
+     * 才留得住那 8% 高光的余量。数值由 `GlassTokensContrastTest` 常驻断言，不靠人眼。
      */
     const val DANGER_LIGHT_SHADE: Float = 0.90f
 
@@ -165,9 +166,10 @@ object GlassTokens {
  * 半透明会被**背后的浅底提亮** —— 玻璃皮肤里按钮几乎都长在白卡上，于是白字跌到
  * 4.24:1 / 3.88:1（审查 P1 实测 4.29 / 4.14）。实心之后 Primary 5.37:1、Danger 5.42:1。
  *
- * Danger 在亮色下再压深 [DANGER_LIGHT_SHADE]：`colors.error` 配白字本身只有 4.55:1，
- * 余量薄到一次调色就破线。暗色不压 —— 暗色的 error 是浅底配深字（6.6:1），压深只会
- * 把它变成第二种红。material 的 `primary/error` **不动**（亮色是截图基线）。
+ * Danger 在亮色下再压深 [DANGER_LIGHT_SHADE]：`colors.error` 配白字本身只有 4.55:1（r3-a11y
+ * 之后 #C93030 是 5.32:1），余量薄到一次调色就破线。暗色不压 —— 暗色的 error 是浅底配深字
+ * （6.6:1），压深只会把它变成第二种红。material 的 `primary/error` 由 material 自己定
+ * （error 的对比度修正在 `MaterialTokens`，本文件只负责玻璃的实心底座）。
  */
 fun actionFill(colors: SkinColors, danger: Boolean = false): Color = when {
     !danger -> colors.primary

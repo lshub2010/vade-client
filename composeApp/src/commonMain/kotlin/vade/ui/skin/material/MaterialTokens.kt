@@ -33,7 +33,11 @@ internal object MaterialTokens {
 
     // --- light -----------------------------------------------------------------
 
-    /** Visual language §2 亮色表 — byte-stable: the light look is screenshot-baselined. */
+    /**
+     * Visual language §2 亮色表 — byte-stable: the light look is screenshot-baselined.
+     * One deliberate exception: `error` moved #D93A3A → #C93030 for contrast (r3-a11y,
+     * see the field comment below). Every other slot still matches the baseline.
+     */
     val lightColors = SkinColors(
         primary = Color(0xFF5B5BD6),
         onPrimary = Color(0xFFFFFFFF),
@@ -42,7 +46,11 @@ internal object MaterialTokens {
         onSurface = Color(0xFF17171A),
         onSurfaceVariant = Color(0xFF6B6B73),
         outline = Color(0xFFE6E6E9), // hairline
-        error = Color(0xFFD93A3A),
+        // r3-a11y（2026-11-19）· 原 #D93A3A 只对**白**勉强 4.55:1；错误行/失败文案实际压在
+        // surfaceVariant(#F0F0F2) 的输入底上时掉到 4.00:1 —— 那是正文文字，必须 ≥4.5:1。
+        // #C93030 同色相压深一档：白 5.32:1 / canvas 4.97:1 / surfaceVariant 4.67:1。
+        // 常驻断言在 MaterialSkinDarkTest.lightErrorTextClearsWcagAaOnEveryLightBackground。
+        error = Color(0xFFC93030),
         onError = Color(0xFFFFFFFF),
         isDark = false,
         canvas = Color(0xFFF7F7F8),
