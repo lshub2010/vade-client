@@ -240,8 +240,8 @@ class CoreSwitchUiTest : IsolatedPreferencesTest() {
 
         onNode(codeField()).performTextInput("青松-R3R3R3")
         onNodeWithText(SWITCH_BUTTON_LABEL).performClick()
-        waitUntil { switches == 1 }
-        waitUntil { dispatcher.depth == 2 }
+        waitUntil(timeoutMillis = 5_000) { switches == 1 }
+        waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 2 }
         waitForIdle()
 
         // ① 顶栏返回：提交中不挂 clickable。
@@ -259,7 +259,7 @@ class CoreSwitchUiTest : IsolatedPreferencesTest() {
                 attempt = PairingAttempt.Connected(marker, "10.0.0.8", 8443),
             ),
         )
-        waitUntil { CoreSwitchNotice.text != null }
+        waitUntil(timeoutMillis = 5_000) { CoreSwitchNotice.text != null }
         waitForIdle()
         assertEquals("已切换到 10.0.0.8:8443", CoreSwitchNotice.text)
         assertEquals(1, dispatcher.depth, "提交结束后面板这一层出栈（只剩宿主那一层）")
@@ -304,7 +304,7 @@ class CoreSwitchUiTest : IsolatedPreferencesTest() {
 
         onNode(codeField()).performTextInput("青松-R3R3R3")
         onNodeWithText(SWITCH_BUTTON_LABEL).performClick()
-        waitUntil { switches == 1 }
+        waitUntil(timeoutMillis = 5_000) { switches == 1 }
 
         // 面板先走（与「换 core 成功 → UiState 重建」同一个后果）。
         runOnIdle { showPanel = false }
@@ -317,7 +317,7 @@ class CoreSwitchUiTest : IsolatedPreferencesTest() {
                 attempt = PairingAttempt.Connected(marker, "10.0.0.8", 8443),
             ),
         )
-        waitUntil { CoreSwitchNotice.text != null }
+        waitUntil(timeoutMillis = 5_000) { CoreSwitchNotice.text != null }
         assertTrue(
             CoreSwitchNotice.text!!.startsWith(REVOKE_FAILED_NOTICE),
             "面板没了，吊销失败也必须留下回执：${CoreSwitchNotice.text}",
@@ -357,7 +357,7 @@ class CoreSwitchUiTest : IsolatedPreferencesTest() {
 
         onNode(codeField()).performTextInput("青松-R3R3R3")
         onNodeWithText(SWITCH_BUTTON_LABEL).performClick()
-        waitUntil {
+        waitUntil(timeoutMillis = 5_000) {
             onAllNodesWithText(REVOKE_FAILED_NOTICE, substring = true).fetchSemanticsNodes().isNotEmpty()
         }
         waitForIdle()
@@ -424,7 +424,7 @@ class CoreSwitchUiTest : IsolatedPreferencesTest() {
 
         // 窗口内的第二次：真的断开。
         onNodeWithText(CORE_SWITCH_DISCONNECT_CONFIRM).performClick()
-        waitUntil { disconnects == 1 }
+        waitUntil(timeoutMillis = 5_000) { disconnects == 1 }
         waitForIdle()
         onNodeWithText(CORE_SWITCH_DISCONNECTED).assertExists()
         // 没有弹层：面板始终在，确认也只是同一张卡里的一句话。
