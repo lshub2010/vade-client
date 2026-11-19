@@ -55,11 +55,58 @@ class UiStateSelectRetapTest {
         val state = ui()
         state.open("s-u1a")
 
-        state.select(Destination.Sessions) // 默认 = 单栏（手机抽屉 / 600–719 rail）
+        state.select(Destination.Sessions) // 默认 = 没有抽屉的单栏（600–719 rail）
 
-        assertNull(state.selectedSessionId, "单栏：再点当前 tab = 退一层（P2-1 的既有语义）")
+        assertNull(state.selectedSessionId, "rail 单栏：再点当前 tab = 退一层（P2-1 的既有语义）")
         assertTrue(state.sessionsDrawerOpen, "单栏退回后抽屉必须滑出（列表是唯一出口）")
         assertEquals(Destination.Sessions, state.dest)
+    }
+
+    @Test
+    fun phoneRetapOnTheCurrentTabSlidesTheListInWithoutDroppingTheSession() {
+        val state = ui()
+        state.open("s-u1a")
+        assertFalse(state.sessionsDrawerOpen)
+
+        state.select(Destination.Sessions, phoneDrawer = true)
+
+        assertEquals("s-u1a", state.selectedSessionId, "手机抽屉：重复点会话 tab 只滑出列表，不销毁会话")
+        assertTrue(state.sessionsDrawerOpen, "手机抽屉：列表滑出")
+        assertEquals(Destination.Sessions, state.dest)
+    }
+
+    /**
+     * n1-nav #2（纯状态面）：手机返回 = 详情 ⇄ 列表的可逆切换，`selectedSessionId` 全程不变；
+     * 只有「会话页 + 无选中」才是 no-op（那时返回层不登记，系统返回得以退 App）。
+     */
+    @Test
+    fun phoneBackTogglesTheDrawerAndNeverDropsTheSelection() {
+        val state = ui()
+        state.open("s-u1a")
+        assertFalse(state.sessionsDrawerOpen, "点开会话 ⇒ 抽屉收起")
+
+        state.back(drawerModel = true)
+        assertTrue(state.sessionsDrawerOpen, "详情 → 返回 = 滑出列表")
+        assertEquals("s-u1a", state.selectedSessionId, "滑出列表不许清选中")
+
+        state.back(drawerModel = true)
+        assertTrue(state.sessionsDrawerOpen, "列表 → 返回 = 退应用（状态不再改动）")
+        assertEquals("s-u1a", state.selectedSessionId, "退应用前选中仍在")
+
+        // 列表根（无选中）是唯一「没有可退层级」的形态：手机模型下是 no-op。
+        state.select(Destination.Activity) // 离开会话页 ⇒ 清选中（旧行为）
+        state.select(Destination.Sessions)
+        assertNull(state.selectedSessionId)
+        state.back(drawerModel = true)
+        assertNull(state.selectedSessionId, "列表根返回不许凭空选中/清空任何东西")
+        assertTrue(state.sessionsDrawerOpen, "列表根：抽屉保持开着（列表仍可用）")
+
+        // 非抽屉（rail / 双栏）语义逐字节不变：back() 清选中回列表根。
+        val rail = ui()
+        rail.open("s-u1a")
+        rail.back()
+        assertNull(rail.selectedSessionId, "rail：返回 = 清选中回列表根")
+        assertTrue(rail.sessionsDrawerOpen)
     }
 
     @Test

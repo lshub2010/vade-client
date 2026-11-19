@@ -86,13 +86,17 @@ class UiState(
      * g-route-transition · 手机单栏（<600dp）的抽屉开合：`true` = 列表抽屉盖在详情之上。
      * 深链/截图环直接进详情（`initialSessionId != null`）时初始为收起，与旧行为一致；
      * 双栏与 600–719（rail）不渲染抽屉，此值在那里是死状态（读写都不产生界面效果）。
+     *
+     * n1-nav · 它与 [selectedSessionId] **互不决定**：抽屉只是「列表盖在详情上」，
+     * 开关抽屉绝不碰选中（旧模型里「返回 = 清选中，抽屉按无选中自己滑出」已废）。
+     * 因此 详情（收起）⇄ 列表（展开）是一次**可逆**的显示切换，原来那个会话一直在底下。
      */
     var sessionsDrawerOpen by mutableStateOf(initialSessionId == null)
         private set
 
     /**
-     * 滑出列表抽屉（测试 / 程序化入口）。返回路径**不经过这里** —— 返回栈在详情层
-     * `state.back()` 清选中，抽屉按「会话页 + 无选中 ⇒ 开」的规则自己滑出。
+     * 滑出列表抽屉（测试 / 程序化入口；顶栏「主页」与重复点会话 tab 也落到同一语义）。
+     * 返回路径见 [back]：手机抽屉模型下它与 [closeSessionsDrawer] 是一对，选中全程保留。
      */
     fun openSessionsDrawer() {
         sessionsDrawerOpen = true
@@ -306,27 +310,36 @@ class UiState(
      * Tab / rail entry point（`NavRail` 与底栏三个形态都落到这里）。
      *
      * **重复点当前 tab**（审查 P2-1 + P1-12）：
-     *  - 已在会话详情 + **单栏**（`listBesideDetail = false`：手机抽屉 / 600–719 rail
-     *    单栏）⇒ [back]：列表要么滑出抽屉、要么回到根页。「退一层」与系统返回是同一个
-     *    动作，不是第二套返回语义；
      *  - 已在会话详情 + **双栏**（`listBesideDetail = true`）⇒ **no-op**。双栏里列表就在
      *    详情左边，根本没有「退一层」这回事：旧实现照单栏的规则 `back()` 清掉选中，
      *    把用户正在读的会话关了、右栏退回空态（审查 P1-12 的原话）。本批也不假装
      *    「滚到顶」——滚动位置是 `SessionsScreen` 内部的 `LazyListState`，要做得把它
      *    上提成一个由这里递增的 token，那个文件不在本批范围；
+     *  - 已在会话详情 + **手机抽屉模型**（`phoneDrawer = true`，<600dp）⇒ 打开列表抽屉，
+     *    **选中保留**（详情原样在底下）——与系统返回/顶栏返回的「退一层」同一个结果，
+     *    但只往列表方向走：已经在列表里再点 tab 是 no-op，不会把列表关掉；
+     *  - 已在会话详情 + **600–719 rail 单栏**（`phoneDrawer = false` 且无双栏）⇒
+     *    [back]：清选中回列表根（rail 没有抽屉，列表就是根页）；
      *  - 已是列表根 ⇒ no-op（也不再重算抽屉 —— 那会把手机抽屉莫名开合）；
      *  - 其他目的地 ⇒ 保留旧行为（离开会话页 ⇒ 选中清空），逐字节不变。
      *
-     * [listBesideDetail] 由**布局宿主**传入（只有 `ShellMetrics.twoPane` 那一层知道），
-     * 默认 `false` = 单栏：屏幕/state 不该自己猜布局（J4 的教训），历史调用点（测试里
-     * 的 `ui.select(dest)`）因此仍走「退一层」这条既有语义。
+     * [listBesideDetail] / [phoneDrawer] 都由**布局宿主**传入（只有 `ShellMetrics` 那一层
+     * 知道），默认 `false` = 单栏/rail：屏幕/state 不该自己猜布局（J4 的教训），历史调用点
+     * （测试里的 `ui.select(dest)`）因此仍走「退一层」这条既有语义。
      */
-    fun select(destination: Destination, listBesideDetail: Boolean = false) {
+    fun select(
+        destination: Destination,
+        listBesideDetail: Boolean = false,
+        phoneDrawer: Boolean = false,
+    ) {
         if (destination == dest) {
             when {
                 // 双栏 + 会话页：列表已在左，重复点 = no-op（P1-12）。
                 destination == Destination.Sessions && listBesideDetail -> Unit
-                // 单栏 + 有选中：退一层（手机 = 抽屉滑出；rail 单栏 = 回列表根）。
+                // 手机抽屉 + 有选中：屏上是详情 ⇒ 滑出列表（选中不动）；已在列表 ⇒ no-op。
+                destination == Destination.Sessions && selectedSessionId != null && phoneDrawer ->
+                    openSessionsDrawer()
+                // rail 单栏 + 有选中：退一层（清选中，回列表根）。
                 destination == Destination.Sessions && selectedSessionId != null -> back()
                 // 离开会话页：清选中（旧行为，逐字节不变）。
                 destination != Destination.Sessions -> selectedSessionId = null
@@ -360,9 +373,42 @@ class UiState(
         ldr.selectSession(sessionId, isDraft = drafts.any { it.id == sessionId })
     }
 
-    fun back() {
-        selectedSessionId = null
-        // g-route-transition：选中清空 ⇒ 抽屉必须开着（与 select() 同一条规则；双栏不渲染）。
+    /**
+     * 「退一层」——**手机抽屉模型下它是一个可逆切换，不是一个单向销毁**。
+     *
+     * n1-nav 口径（真机反馈 #2）：旧实现无条件 `selectedSessionId = null` + 抽屉展开，
+     * 结果是「退回列表 = 把原来那个会话关掉」：再按返回，详情已经没了，界面只剩列表，
+     * 下一次返回就退应用。用户的原话是「应该能回到原来那个会话」。
+     *
+     * 现在按布局分两种语义（参数由**布局宿主**给，state 不猜布局 —— J4）：
+     *
+     *  - `drawerModel = true`（<600dp 手机单栏，列表是盖在详情上的抽屉）：
+     *    详情（抽屉收）→ **打开抽屉**；列表（抽屉开）→ **收起抽屉**。
+     *    两条都**保留 [selectedSessionId]**，详情层全程在底下不重建（聊天滚动、草稿都在）。
+     *  - `drawerModel = false`（双栏 / 600–719 rail 单栏，没有抽屉）：旧语义 ——
+     *    清选中回列表根（详情那一层出栈），逐字节不变。
+     *
+     * 会话页的**列表根**（无选中）没有可退的层：本函数 no-op；调用方
+     * （`SessionsDrawerHost` / `DestinationHost`）也不登记 `BackLayer`，于是
+     * `BackDispatcher.dispatch()` 返回 false、系统返回交还系统 —— 这就是
+     * 「只有列表根且无抽屉时才真正退应用」的唯一判据。
+     *
+     * 其他目的地没有「会话详情」这一层，保留旧行为（离开会话页 ⇒ 清选中）。
+     */
+    fun back(drawerModel: Boolean = false) {
+        if (dest != Destination.Sessions) {
+            selectedSessionId = null
+            return
+        }
+        if (!drawerModel) {
+            selectedSessionId = null
+            sessionsDrawerOpen = true
+            return
+        }
+        // 手机抽屉：详情 → 列表（选中不动）；已经在列表上则不再切换 ——
+        // 用户拍板「列表返回退应用」，那一层不再登记 BackLayer，系统返回直接退出。
+        if (selectedSessionId == null) return
+        if (sessionsDrawerOpen) return
         sessionsDrawerOpen = true
     }
 

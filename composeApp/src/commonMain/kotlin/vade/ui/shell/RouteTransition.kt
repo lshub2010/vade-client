@@ -51,17 +51,18 @@ import vade.ui.skin.SkinMotion
  *
  *  - **会话详情是常驻底层**：一旦有选中会话就持续组合，抽屉开合期间**绝不重建**——
  *    聊天流的滚动位置、每会话的 `ChatState` 都跨开合存活（「拉开抽屉看一眼列表」不等于
- *    退出详情页；真正退出详情是返回 → `state.back()`，见下一条）。
- *  - **会话列表是盖在上面的一层抽屉**：宽 80%、右缘 28dp 两个大圆角、自带浮层阴影，
- *    从**左侧**滑出/收回；抽屉与详情之间是遮罩（内容被压暗），点遮罩 = 收抽屉；
+ *    退出详情页；真正退出详情是离开会话页，见下一条）。
+ *  - **会话列表是盖在上面的一层抽屉**：**满宽**（n1-nav 口径：手机单栏与未选中时的列表
+ *    同宽，没有 peek —— 0.8 的 peek 只属于「列表与详情并排」的双栏），从**左侧**滑出/收回；
+ *    抽屉与详情之间是遮罩（内容被压暗），点遮罩 = 收抽屉；
  *  - 点一条会话 → 抽屉收回（`UiState.selectSession` 里自动收）、详情露出来；
- *  - **返回只有一条路**（g-nav-stack，见下方 [SessionsDrawerHost] 里的**两层** `BackLayer`）：
- *    系统返回键 / 返回手势 / Esc / 顶栏返回全部由返回栈派发，层数 = 此刻可退的层级数
- *    （抽屉 + 详情各一层）：抽屉开着 → 收回（露出底下完好的详情）；抽屉收着 → `state.back()`
- *    清选中回到列表根；列表根（没有选中会话）不登记层，返回交还系统（允许退出 App）。
- *    一次 dispatch 恰好减一层 —— 层数与「能关几次」严格相等。
+ *  - **返回只有一条路**（g-nav-stack，见下方 [SessionsDrawerHost] 里**唯一**的一层 `BackLayer`）：
+ *    系统返回键 / 返回手势 / Esc / 顶栏返回全部由返回栈派发。n1-nav 口径 + 用户 2026-11-18
+ *    拍板：详情（抽屉收）→ 返回 = **打开抽屉，选中保留**（`back(drawerModel = true)` 的前半）；
+ *    列表（抽屉开）→ **不登记任何层** ⇒ `dispatch()` 返回 false，返回交还系统、App 退出
+ *    （手机抽屉模型下它是最后一层），抽屉与选中一条都不改。会话页列表根（无选中）同样 0 层。
  *    旧实现是一条独立的 Android `BackHandler`（`DrawerSystemBackHandler`）+ `if/else` 开关，
- *    按返回在「列表/详情」之间来回 toggle、永远退不出也永远清不掉选中；那条路已删除。
+ *    按返回在「列表/详情」之间 toggle、永远退不出也永远清不掉选中；那条路已删除。
  *  - **双栏（≥600dp）与 600–719（rail 单栏）完全不经过本文件**：`ShellBody` 只在
  *    `!useRail && dest == Sessions` 时组合本宿主，其余断点维持原有行为——不加位移、
  *    不加遮罩（由 `ShellMetrics.useRail` 判定，测试钉死）。
@@ -85,12 +86,29 @@ import vade.ui.skin.SkinMotion
  *    选中行上；行被滚出视口/尚未选中时安静放弃）；
  *  - 抽屉收起 → 焦点交给详情容器（一个可聚焦的包装 Box），不丢到无处。
  */
-internal const val DRAWER_WIDTH_FRACTION = 0.8f
+/**
+ * 手机单栏抽屉宽度 = **满宽（1f）**。
+ *
+ * n1-nav（真机反馈 #1）：未选中会话时列表是满宽的一页，选中后再退回列表却缩成 80% ——
+ * 同一个页面两种宽度。手机单栏没有「露出底下的详情」这回事（详情被完全盖住了才有意义），
+ * 所以抽屉恒 1f，与未选中时的列表同宽。
+ *
+ * 0.8 的 **peek** 只在「列表与详情并排」的双栏形态里才是设计意图（列表不用盖满，右缘
+ * 圆角露出详情的边）；那种形态**不经过本宿主**（`ShellBody` 只在 `!useRail` 时组合它），
+ * 见 [DRAWER_PEEK_FRACTION]。
+ */
+internal const val DRAWER_WIDTH_FRACTION = 1f
 
-/** 抽屉右缘的两个大圆角（口径变更：约 28dp）。 */
+/**
+ * 双栏（peek）抽屉宽度口径 —— 保留常量是为了让「peek 只属于双栏」这条裁定可断言
+ * （`drawerShape` / `drawerElevation` 的 peek 分支），手机单栏恒 [DRAWER_WIDTH_FRACTION]。
+ */
+internal const val DRAWER_PEEK_FRACTION = 0.8f
+
+/** 抽屉右缘的两个大圆角（口径变更：约 28dp）——只在 peek（<满宽）时出现。 */
 internal val DRAWER_END_CORNER = 28.dp
 
-/** 抽屉浮层阴影（「列表层自带浮层阴影」）。 */
+/** 抽屉浮层阴影（「列表层自带浮层阴影」）——满宽时没有「浮」可言，取 0。 */
 internal val DRAWER_ELEVATION = 16.dp
 
 /** 遮罩的最终透明度（内容被压暗到这个程度）。 */
@@ -103,7 +121,7 @@ internal const val DRAWER_SCRIM_TAG = "sessions-drawer-scrim"
 internal const val DRAWER_SLIDE_MS = 260
 
 /**
- * 抽屉的「位移需求」。它整层横移（80% 屏宽，见 `translationX`），所以这里问的是
+ * 抽屉的「位移需求」。它整层横移（满宽，见 `translationX`），所以这里问的是
  * [SkinMotion.travelPx] 这个**开关**而不是某个具体像素：reduced 下归零 = 不许位移。
  */
 private const val DRAWER_TRAVEL_PX = 1
@@ -210,23 +228,28 @@ internal fun SessionsDrawerHost(
         motion = skin.motion,
     )
 
-    // g-nav-stack · 「能关几次 = 注册几层」：本页拆成**两层**登记，层数恒等于此刻可退的
-    // 层级数，一次 dispatch 恰好减一层（旧实现只有一层，onBack 里按 `drawerOpen` 二选一：
-    // 收完抽屉栈深不减 —— 第二次返回才是关详情，层数与可退次数对不上）。
-    //  - 常驻详情层（先登记 ⇒ 在下）：有选中会话（详情在底层）时登记，返回 = `state.back()`
-    //    清选中回列表根，与顶栏「返回」同一动作；没有选中（列表根）⇒ 不登记。
-    //  - 抽屉层（后登记 ⇒ topmost）：抽屉开着**且底层有详情**时登记，返回 = 收抽屉，
-    //    详情原样露出来（不销毁）。抽屉开着而没有详情（J5）时**不登记**：那时收抽屉只会
-    //    露出手机上没有出路的空详情（G2 死路），返回应当交还系统。
-    // 抽屉层在详情层之后 ⇒ topmost 是抽屉；抽屉收起后这一层自己出栈，栈深随之减一，
-    // 下一次返回落到详情层。没有选中会话（列表根）时两层都不在，`dispatch()` 返回 false。
+    // g-nav-stack · 「能关几次 = 注册几层」：本宿主**最多只有一层**，且它只在「详情在屏、
+    // 抽屉收起」时存在 —— 层数恒等于此刻可退的层级数，不多也不少。
+    //  - 详情层：有选中会话且抽屉收着时登记，返回 = `back(drawerModel = true)` ——
+    //    **滑出列表抽屉、选中保留**（旧实现在这里是 `back()` 清选中，真机反馈 #2 的原缺陷）；
+    //  - 抽屉开着 ⇒ **这一层自己出栈**（`enabled` 落 false ⇒ depth 0）。列表是本页的最后一层：
+    //    用户 2026-11-18 拍板「列表返回 = 退应用」，`dispatch()` 返回 false ⇒ 系统返回交还
+    //    系统（Android 退出 App），抽屉与选中一条都不改。旧实现的第二层（抽屉层，onBack 只收
+    //    抽屉）已删除 —— 它让「列表返回」永远退不出也永远吃不掉最后一次返回。
+    //  - 列表根（没有选中会话）：0 层，同样交还系统。
+    //
+    // 关键：`enabled` 必须**随 `sessionsDrawerOpen` 变化重新登记/出栈**（`BackLayer` 的
+    // `DisposableEffect(dispatcher, enabled)` 键里带 enabled）。抽屉一开就得 depth = 0，
+    // 否则栈顶那层会把返回吃掉、`dispatch()` 返回 true，「退应用」变成「按了没反应」。
     //
     // 位置在 Box **之前**很重要：栈序 = 组合序，页面层必须先于它内部的浮层（模型选择 /
     // 附件预览 / 搜索）入栈，那些浮层才能是 topmost 先被消费。
-    BackLayer(enabled = state.selectedSessionId != null, onBack = state::back)
     BackLayer(
-        enabled = state.sessionsDrawerOpen && state.selectedSessionId != null,
-        onBack = state::closeSessionsDrawer,
+        // 只在「详情在屏、抽屉收起」时登记：返回 = 滑出列表（选中保留）。
+        // 抽屉已经打开时不登记 —— 列表是这一栈的最后一层，系统返回直接退应用
+        // （用户 2026-11-18 拍板：列表返回退应用）。
+        enabled = state.selectedSessionId != null && !state.sessionsDrawerOpen,
+        onBack = { state.back(drawerModel = true) },
     )
 
     // 转场进度：1 = 抽屉全开，0 = 收起。初值取当前状态，深链直进详情不会播一段开场动画。
@@ -304,16 +327,21 @@ internal fun SessionsDrawerHost(
                 .semantics { if (!expanded) invisibleToUser() },
         )
 
-        // --- 列表抽屉：80% 宽、右缘 28dp 圆角、浮层阴影，从左侧滑出。 ---
+        // --- 列表抽屉：**满宽**（n1-nav 口径）、从左侧滑出。 ---
+        // 满宽 ⇒ 没有「浮起的抽屉」可言：peek 的右缘圆角与浮层阴影只属于 <满宽的形态
+        // （`drawerShape(fraction)` / `drawerElevation(fraction)`），否则会在屏右缘露出
+        // 两条详情颜色的缝。
+        val widthFraction = DRAWER_WIDTH_FRACTION
+        val shape = drawerShape(widthFraction)
         Box(
             Modifier
                 .fillMaxHeight()
-                .fillMaxWidth(DRAWER_WIDTH_FRACTION)
+                .fillMaxWidth(widthFraction)
                 // 位移同样延迟读取：1 - p × 自身宽。p=0 完全出屏（配合宿主 clipToBounds）。
                 .graphicsLayer { translationX = -(1f - progress.value) * size.width }
                 .testTag(DRAWER_TAG)
-                .shadow(elevation = DRAWER_ELEVATION, shape = drawerShape())
-                .clip(drawerShape())
+                .shadow(elevation = drawerElevation(widthFraction), shape = shape)
+                .clip(shape)
                 .background(skin.colors.surface)
                 .semantics { if (!expanded) invisibleToUser() },
         ) {
@@ -333,9 +361,24 @@ internal fun SessionsDrawerHost(
     }
 }
 
-/** 抽屉层形状：只有右缘两个大圆角（28dp），左缘贴屏幕直角。 */
-internal fun drawerShape(): RoundedCornerShape =
-    RoundedCornerShape(topEnd = DRAWER_END_CORNER, bottomEnd = DRAWER_END_CORNER)
+/**
+ * 抽屉层形状：**peek（<满宽）** 时只有右缘两个大圆角（28dp）、左缘贴屏幕直角；
+ * 满宽（手机单栏，[DRAWER_WIDTH_FRACTION]）时是直角矩形 —— 屏幕边缘没有可露出的底层，
+ * 留圆角只会在右上/右下露出两条详情颜色的缝。
+ */
+internal fun drawerShape(widthFraction: Float = DRAWER_WIDTH_FRACTION): RoundedCornerShape =
+    if (widthFraction >= 1f) {
+        RoundedCornerShape(0.dp)
+    } else {
+        RoundedCornerShape(topEnd = DRAWER_END_CORNER, bottomEnd = DRAWER_END_CORNER)
+    }
+
+/**
+ * 抽屉的浮层阴影：只有 peek（<满宽）才「浮」在详情上；满宽时列表就是一页，
+ * 阴影取 0（阴影落在屏幕边缘外，只会给右缘描一条脏边）。
+ */
+internal fun drawerElevation(widthFraction: Float = DRAWER_WIDTH_FRACTION): Dp =
+    if (widthFraction >= 1f) 0.dp else DRAWER_ELEVATION
 
 /**
  * 常驻底层的详情接线（从 `ShellBody` 的 pushed-detail 分支原样搬来）：full-bleed、`TOP_BAR_ZONE`
