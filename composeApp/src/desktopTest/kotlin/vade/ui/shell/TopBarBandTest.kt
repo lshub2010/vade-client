@@ -110,7 +110,7 @@ class TopBarBandTest {
     /**
      * 与 AppShell 同构的一摞：背板（haze source）→ 带子 → 浮卡。
      *
-     * 带子的高度和位置照抄 AppShell（`align(TopCenter) + height(TOP_BAR_ZONE)`）——
+     * 带子的高度和位置照抄 AppShell（`align(TopCenter) + height(TOP_BAR_BAND_HEIGHT)`）——
      * 这条测试要量的「缝」是**带子里**的那 8dp，带子一旦铺不到位，空隙的能量就掉不下来。
      */
     private fun ComposeUiTest.shot(withBand: Boolean): Shot {
@@ -121,7 +121,7 @@ class TopBarBandTest {
                     Box(Modifier.size(shotW, shotH)) {
                         Box(Modifier.fillMaxSize().asGlassSource(glass)) { TextBackdrop() }
                         if (withBand) {
-                            Box(Modifier.fillMaxWidth().height(TOP_BAR_ZONE)) {
+                            Box(Modifier.fillMaxWidth().height(TOP_BAR_BAND_HEIGHT)) {
                                 TopBarBand(Modifier.fillMaxSize())
                             }
                         }
@@ -304,7 +304,7 @@ class TopBarBandTest {
                 GlassScope(glass) {
                     Box(Modifier.size(240.dp, 120.dp)) {
                         Box(Modifier.fillMaxSize().background(Color(0xFFF0EFED)).asGlassSource(glass))
-                        Box(Modifier.fillMaxWidth().height(TOP_BAR_ZONE)) { TopBarBand(Modifier.fillMaxSize()) }
+                        Box(Modifier.fillMaxWidth().height(TOP_BAR_BAND_HEIGHT)) { TopBarBand(Modifier.fillMaxSize()) }
                     }
                 }
             }
@@ -344,8 +344,8 @@ class TopBarBandTest {
         )
         assertEquals(
             1,
-            Regex("""\.height\(TOP_BAR_ZONE\)""").findAll(code).count(),
-            "带子的高度必须**恰好**是 TOP_BAR_ZONE（= 8 + 56 + 8）：比它矮就露出下半条缝，比它高就压进首行内容",
+            Regex("""\.height\(TOP_BAR_BAND_HEIGHT\)""").findAll(code).count(),
+            "带子的高度必须**恰好**是 TOP_BAR_BAND_HEIGHT（栏区 72dp + 12dp 过渡）：矮了露缝，高了压进首行",
         )
         assertTrue(
             Regex("""TopBarBand\(Modifier\.fillMaxSize\(\)\)""").containsMatchIn(code),
