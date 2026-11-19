@@ -226,12 +226,30 @@ class ChatState(
         get() = draft.isNotBlank() ||
             staged.any { it.attachment.state == AttachmentState.Uploaded }
 
-    val inputMode: InputMode
-        get() = when {
+    /**
+     * H2 跟进 · composer 的输入态也是**派生标量**。
+     *
+     * 旧读法让 `skin.InputBar(mode = state.inputMode)` 直接落在页面组合作用域里，
+     * 而 [isStreaming] 在真源上要扫 `items`：每条 delta（45ms）都会让 composer 重组一次。
+     * 把计算关进 [derivedStateOf] 后，delta 只让派生记录失效；只有枚举真的翻转
+     * （Idle ↔ Composing ↔ Streaming）才通知 InputBar。
+     */
+    val inputMode: InputMode get() = inputModeState.value
+
+    private val inputModeState = derivedStateOf {
+        when {
             isStreaming -> InputMode.Streaming
             canSend -> InputMode.Composing
             else -> InputMode.Idle
         }
+    }
+
+    /** H2 跟进 · 最后一条消息的正文长度；不分配 `messages` 整表（每 delta 一次 N 元素 List）。 */
+    val lastMessageBodyLength: Int get() = lastBodyLengthState.value
+
+    private val lastBodyLengthState = derivedStateOf {
+        items.lastOrNull { it is ChatItem.Message }?.let { (it as ChatItem.Message).message.bodyText.length } ?: 0
+    }
 
     /** `Skin.InputBar` has no per-state send enable, so the composer shows this instead. */
     val sendHint: String

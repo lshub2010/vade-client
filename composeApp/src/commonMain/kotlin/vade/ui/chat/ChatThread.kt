@@ -221,7 +221,8 @@ fun ChatThread(
     // screenshot loop captures a deterministic frame.
     // H2 · 两个 ticker 各自沉进**只含 effect、没有 UI 子节点**的叶子（[StreamTicker] /
     // [UploadTicker]）：键从 state 的派生标量来（[ChatState.streamingTickerKey] /
-    // [ChatState.uploadTickerKey]），本文件的组合作用域一个 `items` / `staged` 的读都不占。
+    // [ChatState.uploadTickerKey]）；页面作用域只剩 [ChatState.inputMode] 这一个派生标量读点
+    // （它不会随 delta 通知）。其余对 `items` / `staged` 的读都在叶子或派生计算里。
     StreamTicker(state, animate)
     UploadTicker(state, animate)
 
@@ -271,7 +272,7 @@ fun ChatThread(
     LaunchedEffect(animate, viewport) {
         if (!animate) return@LaunchedEffect
         snapshotFlow {
-            state.items.size to (state.messages.lastOrNull()?.bodyText?.length ?: 0)
+            state.items.size to state.lastMessageBodyLength
         }.collect { (items, lastBodyLength) ->
             follower.onContentChanged(items, lastBodyLength, scroll.value)
         }
