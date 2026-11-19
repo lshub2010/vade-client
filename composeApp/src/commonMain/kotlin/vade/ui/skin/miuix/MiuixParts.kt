@@ -52,7 +52,6 @@ import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.Button
 import vade.ui.component.liquid.VadeShadows
-import vade.ui.component.liquid.layeredShadow
 import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
 import vade.ui.skin.ApprovalRequest
@@ -64,6 +63,7 @@ import vade.ui.skin.InputMode
 import vade.ui.skin.MessageAction
 import vade.ui.skin.MessageView
 import vade.ui.skin.Scope
+import vade.ui.skin.Skin
 import vade.ui.skin.SkinColors
 import vade.ui.skin.SkinMotion
 import vade.ui.skin.SkinOrb
@@ -72,6 +72,8 @@ import vade.ui.skin.SkinTypography
 import vade.ui.skin.ToolCallView
 import vade.ui.skin.ToolCardState
 import vade.ui.skin.cardAccentBar
+import vade.ui.skin.glass.GlassBackdropPolicy
+import vade.ui.skin.glass.GlassSurface
 
 /**
  * `miuix` implementations of C-09 components 7-11.
@@ -707,9 +709,16 @@ private fun MiuixCodeBlock(
  *    (C-09 component 12, RFC-0011) the page places outside the frame;
  *  - `voiceAvailable = false` draws nothing at all (D97) — not a greyed-out mic.
  *
- * The glass is the *degrade* shape for now: `surfaceGlass` tint + hairline + `shadowFloat`.
- * A real backdrop blur (§5) needs `skin/glass/GlassSurface` wired inside the skin
- * (RFC-0011 §7.2) — not this batch.
+ * The substrate is the shared `skin/glass/GlassSurface` (P0-1, r1-client-chat): real backdrop
+ * blur when the page provides a `GlassScope`, and — when it does not (tests, previews, a page
+ * that never wired the source) — `degradeColor = colors.surfaceGlass`, i.e. **exactly** the
+ * `surfaceGlass` + hairline + `shadowFloat` panel this component drew before, pixel for pixel.
+ * The tint of the blurred path is the §5 `SkinGlass` token the bottom bar reads, and it only
+ * travels through `colorEffects(listOf(HazeColorEffect.tint(tint)))`.
+ *
+ * Panel height (P1-2): `animateContentSize(200ms)` sits on the **panel's content Column**, the
+ * same layer material/glass use — the second row sliding in grows the panel over 200ms instead
+ * of adding 44 dp in one frame.
  */
 @Composable
 internal fun MiuixInputBar(
@@ -726,6 +735,7 @@ internal fun MiuixInputBar(
     // Post-freeze additive slot #2 (see Skin.InputBar KDoc): page-level controls on a
     // SECOND line, inside this same panel (model chip). null = nothing drawn at all.
     secondRow: (@Composable () -> Unit)?,
+    skin: Skin,
     colors: SkinColors,
     shapes: SkinShapes,
     typography: SkinTypography,
@@ -741,86 +751,94 @@ internal fun MiuixInputBar(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val interaction = remember { MutableInteractionSource() }
                 val focused by interaction.collectIsFocusedAsState()
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        // §8 row 2: the composer is a float layer — but the shadow must follow
-                        // the SHAPE, not its bounding rectangle. `Modifier.shadow` receives
-                        // `fieldShape` and still knocks its hole out as an inset rectangle;
-                        // 78 % surfaceGlass shows that rectangle through, leaving four square
-                        // corners where the panel curls (g-composer-corner). layeredShadow
-                        // draws one gaussian halo per layer from the shape's RoundedCornerRect.
-                        .layeredShadow(VadeShadows.float, fieldShape, dark = colors.isDark, outsideOnly = true)
-                        .clip(fieldShape)
-                        .background(colors.surfaceGlass)
-                        // §五 输入框: 1 dp hairline at rest, 2 dp `accent` stroke on focus —
-                        // not a glow, not an underline.
-                        .border(
-                            width = if (focused) 2.dp else 1.dp,
-                            color = if (focused) colors.primary else colors.hairline,
-                            shape = fieldShape,
-                        )
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                        ) {
+                // P0-1（审查 r1-client-chat）：这里原来也是一块实色 `background(colors.surfaceGlass)`，
+                // 与 material 同病 —— 视觉语言 §5 把悬浮 composer 列进「必须模糊的层」。底座换成
+                // 共享的 [GlassSurface]：tint 走 `colorEffects(listOf(HazeColorEffect.tint(tint)))`
+                // 那一条（与底栏同一份 `SkinGlass` token），阴影仍是 `downwardShelf`（shape 感知、
+                // 只向下扩散），所以 g-composer-corner 的「不能用 Modifier.shadow 挖矩形」仍然成立。
+                //
+                // 没有 backdrop（单测 / 预览 / 页面没接 `GlassScope`）时 `degradeColor =
+                // colors.surfaceGlass` 让面板逐像素退回原来那块实色：采不到背景就不建 haze 节点。
+                GlassSurface(
+                    modifier = Modifier.weight(1f),
+                    shape = fieldShape,
+                    skin = skin,
+                    // §五 输入框: 1 dp hairline at rest, 2 dp `accent` stroke on focus —
+                    // not a glow, not an underline.
+                    stroke = if (focused) colors.primary else colors.hairline,
+                    strokeWidth = if (focused) 2.dp else 1.dp,
+                    // §8.2 shadow2 档位显式写出来（默认值就是它）：这一层是**浮层**。
+                    shadow = VadeShadows.float,
+                    degradeColor = colors.surfaceGlass,
+                    backdropPolicy = GlassBackdropPolicy.DegradeWithoutBackdrop,
+                ) {
+                    // g-inline-second-row / P1-2（审查 r1-client-chat）：面板高度动画必须挂在
+                    // **面板内容这一层**，与 material `MaterialParts` / glass `GlassSkin` 同一个位置、
+                    // 同一个时长（200ms glide）。原来 `animateContentSize` 只挂在文本域上，它只负责
+                    // 多行文本长高 —— 第二行出现/消失走的是普通 `if`，面板一帧内 +44dp / −44dp，
+                    // 列表在同一帧被顶一下。
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .animateContentSize(
+                                animationSpec = tween(durationMillis = 200, easing = motion.easing),
+                            )
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                    ) {
                         // 输入行（冻结形态）抽成一个 composable lambda：默认路径
                         // （secondRow == null）原样调用它 —— 冻结布局的节点与像素一个都不多。
                         // secondRow 是追加上屏的那一行（见 Skin.InputBar KDoc）。
                         val inputRow: @Composable () -> Unit = {
-                        Row(verticalAlignment = Alignment.Bottom) {
-                            // `leading` 槽（C-09 追加，见 Skin.InputBar KDoc）：行首、与文本域
-                            // 同一行；null 时整段不组成，冻结布局逐像素不变。
-                            if (leading != null) {
-                                leading()
-                                Spacer(Modifier.width(8.dp))
+                            Row(verticalAlignment = Alignment.Bottom) {
+                                // `leading` 槽（C-09 追加，见 Skin.InputBar KDoc）：行首、与文本域
+                                // 同一行；null 时整段不组成，冻结布局逐像素不变。
+                                if (leading != null) {
+                                    leading()
+                                    Spacer(Modifier.width(8.dp))
+                                }
+                                if (voiceAvailable) {
+                                    GlassIconButton(colors, enabled) { }
+                                    Spacer(Modifier.width(8.dp))
+                                }
+                                // 多行文本的高度跟随**不再挂在文本域上**：外层那个 200ms glide
+                                // 同时负责「文本长高」和「第二行出现/消失」（P1-2）。两层同名动画
+                                // 串联只会互相追着动画，读起来是拖影。g-shadow-android 的那条约束
+                                // 仍然成立 —— 动画节点在玻璃**里面**，面板与其下行阴影在裁剪层之外。
+                                Box(
+                                    Modifier
+                                        .weight(1f)
+                                        .heightIn(min = 32.dp),
+                                ) {
+                                    if (value.isEmpty()) {
+                                        Text("输入消息…", style = typography.body, color = colors.onSurfaceVariant)
+                                    }
+                                    BasicTextField(
+                                        value = value,
+                                        onValueChange = onValueChange,
+                                        enabled = enabled,
+                                        interactionSource = interaction,
+                                        textStyle = typography.body.copy(color = colors.onSurface),
+                                        cursorBrush = SolidColor(colors.primary),
+                                        maxLines = maxLines,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                }
                             }
-                        if (voiceAvailable) {
-                            GlassIconButton(colors, enabled) { }
-                            Spacer(Modifier.width(8.dp))
                         }
-                        // g-shadow-android：多行高度跟随（200ms glide）画在文本域上 —— 动画
-                        // 节点在胶囊**里面**，胶囊（和它的下行阴影）在裁剪层之外。页面原来
-                        // 的 animateContentSize 包装自带裁剪层，会把下沿之外的阴影裁成
-                        // 0 像素（probe-v3: shelf-acs 实测全平）。
-                        Box(
-                            Modifier
-                                .weight(1f)
-                                .heightIn(min = 32.dp)
-                                .animateContentSize(
-                                    animationSpec = tween(durationMillis = 200, easing = motion.easing),
-                                ),
-                        ) {
-                            if (value.isEmpty()) {
-                                Text("输入消息…", style = typography.body, color = colors.onSurfaceVariant)
-                            }
-                            BasicTextField(
-                                value = value,
-                                onValueChange = onValueChange,
-                                enabled = enabled,
-                                interactionSource = interaction,
-                                textStyle = typography.body.copy(color = colors.onSurface),
-                                cursorBrush = SolidColor(colors.primary),
-                                maxLines = maxLines,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
-                        }
-                        }
-                        if (secondRow == null) {
-                            // 默认路径：与冻结实现完全同构（没有 Column、没有 Spacer）。
-                            inputRow()
-                        } else {
-                            // 第二行在**同一块面板内部**、输入行下方，共享底/发丝线/xl 圆角。
-                            Column {
-                                inputRow()
-                                Spacer(Modifier.height(8.dp))
-                                secondRow()
-                            }
+                        inputRow()
+                        // 第二行在**同一块面板内部**、输入行下方，共享底/发丝线/xl 圆角。
+                        // 与 material / glass 同一层：`animateContentSize` 在面板内容 Column 上，
+                        // 所以它出现时面板是 200ms 长高，不是一帧 +44dp。
+                        if (secondRow != null) {
+                            Spacer(Modifier.height(8.dp))
+                            secondRow()
                         }
                     }
                 }
             }
         }
     }
+}
 
 /**
  * The §2 send ball (RFC-0011 · C-09 component 12): 48 dp, *outside* the field — the page

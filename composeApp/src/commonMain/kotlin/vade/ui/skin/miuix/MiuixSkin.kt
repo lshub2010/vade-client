@@ -565,6 +565,7 @@ class MiuixSkin(
         maxLines = maxLines,
         leading = leading,
         secondRow = secondRow,
+        skin = this@MiuixSkin,
         colors = colors,
         shapes = shapes,
         typography = typography,

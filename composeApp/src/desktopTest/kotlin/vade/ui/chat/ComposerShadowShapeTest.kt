@@ -22,28 +22,40 @@
 //      shorter than 2·28 dp (checked on the primitive the composer now uses);
 //   5. the shadow stays *directional* (§8.3) — painted below the panel, much weaker above;
 //   6. source guard: the composer's shadow path may not go back to Material's rectangular
-//      elevation knockout, and the glass (blurred) path must be untouched.
+//      elevation knockout, and the glass (blurred) path must be untouched;
+//   7. **P0-1 positive**: with a backdrop registered the panel must actually *blur* it — a
+//      large interior spread with **no hard edge**. The old "the interior is ONE value"
+//      assertions are gone on purpose: they pinned "no blur" as a contract, so any real
+//      haze would have turned them red and the blur could never be wired in.
 
 package vade.ui.chat
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PixelMap
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.Dp
@@ -56,11 +68,16 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 import vade.ui.component.liquid.VadeShadows
 import vade.ui.component.liquid.layeredShadow
+import vade.ui.glass.GlassScope
+import vade.ui.glass.asGlassSource
+import vade.ui.glass.rememberGlassState
 import vade.ui.skin.InputMode
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.Skin
 import vade.ui.skin.material.MaterialSkin
 import vade.ui.skin.miuix.MiuixSkin
+
+private const val BlurPanelTag = "vade.test.composer.blurPanel"
 
 @OptIn(ExperimentalTestApi::class)
 class ComposerShadowShapeTest {
@@ -126,8 +143,9 @@ class ComposerShadowShapeTest {
             "miuix panel fill steps ${step.delta}/255 in one pixel at (${step.x},${step.y}) " +
                 "(${step.from} → ${step.to}) — same rectangular knockout",
         )
-        val spread = shot.interiorSpread()
-        assertTrue(spread.max - spread.min <= 0, "miuix panel interior spans ${spread.min}..${spread.max}")
+        // 这里原来还有一条 `interiorSpread() == 0`（「面板内部必须是一个值」）。它把
+        // 「没有模糊」钉成了契约 —— 真接上 backdrop 之后任何模糊都会让它红。删掉，
+        // 一阶差分（上面那条 ≤2/255）继续守「没有矩形挖空」这件事。
     }
 
     @Test
@@ -142,37 +160,140 @@ class ComposerShadowShapeTest {
             "grown panel (28 dp corners) steps ${step.delta}/255 at (${step.x},${step.y}) " +
                 "(${step.from} → ${step.to})",
         )
-        val spread = shot.interiorSpread()
-        assertTrue(spread.max - spread.min <= 0, "grown panel interior spans ${spread.min}..${spread.max}")
+        // 同上的删减：面板变高以后内部仍然「必须一个值」是「没有模糊」的另一种写法，
+        // 不是这张长高面板要证明的东西（它证的是圆角半径与阴影轮廓）。
     }
 
-    // ---- 2 · nothing may be composited INTO the fill --------------------------------
+    // ---- 2 · 有 backdrop 时必须真的模糊（P0-1 的正向用例） --------------------------
+
+    /**
+     * 「composer 真的在糊」的**正向**证据 —— 接替被删掉的「面板内部必须是一个值」
+     * （`composerFillInsideThePanelIsOneValue`）那一条。
+     *
+     * 那条把「没有模糊」钉成了契约：84 % 的实色 tint 让面板内部恰好是一个灰度值，任何
+     * 真模糊都会让它红 —— 于是 P0-1（composer 没有模糊）永远修不进来。这里反过来：
+     * **有** backdrop 时必须看得到背景的明暗。
+     *
+     * 判据是两件事**同时**看，缺一不可：
+     *
+     *  - `spread` 必须够大 —— 面板内部出现了背景的明暗，即「方差 > 0」；
+     *  - `worstStep` 必须够小 —— 那点明暗必须是**渐变**。半透明实色（接入前的
+     *    `surfaceGlass@84 %`）也会让背景透出来，但透出来的是一条**硬边**：一像素跨过
+     *    几十级灰度；24dp 高斯把同一条边摊成几十像素的斜坡（每像素个位数）。
+     *
+     * 所以接入前这条测试是红的（spread 有值，但 step ≈ 0.16 × 背景反差），接入后是绿的。
+     * 背景是**两整块**（左深右浅、硬边正好穿过面板中线）：唯一的高频结构就是那条边，
+     * 量到的台阶因此一定是模糊造成的，而不是背景本身的花纹。
+     */
+    @Test
+    fun composerBlursABackdropInsteadOfLettingItThroughAsAHardEdge() {
+        listOf("material" to MaterialSkin(), "miuix" to MiuixSkin()).forEach { (name, skin) ->
+            runComposeUiTest {
+                setContent {
+                    val s = skin
+                    CompositionLocalProvider(LocalSkin provides s) {
+                        val glass = rememberGlassState()
+                        GlassScope(state = glass) {
+                            Box(Modifier.size(560.dp, 260.dp).background(s.colors.canvas)) {
+                                // backdrop（haze source）：左深右浅，硬边在面板中线。
+                                Box(Modifier.fillMaxSize().asGlassSource(glass)) {
+                                    Row(Modifier.fillMaxSize()) {
+                                        Box(Modifier.weight(1f).fillMaxHeight().background(Color(0xFF303034)))
+                                        Box(Modifier.weight(1f).fillMaxHeight().background(Color(0xFFE8E8EC)))
+                                    }
+                                }
+                                // 面板是 source 的**兄弟**（haze 的结构硬要求），浮在它上面。
+                                Column(Modifier.fillMaxSize().padding(top = 96.dp, start = 20.dp, end = 20.dp)) {
+                                    Box(Modifier.testTag(BlurPanelTag)) {
+                                        s.InputBar(
+                                            value = " ",
+                                            onValueChange = {},
+                                            mode = InputMode.Idle,
+                                            attachments = null,
+                                            enabled = true,
+                                            voiceAvailable = false,
+                                            maxLines = 6,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                waitForIdle()
+                val panel = onNodeWithTag(BlurPanelTag).fetchSemanticsNode().boundsInRoot
+                val band = onRoot().captureToImage().toPixelMap().bandSpread(
+                    // 面板上沿内侧的一条横带：在 1dp 描边之下、输入文字之上（padding ≥ 10dp），
+                    // 左右各让开 40px 躲开 28dp 圆角。
+                    l = panel.left.toInt() + 40,
+                    r = panel.right.toInt() - 40,
+                    t = panel.top.toInt() + 4,
+                    b = panel.top.toInt() + 9,
+                )
+                assertTrue(
+                    band.max - band.min >= 8,
+                    "$name：面板内部只有 ${band.max - band.min}/255 的明暗 —— 有 backdrop 时" +
+                        "必须看得到模糊（背景左 #303034 / 右 #E8E8EC，方差应当几十级），" +
+                        "一个恒定的灰度值说明它还是实色底",
+                )
+                assertTrue(
+                    band.step <= 8,
+                    "$name：面板内部一像素跳 ${band.step}/255（在 (${band.x},${band.y})）—— " +
+                        "有明暗但没有渐变：这是半透明实色把背景硬边透出来，不是模糊。" +
+                        "24dp 高斯会把这条边摊成几十像素的斜坡",
+                )
+            }
+        }
+    }
 
     @Test
-    fun composerFillInsideThePanelIsOneValue() = runComposeUiTest {
-        // The panel's own tint must be the only thing inside it. `Modifier.shadow`'s
-        // knockout and `layeredShadow`'s inner gaussian half both put *shadow ink* under a
-        // translucent fill, and that ink is what drew the rectangle — measured spread
-        // 250..254 (light) / 25..26 (dark) in a panel whose fill is a single solid tint.
-        val shot = shotOf(MaterialSkin())
-        val spread = shot.interiorSpread()
-        assertTrue(
-            spread.max - spread.min <= 0,
-            "panel interior spans ${spread.min}..${spread.max} (${spread.max - spread.min}/255 of " +
-                "variation, worst at (${spread.x},${spread.y})) — a tinted panel has ONE fill value; " +
-                "anything else is shadow ink leaking under the glass",
+    fun composerBlursABackdropInTheDarkThemeToo() = runComposeUiTest {
+        // 暗色下低对比 backdrop 会被量化吃掉，旧用例只靠 1/255 台阶“猜”模糊，真模糊一上就误报。
+        // 这里换成与亮色用例相同的高对比 backdrop（左 #303034 / 右 #E8E8EC），直接量扩散。
+        setContent {
+            val s = MaterialSkin(dark = true)
+            CompositionLocalProvider(LocalSkin provides s) {
+                val glass = rememberGlassState()
+                GlassScope(state = glass) {
+                    Box(Modifier.size(560.dp, 260.dp).background(s.colors.canvas)) {
+                        Box(Modifier.fillMaxSize().asGlassSource(glass)) {
+                            Row(Modifier.fillMaxSize()) {
+                                Box(Modifier.weight(1f).fillMaxHeight().background(Color(0xFF303034)))
+                                Box(Modifier.weight(1f).fillMaxHeight().background(Color(0xFFE8E8EC)))
+                            }
+                        }
+                        Column(Modifier.fillMaxSize().padding(top = 96.dp, start = 20.dp, end = 20.dp)) {
+                            Box(Modifier.testTag(BlurPanelTag)) {
+                                s.InputBar(
+                                    value = " ",
+                                    onValueChange = {},
+                                    mode = InputMode.Idle,
+                                    attachments = null,
+                                    enabled = true,
+                                    voiceAvailable = false,
+                                    maxLines = 6,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        waitForIdle()
+        val panel = onNodeWithTag(BlurPanelTag).fetchSemanticsNode().boundsInRoot
+        val band = onRoot().captureToImage().toPixelMap().bandSpread(
+            l = panel.left.toInt() + 40,
+            r = panel.right.toInt() - 40,
+            t = panel.top.toInt() + 4,
+            b = panel.top.toInt() + 9,
         )
-    }
-
-    @Test
-    fun composerFillInsideThePanelIsOneValueInTheDarkTheme() = runComposeUiTest {
-        // Dark ink on #0E0E10 quantises the knockout down to 1/255, so this is the only
-        // assertion that can see it in the dark palette.
-        val shot = shotOf(MaterialSkin(dark = true))
-        val spread = shot.interiorSpread()
         assertTrue(
-            spread.max - spread.min <= 0,
-            "dark panel interior spans ${spread.min}..${spread.max} at (${spread.x},${spread.y})",
+            band.max - band.min >= 8,
+            "dark：面板内部只有 ${band.max - band.min}/255 的明暗 —— 有 backdrop 时必须看得到模糊",
+        )
+        assertTrue(
+            band.step <= 8,
+            "dark：面板内部一像素跳 ${band.step}/255 —— 有明暗但没有渐变，是硬边透出而非模糊",
         )
     }
 
@@ -290,6 +411,8 @@ class ComposerShadowShapeTest {
             "colorEffects(listOf(HazeColorEffect.tint(tint)))",
             "BlurredEdgeTreatment(shape)",
             "shadowFloat",
+            // 阴影几何：composer 现在把浮层阴影委托给这一行（P0-1），所以它必须还在。
+            "downwardShelf(",
         ).forEach { needle ->
             assertTrue(text.contains(needle), "GlassSurface.kt lost `$needle` — the glass path changed")
         }
@@ -319,11 +442,18 @@ class ComposerShadowShapeTest {
             if (code.contains("ambientColor") || code.contains("spotColor")) {
                 offenders += "$path still passes Material elevation colours"
             }
-            if (!code.contains("layeredShadow(VadeShadows.float")) {
-                offenders += "$path: the composer must use the shape-aware float-layer shadow"
-            }
-            if (!code.contains("outsideOnly = true")) {
-                offenders += "$path: the halo must stay outside the panel or it tints the glass grey"
+            // 底座现在有两条合法形态，但**阴影只有一份实现**（都是 shape 感知、只向下扩散的
+            // `downwardShelf`）：
+            //  - 自己画：`layeredShadow(VadeShadows.float, …, outsideOnly = true)`；
+            //  - 走共享玻璃：`GlassSurface(shadow = VadeShadows.float)` —— GlassSurface 的
+            //    floatShell 就是 `downwardShelf(shadow, shape, …)`（P0-1 之后 composer 走这条）。
+            val ownShadow = code.contains("layeredShadow(VadeShadows.float") &&
+                code.contains("outsideOnly = true")
+            val sharedGlass = code.contains("GlassSurface(") &&
+                code.contains("shadow = VadeShadows.float")
+            if (!ownShadow && !sharedGlass) {
+                offenders += "$path: the composer must use the shape-aware float-layer shadow " +
+                    "(layeredShadow outsideOnly, or the shared GlassSurface with VadeShadows.float)"
             }
         }
         assertTrue(
@@ -337,6 +467,51 @@ class ComposerShadowShapeTest {
 
     /** Module dir: Gradle runs desktopTest with the composeApp module as working dir. */
     private fun source(path: String): String = File("..").resolve(path).readText()
+
+    /**
+     * 一条横带里的明暗**范围**与最差一阶差分（灰度，0..255）。
+     *
+     * 两件事分开返回，是因为它们回答的问题不同：范围回答「背景有没有透进来」，差分回答
+     * 「透进来的是模糊还是硬边」。半透明实色两者都有（范围来自背景、差分来自背景自己的
+     * 那条边），高斯模糊只有前者。
+     */
+    private data class Band(val min: Int, val max: Int, val step: Int, val x: Int, val y: Int)
+
+    private fun PixelMap.bandSpread(l: Int, r: Int, t: Int, b: Int): Band {
+        fun gray(x: Int, y: Int): Int {
+            val v = buffer[y * width + x]
+            return (((v shr 16) and 0xFF) + ((v shr 8) and 0xFF) + (v and 0xFF)) / 3
+        }
+        var lo = 255
+        var hi = 0
+        var worst = 0
+        var wx = -1
+        var wy = -1
+        val x0 = l.coerceIn(0, width - 2)
+        val x1 = r.coerceIn(x0 + 1, width - 1)
+        val y0 = t.coerceIn(0, height - 2)
+        val y1 = b.coerceIn(y0 + 1, height - 1)
+        for (y in y0..y1) {
+            for (x in x0..x1) {
+                val v = gray(x, y)
+                if (v < lo) lo = v
+                if (v > hi) hi = v
+                val dx = abs(v - gray(x + 1, y))
+                if (dx > worst) {
+                    worst = dx
+                    wx = x
+                    wy = y
+                }
+                val dy = abs(v - gray(x, y + 1))
+                if (dy > worst) {
+                    worst = dy
+                    wx = x
+                    wy = y
+                }
+            }
+        }
+        return Band(lo.coerceAtMost(hi), hi, worst, wx, wy)
+    }
 
     /** A captured frame plus the geometry measured off it. */
     private class PanelShot(pm: PixelMap) {
