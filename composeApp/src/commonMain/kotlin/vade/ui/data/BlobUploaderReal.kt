@@ -75,6 +75,14 @@ fun interface BlobByteSource {
  * right before a successful return (the [AttachmentUploader] contract). Dedupe and
  * resumed (`offset_next > 0`) uploads advance by the bytes actually covered.
  *
+ * **Concurrency:** the adapter is stateless and reentrant — one instance serves any number
+ * of transfers at once. The server session id, the byte cursor, the part buffer and the
+ * abort target all live in the [upload] call frame, and progress goes to that call's own
+ * sink, so two uploads sharing this adapter cannot observe each other. [BlobHttpChannel] is
+ * the only object they do share: it must accept concurrent [BlobHttpChannel.exchange]
+ * calls, and it must route replies by the request it was given (never by "the current
+ * upload") — the tests pin both properties.
+ *
  * Failures throw [UploadFailedException] (the chip-retry shape) with the original
  * [VadeException] as `cause`, so callers can still classify it via
  * [VadeErrorMapping.categoryOf]. Cancellation always rethrows the original

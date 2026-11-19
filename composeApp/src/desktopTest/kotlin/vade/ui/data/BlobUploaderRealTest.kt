@@ -5,6 +5,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonPrimitive
 import vade.ui.chat.PendingAttachment
 import vade.ui.chat.UploadFailedException
@@ -28,18 +31,54 @@ import kotlin.test.assertTrue
  */
 class BlobUploaderRealTest {
 
-    /** Recording fake: every exchange is kept in [calls]; replies come from [handler]. */
+    /**
+     * Recording fake. One adapter serves several transfers at once, so exchanges land here
+     * from more than one worker thread: the log is written under a lock and **routed per
+     * upload id**. There is no single shared stream for two transfers to append into (a plain
+     * `MutableList` loses writes exactly like this under concurrent `add` — the 6→5 flake).
+     */
     private class RecordingChannel : BlobHttpChannel {
-        val calls = mutableListOf<BlobHttpRequest>()
+        private val lock = Any()
+        private val recorded = mutableListOf<BlobHttpRequest>()
+        private val byUpload = mutableMapOf<String, MutableList<BlobHttpRequest>>()
+
+        /** Arrival-order snapshot — safe to read while other transfers are still in flight. */
+        val calls: List<BlobHttpRequest>
+            get() = synchronized(lock) { recorded.toList() }
+
+        /**
+         * One transfer's own event stream, keyed by the server upload id it ran under:
+         * its begin, every part, then complete (or the abort).
+         */
+        fun eventsFor(serverUploadId: String): List<BlobHttpRequest> =
+            synchronized(lock) { byUpload[serverUploadId].orEmpty().toList() }
 
         var handler: suspend (BlobHttpRequest) -> BlobHttpResponse = {
             BlobHttpResponse(500, """{"code":"INTERNAL","message":"no handler configured"}""".toByteArray())
         }
 
         override suspend fun exchange(request: BlobHttpRequest): BlobHttpResponse {
-            calls.add(request)
+            synchronized(lock) {
+                recorded += request
+                byUpload.getOrPut(keyOf(request)) { mutableListOf() } += request
+            }
             return handler(request)
         }
+
+        /** The id this fake mints for a transfer (`upl_<name>`), decided at its begin. */
+        fun serverIdFor(request: BlobHttpRequest): String =
+            "upl_" + (request.jsonBody?.get("name") as? JsonPrimitive)?.content.orEmpty()
+
+        /**
+         * Begin carries no id on the wire yet, so it is routed by the id it is about to be
+         * given; the part / complete / abort paths carry that id already.
+         */
+        private fun keyOf(request: BlobHttpRequest): String =
+            if (request.path == "/ui/blob") {
+                serverIdFor(request)
+            } else {
+                request.path.removePrefix("/ui/blob/upload/").substringBefore('?').substringBefore('/')
+            }
 
         fun beginReply(uploadId: String, partSize: Long, size: Long, offsetNext: Long = 0): BlobHttpResponse =
             BlobHttpResponse(
@@ -64,6 +103,28 @@ class BlobUploaderRealTest {
 
         fun error(code: String, message: String): BlobHttpResponse =
             BlobHttpResponse(400, ("""{"code":"$code","message":"$message"}""").toByteArray())
+    }
+
+    /**
+     * Rendezvous for [parties] transfers: every arrival suspends until the last one is in,
+     * then all resume. This is how the concurrent case pins its interleaving — a transfer
+     * that ran *after* the other instead of overlapping would park here until the test's
+     * timeout, so genuine concurrency is proven rather than hoped for, with no `delay`.
+     */
+    private class Rendezvous(private val parties: Int) {
+        private val mutex = Mutex()
+        private var arrived = 0
+        private val opened = CompletableDeferred<Unit>()
+
+        suspend fun await() {
+            val gate: CompletableDeferred<Unit>
+            mutex.withLock {
+                arrived += 1
+                if (arrived >= parties) opened.complete(Unit)
+                gate = opened
+            }
+            gate.await()
+        }
     }
 
     private fun attachment(
@@ -364,37 +425,95 @@ class BlobUploaderRealTest {
     @Test
     fun concurrentUploadsOnOneAdapterDoNotInterfere() {
         runBlocking {
-            val channel = RecordingChannel()
-            channel.handler = { request ->
-                when {
-                    request.method == "POST" && request.path == "/ui/blob" -> {
-                        val name = (request.jsonBody?.get("name") as? JsonPrimitive)?.content.orEmpty()
-                        channel.beginReply("upl_$name", partSize = 65_536, size = 40)
+            // One green pass proves nothing about a race: repeat the round, and pin the
+            // interleaving with a rendezvous instead of hoping for a lucky schedule. Both
+            // transfers must be inside `begin` before either leaves it — and likewise at the
+            // part and the complete — so their three protocol steps provably overlap.
+            withTimeout(60_000) {
+                repeat(20) { round ->
+                    val channel = RecordingChannel()
+                    val bytesA = ByteArray(40) { 'a'.code.toByte() }
+                    val bytesB = ByteArray(40) { 'b'.code.toByte() }
+                    val allBegun = Rendezvous(2)
+                    val allParted = Rendezvous(2)
+                    val allCompleting = Rendezvous(2)
+                    channel.handler = { request ->
+                        when {
+                            request.method == "POST" && request.path == "/ui/blob" -> {
+                                val id = channel.serverIdFor(request)
+                                allBegun.await()
+                                channel.beginReply(id, partSize = 65_536, size = 40)
+                            }
+                            request.method == "PUT" -> {
+                                allParted.await()
+                                channel.partReply()
+                            }
+                            request.method == "POST" -> {
+                                allCompleting.await()
+                                val id = request.path.removePrefix("/ui/blob/upload/").removeSuffix("/complete")
+                                channel.completeReply("blb_$id")
+                            }
+                            else -> BlobHttpResponse(204, ByteArray(0))
+                        }
                     }
-                    request.method == "PUT" -> channel.partReply()
-                    request.method == "POST" -> {
-                        val id = request.path.removePrefix("/ui/blob/upload/").removeSuffix("/complete")
-                        channel.completeReply("blb_$id")
+                    val uploader = BlobUploaderReal(channel) { request ->
+                        if (request.name.startsWith("a")) bytesA else bytesB
                     }
-                    else -> BlobHttpResponse(204, ByteArray(0))
+                    val progressA = Collections.synchronizedList(mutableListOf<Float>())
+                    val progressB = Collections.synchronizedList(mutableListOf<Float>())
+                    val a = async(Dispatchers.Default) {
+                        uploader.upload(attachment(name = "a.txt", size = 40L), "u-a") { progressA.add(it) }
+                    }
+                    val b = async(Dispatchers.Default) {
+                        uploader.upload(attachment(name = "b.txt", size = 40L), "u-b") { progressB.add(it) }
+                    }
+                    val fileIdA = a.await()
+                    val fileIdB = b.await()
+
+                    assertEquals("blb_upl_a.txt", fileIdA, "round $round: each caller gets its OWN file id")
+                    assertEquals("blb_upl_b.txt", fileIdB, "round $round: each caller gets its OWN file id")
+                    assertEquals(6, channel.calls.size, "round $round: 2 begins + 2 parts + 2 completes, no cross-talk")
+                    assertTrue(
+                        channel.calls.none { it.method == "DELETE" },
+                        "round $round: neither transfer aborted",
+                    )
+
+                    // Each transfer's own event stream — nothing of A's shows up under B's id.
+                    val eventsA = channel.eventsFor("upl_a.txt")
+                    val eventsB = channel.eventsFor("upl_b.txt")
+                    assertEquals(listOf("POST", "PUT", "POST"), eventsA.map { it.method }, "round $round: A's own stream")
+                    assertEquals(listOf("POST", "PUT", "POST"), eventsB.map { it.method }, "round $round: B's own stream")
+                    assertEquals(
+                        "/ui/blob/upload/upl_a.txt?offset=0",
+                        eventsA[1].path,
+                        "round $round: A's part targets A's session",
+                    )
+                    assertEquals(
+                        "/ui/blob/upload/upl_b.txt?offset=0",
+                        eventsB[1].path,
+                        "round $round: B's part targets B's session",
+                    )
+                    assertTrue(eventsA[1].bytesBody.contentEquals(bytesA), "round $round: A's part carries A's bytes")
+                    assertTrue(eventsB[1].bytesBody.contentEquals(bytesB), "round $round: B's part carries B's bytes")
+                    assertEquals(
+                        "/ui/blob/upload/upl_a.txt/complete",
+                        eventsA[2].path,
+                        "round $round: A completes against A's session",
+                    )
+                    assertEquals(
+                        """{"sha256":"${Sha256.hex(Sha256.digest(bytesA))}","size":40}""",
+                        eventsA[2].jsonBody.toString(),
+                        "round $round: A completes with A's digest",
+                    )
+                    assertEquals(
+                        """{"sha256":"${Sha256.hex(Sha256.digest(bytesB))}","size":40}""",
+                        eventsB[2].jsonBody.toString(),
+                        "round $round: B completes with B's digest",
+                    )
+                    assertEquals(listOf(1.0f), progressA.toList(), "round $round: A's progress terminates at 1f exactly once")
+                    assertEquals(listOf(1.0f), progressB.toList(), "round $round: B's progress terminates at 1f exactly once")
                 }
             }
-            val uploader = BlobUploaderReal(channel, { ByteArray(40) { 'x'.code.toByte() } })
-            val progressA = Collections.synchronizedList(mutableListOf<Float>())
-            val progressB = Collections.synchronizedList(mutableListOf<Float>())
-            val a = async(Dispatchers.Default) {
-                uploader.upload(attachment(name = "a.txt", size = 40L), "u-a") { progressA.add(it) }
-            }
-            val b = async(Dispatchers.Default) {
-                uploader.upload(attachment(name = "b.txt", size = 40L), "u-b") { progressB.add(it) }
-            }
-            val fileIdA = a.await()
-            val fileIdB = b.await()
-            assertEquals("blb_upl_a.txt", fileIdA, "each caller gets its OWN file id")
-            assertEquals("blb_upl_b.txt", fileIdB)
-            assertEquals(6, channel.calls.size, "2 begins + 2 parts + 2 completes, no cross-talk")
-            assertEquals(listOf(1.0f), progressA.toList(), "each progress stream terminates at 1f exactly once")
-            assertEquals(listOf(1.0f), progressB.toList())
         }
     }
 }
