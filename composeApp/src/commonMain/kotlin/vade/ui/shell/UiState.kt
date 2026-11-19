@@ -1,5 +1,8 @@
 package vade.ui.shell
 
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -43,7 +46,24 @@ import vade.ui.skin.BottomBarStyle
  * With the default [FakeSessionSource] NOTHING changes: `loader` is `null`, fixtures
  * stay synchronous, and no coroutine, fetch or event subscription exists — byte for
  * byte the pre-w-wire behaviour, pinned by the shell wiring tests.
+ *
+ * ## @Stable（审查 P1-4）
+ *
+ * 这个类是壳层所有宿主的**唯一**状态形参（`SessionsDrawerHost(state = …)` /
+ * `DestinationHost(state = …)` / `ShellBody(state = …)`）。不加注解时 Compose 把
+ * `state: UiState` 判成不稳定 ⇒ 宿主每次重组都因为「参数可能变了」而不能 skip，
+ * 于是 `state.groups()` 那条全表扫描（5 个时间桶 × filter + 排序）会跟着每一次
+ * 无关重组重跑。
+ *
+ * 契约成立：可观察字段全部由 `mutableStateOf` / `mutableStateListOf` 承载
+ * （[dest] / [skinId] / [barStyle] / [selectedSessionId] / [panelOpen] /
+ * [sessionsDrawerOpen] / [newSessionPhase] / [newSessionError] / `drafts`，以及
+ * [SessionsLoader] 里的那几个），派生值（[sessionsPhase] / [sessionRows] /
+ * [selectedSession] / [groups]）只读这些 state；其余全是 `val`（[chatPreset] /
+ * [source] / [search] / [pendingApprovals]）—— 引用不变，内部可变的部分自己可观察。
+ * 因此「实例相同 ⇒ 组合读到的值只会通过快照失效来变化」成立，注解不是一句空话。
  */
+@Stable
 class UiState(
     initialBar: BottomBarStyle,
     initialSkinId: String,
@@ -295,7 +315,24 @@ class UiState(
 
     val totalSessions: Int get() = (loader?.rows?.size ?: FakeSessions.all.size) + drafts.size
 
-    fun groups(): List<SessionGroup> {
+    /**
+     * 分组结果的**唯一**计算点（审查 P1-4）：一次组合里 `groups()` 曾被调用 3 次
+     * （`selectedSession` / 抽屉的 `projectGroups` / 抽屉浮层的 `flatMap`），每次都是
+     * 「5 个时间桶 × 全量 filter + 每桶 `sortedByDescending`」。真源几百行时这就是
+     * 每次重组 15 次 filter + 15 次排序 —— 而 `AppShell` 的抽屉分支每个重组都会走到。
+     *
+     * 记忆化用 [derivedStateOf]：它自己就是可观察的（键自然落在 [SessionsLoader.rows]
+     * 与 `drafts` 这两个快照读上），所以 `groups()` 的返回值在「数据没变」时是**同一个
+     * List 实例** —— 既省掉重算，也让下游 `remember(groups)` 的键保持稳定。
+     *
+     * 注意不要在它外面再包 `remember`：那会把可观察重新变成一次性快照（与 `adaptersOf`
+     * 同一个坑）。
+     */
+    private val groupedState: State<List<SessionGroup>> = derivedStateOf { computeGroups() }
+
+    fun groups(): List<SessionGroup> = groupedState.value
+
+    private fun computeGroups(): List<SessionGroup> {
         // Fixture path — byte-for-byte the pre-w-wire behaviour.
         val ldr = loader ?: return if (drafts.isEmpty()) {
             FakeSessions.groups()

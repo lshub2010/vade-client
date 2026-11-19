@@ -12,7 +12,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import vade.ui.component.insets.composerNavClearance
 import vade.ui.component.liquid.BAND_FADE_GAP
 import vade.ui.component.liquid.BandRamp
 import vade.ui.component.liquid.GradientHazeBand
@@ -51,8 +50,8 @@ internal data class ComposerBottomBandGeometry(
  *
  * composer 浮层的实测高度 [composerHeight] **含它自己的底部 padding**（`onSizeChanged`
  * 挂在 modifier 链首 —— 见 `ComposerOverlay` 的 KDoc）。它的底边 = `窗口底 − (16dp +
- * clearance + bottomBarInset)`，而宿主传的 `bottomBarInset = barZone − clearance`，
- * 所以：
+ * barZone)`，而宿主传的 `bottomBarInset` **就是** `barZone`（审查 P1-1：不再扣
+ * clearance，消费者也不再加回来），所以：
  *
  * ```text
  * composer 底边 = 窗口底 − barZone − 16dp      // 胶囊底边恒在栏区上沿之上 16dp
@@ -71,20 +70,22 @@ internal data class ComposerBottomBandGeometry(
  * bottomY(窗口高) == 窗口高 − barZone
  * ```
  *
- * ## 两个参数的符号（订正过一次的基准）
+ * ## 参数的符号（审查 P1-1 之后只剩一种口径）
  *
- * 宿主（`AppShell`）传进来的 `bottomBarInset` **不是**栏区本身，而是
- * `barZone − composerNavClearance()`（`ChatThread` 的形参注释写的就是这一条）；
- * `ComposerBottomBlurBand` 再把 clearance 加回来得到 `barZone`。所以：
+ * 宿主（`AppShell`）传进来的 `bottomBarInset` **就是栏区本身** —— `barZoneFor(style,
+ * navInset)`，只依赖 navigationBars，**不读 IME**。这里因此不做任何加减：
  *
- *  - 符号是**加**（`＋ clearance`），不是减：宿主已经扣过一次，这里只负责还原；
+ *  - 以前宿主传 `barZone − composerNavClearance()`、这里 `＋ clearance` 还原，净值和
+ *    现在完全一样（所以像素不变），但那条 `WindowInsets.ime` 读会把这条带子绑到键盘
+ *    动画上 —— 每帧一次小分配 + 每帧一次重组，且和 composer 那份 clearance 必须永远
+ *    同向才能不偏；现在没有任何一项需要「两边同时改对」；
  *  - 基准是**窗口底**，不是 composer 底：`bottomY = 窗口高 − barZone`，而 composer 的
  *    底边还要再高 16dp（胶囊与栏区之间的呼吸）。用 composer 底当基准会整条带子下沉
  *    16dp，压进底栏。
  *
- * 桌面 / Wasm 上 `WindowInsets.navigationBars` 与 `ime` 都读到 0（`InsetsGuardTest` 钉住），
- * clearance 因此是 0，`barZone == bottomBarInset` —— 这也是 `ComposerBottomBlurTest`
- * 敢直接用宿主传的 104dp 当栏区的理由。
+ * 桌面 / Wasm 上 `WindowInsets.navigationBars` 读到 0（`InsetsGuardTest` 钉住），
+ * `barZone == bottomBarInset` —— 这也是 `ComposerBottomBlurTest` 敢直接用宿主传的
+ * 104dp 当栏区的理由。
  *
  * 夹到 0：桌面 / rail 上 `barZone = 0`（没有底栏，调用方本来也不组合这条带子），以及
  * 极窄屏上 composer 比栏区还矮的病态输入，都只让带子退化，绝不给负高度。
@@ -140,9 +141,10 @@ internal fun BoxScope.ComposerBottomBlurBand(
     if (bottomBarInset <= 0.dp) return
 
     val skin = LocalSkin.current
-    // barZone = bottomBarInset + clearance（宿主传的 inset 已经扣掉 clearance，
-    // 这里加回来就是栏区 —— 与 `DetailBarInsetTest` 的那条不变式同一个方向）。
-    val barZone = bottomBarInset + composerNavClearance()
+    // 宿主传进来的 `bottomBarInset` **就是栏区**（`AppShell` 现在直接给 `barZoneFor`，
+    // 不再扣 clearance —— 审查 P1-1）。所以这里不需要、也不许再把 clearance 加回来：
+    // 一加就是导航条算两遍，而且会把这个 ≈80dp 的小作用域重新绑到 IME 动画上。
+    val barZone = bottomBarInset
     val composerHeight = with(LocalDensity.current) { viewport.composerHeightPx.toDp() }
     val geometry = composerBottomBandGeometry(composerHeight = composerHeight, barZone = barZone)
     if (geometry.height <= 0.dp) return

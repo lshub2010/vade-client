@@ -177,8 +177,8 @@ fun ChatThread(
      * m-bar 审查 P1-2/P1-3：底栏区在 composer 之外还要让出的高度（默认 0 = 旧行为）。
      *
      * 只加在 composer 浮层的底部 padding 上，**不**加在整个页面上：图片预览是 ChatThread
-     * 内部的 fillMaxSize 兄弟，垫页面会把它一起抬离屏底。宿主传
-     * `barZone − composerNavClearance()`，导航条只算一次。
+     * 内部的 fillMaxSize 兄弟，垫页面会把它一起抬离屏底。宿主（`AppShell`）传的是
+     * [vade.ui.shell.barZoneFor] 的**整条栏区**，不扣任何 clearance（审查 P1-1）。
      */
     bottomBarInset: Dp = 0.dp,
     /**
@@ -1062,6 +1062,14 @@ private fun BoxScope.ComposerOverlay(
         state.cancelUpload(uploadId)
     }
 
+    // 审查 P1-1：宿主给的**栏区**（`barZoneFor`，与 IME 无关）优先，直接加；
+    // rail / 双栏没有底栏（`SessionDetailScreen` 默认 0dp，仍是导航条会盖住胶囊的地方），
+    // 只有那里才回落到 composer 自己的导航条余量。`if` 是**短路**的：手机详情态的
+    // 栏区恒 > 0 ⇒ `composerNavClearance()`（读 `WindowInsets.ime`）根本不执行，
+    // 键盘动画因此不再让这个组合作用域每帧重组。
+    val bottomReserve: Dp =
+        if (bottomBarInset > 0.dp) bottomBarInset else composerNavClearance()
+
     Column(
         modifier = Modifier
             .testTag(ComposerOverlayTag)
@@ -1105,12 +1113,18 @@ private fun BoxScope.ComposerOverlay(
             // ComposerInsetsTest 钉住）。
             .imePadding()
             .onPreviewKeyEvent { event -> handleComposerKeys(event, state) }
-            // m-bar：底栏区（宿主已扣掉导航条 clearance）叠在 16dp 之下，胶囊底边落在
-            // 栏区上沿之上 16dp；图片预览/抽屉/模型面板不经过这里，保持满屏。
+            // m-bar（审查 P1-1）：宿主现在传的是**整条栏区**（`barZoneFor`，只依赖
+            // navigationBars，不读 IME）⇒ 手机详情态直接 `16.dp + 栏区`，composer 底边
+            // 恒在栏区上沿之上 16dp，与改前的 `16 + clearance + (barZone − clearance)`
+            // 逐像素相同。
+            //
+            // rail / 双栏**没有底栏**（`SessionDetailScreen` 的默认 0dp），那里仍要
+            // composer 自己的导航条余量（Android 三键条会盖住胶囊）—— 见上面的
+            // `bottomReserve`：条件求值，手机详情态不会读到 `WindowInsets.ime`。
             .padding(
                 start = gutter,
                 end = gutter,
-                bottom = 16.dp + composerNavClearance() + bottomBarInset,
+                bottom = 16.dp + bottomReserve,
             ),
     ) {
         Column(
