@@ -365,7 +365,7 @@ class SessionsDrawerTest {
         runOnIdle { ui.closeSessionsDrawer() }
         waitUntil(timeoutMillis = 10_000) { drawerOffscreen() }
         assertFalse(ui.sessionsDrawerOpen, "收抽屉 = 抽屉真的滑出屏")
-        assertEquals("s-u1a", ui.selectedSessionId, "收列表 = 回到原会话（不是清选中）")
+        assertEquals(selectedBeforeExit, ui.selectedSessionId, "收列表 = 回到原会话（不是清选中）")
     }
 
     /** 抽屉层是否已完全平移到屏幕左缘之外（收起态的几何判据）。 */
