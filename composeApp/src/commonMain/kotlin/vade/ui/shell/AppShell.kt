@@ -159,6 +159,16 @@ fun AppShell(state: UiState) {
  */
 internal val TOP_BAR_ZONE = 72.dp
 
+/**
+ * 顶栏渐变模糊在栏区**之下**的过渡余量（用户 2026-11-19：模糊要在「顶栏下方一点点」归零，
+ * 而不是正好卡在栏区下沿）。这 12dp 仍是内容区的顶部，带子只把它糊掉，不占布局：
+ * 栏区高度、首行 contentPadding 都不变。
+ */
+internal val TOP_BAR_BAND_BLEED = 12.dp
+
+/** 顶栏带子的实际高度 = 栏区 + 向下过渡余量。 */
+internal val TOP_BAR_BAND_HEIGHT = TOP_BAR_ZONE + TOP_BAR_BAND_BLEED
+
 /** Window top → glass capsule gap. The status-bar inset above it is consumed at the root. */
 internal val TopBarTopGap = 8.dp
 
@@ -556,7 +566,7 @@ private fun ShellBody(state: UiState) {
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
                 .padding(start = topBarStart, end = topBarEnd)
-                .height(TOP_BAR_ZONE),
+                .height(TOP_BAR_BAND_HEIGHT),
         ) {
             TopBarBand(Modifier.fillMaxSize())
         }

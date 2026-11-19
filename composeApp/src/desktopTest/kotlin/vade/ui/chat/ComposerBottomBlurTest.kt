@@ -47,8 +47,7 @@ class ComposerBottomBlurTest {
     @Test
     fun theBandZeroesOutOneFadeGapAboveTheComposerTop() {
         val composerHeight = 184.dp
-        val barZone = 104.dp
-        val geometry = composerBottomBandGeometry(composerHeight = composerHeight, barZone = barZone)
+        val geometry = composerBottomBandGeometry(composerHeight = composerHeight)
 
         val composerTop = windowHeight - composerHeight
         assertEquals(
@@ -63,66 +62,57 @@ class ComposerBottomBlurTest {
         )
     }
 
-    /** 下沿：底栏上沿。带子不许压进底栏，也不许悬空留一条锐缝。 */
+    /** 下沿：屏幕底。用户口径是「从屏幕底下模糊最高」，不再停在底栏上沿。 */
     @Test
-    fun theBandStopsExactlyAtTheBarTopEdge() {
-        val geometry = composerBottomBandGeometry(composerHeight = 184.dp, barZone = 104.dp)
+    fun theBandStartsAtTheWindowBottom() {
+        val geometry = composerBottomBandGeometry(composerHeight = 184.dp)
         assertEquals(
-            windowHeight - 104.dp,
+            windowHeight,
             geometry.bottomY(windowHeight),
-            "带子下沿必须等于窗口底 − 栏区（= 底栏上沿）",
+            "带子下沿必须等于窗口底（模糊从屏幕底下最强）",
         )
-        assertEquals(104.dp, geometry.bottomInset, "下沿距离 = 栏区，一 dp 都不许进底栏")
+        assertEquals(0.dp, geometry.bottomInset, "下沿距离 = 0：一直铺到窗口底")
     }
 
-    /** 高度 = 实测 composer 高度 − 栏区 + 8dp（三个都是既有项，没有新常量）。 */
+    /** 高度 = 实测 composer 高度 + 8dp；与栏区形态无关。 */
     @Test
-    fun theHeightIsDerivedFromMeasuredComposerHeightAndBarZone() {
+    fun theHeightIsDerivedFromMeasuredComposerHeightOnly() {
         assertEquals(
-            88.dp,
-            composerBottomBandGeometry(composerHeight = 184.dp, barZone = 104.dp).height,
-            "184 − 104 + 8 = 88dp",
+            192.dp,
+            composerBottomBandGeometry(composerHeight = 184.dp).height,
+            "184 + 8 = 192dp",
         )
-        // 三种导航条形态（栏区 104 / 108 / 132）与两种 composer 高度交叉：
-        // 高度永远等于 (composer − barZone + gap)，且下沿永远贴栏区上沿。
-        listOf(104.dp, 108.dp, 132.dp).forEach { barZone ->
-            listOf(184.dp, 232.dp).forEach { composerHeight ->
-                val g = composerBottomBandGeometry(composerHeight = composerHeight, barZone = barZone)
-                assertEquals(composerHeight - barZone + 8.dp, g.height, "barZone=$barZone composer=$composerHeight")
-                assertEquals(barZone, g.bottomInset)
-                // 带子上沿 = composer 上沿 − 8dp：再验一次（这是不变式，不是推导）
-                assertEquals(
-                    windowHeight - composerHeight - 8.dp,
-                    g.zeroY(windowHeight),
-                    "barZone=$barZone composer=$composerHeight 时归零点漂了",
-                )
-            }
+        listOf(184.dp, 232.dp).forEach { composerHeight ->
+            val g = composerBottomBandGeometry(composerHeight = composerHeight)
+            assertEquals(composerHeight + 8.dp, g.height, "composer=$composerHeight")
+            assertEquals(0.dp, g.bottomInset)
+            assertEquals(
+                windowHeight - composerHeight - 8.dp,
+                g.zeroY(windowHeight),
+                "composer=$composerHeight 时归零点漂了",
+            )
         }
     }
 
-    /** 病态输入（composer 比栏区还矮 / 桌面没有栏区）只退化成 0，绝不给负高度。 */
+    /** 病态输入（composer 还没量到 / 负数）只退化成 0，绝不给负高度。 */
     @Test
     fun degenerateInputsClampToZeroInsteadOfNegativeHeights() {
         assertEquals(
             0.dp,
-            composerBottomBandGeometry(composerHeight = 80.dp, barZone = 104.dp).height,
-            "composer 比栏区矮时高度必须夹到 0",
+            composerBottomBandGeometry(composerHeight = 0.dp).height,
+            "还没量到 composer 时不许画一条 8dp 的染色带",
         )
         assertEquals(
-            8.dp,
-            composerBottomBandGeometry(composerHeight = 0.dp, barZone = 0.dp).height,
-            "没有栏区时高度 = 0 − 0 + 8（桌面路径本来就不组合这条带子）",
-        )
-        assertTrue(
-            composerBottomBandGeometry(composerHeight = 0.dp, barZone = 104.dp).height >= 0.dp,
-            "高度永远不许为负",
+            0.dp,
+            composerBottomBandGeometry(composerHeight = (-10).dp).height,
+            "负高度必须夹到 0",
         )
     }
 
     // --- 真实组合：位置与「只有会话页有」-------------------------------------------
 
     @Test
-    fun theBandSitsBetweenTheBarTopAndTheComposerTop() = runComposeUiTest {
+    fun theBandSitsBetweenTheWindowBottomAndTheComposerTop() = runComposeUiTest {
         // 桌面 / Wasm 上 navigationBars 与 ime 都读到 0（InsetsGuardTest 钉住），
         // 所以 `composerNavClearance()` = 0、`barZone == bottomBarInset` ——
         // 生产里那个「加回 clearance」的换算在这台渲染台上是恒等，104dp 就是栏区。
@@ -144,14 +134,11 @@ class ComposerBottomBlurTest {
         val composer = onNodeWithTag(ComposerOverlayTag).fetchSemanticsNode().boundsInRoot
         val root = onRoot().fetchSemanticsNode().boundsInRoot
         val d = density.density
-        val barZonePx = barZone.value * d
 
-        // 下沿 = 底栏上沿（不压进底栏）。基准是**窗口底**，不是 composer 底：
-        // composer 整块浮层还含它自己的底部 padding，两者的差正是那 16dp 呼吸 + 栏区。
+        // 下沿 = 窗口底（用户 2026-11-19：模糊从屏幕底下最强，向上递减）。
         // 量到的节点必须是**带子自己**的矩形：把 testTag 挂在套了 padding 的摆放层上
-        // （或把 offset 写进同一个节点的链里）都会让这里永远读到 760 —— 节点外框垂到
-        // 窗口底，几何的基准整个漂掉，而其它断言因为上沿/高度都对，一个字都不会说。
-        assertNear(root.bottom - barZonePx, band.bottom, "带子下沿必须贴底栏上沿", tolerancePx = 2f * d)
+        // 会读到摆放层的外框，几何基准整个漂掉。
+        assertNear(root.bottom, band.bottom, "带子下沿必须到窗口底", tolerancePx = 2f * d)
         // 上沿 = composer 上沿 − 8dp（不遮输入热区）
         assertNear(composer.top - 8f * d, band.top, "带子上沿必须在 composer 上沿之上 8dp", tolerancePx = 2f * d)
         // 渐变区间真的存在（不是一条 0 高度的线）：至少要容得下一个 8dp 刻度以上。
@@ -159,11 +146,10 @@ class ComposerBottomBlurTest {
             band.height > 24f * d,
             "带子高度只有 ${band.height}px —— 渐变区间被压没了（composer 高度没量到？）",
         )
-        // 「下沿落到窗口底」这个 bug 的哨兵：它曾经把 656 量成 760，而其它两条断言
-        // 因为上沿是对的、高度也是对的，一个字都没说。
+        // 旧口径的哨兵反过来了：任何「停在底栏上沿」的回归都要红。
         assertTrue(
-            abs(band.bottom - root.bottom) > 1f,
-            "带子下沿落在窗口底 ${band.bottom} —— 几何基准错了（应贴底栏上沿 ${root.bottom - barZonePx}）",
+            abs(band.bottom - root.bottom) <= 2f * d,
+            "带子下沿停在 ${band.bottom}，没有铺到窗口底 ${root.bottom}（又按栏区截断了吗？）",
         )
     }
 

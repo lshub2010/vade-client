@@ -83,15 +83,15 @@ class BlurBandRampTest {
 
     /**
      * 满强度平台段（`TopBarBand` 的 `rampHoldDp = TopBarTopGap`）：胶囊**上面那条缝**
-     * 必须和卡内一样糊。纯 1→0 的直线在缝里会漏出 `1 − alpha` 的锐利背板 —— 全长 72dp
-     * 时缝里 alpha ≈ 0.94，那 6% 就是「胶囊上面那条缝比卡里清楚」的全部来源。
+     * 必须和卡内一样糊。纯 1→0 的直线在缝里会漏出 `1 − alpha` 的锐利背板 —— 带子越长
+     * 缝里 alpha 越低，那点漏光就是「胶囊上面那条缝比卡里清楚」的全部来源。
      *
-     * 平台段的长度用两个**既有**常量表达（`TopBarTopGap / TOP_BAR_ZONE`），不引入新数；
+     * 平台段的长度用两个**既有**常量表达（`TopBarTopGap / TOP_BAR_BAND_HEIGHT`），不引入新数；
      * 这里钉三件事：缝内恒等于 1、缝下才开始掉、底边仍然归零（方向没被平台段弄丢）。
      */
     @Test
     fun aHoldCoversTheGapAtFullStrengthAndStillZeroesAtTheFarEdge() {
-        val hold = TopBarTopGap / TOP_BAR_ZONE
+        val hold = TopBarTopGap / TOP_BAR_BAND_HEIGHT
         val stops = bandRampStops(BandRamp.TopHeavy, holdFraction = hold)
         assertEquals(3, stops.size, "有 hold 时只允许多出**一个**站（平台段的下沿）")
         assertEquals(1f, bandRampAlphaAt(stops, 0f), "窗口顶仍是满强度")
