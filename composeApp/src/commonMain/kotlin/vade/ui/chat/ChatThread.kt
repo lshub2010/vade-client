@@ -46,6 +46,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -93,6 +94,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import vade.ui.chat.ApprovalOutcome
 import vade.ui.icon.VadeIcons
@@ -217,21 +219,11 @@ fun ChatThread(
 
     // Streaming: one chunk per frame-ish tick. `animate = false` freezes the state so the
     // screenshot loop captures a deterministic frame.
-    LaunchedEffect(animate, state.isStreaming) {
-        if (!animate) return@LaunchedEffect
-        while (state.isStreaming) {
-            delay(45)
-            state.tick(chunk = 5)
-        }
-    }
-
-    // Fake upload progress for the composer chips. Without this the chip sits at 「上传中 0%」
-    // forever — `tickUploads` existed but only the tests ever drove it. Same `animate` gate
-    // as the stream so a preset frame stays deterministic.
-    LaunchedEffect(animate, state.staged.size) {
-        if (!animate) return@LaunchedEffect
-        while (state.tickUploads()) delay(160)
-    }
+    // H2 · 两个 ticker 各自沉进**只含 effect、没有 UI 子节点**的叶子（[StreamTicker] /
+    // [UploadTicker]）：键从 state 的派生标量来（[ChatState.streamingTickerKey] /
+    // [ChatState.uploadTickerKey]），本文件的组合作用域一个 `items` / `staged` 的读都不占。
+    StreamTicker(state, animate)
+    UploadTicker(state, animate)
 
     // B2 · 真源的两个挂载点：先开事件收集（不丢加载期间到达的 delta），再拉历史快照。
     // 假源的读通道是 null，整段短路（fixtures 就是内容）。`animate` **不参与 key**：
@@ -285,11 +277,23 @@ fun ChatThread(
         }
     }
 
-    // 用户自己回到底部（滚轮 / 触摸）→ 胶囊收起、跟随恢复。`scroll.value` 每像素一发，
-    // 但 `onScroll` 只在贴底时才写状态，静止时没有额外失效。
+    // 用户自己回到底部（滚轮 / 触摸）→ 胶囊收起、跟随恢复。
+    //
+    // H7 · 观测的是「在不在贴底区间」这个**布尔边沿**，不是像素值。`scroll.value` 是像素级
+    // 状态：一次 800px 的惯性滑动会发 ~800 次，而 [FollowScrollGate.onScroll] 只在贴底且
+    // 举着胶囊时写一次状态 —— 99% 的唤醒是纯空转（每次一个 flow 发射 + 一次协程恢复）。
+    // 现在一次跨越只醒一次；`snapshotFlow` 本来就按值去重，`distinctUntilChanged` 把
+    // 「只认边沿」这件事写在脸上。
     LaunchedEffect(animate, viewport) {
         if (!animate) return@LaunchedEffect
-        snapshotFlow { scroll.value }.collect { follower.onScroll(it) }
+        snapshotFlow { follower.isAtBottom(scroll.value) }
+            .distinctUntilChanged()
+            .collect { atBottom ->
+                // onScroll 只认「在不在贴底区间」这一个 bit：贴底给 0（离底距离 0，
+                // 区间内），不贴底给阈值 + 1（区间外的最小值）。对它的判据
+                // `valuePx <= nearBottomPx` 来说，两者与逐像素调用完全等价。
+                follower.onScroll(if (atBottom) 0 else nearBottomPx + 1)
+            }
     }
 
     val pageScope = rememberCoroutineScope()
@@ -336,6 +340,26 @@ fun ChatThread(
                 verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
                 ThreadPhaseRow(state)
+                // H1（**本轮不改，故意留着**）：这里是 `Column(verticalScroll)` + `forEach`
+                // —— 没有虚拟化、没有 `key`。N 行就组合 N 行、测量 N 行，且 `items` 是单一
+                // `SnapshotStateList`（写一个元素 = 读过它的作用域全部失效）。收益最大的一条，
+                // 但这一轮不动它的理由是三件**语义**问题必须先想清楚，不是「改不动」：
+                //  1. **跟随滚动**：跟随基线读 `items.size` 与末条正文长度、补偿读消息列实测
+                //     高度（`FollowScrollGate` 的整本账）。`LazyColumn` 只有「已组合的行」，
+                //     未组合的行不测量 ⇒ 上滚时的 `ShiftBy` 补偿会连续多帧误判「内容增长」；
+                //     钉底也要从 `scrollTo(0)` 换成 `animateScrollToItem/requestScrollToItem`，
+                //     与 `reverseScrolling` 的组合语义重写一遍（H2 的 ticker 也依赖它）。
+                //  2. **选中与复制**：正文选区（`SelectionContainer` / `BasicText` 的
+                //     selection）跨越未组合的行会断；`rememberCoalescedStreamText` 的合帧也
+                //     以「这一行一直在组合」为前提。
+                //  3. **内联编辑 / 工具卡展开**：`InlineEditCard`、`ApprovalCardRow`、
+                //     `ToolRow` 的展开态与 hover/长按都是行内 `remember`。`LazyColumn` 换
+                //     `key` 之后这些状态必须上提（否则滑出屏幕再滑回来会丢焦点/丢展开态），
+                //     那是另一次结构改动，不该和性能修混在一个 commit 里。
+                // 下轮单独做 H1：先补 `key(item.id)`（正确性，零成本），再按上面的顺序把
+                // 跟随/选中/展开态搬进 `LazyColumn` 的 `LazyListState`。本轮 H2/H4/H7/H8
+                // 已经把那 N 行的**每次重组的常数**降下来了（键不再抖、每行 O(1)），
+                // 所以 H1 的收益仍然在、但不再是「每帧 N²」的量级。
                 state.items.forEach { item ->
                     when (item) {
                         is ChatItem.Message -> MessageRow(state, item.message)
@@ -418,6 +442,57 @@ fun ChatThread(
             BackLayer(enabled = true, onBack = state::closePreview)
             ImagePreviewSheet(image, onClose = state::closePreview)
         }
+    }
+}
+
+// --- H2 · ticker 叶子（只含 effect，没有 UI 子节点） ---------------------------
+
+/**
+ * H2 · 流式 ticker —— 独立成一个**没有 UI 子节点**的组合作用域（与 [ComposerTailSpacer]
+ * 同一套路，仓库既有先例）。
+ *
+ * 为什么必须下沉：`LaunchedEffect` 的 key 在**调用方**作用域里求值。原先它写在
+ * [ChatThread] 主体里、key 是 `state.isStreaming`，而它在真源上要扫 `items`
+ * （[ChatState.realRunningTurnId] 的 `lastOrNull`）—— 于是每条 `turn.delta` 的 items 写入
+ * 都让**整页**（`Column(verticalScroll)` 的 content lambda + `items.forEach`）重组一次。
+ *
+ * 两道防线：
+ *  1. key 换成派生标量 [ChatState.streamingTickerKey]（`derivedStateOf`）：items 写入只让
+ *     派生记录失效，布尔值不翻转就不通知读者 —— delta 一次都不重组、一次都不重启协程；
+ *  2. 这个作用域只读那一个布尔，就算将来有人往这里加读点，代价也止步于「没有子节点的
+ *     函数」而不是整棵消息列。
+ *
+ * 循环体与原来逐字相同（`while (isStreaming) { delay(45); tick(5) }`）；`tick` 返回 false
+ * 表示「没有可写的行」—— 原来会让这个 45ms 循环空转到回合结束，现在直接退出（同一帧
+ * 的屏上结果不变，少一条无意义的长活协程）。
+ */
+@Composable
+private fun StreamTicker(state: ChatState, animate: Boolean) {
+    val streaming = state.streamingTickerKey
+    LaunchedEffect(animate, streaming) {
+        if (!animate || !streaming) return@LaunchedEffect
+        while (state.isStreaming) {
+            delay(45)
+            if (!state.tick(chunk = 5)) break
+        }
+    }
+}
+
+/**
+ * H2 · 上传 ticker —— 同上，只含 effect。
+ *
+ * 键是 [ChatState.uploadTickerKey]（= chip 数量）：**取值与旧 key `staged.size` 逐字相同**，
+ * 所以「加一个 chip 就开 tick、chip 清空就停」的时序没有变；变的只是读法 —— 进度写入
+ * （`staged[i] = …`，每 160ms 一次，size 不变）不再让整页失效，也不再重建协程。
+ *
+ * 没有这条，chip 会永远停在「上传中 0%」：`tickUploads` 存在但只有测试驱动它。
+ */
+@Composable
+private fun UploadTicker(state: ChatState, animate: Boolean) {
+    val chips = state.uploadTickerKey
+    LaunchedEffect(animate, chips) {
+        if (!animate) return@LaunchedEffect
+        while (state.tickUploads()) delay(160)
     }
 }
 
@@ -1507,11 +1582,17 @@ internal class ChatViewport(
     /** 跟随决策状态机。基线（items / 末条长度）私有在它里面，随实例一起清零。 */
     val follower: FollowScrollGate = FollowScrollGate(nearBottomPx)
 
-    /** 消息列（时间线本体）实测高度；0 = 这个会话还没量过第一帧。 */
-    var messagesHeightPx by mutableStateOf(0)
+    /**
+     * 消息列（时间线本体）实测高度；0 = 这个会话还没量过第一帧。
+     *
+     * H8 · `mutableIntStateOf` 而不是 `mutableStateOf(0)`：IME 动画期间 composer 高度
+     * **每帧写一次**、三处每帧各读一次（[ComposerTailSpacer] / `NewContentCapsuleHost` /
+     * `ComposerBottomBlurBand`），装箱的读写是无意义的开销。
+     */
+    var messagesHeightPx by mutableIntStateOf(0)
 
-    /** composer 浮层实测高度（只影响列表底部内边距）；0 = 还没量过。 */
-    var composerHeightPx by mutableStateOf(0)
+    /** composer 浮层实测高度（只影响列表底部内边距）；0 = 还没量过。同上，H8。 */
+    var composerHeightPx by mutableIntStateOf(0)
 }
 
 /**
