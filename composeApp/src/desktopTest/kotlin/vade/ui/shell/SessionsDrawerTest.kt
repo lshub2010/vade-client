@@ -354,9 +354,10 @@ class SessionsDrawerTest {
 
         // 用户 2026-11-18 拍板「列表返回 = 退应用」：抽屉开着时 `back(drawerModel = true)`
         // 不再收抽屉 —— 状态一条都不改（真机上这一下由系统吃下、App 退出）。
+        val selectedBeforeExit = ui.selectedSessionId
         runOnIdle { ui.back(drawerModel = true) }
         assertTrue(ui.sessionsDrawerOpen, "列表返回 = 退应用：抽屉不许被偷偷收起")
-        assertEquals("s-u1a", ui.selectedSessionId, "退应用前选中不许被偷偷清掉")
+        assertEquals(selectedBeforeExit, ui.selectedSessionId, "退应用前选中不许被偷偷清掉")
         waitUntil(timeoutMillis = 5_000) { !drawerOffscreen() }
 
         // 满宽抽屉没有「点遮罩」这一手（遮罩被抽屉完全盖住），但列表仍然能回到原会话：
