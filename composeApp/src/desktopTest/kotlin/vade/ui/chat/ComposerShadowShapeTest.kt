@@ -247,7 +247,7 @@ class ComposerShadowShapeTest {
     }
 
     @Test
-    fun composerFillInTheDarkThemeShowsNoRectangularKnockout() {
+    fun composerFillInTheDarkThemeShowsNoRectangularKnockout() = runComposeUiTest {
         // Dark ink on #0E0E10 quantises the knockout down to 1/255, so the *step* is the only
         // assertion that can see it in the dark palette. (`interiorSpread() == 0` used to sit
         // here too — it is the same "no blur" contract as the light test and is gone; a dark
