@@ -57,7 +57,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import vade.ui.component.liquid.VadeShadows
-import vade.ui.component.liquid.layeredShadow
 import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
 import vade.ui.skin.ApprovalRequest
@@ -69,6 +68,7 @@ import vade.ui.skin.InputMode
 import vade.ui.skin.MessageAction
 import vade.ui.skin.MessageView
 import vade.ui.skin.Scope
+import vade.ui.skin.Skin
 import vade.ui.skin.SkinColors
 import vade.ui.skin.SkinMotion
 import vade.ui.skin.SkinOrb
@@ -77,6 +77,8 @@ import vade.ui.skin.SkinTypography
 import vade.ui.skin.ToolCallView
 import vade.ui.skin.ToolCardState
 import vade.ui.skin.cardAccentBar
+import vade.ui.skin.glass.GlassBackdropPolicy
+import vade.ui.skin.glass.GlassSurface
 
 /**
  * `material` implementations of C-09 components 7-11, written against
@@ -625,6 +627,7 @@ internal fun MaterialInputBar(
     // Post-freeze additive slot #2 (see Skin.InputBar KDoc): page-level controls on a
     // SECOND line, inside this same panel (model chip). null = nothing drawn at all.
     secondRow: (@Composable () -> Unit)?,
+    skin: Skin,
     colors: SkinColors,
     shapes: SkinShapes,
     typography: SkinTypography,
@@ -633,10 +636,19 @@ internal fun MaterialInputBar(
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
 
-    // v2 §1 悬浮 composer 的**形状**：xl(28) 圆角（多行同圆角，不做胶囊变形）、玻璃底
-    // surfaceGlass、发丝线 + 浮层阴影（§8 row 2：浮层必须有阴影）。真正的背景模糊由
-    // 皮肤在内部接 skin/glass/GlassSurface（RFC-0011 §7.2）；页面结构（composer 浮在
-    // 列表上、四周留白）是 chat/ 的活。
+    // v2 §1 悬浮 composer：xl(28) 圆角、**真玻璃底**、发丝线 + 浮层阴影（§8 row 2）。
+    //
+    // P0-1（审查 r1-client-chat）：这里原来是一块实色 `.background(colors.surfaceGlass)` ——
+    // 84 % 白/78 % 黑，没有任何模糊，而同一屏的底栏 FloatingBlur 是真的在糊。视觉语言
+    // `docs/visual-language.md:233` 把「悬浮 composer」列进**必须模糊的层**，所以底座换成
+    // 与底栏同一条玻璃实现 [GlassSurface]：tint 只走 `colorEffects(listOf(HazeColorEffect
+    // .tint(tint)))` 那一行（`SkinGlass` 的 26 %/34 %，底栏读的就是同一份 token）。
+    //
+    // 没有 backdrop（单测/预览/页面还没接 `GlassScope`）时必须**逐像素**退回原来那块实色：
+    // [GlassSurface] 的 `degradeColor = colors.surfaceGlass` + `DegradeWithoutBackdrop`
+    // 就是这条退化 —— 采不到背景就根本不建 haze 节点，直接画同一个 surfaceGlass，描边
+    // (1dp hairline / 聚焦 2dp accent) 与下行阴影（同一个 `downwardShelf`，`outsideOnly`
+    // 语义）都还是原来的那一份，所以所有 composer 像素钉不动。
     //
     // RFC-0011：面板**不再自带 16dp 浮层外边距** —— 页面把 [＋] [InputBar] [12dp] [SendOrb]
     // 拼进同一行时，组件内边距会叠加成 32dp、框球间距变成 28dp，§1/§2 的数字全部失真
@@ -644,36 +656,37 @@ internal fun MaterialInputBar(
     //
     // 发送/停止控件不在这里：v2 §2 把它们移出框外成独立圆球 —— Skin.SendOrb（组件 12）。
     val panelShape = RoundedCornerShape(shapes.xl)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            // §8.2 shadow2 —— 浮层阴影必须**跟着面板形状**画。
-            //
-            // g-composer-corner：这里原来写的是 `Modifier.shadow(elevation = 16.dp,
-            // shape = panelShape, …)`。shape 是传了的，但 Compose/Skia 的仰角阴影把
-            // 「形状正下方不画阴影」那块挖空做成了**外接矩形内缩** —— 84 % 的
-            // surfaceGlass 把那块矩形透出来，圆角处就露四个方角（桌面密度 1 实测：
-            // 胶囊 x40..560/y40..107 内出现 x49..551/y61..87 的矩形，每条边 4/255 台阶）。
-            // `component/liquid` 的 layeredShadow 用 shape 的 RoundedCornerRect 做轮廓、
-            // 真高斯模糊、只向下扩散（§8.3），四条边与圆角都跟面板走，且不挖矩形空。
-            .layeredShadow(VadeShadows.float, panelShape, dark = colors.isDark, outsideOnly = true)
-            .clip(panelShape)
-            .background(colors.surfaceGlass)
-            .border(
-                width = if (focused) 2.dp else 1.dp,
-                color = if (focused) colors.primary else colors.hairline,
-                shape = panelShape,
-            )
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+    GlassSurface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = panelShape,
+        skin = skin,
+        // §五 输入框：静止 1dp hairline、聚焦 2dp accent —— 与 miuix/glass 同一条语义。
+        stroke = if (focused) colors.primary else colors.hairline,
+        strokeWidth = if (focused) 2.dp else 1.dp,
+        // §8.2 shadow2 档位显式写出来（默认值就是它）：这一层是**浮层**，不是静态卡。
+        //
+        // g-composer-corner：阴影必须**跟着面板形状**画。原来是 `Modifier.shadow(elevation
+        // = 16.dp, shape = panelShape, …)` —— shape 传了，但 Compose/Skia 的仰角阴影把
+        // 「形状正下方不画阴影」那块挖空做成了**外接矩形内缩**，84 % 的 surfaceGlass 把那块
+        // 矩形透出来，圆角处就露四个方角（桌面密度 1 实测：胶囊 x40..560/y40..107 内出现
+        // x49..551/y61..87 的矩形，每条边 4/255 台阶）。GlassSurface 的 floatShell 走
+        // `downwardShelf`：用 shape 的 RoundedCornerRect 做轮廓、只向下扩散（§8.3），四条边
+        // 与圆角都跟面板走，且不挖矩形空。
+        shadow = VadeShadows.float,
+        degradeColor = colors.surfaceGlass,
+        backdropPolicy = GlassBackdropPolicy.DegradeWithoutBackdrop,
     ) {
-        // g-shadow-android：§7 的多行高度跟随（200ms glide）必须画在**内容**上，不能画在
-        // 页面包装上 —— 页面原来的 animateContentSize 包装自带裁剪层（rest 态也在），
-        // 会把面板下沿之外的整条下行阴影裁成 0 像素（probe-v3: shelf-acs 实测全平）。
-        // 动画节点收进胶囊**里面**：胶囊与其阴影在裁剪层之外，阴影跟着动画后的下沿走。
         Column(
-            modifier = Modifier.animateContentSize(
-                animationSpec = tween(durationMillis = 200, easing = motion.easing),
-            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                // g-shadow-android：§7 的多行高度跟随（200ms glide）必须画在**内容**上，不能画在
+                // 页面包装上 —— 页面原来的 animateContentSize 包装自带裁剪层（rest 态也在），
+                // 会把面板下沿之外的整条下行阴影裁成 0 像素（probe-v3: shelf-acs 实测全平）。
+                // 动画节点收在玻璃**里面**：玻璃与其阴影在裁剪层之外，阴影跟着动画后的下沿走。
+                .animateContentSize(
+                    animationSpec = tween(durationMillis = 200, easing = motion.easing),
+                )
+                .padding(horizontal = 16.dp, vertical = 12.dp),
         ) {
             if (attachments != null) {
                 attachments()

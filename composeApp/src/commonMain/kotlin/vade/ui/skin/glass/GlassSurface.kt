@@ -86,6 +86,9 @@ val LocalGlassHazeState = staticCompositionLocalOf<HazeState?> { null }
  *    tint，`SkinGlass.tintLight`（白 42%）会把 `colors.error` 冲成粉色。名字里带
  *    `Override` 是因为局部变量 `tint` 已被 hover/haze 的取色占用，而
  *    `HazeColorEffect.tint(tint)` 这一行被 `ComposerShadowShapeTest` 的源码守卫钉着。
+ *  - [degradeColor] — 采不到背景时那块**实色**（默认 `null` = 用 tint）。material / miuix
+ *    的 composer 靠它把「没有 backdrop」退化回原来的 `surfaceGlass`，像素与接入玻璃前
+ *    逐点一致；有 backdrop 时它不参与绘制。
  *  - [stroke] / [strokeWidth] — 描边色与宽度。输入框聚焦时描边加亮（2dp accent）；
  *    默认仍是**内侧 1dp**、`SkinGlass.hairlineOnGlass`。
  *  - [highlight] — 顶部高光（[GlassTokens.highlight]）。画在染色之上、内容之下：它只
@@ -131,6 +134,15 @@ fun GlassSurface(
     shape: Shape,
     skin: Skin,
     tintOverride: Color? = null,
+    /**
+     * 「采不到背景」那一档的**底色**；`null`（默认）= 用 [tint]。
+     *
+     * 存在的理由只有一条：`surfaceGlass` 与 §5 的玻璃 tint 不是一个数（material 84 % vs
+     * 26 %）。面板在没有 backdrop 的环境（单测、预览、页面还没接 `GlassScope`）必须**逐
+     * 像素**退回它原来那块实色，否则每一条 composer 像素钉都会红；而有 backdrop 时它完全
+     * 不参与绘制（模糊层自己带 tint）。所以它是「退化底」而不是第二个 tint。
+     */
+    degradeColor: Color? = null,
     stroke: Color? = null,
     strokeWidth: Dp = 1.dp,
     highlight: Brush? = null,
@@ -204,7 +216,10 @@ fun GlassSurface(
     } else {
         // 降级档（没有背景可采）：不建 haze 节点，直接染色。整层仍然是一个完整的、
         // 有描边和高光的层 —— 这就是"不白屏"那条要求的落地方式。
-        Modifier.background(tint, shape)
+        //
+        // [degradeColor] 是**逐像素退化**的出口：给了它就画它，而不是 tint。composer 用它
+        // 保住「没接 GlassScope 时那块 84 % surfaceGlass」的历史像素。
+        Modifier.background(degradeColor ?: tint, shape)
     }
 
     Box(

@@ -509,6 +509,7 @@ class MaterialSkin(
         maxLines = maxLines,
         leading = leading,
         secondRow = secondRow,
+        skin = this@MaterialSkin,
         colors = colors,
         shapes = shapes,
         typography = typography,
