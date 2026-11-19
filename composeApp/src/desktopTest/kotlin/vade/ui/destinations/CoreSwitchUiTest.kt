@@ -11,6 +11,8 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
@@ -23,6 +25,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runComposeUiTest
 import kotlinx.coroutines.CompletableDeferred
 import kotlin.test.AfterTest
@@ -36,6 +39,7 @@ import vade.ui.data.CoreSwitchOutcome
 import vade.ui.data.PairingAttempt
 import vade.ui.data.PairingFailureKind
 import vade.ui.data.PairingRuntime
+import vade.ui.data.RawSourceStrings
 import vade.ui.data.SessionRevocation
 import vade.ui.protocol.VadeTransport
 import vade.ui.protocol.VadeTransportFactory
@@ -71,12 +75,14 @@ class CoreSwitchUiTest : IsolatedPreferencesTest() {
     fun resetBefore() {
         PairingRuntime.clearForTests()
         CoreSwitchNotice.text = null
+        CoreSwitchNotice.submitting.value = false
     }
 
     @AfterTest
     fun resetAfter() {
         PairingRuntime.clearForTests()
         CoreSwitchNotice.text = null
+        CoreSwitchNotice.submitting.value = false
     }
 
     private fun androidx.compose.ui.test.ComposeUiTest.setProfile() {
@@ -189,6 +195,173 @@ class CoreSwitchUiTest : IsolatedPreferencesTest() {
         setProfile()
 
         onNodeWithText(REVOKE_FAILED_NOTICE, substring = true).assertExists()
+    }
+
+    // ==================================================== P1 · 单失败也必须有回执
+
+    /**
+     * P1 · 四支终态回执的文案分工：成功 / 单失败（吊销成功、无需吊销）/ 双失败。
+     *
+     * 旧实现只有「成功」（onConnected）与「双失败」写 [CoreSwitchNotice]；单失败的文案
+     * 只活在 [PairingForm] 的内存里，面板一走就没了。
+     */
+    @Test
+    fun everySwitchOutcomeLeavesAReceiptInWords() {
+        val target = RawSourceStrings("real", "10.0.0.8", "8443", null)
+        val rejected = PairingAttempt.Rejected(
+            PairingFailureKind.ServerDown,
+            IllegalStateException("Connection refused"),
+        )
+
+        // 单失败 + 旧凭证已吊销：说「切换没有完成」+ 原因，不许说成「吊销失败」。
+        val revoked = coreSwitchReceipt(SessionRevocation.Revoked, rejected, target)
+        assertTrue("切换没有完成" in revoked, revoked)
+        assertTrue("core 没有在 10.0.0.8:8443 上运行" in revoked, "回执要带原因：$revoked")
+        assertFalse(revoked.startsWith(REVOKE_FAILED_NOTICE), revoked)
+
+        // 单失败 + 无需吊销（本地配置错误 / 本来没配对）：旧配置没动，也要回执。
+        val notNeeded = coreSwitchReceipt(SessionRevocation.NotNeeded, rejected, target)
+        assertTrue("切换没有完成" in notNeeded, notNeeded)
+        assertTrue("本地配置未动" in notNeeded, notNeeded)
+        assertFalse(notNeeded.startsWith(REVOKE_FAILED_NOTICE), notNeeded)
+
+        // 双失败：保留「旧凭证吊销失败」契约前缀与传输原话。
+        val both = coreSwitchReceipt(
+            SessionRevocation.Failed(IllegalStateException("HTTP 500")),
+            rejected,
+            target,
+        )
+        assertTrue(both.startsWith(REVOKE_FAILED_NOTICE), both)
+        assertTrue("HTTP 500" in both, both)
+
+        // 成功：已切换到实际 endpoint；吊销失败时前缀照旧。
+        val connected = PairingAttempt.Connected(MarkerFactory(), "10.0.0.8", 9443)
+        assertEquals(
+            "已切换到 10.0.0.8:9443",
+            coreSwitchReceipt(SessionRevocation.Revoked, connected, target),
+        )
+        assertTrue(
+            coreSwitchReceipt(
+                SessionRevocation.Failed(IllegalStateException("HTTP 500")),
+                connected,
+                target,
+            ).startsWith(REVOKE_FAILED_NOTICE),
+        )
+    }
+
+    /**
+     * P1 · `Rejected + NotNeeded`（本地配置错误，一个吊销请求都没发）同样必须写回执 ——
+     * 这一支旧代码也漏了；面板还在时表单里有失败文案，面板一走就只剩「未连接」。
+     */
+    @Test
+    fun aRejectedSwitchWithNothingToRevokeAlsoLeavesAReceipt() = runComposeUiTest {
+        PairingRuntime.noteBooted()
+        CoreSwitchNotice.text = null
+
+        setContent {
+            CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
+                CoreSwitchPanel(
+                    onBack = {},
+                    onSwitch = { _, _ ->
+                        CoreSwitchOutcome(
+                            revocation = SessionRevocation.NotNeeded,
+                            attempt = PairingAttempt.Rejected(
+                                PairingFailureKind.BadConfig,
+                                IllegalArgumentException("port 99999"),
+                            ),
+                        )
+                    },
+                )
+            }
+        }
+        waitForIdle()
+
+        onNode(codeField()).performTextInput("青松-R3R3R3")
+        onNodeWithText(SWITCH_BUTTON_LABEL).performClick()
+        waitUntil(timeoutMillis = 5_000) { CoreSwitchNotice.text != null }
+        waitForIdle()
+
+        val receipt = assertNotNull(CoreSwitchNotice.text)
+        assertTrue("切换没有完成" in receipt, receipt)
+        assertTrue("本地配置未动" in receipt, receipt)
+        onNodeWithTag(CORE_SWITCH_NOTICE_TAG).assertExists()
+        onNodeWithText("切换没有完成", substring = true).assertExists()
+    }
+
+    /**
+     * P1 · 单失败（新 core 被拒 + 旧凭证已吊销）的回执必须**活过面板**。
+     *
+     * 触发面：提交中切走 tab（`AppShell` 只组合当前 tab，整个设置页连同面板离开组合），
+     * 或者面板因任何原因先销毁。旧代码在 `Rejected + Revoked/NotNeeded` 这一支一句提示都
+     * 不写，回来只看到「未连接 · 点按配对」。这里先让面板销毁、再让结局落地，断言设置页与
+     * 重新打开的面板都看得到「切换没有完成」。
+     */
+    @Test
+    fun aRejectedSwitchLeavesAReceiptThatOutlivesThePanel() = runComposeUiTest {
+        PairingRuntime.noteBooted()
+        PairingRuntime.install(marker, "10.0.0.9", 19999)
+        CoreSwitchNotice.text = null
+
+        val gate = CompletableDeferred<CoreSwitchOutcome>()
+        var switches = 0
+        var showPanel by mutableStateOf(true)
+
+        setContent {
+            CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
+                if (showPanel) {
+                    CoreSwitchPanel(
+                        onBack = {},
+                        onSwitch = { _, _ ->
+                            switches += 1
+                            gate.await()
+                        },
+                    )
+                } else {
+                    ProfileScreen(
+                        skinId = "material",
+                        barStyle = BottomBarStyle.Fixed,
+                        containerLabel = "test",
+                        onSkinChange = {},
+                        onBarChange = {},
+                    )
+                }
+            }
+        }
+        waitForIdle()
+
+        onNode(codeField()).performTextInput("青松-R3R3R3")
+        onNodeWithText(SWITCH_BUTTON_LABEL).performClick()
+        waitUntil(timeoutMillis = 5_000) { switches == 1 }
+
+        // 提交中切走：面板销毁、设置页重建（与切 tab 同一个后果）。
+        runOnIdle { showPanel = false }
+        waitForIdle()
+
+        gate.complete(
+            CoreSwitchOutcome(
+                revocation = SessionRevocation.Revoked,
+                attempt = PairingAttempt.Rejected(
+                    PairingFailureKind.BadCode,
+                    IllegalStateException("code was rejected"),
+                ),
+            ),
+        )
+        waitUntil(timeoutMillis = 5_000) { CoreSwitchNotice.text != null }
+        waitForIdle()
+
+        val receipt = assertNotNull(CoreSwitchNotice.text)
+        assertTrue("切换没有完成" in receipt, "单失败也要有回执：$receipt")
+        assertTrue("配对码不对" in receipt, "回执要带失败原因（重开面板时表单已不在）：$receipt")
+        assertFalse(receipt.startsWith(REVOKE_FAILED_NOTICE), "吊销本身是成功的：$receipt")
+
+        // 「重新进入」第一步：设置页那一行读得到。
+        onNodeWithText("切换没有完成", substring = true).assertExists()
+
+        // 「重新进入」第二步：重新打开的面板仍显示同一条回执。
+        runOnIdle { showPanel = true }
+        waitForIdle()
+        onNodeWithTag(CORE_SWITCH_NOTICE_TAG).assertExists()
+        onNodeWithText("切换没有完成", substring = true).assertExists()
     }
 
     // ==================================================== R3 · 提交中不许被返回取消
@@ -323,6 +496,72 @@ class CoreSwitchUiTest : IsolatedPreferencesTest() {
             CoreSwitchNotice.text!!.startsWith(REVOKE_FAILED_NOTICE),
             "面板没了，吊销失败也必须留下回执：${CoreSwitchNotice.text}",
         )
+    }
+
+    /**
+     * P2 · 「在途」不归面板所有：提交中把面板移出组合再放回来，仍必须显示「正在切换」，
+     * 而不是一个 busy=false、能再发第二次的新面板。
+     *
+     * 旧实现 `submittingState = remember { mutableStateOf(false) }`：面板一销毁就归零，
+     * 重开的面板既没有「正在切换」提示，也能再点一次「配对并切换」—— 第二次会再吊销一次
+     * 旧 core、再烧一个一次性码。现在真源是 [CoreSwitchNotice.submitting]，面板只是读者。
+     */
+    @Test
+    fun aReopenedPanelStillSeesTheSwitchInFlight() = runComposeUiTest {
+        PairingRuntime.noteBooted()
+        PairingRuntime.install(marker, "10.0.0.9", 19999)
+        CoreSwitchNotice.text = null
+
+        val gate = CompletableDeferred<CoreSwitchOutcome>()
+        var switches = 0
+        var showPanel by mutableStateOf(true)
+
+        setContent {
+            CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
+                if (showPanel) {
+                    CoreSwitchPanel(
+                        onBack = {},
+                        onSwitch = { _, _ ->
+                            switches += 1
+                            gate.await()
+                        },
+                    )
+                }
+            }
+        }
+        waitForIdle()
+
+        onNode(codeField()).performTextInput("青松-R3R3R3")
+        onNodeWithText(SWITCH_BUTTON_LABEL).performClick()
+        waitUntil(timeoutMillis = 5_000) { switches == 1 }
+
+        // 切走 → 面板销毁；再回来 → 全新的面板。
+        runOnIdle { showPanel = false }
+        waitForIdle()
+        runOnIdle { showPanel = true }
+        waitForIdle()
+
+        // 仍是「正在切换」：提示在、返回被拦、提交按钮禁用（Disabled 语义，不是假禁用）。
+        onNodeWithText(SWITCH_SUBMITTING).assertExists()
+        onNodeWithContentDescription("返回").assertHasNoClickAction()
+        onNodeWithText(SWITCH_BUTTON_LABEL).assertIsNotEnabled()
+
+        // 真实点一下禁用按钮：不许再发第二次 switchCore。
+        onNodeWithText(SWITCH_BUTTON_LABEL).performTouchInput { click() }
+        waitForIdle()
+        assertEquals(1, switches, "提交中重开的面板不许并发第二次 switchCore（会再吊销、再烧码）")
+
+        // 落地后恢复可操作，回执照旧写进进程级回执。
+        gate.complete(
+            CoreSwitchOutcome(
+                revocation = SessionRevocation.Revoked,
+                attempt = PairingAttempt.Connected(marker, "10.0.0.8", 8443),
+            ),
+        )
+        waitUntil(timeoutMillis = 5_000) { CoreSwitchNotice.text != null }
+        waitForIdle()
+        assertEquals("已切换到 10.0.0.8:8443", CoreSwitchNotice.text)
+        onNodeWithContentDescription("返回").assertHasClickAction()
     }
 
     /**

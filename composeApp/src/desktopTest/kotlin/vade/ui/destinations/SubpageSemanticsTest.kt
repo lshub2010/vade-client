@@ -27,6 +27,7 @@ import vade.ui.data.PairingRuntime
 import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.material.MaterialSkin
+import vade.ui.skin.miuix.MiuixSkin
 import vade.ui.testutil.IsolatedPreferencesTest
 
 /**
@@ -34,13 +35,14 @@ import vade.ui.testutil.IsolatedPreferencesTest
  *
  * 1. **子页压住的底层页不许留在无障碍树里**。`ProfileScreen` 的「关于」/「连接 / 更换 Core」
  *    子页是同一个 `Box` 里的同级覆盖层（D91 全屏子页，不是弹层）—— 视觉盖住了，语义树上
- *    底层滚动列还在，读屏和键盘能走到屏幕上根本没显示的那几行设置项（审计 A11Y-2）。
- *    修法只在 `ProfileScreen` 的底层列上加 `invisibleToUser()`（+ `canFocus = false`），
- *    这里断言「打开 → 底层 ListItem 从无障碍树消失；关闭 → 恢复」。
+ *    底层滚动列还在，读屏能走到屏幕上根本没显示的那几行设置项（审计 A11Y-2）。
+ *    修法只在 `ProfileScreen` 的底层列上加 `invisibleToUser()`，这里断言「打开 → 底层
+ *    ListItem 从无障碍树消失；关闭 → 恢复」。
  *
  * 2. **host / port 输入框有名字**。两个框的值从默认配置起就非空，占位文案永远不渲染，
  *    语义树上只是「可输入文本」（审计 A11Y-1）。`Skin.TextField` 新增的 `label` 形参
  *    同时给出可视小字与 `contentDescription`，这里断言**输入节点本身**带着这个名字。
+ *    material 与 miuix 是两份独立实现，两边各钉一条（miuix 不是转发 material）。
  *
  * 断言只读语义树，不读像素 —— 没有截图基线也能常驻跑。
  */
@@ -85,6 +87,30 @@ class SubpageSemanticsTest : IsolatedPreferencesTest() {
             onAllNodes(hasSetTextAction()).fetchSemanticsNodes().size == 3,
             "host / port / 码三个输入框都要还在",
         )
+    }
+
+    /**
+     * r3-a11y（P3）· miuix 是**独立实现**：`TextField` 走 Miuix 自己的 `BasicTextField`
+     * 组合（不是转发 material）。label 同样必须落在可编辑节点上 —— 只量 material 一条
+     * 断言挡不住 miuix 那一边哪天把 `contentDescription` 丢掉。
+     */
+    @Test
+    fun miuixHostAndPortFieldsCarryTheirAccessibleNameToo() = runComposeUiTest {
+        setContent {
+            CompositionLocalProvider(LocalSkin provides MiuixSkin()) {
+                PairingForm(
+                    initialHost = "127.0.0.1",
+                    initialPort = "8443",
+                    submitLabel = PAIRING_BUTTON_LABEL,
+                    submittingLabel = PAIRING_SUBMITTING,
+                    onSubmit = { _, _, _ -> error("本用例不提交") },
+                )
+            }
+        }
+        waitForIdle()
+
+        onNode(hasSetTextAction() and hasContentDescription(PAIRING_HOST_LABEL)).assertExists()
+        onNode(hasSetTextAction() and hasContentDescription(PAIRING_PORT_LABEL)).assertExists()
     }
 
     // ---------------------------------------------------------------- 2 · 子页

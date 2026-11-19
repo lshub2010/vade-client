@@ -26,7 +26,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.invisibleToUser
 import androidx.compose.ui.semantics.semantics
@@ -164,11 +163,13 @@ fun ProfileScreen(
     // 子页可能因此离开组合 —— 所以这里也留一行，回来还看得见。
     val coreSwitchNotice = CoreSwitchNotice.text
     // r3-a11y · 两个子页是同一个 Box 里的**同级覆盖层**：视觉上盖住了本页，但底下的滚动列
-    // 仍在语义树里 —— 读屏/键盘能遍历到根本没显示在屏幕上的设置行（审计 A11Y-2）。
-    // 子页打开时把整列标记 invisibleToUser()（节点连同子树从无障碍树消失），并关掉列自身的
-    // 键盘焦点；关掉子页就恢复。判据只有这两个开关本身，没有第二份「子页是否打开」的状态。
+    // 仍在语义树里 —— 读屏能遍历到根本没显示在屏幕上的设置行（审计 A11Y-2）。
+    // 子页打开时把整列标记 invisibleToUser()（节点连同子树从无障碍树消失），关掉子页就恢复；
+    // 判据只有这一个开关本身，没有第二份「子页是否打开」的状态。
     // 注：Compose 1.12 把该函数改了名（hideFromAccessibility()），invisibleToUser() 仍是
     // 同一语义的别名，SemanticsOwner.isHidden 两个 key 都认 —— 这里保留审计原文的名字。
+    // 键盘焦点不在这里承诺：invisibleToUser() 只作用于无障碍树，`focusProperties` 挂在一个
+    // 非可聚焦的 Column 上也不会关掉子树焦点（P3：宁可不说，也不留一句假承诺）。
     val subpageOpen = showAbout || showCoreSwitch
     Box(
         modifier
@@ -190,9 +191,7 @@ fun ProfileScreen(
                 .padding(horizontal = 16.dp)
                 .then(
                     if (subpageOpen) {
-                        Modifier
-                            .semantics { invisibleToUser() }
-                            .focusProperties { canFocus = false }
+                        Modifier.semantics { invisibleToUser() }
                     } else {
                         Modifier
                     },
