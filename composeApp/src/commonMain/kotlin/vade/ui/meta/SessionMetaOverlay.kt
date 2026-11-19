@@ -107,6 +107,16 @@ class SessionMetaOverlay(
      */
     private var hasSynced by mutableStateOf(false)
 
+    // --- H5 · [projectGroups] 的缓存槽（普通字段：不参与组合，只有身份比较用） ----------
+    /** 上次投影用的分组列表实例（调用方命中 `UiState.groups()` 缓存时它保持不变）。 */
+    private var projectionGroups: List<SessionGroup>? = null
+    /** 上次投影时 `meta.sessions` 的**逐元素快照**（比较用引用，不用值）。 */
+    private var projectionSessions: List<MetaSession> = emptyList()
+    /** 上次投影时的墓碑集合实例。 */
+    private var projectionRemoved: Set<String> = emptySet()
+    /** 上次投影的结果；三个输入身份都没变时原样返回它。 */
+    private var projectionValue: List<SessionGroup>? = null
+
     /** 挂载后拉一次组表（门槛见类 KDoc）。由 [SessionMetaOverlayHost] 的 LaunchedEffect 调。 */
     suspend fun bootstrap() {
         if (allowGroupLoad) meta.loadGroups()
@@ -140,9 +150,12 @@ class SessionMetaOverlay(
             lastSynced = lastSynced + adopt.associateBy { it.id }
         }
         // 权威列表不再列出的墓碑：刷新已经确认了删除，清掉。
+        // 只有**真的少了**墓碑才写状态 —— 每次都 `removedIds = …` 会平白多一次快照写入，
+        // 而那一次写入会连带打掉 [projectGroups] 的缓存（键里含墓碑集合实例）。
         if (removed.isNotEmpty()) {
             val live = rows.mapTo(mutableSetOf()) { it.id }
-            removedIds = removed.filterNot { it in live }.toSet()
+            val kept = removed.filterNot { it in live }.toSet()
+            if (kept != removed) removedIds = kept
         }
     }
 
@@ -170,18 +183,80 @@ class SessionMetaOverlay(
      * `archived = true` 且权威没标归档的行 = 乐观归档 → 行立即消失（与真源
      * `session/list` 的归档过滤一致）；其余覆盖 title/pinned/groupId，pinned
      * 变化时时间桶按 [bucketFor] 重算（取消置顶不能留在「置顶」桶）。
+     *
+     * ## H5 · 为什么这里有一份缓存
+     *
+     * 调用方是**每次重组**都会执行的两个壳层分支（`AppShell` 的抽屉分支与
+     * `DestinationHost` 的会话分支）。一次投影的旧代价是：
+     * `flatMap`（N 元素分配）→ 每行 `meta.sessions.firstOrNull { it.id == row.id }`
+     * （**O(N·M) 线性查**）→ 每行再读一次时钟 `nowMs()` → 最后 `sessionGroups(...)`
+     * = 5 桶 × `filter` + `sortedByDescending`（5N log N）。上游 `UiState.groups()`
+     * 第 1 轮已经记忆化（`UiState.kt` 的 `groupedState`），下游这一层没记忆化就等于
+     * 「记忆化只保住了第一次」。
+     *
+     * 所以结果按三个**输入身份**缓存，而不是按值比较（避免每次重算一遍再做 O(N) equals）：
+     *  1. [groups] 的实例（`UiState.groups()` 命中缓存时是同一个 List）；
+     *  2. `meta.sessions` 的**逐元素引用**（快照列表每次写入都会换元素实例 ——
+     *     `MetaSession` 是 data class，`applyProjection` 换的是整张 List）；
+     *  3. 墓碑集合 [removedIds] 的实例。
+     * 三者都没变 ⇒ 直接返回上次那份 List（连实例都相同，下游 `remember(groups)` /
+     * `LaunchedEffect(rows)` 的键因此稳定）。任何一个变了 ⇒ 重算一次。
+     *
+     * 注意 ①：逐元素引用比较是**精确**的（不做 hash），所以不存在「哈希撞了就漏一次
+     * 同步」的坑；代价是每次调用 O(M) 次指针比较，远小于原来的 O(N·M) + 排序。
+     * 注意 ②：`bucketFor` 依赖**当前时钟**，缓存命中意味着「乐观行的时间桶」会停在上次
+     * 投影的那一刻。这只会影响「相对权威被改过的行」（乐观值本来就是临时的，收敛由
+     * `retrySessions` 负责），不会影响权威行自己的桶（桶来自 `UiState.computeGroups()`）。
+     * 注意 ③：读 `meta.sessions` 与 [removedIds] 仍然是**快照读** —— 调用方的组合作用域
+     * 照旧会被写入失效，可观察语义一点没变（缓存只省算力，不改触发条件）。
      */
     fun projectGroups(groups: List<SessionGroup>): List<SessionGroup> {
         if (!hasSynced) return groups
-        return sessionGroups(groups.flatMap { group -> group.sessions.mapNotNull { project(it) } })
+        val sessions = meta.sessions
+        val removed = removedIds
+        val cached = projectionValue
+        if (
+            cached != null &&
+            groups === projectionGroups &&
+            removed === projectionRemoved &&
+            sameInstances(sessions, projectionSessions)
+        ) {
+            return cached
+        }
+        val known = sessions.associateBy { it.id } // O(M) 一次，不再是每行一次线性查
+        val now = nowMs() // 一个投影一个时钟值，不再是每行一次
+        val value = sessionGroups(
+            groups.flatMap { group ->
+                group.sessions.mapNotNull { project(row = it, known = known, removed = removed, now = now) }
+            },
+        )
+        projectionGroups = groups
+        projectionSessions = sessions.toList()
+        projectionRemoved = removed
+        projectionValue = value
+        return value
     }
 
-    private fun project(row: SessionSummary): SessionSummary? {
+    /** 逐元素**引用**比较（精确，不做 hash）：状态机列表是否还是上次投影时那一批实例。 */
+    private fun sameInstances(current: List<MetaSession>, snapshot: List<MetaSession>): Boolean {
+        if (current.size != snapshot.size) return false
+        for (i in current.indices) {
+            if (current[i] !== snapshot[i]) return false
+        }
+        return true
+    }
+
+    private fun project(
+        row: SessionSummary,
+        known: Map<String, MetaSession>,
+        removed: Set<String>,
+        now: Long,
+    ): SessionSummary? {
         if (row.isDraft) return row
         // 墓碑：乐观删除/已确认删除的行必须消失（这一条与「不认识」是两回事）。
-        if (row.id in removedIds) return null
+        if (row.id in removed) return null
         // 同步过之后仍不认识 = 同步后才出现的新行：原样画，不许丢。
-        val m = meta.sessions.firstOrNull { it.id == row.id } ?: return row
+        val m = known[row.id] ?: return row
         if (m.archived && !row.archived) return null
         if (m.title == row.title && m.pinned == row.pinned && m.groupId == row.groupId) return row
         return row.copy(
@@ -189,7 +264,7 @@ class SessionMetaOverlay(
             pinned = m.pinned,
             archived = row.archived,
             groupId = m.groupId,
-            bucket = bucketFor(updatedAtMs = row.updatedAt, pinned = m.pinned, nowMs = nowMs()),
+            bucket = bucketFor(updatedAtMs = row.updatedAt, pinned = m.pinned, nowMs = now),
         )
     }
 
@@ -255,6 +330,32 @@ fun rememberSessionMetaOverlay(
 }
 
 /**
+ * H6 · 权威分组 → 浮层要的**行列表**，实例随 [groups] 的**实例**走（且值相等时不换实例）。
+ *
+ * `SessionMetaOverlayHost` 里有 `LaunchedEffect(rows) { overlay.syncFrom(rows) }`。
+ * 这里要把「键的语义」说清，因为审查报告 H6 的原话（「每次新 List ⇒ 每次重组重启协程」）
+ * 只对**内容也变了**的那种新 List 成立：`remember` / `LaunchedEffect` 的键走
+ * `Composer.changed`（`equals` 比较，不是 `changedInstance` 的引用比较），所以内容相同的
+ * 新 List 不会重启协程。但旧写法每次重组都白烧这些东西：
+ *
+ *  - `groups.flatMap { it.sessions }` 每次重组分配一个 O(N) 的新 List；
+ *  - 键比较本身要对那个新 List 做一次 O(N) 的逐元素 `equals`（`SessionSummary` 是 data
+ *    class，逐字段比）；
+ *  - `rows` 的实例逐帧变化，任何**下游**想按实例做记忆化的地方（`remember(rows)`、
+ *    `key(rows)`、把 rows 传进别的 effect）都会失效 —— 报告里 H6 建议的「remember 后的
+ *    rows」正是这一条。
+ *
+ * 把 `flatMap` 提进 `remember(groups)`：`UiState.groups()` 命中 `derivedStateOf` 缓存时
+ * 返回**同一个 List 实例**，于是这里连值比较都省了 —— 逐帧同一个 `rows` 实例，
+ * 内容变了（`groups` 换实例且不相等）才重建。三处生产调用点（`AppShell` 的抽屉分支 /
+ * 双栏与 rail 单栏的列表分支 / 活动页）都用它；`ShellPerfGuardsTest` 钉住
+ * 「AppShell 里不再有裸 `flatMap { it.sessions }`」。
+ */
+@Composable
+internal fun rememberSessionRows(groups: List<SessionGroup>): List<SessionSummary> =
+    remember(groups) { groups.flatMap { it.sessions } }
+
+/**
  * 菜单锚点 Box 的 testTag（alpha J3）。
  *
  * 宿主在行下方放一个**零尺寸** Box，Popup 以它为父布局。Popup 自身渲染在独立窗口里，
@@ -300,6 +401,10 @@ fun SessionMetaOverlayHost(
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     LaunchedEffect(overlay) { overlay.bootstrap() }
+    // H6：`rows` 必须是**实例稳定**的列表（生产调用点一律走 [rememberSessionRows]）。
+    // 键的比较是 `equals`，所以「内容相同的新 List」不会重启本协程；但旧写法每次重组都要
+    // 分配一个 O(N) 的新 List、再对这个新 List 做一次 O(N) 的逐元素 `equals`，而且
+    // `syncFrom` 是幂等的（不报错，只是白跑：`associateBy` 建 map + 逐行投影 + 再建一个 map）。
     LaunchedEffect(rows) { overlay.syncFrom(rows) }
 
     // 宿主自己在根窗口里的原点。行矩形也是根坐标：两者相减 = 相对父布局的落点，

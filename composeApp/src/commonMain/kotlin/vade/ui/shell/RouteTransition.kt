@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -73,9 +74,11 @@ import vade.ui.skin.SkinMotion
  *  - 位移与遮罩透明度都在 `graphicsLayer {}` 块内**延迟读取** `progress.value`——
  *    动画每一帧只走 draw 阶段，宿主（及其两层内容）**一次重组都不会发生**；
  *  - 两层内容没有 `AnimatedContent`/`AnimatedVisibility` 那类「出场即销毁」的包装，
- *    所以抽屉收起后列表仍在组合里（只是平移出屏 + `invisibleToUser`）——这正是
- *    「列表滚动位置在开合后保留」的机制：`SessionsScreen` 的 `LazyColumn` 状态从未
- *    离开组合，自然不会重置；
+ *    所以抽屉**第一次打开之后**列表就一直留在组合里（收起时只是平移出屏 + `invisibleToUser`）
+ *    ——这正是「列表滚动位置在开合后保留」的机制：`SessionsScreen` 的 `LazyColumn` 状态
+ *    从未离开组合，自然不会重置。**首次打开之前**列表不组合（H11：冷启动 / 深链直进详情
+ *    时别为看不见的列表付组合 + 测量；见 [SessionsDrawerHost] 里 `if (expanded ||
+ *    drawerEverOpened.value)` 的注释）。锁存是单向的，所以动画期间组合结构不抖动；
  *  - `animate = false`（截图/测试开关，同一族 `ChatThread(animate = …)` 的取值）时
  *    [sessionsDrawerSpec] 给出 0ms：开合即时到位，状态机与组合结构完全不变。
  *
@@ -331,6 +334,12 @@ internal fun SessionsDrawerHost(
         // 满宽 ⇒ 没有「浮起的抽屉」可言：peek 的右缘圆角与浮层阴影只属于 <满宽的形态
         // （`drawerShape(fraction)` / `drawerElevation(fraction)`），否则会在屏右缘露出
         // 两条详情颜色的缝。
+        //
+        // H11 · 抽屉**收起且从未打开过**时，列表层不组合（见下面 `if` 的注释）。
+        // 锁存用普通 `mutableStateOf` + `SideEffect`：`expanded` 只增不减地记「开过」，动画期间
+        // 条件不会抖动（`expanded` 为真的那一帧起本层已经在组合里）。
+        val drawerEverOpened = remember { mutableStateOf(expanded) }
+        SideEffect { if (expanded) drawerEverOpened.value = true }
         val widthFraction = DRAWER_WIDTH_FRACTION
         val shape = drawerShape(widthFraction)
         Box(
@@ -345,18 +354,31 @@ internal fun SessionsDrawerHost(
                 .background(skin.colors.surface)
                 .semantics { if (!expanded) invisibleToUser() },
         ) {
-            drawer?.invoke() ?: DrawerSessionList(
-                state = state,
-                adapters = adapters,
-                contentInsets = contentInsets,
-                rowFocus = rowFocus,
-                metaGroups = metaGroups,
-                onLongPress = onLongPress,
-                groups = groups,
-            )
-            // B2（s-meta-host）：菜单/分组编辑/回滚横条的宿主必须在抽屉层里，
-            // 否则长按后状态机变了却没有东西渲染弹出面（本棒合并时踩到的半个洞）。
-            overlayHost?.invoke()
+            // H11：**开过一次之后常驻**，之前不组合。
+            //
+            //  - 为什么开过之后不能拆：列表滚动位置靠 `SessionsScreen` 内部的
+            //    `rememberLazyListState()` 不离开组合来保留（文件头 KDoc：这正是
+            //    「开合后回到原来那一行」的机制）。拆掉 = 每次收起都把位置清零。
+            //  - 为什么打开前能省：收起时整层被 `translationX` 推出屏，但 `LazyColumn`
+            //    照样组合 + 测量全部可见行（手机约 12 行 + 组头），`groups` 每变一次
+            //    再测量一遍 —— 冷启动 / 深链直进详情 / 截图环都在付这笔账，而用户
+            //    在这之前看不到列表。
+            //  - 为什么条件不是 `progress.value > 0f`：那会在动画期间每帧翻转组合结构
+            //    （入场时反复拆装列表），比现在的代价大得多。锁存是**单向**的。
+            if (expanded || drawerEverOpened.value) {
+                drawer?.invoke() ?: DrawerSessionList(
+                    state = state,
+                    adapters = adapters,
+                    contentInsets = contentInsets,
+                    rowFocus = rowFocus,
+                    metaGroups = metaGroups,
+                    onLongPress = onLongPress,
+                    groups = groups,
+                )
+                // B2（s-meta-host）：菜单/分组编辑/回滚横条的宿主必须在抽屉层里，
+                // 否则长按后状态机变了却没有东西渲染弹出面（本棒合并时踩到的半个洞）。
+                overlayHost?.invoke()
+            }
         }
     }
 }

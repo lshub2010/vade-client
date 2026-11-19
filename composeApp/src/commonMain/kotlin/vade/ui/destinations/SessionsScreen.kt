@@ -20,10 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -231,7 +228,9 @@ fun SessionsScreen(
         }
 
         groups.forEach { group ->
-            item(key = "hdr-${group.bucket.name}") {
+            // H9：组头与行各自声明 `contentType` —— 两种完全不同的骨架混在同一条 LazyColumn
+            // 里，不分开的话滑动时无法复用同一批可组合槽（每滚过一个组界都要重建一次行）。
+            item(key = "hdr-${group.bucket.name}", contentType = "session-group-header") {
                 // 分组头：只有文字标签 + 数量，没有 1px 规则线——§12 要求列表靠间距分层。
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 6.dp),
@@ -251,7 +250,7 @@ fun SessionsScreen(
                     )
                 }
             }
-            items(group.sessions, key = { it.id }) { session ->
+            items(group.sessions, key = { it.id }, contentType = { "session-row" }) { session ->
                 val selected = session.id == selectedId
                 SessionRow(
                     session = session,
@@ -290,9 +289,15 @@ private fun SessionRow(
 ) {
     val skin = LocalSkin.current
     val ink = sessionRowInk(skin.colors)
-    // 长按瞬间的窗口矩形：`onGloballyPositioned` 在布局后写、长按一定发生在布局之后，
-    // 所以取到的就是用户手指/指针按下的那一行（滚动后也会随重组更新）。
-    var bounds by remember { mutableStateOf(IntRect.Zero) }
+    // H3 · 长按瞬间的窗口矩形：`onGloballyPositioned` 在布局后写、长按一定发生在布局之后，
+    // 所以取到的就是用户手指/指针按下的那一行。
+    //
+    // **不写快照状态**（审查 H3）：滚动 / 惯性 / 抽屉滑动时每一可见行的根坐标每帧都在变 ⇒
+    // 回调每帧每行一次。以前这里是一个 `mutableStateOf(IntRect)`，于是每帧每行都写一次快照
+    // （一个完全没有组合期读者的写入，纯属白烧 CPU + 快照记录分配）。坐标只有一个消费者：
+    // 「长按」——一次交互最多一次。所以照 `ChatThread.kt` 的 `observePointerTap` 同一模板，
+    // 用一个普通引用持有，只在指针回调里读（见 [SessionRowBounds]）。
+    val bounds = remember { SessionRowBounds() }
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -300,15 +305,7 @@ private fun SessionRow(
             .padding(horizontal = 8.dp)
             // J2：行高 56dp（单选行摘要规格；Q2-B 的 48dp 已被 alpha 审查裁决覆盖）。
             .height(SESSION_ROW_HEIGHT)
-            .onGloballyPositioned { coords ->
-                val origin = coords.localToRoot(Offset.Zero)
-                bounds = IntRect(
-                    left = origin.x.roundToInt(),
-                    top = origin.y.roundToInt(),
-                    right = (origin.x + coords.size.width).roundToInt(),
-                    bottom = (origin.y + coords.size.height).roundToInt(),
-                )
-            }
+            .sessionRowBounds(bounds)
             .clip(RoundedCornerShape(if (selected) SELECTED_BLOCK_CORNER else skin.shapes.sm))
             // 选中态 = **带圆角的强调色块**（accent 淡染，亮 12% / 暗 16%，都在 10–16% 口径内）。
             .background(
@@ -322,7 +319,7 @@ private fun SessionRow(
             )
             // B2（s-meta-host）：长按 = 同一手势的第二个动作（combinedClickable），
             // onClick 语义/涟漪/选中态全部保持原样；长按带上行矩形（J3 锚点）。
-            .combinedClickable(onClick = onClick, onLongClick = { onLongPress(session, bounds) })
+            .combinedClickable(onClick = onClick, onLongClick = { onLongPress(session, bounds.value) })
             // 行的 testTag 挂在**块**上（内边距之前）：行高 / 信息顺序的断言都量这个节点。
             .testTag(sessionRowTag(session.id))
             .padding(start = 4.dp, end = 12.dp),
@@ -398,6 +395,52 @@ private fun SessionRow(
         }
     }
 }
+
+/**
+ * H3 · 行长按锚点的持有者 —— 一个**普通引用**，绝不写快照状态。
+ *
+ * 为什么不是 `mutableStateOf(IntRect)`（这是本次性能审查 H3 的原缺陷）：滚动 / 惯性 /
+ * 抽屉滑动时，每一可见行的根坐标**每帧都在变** ⇒ `onGloballyPositioned` 每帧对每行各回调
+ * 一次 ⇒ 若那里写的是快照状态，就是「每帧 × 可见行数」次快照写入（手机 12 行 × 120Hz
+ * ≈ 1440 次/秒），而这些写入唯一的消费者是「长按」——一次交互最多一次。
+ *
+ * 同一仓里的正确模板是 `ChatThread.kt` 的 `observePointerTap`：坐标只在指针回调里读，
+ * 从不参与组合，所以用普通引用。本类与 [sessionRowBounds] 就是把它抽出来供测试直接驱动
+ * （`SessionRowBoundsTest` 用重组计数器钉住「布局回调不触发重组」）。
+ *
+ * [update] 里还做了一次同值短路：`IntRect` 是 data class（值比较），矩形没变（例如只是
+ * 同一次布局被重放、或像素未变）时连字段都不写。取整也在这里做一次 —— 亚像素位移不会
+ * 变成「新矩形」。
+ */
+internal class SessionRowBounds {
+    /** 该行**上一次布局后**的窗口矩形（根坐标，px）。从未布局过 = [IntRect.Zero]。 */
+    var value: IntRect = IntRect.Zero
+        private set
+
+    /** 布局后回调：同值短路，只有矩形真的变了才更新。 */
+    fun update(rect: IntRect) {
+        if (rect != value) value = rect
+    }
+}
+
+/**
+ * 布局后把本节点的窗口矩形记进 [bounds]（H3）。
+ *
+ * 只碰普通引用、不读写任何快照状态，所以**布局阶段不会让任何组合作用域失效**：
+ * 滚动路径上这条 modifier 的代价就是一次 `localToRoot` + 4 次取整。
+ */
+internal fun Modifier.sessionRowBounds(bounds: SessionRowBounds): Modifier =
+    onGloballyPositioned { coords ->
+        val origin = coords.localToRoot(Offset.Zero)
+        bounds.update(
+            IntRect(
+                left = origin.x.roundToInt(),
+                top = origin.y.roundToInt(),
+                right = (origin.x + coords.size.width).roundToInt(),
+                bottom = (origin.y + coords.size.height).roundToInt(),
+            ),
+        )
+    }
 
 /**
  * 行节点的 testTag —— 测试量「行高 56dp」「未读/置顶在标题左、时间在标题右」时唯一的锚点

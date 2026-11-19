@@ -68,7 +68,7 @@ fun SessionMetaHost(
     ) {
         // 最近一次写动作失败：可展示、可关闭、按 VadeErrorCategory 分类（绝不静默）。
         state.actionError?.let { failure ->
-            item(key = "meta-action-error") {
+            item(key = "meta-action-error", contentType = "meta-banner") {
                 MetaErrorBanner(
                     text = failure.message,
                     onDismiss = state::dismissActionError,
@@ -77,7 +77,7 @@ fun SessionMetaHost(
         }
 
         // 顶栏动作：新建分组（矢量图标 + 44dp 触摸区，§3 图标即按钮）。
-        item(key = "meta-header") {
+        item(key = "meta-header", contentType = "meta-header") {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -105,7 +105,7 @@ fun SessionMetaHost(
         // 旧的权威快照（若有）继续渲染在下面，绝不因为一次读失败把组清空。
         val loadFailure = state.groupsLoadError
         if (loadFailure != null) {
-            item(key = "meta-groups-failed") {
+            item(key = "meta-groups-failed", contentType = "meta-banner") {
                 EmptyStateCard(
                     title = MetaCopy.GROUPS_LOAD_FAILED_TITLE,
                     body = MetaCopy.GROUPS_LOAD_FAILED_BODY + "（" + loadFailure.category.label + "）",
@@ -117,7 +117,7 @@ fun SessionMetaHost(
                 )
             }
         } else if (state.groupsLoad == MetaGroupsLoad.Loading && state.groups.isEmpty()) {
-            item(key = "meta-groups-loading") {
+            item(key = "meta-groups-loading", contentType = "meta-banner") {
                 UiText(
                     text = MetaCopy.GROUPS_LOADING,
                     size = 11,
@@ -129,7 +129,7 @@ fun SessionMetaHost(
 
         if (state.hasNoGroups) {
             // 测试⑦的空态：分组列表为空 → 一张空态卡，唯一主行动是「新建分组」。
-            item(key = "meta-groups-empty") {
+            item(key = "meta-groups-empty", contentType = "meta-banner") {
                 EmptyStateCard(
                     title = MetaCopy.GROUPS_EMPTY_TITLE,
                     body = MetaCopy.GROUPS_EMPTY_BODY,
@@ -142,7 +142,8 @@ fun SessionMetaHost(
             }
         } else {
             state.groups.forEach { group ->
-                item(key = "group-${group.id}") {
+                // H9：分组卡是一整类骨架（横幅 / 抬头 / 空态卡各自一类），显式声明 contentType。
+                item(key = "group-${group.id}", contentType = "meta-group-card") {
                     val count = state.sessionsOf(group.id).size
                     vade.ui.destinations.GroupCardWithMeta(
                         name = group.name,
@@ -171,7 +172,7 @@ fun SessionMetaHost(
         }
 
         // 未分组（含空分组列表时的全部会话）——始终渲染，allow 用户把会话移出分组。
-        item(key = "group-ungrouped") {
+        item(key = "group-ungrouped", contentType = "meta-group-card") {
             vade.ui.destinations.GroupCardWithMeta(
                 name = MetaCopy.UNGROUPED_LABEL,
                 iconName = null,

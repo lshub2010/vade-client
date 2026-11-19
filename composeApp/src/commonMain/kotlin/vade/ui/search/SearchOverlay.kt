@@ -464,7 +464,13 @@ private fun SearchBody(
                     )
 
                     else -> LazyColumn(state = listState, modifier = Modifier.fillMaxWidth()) {
-                        itemsIndexed(search.results, key = { _, hit -> hit.session.id }) { index, hit ->
+                        // H9：结果行是一整类骨架（与尾部占位不同），显式声明 contentType 让
+                        // 滚动时的子组合复用同一批槽位。
+                        itemsIndexed(
+                            search.results,
+                            key = { _, hit -> hit.session.id },
+                            contentType = { _, _ -> "search-result-row" },
+                        ) { index, hit ->
                             ResultRow(
                                 hit = hit,
                                 selected = index == search.selected,

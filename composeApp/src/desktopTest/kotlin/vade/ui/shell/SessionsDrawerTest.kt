@@ -380,7 +380,9 @@ class SessionsDrawerTest {
     fun eachLayerIsComposedExactlyOnceAcrossOpenCloseCycles() = runComposeUiTest {
         val ui = uiState()
         ui.selectSession("s-u1a")
-        ui.closeSessionsDrawer()
+        // H11 之后「抽屉从未打开过」不再组合列表层，所以这里从**已打开**的位置起步
+        //（本用例要钉的是「跨开合保持同一实例」，不是「关着也要组合」）。
+        ui.openSessionsDrawer()
         var baseInstances = 0
         var drawerInstances = 0
 
@@ -411,6 +413,63 @@ class SessionsDrawerTest {
         }
         assertEquals(1, baseInstances, "详情层跨开合必须保持同一组合实例（数据层不重建两次）")
         assertEquals(1, drawerInstances, "列表层跨开合必须保持同一组合实例（滚动位置由此保留）")
+    }
+
+    /**
+     * H11 · 抽屉**从未打开过**时列表层不组合；打开一次之后永久常驻。
+     *
+     * 两个方向都要钉，缺一个就会退化成错误的一侧：
+     *  - 省的那一侧：深链直进详情 / 冷启动时抽屉在屏外（`translationX` 把整层推出屏），
+     *    但 `LazyColumn` 以前照样组合 + 测量全部可见行（手机约 12 行 + 组头），
+     *    `groups` 每变一次再测量一遍 —— 用户在这之前根本看不到列表。
+     *  - 不能省的那一侧：滚动位置靠 `SessionsScreen` 的 `LazyListState` **不离开组合**
+     *    来保留（文件头 KDoc）。所以「打开过」必须锁存，收起后仍然常驻 ——
+     *    条件只能是 `expanded || 开过`，不能是 `expanded`（那等于每次收起都把位置清零），
+     *    也不能是 `progress.value > 0f`（动画期间每帧翻转组合结构）。
+     */
+    @Test
+    fun theListLayerStaysUncomposedUntilTheDrawerIsOpenedOnce() = runComposeUiTest {
+        val ui = uiState()
+        ui.selectSession("s-u1a")
+        ui.closeSessionsDrawer() // 深链语义：详情在屏、抽屉收起、这次运行还没开过
+        var baseInstances = 0
+        var drawerInstances = 0
+        var overlayInstances = 0
+
+        setContent {
+            CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
+                Box(Modifier.size(500.dp, 900.dp)) {
+                    SessionsDrawerHost(
+                        state = ui,
+                        adapters = null,
+                        contentInsets = PaddingValues(0.dp),
+                        animate = false,
+                        base = { probe { baseInstances++ } },
+                        drawer = { probe { drawerInstances++ } },
+                        overlayHost = { probe { overlayInstances++ } },
+                    )
+                }
+            }
+        }
+        waitForIdle()
+
+        assertEquals(1, baseInstances, "详情层常驻（抽屉收起时它就是屏上的内容）")
+        assertEquals(0, drawerInstances, "抽屉没开过 ⇒ 列表层不组合")
+        assertEquals(0, overlayInstances, "元数据宿主跟着列表层走（它的 bootstrap 只服务抽屉）")
+
+        runOnIdle { ui.openSessionsDrawer() }
+        waitForIdle()
+        assertEquals(1, drawerInstances, "打开 ⇒ 列表层组合（且只组合一次）")
+        assertEquals(1, overlayInstances, "打开 ⇒ 元数据宿主一起组合")
+
+        runOnIdle { ui.closeSessionsDrawer() }
+        waitForIdle()
+        assertEquals(1, drawerInstances, "收起 ⇒ 列表层**常驻**（滚动位置靠它不离开组合来保留）")
+        assertEquals(1, overlayInstances, "收起 ⇒ 元数据宿主也常驻（重开不能再 bootstrap 一次）")
+
+        runOnIdle { ui.openSessionsDrawer() }
+        waitForIdle()
+        assertEquals(1, drawerInstances, "再打开 ⇒ 仍是同一个组合实例（没有拆装）")
     }
 
     /** 探针内容体：`remember` 只在该组合实例的首次进入时跑一次——重建即计数增加。 */

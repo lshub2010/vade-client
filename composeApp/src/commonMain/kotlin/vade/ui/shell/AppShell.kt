@@ -73,6 +73,7 @@ import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
 import vade.ui.meta.SessionMetaOverlayHost
 import vade.ui.meta.rememberSessionMetaOverlay
+import vade.ui.meta.rememberSessionRows
 import vade.ui.search.SearchHost
 import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.LocalSkin
@@ -486,7 +487,9 @@ private fun ShellBody(state: UiState) {
                         // 「5 桶 × filter + 排序」），加上 `selectedSession` 那次一共 3 遍；
                         // 叠上 P1-1 的每帧重组，键盘动画期间每帧 15~45 次全表扫描。
                         val drawerGroups = state.groups()
-                        val drawerRows = drawerGroups.flatMap { it.sessions }
+                        // H6：`flatMap` 提进 remember（键 = 已记忆化的 groups 实例）—— 逐帧同一个
+                        // `rows` 实例，下游 `LaunchedEffect(rows)` 不再白分配一个 O(N) 新 List。
+                        val drawerRows = rememberSessionRows(drawerGroups)
                         CompositionLocalProvider(
                             LocalSessionListOpener provides state::openSessionsDrawer,
                         ) {
@@ -913,7 +916,9 @@ private fun DestinationHost(
             // 归属）覆盖在权威行上，失败由状态机回滚、投影跟着回原位；成功后 retrySessions 收敛。
             val authoritativeGroups = state.groups()
             val visibleGroups = metaOverlay.projectGroups(authoritativeGroups)
-            val authoritativeRows = authoritativeGroups.flatMap { it.sessions }
+            // H6：同上 —— 行列表跟着 groups 的实例走，`SessionMetaOverlayHost` 的
+            // `LaunchedEffect(rows)` 逐帧拿到同一个实例。
+            val authoritativeRows = rememberSessionRows(authoritativeGroups)
             if (metrics.twoPane) {
                 Row(Modifier.fillMaxSize()) {
                     // 列表 pane 包一层 Box：悬浮面（菜单/弹层/横条）的 Popup 锚定在**列表**这一侧，
@@ -1006,7 +1011,8 @@ private fun DestinationHost(
         // 所以候选从分组里摊平；source 非空 → ActivityScreen 自己推出两个窄口（假源 → 未接线）。
         Destination.Activity -> ActivityScreen(
             contentPadding = contentInsets,
-            sessions = state.groups().flatMap { it.sessions },
+            // H6：同一条记忆化（键 = 已记忆化的 groups 实例），活动页每次重组不再重摊一遍。
+            sessions = rememberSessionRows(state.groups()),
             source = state.source,
         )
         // g-modules-wire：能力页除适配器包外，还要两样东西 ——
