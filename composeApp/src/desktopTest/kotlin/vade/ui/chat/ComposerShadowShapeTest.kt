@@ -247,17 +247,53 @@ class ComposerShadowShapeTest {
     }
 
     @Test
-    fun composerFillInTheDarkThemeShowsNoRectangularKnockout() = runComposeUiTest {
-        // Dark ink on #0E0E10 quantises the knockout down to 1/255, so the *step* is the only
-        // assertion that can see it in the dark palette. (`interiorSpread() == 0` used to sit
-        // here too — it is the same "no blur" contract as the light test and is gone; a dark
-        // panel with a backdrop must be allowed to show a blurred gradient.)
-        val shot = shotOf(MaterialSkin(dark = true))
-        val step = shot.worstInteriorStep()
+    fun composerBlursABackdropInTheDarkThemeToo() = runComposeUiTest {
+        // 暗色下低对比 backdrop 会被量化吃掉，旧用例只靠 1/255 台阶“猜”模糊，真模糊一上就误报。
+        // 这里换成与亮色用例相同的高对比 backdrop（左 #303034 / 右 #E8E8EC），直接量扩散。
+        setContent {
+            val s = MaterialSkin(dark = true)
+            CompositionLocalProvider(LocalSkin provides s) {
+                val glass = rememberGlassState()
+                GlassScope(state = glass) {
+                    Box(Modifier.size(560.dp, 260.dp).background(s.colors.canvas)) {
+                        Box(Modifier.fillMaxSize().asGlassSource(glass)) {
+                            Row(Modifier.fillMaxSize()) {
+                                Box(Modifier.weight(1f).fillMaxHeight().background(Color(0xFF303034)))
+                                Box(Modifier.weight(1f).fillMaxHeight().background(Color(0xFFE8E8EC)))
+                            }
+                        }
+                        Column(Modifier.fillMaxSize().padding(top = 96.dp, start = 20.dp, end = 20.dp)) {
+                            Box(Modifier.testTag(BlurPanelTag)) {
+                                s.InputBar(
+                                    value = " ",
+                                    onValueChange = {},
+                                    mode = InputMode.Idle,
+                                    attachments = null,
+                                    enabled = true,
+                                    voiceAvailable = false,
+                                    maxLines = 6,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        waitForIdle()
+        val panel = onNodeWithTag(BlurPanelTag).fetchSemanticsNode().boundsInRoot
+        val band = onRoot().captureToImage().toPixelMap().bandSpread(
+            l = panel.left.toInt() + 40,
+            r = panel.right.toInt() - 40,
+            t = panel.top.toInt() + 4,
+            b = panel.top.toInt() + 9,
+        )
         assertTrue(
-            step.delta <= 2,
-            "dark panel fill steps ${step.delta}/255 at (${step.x},${step.y}) " +
-                "(${step.from} → ${step.to}) — the rectangular knockout's 1/255 stair",
+            band.max - band.min >= 8,
+            "dark：面板内部只有 ${band.max - band.min}/255 的明暗 —— 有 backdrop 时必须看得到模糊",
+        )
+        assertTrue(
+            band.step <= 8,
+            "dark：面板内部一像素跳 ${band.step}/255 —— 有明暗但没有渐变，是硬边透出而非模糊",
         )
     }
 
