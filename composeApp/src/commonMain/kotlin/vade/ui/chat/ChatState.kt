@@ -1,5 +1,7 @@
 package vade.ui.chat
 
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -146,8 +148,15 @@ class ChatState(
     var lastNotice by mutableStateOf<String?>(null)
         private set
 
-    /** Text of the turn currently streaming; null when idle. */
-    private var runningId: String? = null
+    /**
+     * Text of the turn currently streaming; null when idle.
+     *
+     * **必须是 snapshot state**：它是 [isStreaming] 唯一的本地来源，而 [streamingTickerKey]
+     * 要靠「开始 / 结束」这两个**边沿**唤醒页面 ticker。早先它是普通 `var`，界面只是因为
+     * 同一次调用里顺带写了 `items` 才碰巧察觉 —— 那是巧合，不是契约；没有这个观察点，
+     * 派生键永远算不出第二次 `true`（第二条消息发出去也不会再 tick）。
+     */
+    private var runningId by mutableStateOf<String?>(null)
     private var streamTarget: String = ""
     private var streamPos: Int = 0
     private var scriptCursor: Int = 0
@@ -168,6 +177,32 @@ class ChatState(
     private var interruptInFlight: String? = null
 
     val isStreaming: Boolean get() = runningId != null || (isRealSource && realRunningTurnId() != null)
+
+    /**
+     * H2 · 页面「流式 ticker」的**唯一键** —— 稳定布尔，不是 `items`。
+     *
+     * `LaunchedEffect` 的 key 是在调用方的组合作用域里求值的。旧实现直接把 [isStreaming]
+     * 写进 key，而它在真源上要走 [realRunningTurnId] 的 `items.lastOrNull { … }`：
+     * 每一条 `turn.delta`（每 45ms 一次）写一次 `items` ⇒ 读键的那个作用域整页失效 ⇒
+     * `Column(verticalScroll)` 的 content lambda + `items.forEach` 重新跑一遍（H1 放大器）。
+     *
+     * [derivedStateOf] 把那一次扫描关进派生状态的**计算**里：`items` 写入只让派生记录失效，
+     * 只有布尔值真的翻转（回合开始 / 结束）才通知读者。读者因此不再随 delta 重组，键也就
+     * 不会在 delta 上抖动 —— ticker 协程只在「开始 / 结束」这两个边沿重建。
+     */
+    val streamingTickerKey: Boolean get() = streamingKey.value
+
+    private val streamingKey: State<Boolean> = derivedStateOf { isStreaming }
+
+    /**
+     * H2 · 页面「上传 ticker」的**唯一键** —— chip 数量（Int），取值与旧 key `staged.size`
+     * 逐字相同，区别只在读法：旧写法把 `SnapshotStateList` 的读留在调用方作用域里，于是
+     * 每条进度写入（`staged[i] = …`，每 160ms 一次）都让整页失效 —— 哪怕 size 一个都没变。
+     * 派生状态把读关在计算里，进度写入只让计算失效、不让读者失效。
+     */
+    val uploadTickerKey: Int get() = uploadKey.value
+
+    private val uploadKey: State<Int> = derivedStateOf { staged.size }
 
     /**
      * 真源下正在运行的回合 id：优先 [runningTurnId]（turn.started 事件），退而求其次取
@@ -441,13 +476,55 @@ class ChatState(
     val canConfirmEdit: Boolean
         get() = editingId != null && editDraft.isNotBlank()
 
+    // --- H4 · 「每行都要的标量」一次算清 ------------------------------------------
+    //
+    // [canEditMessage] / [queuePosition] 是**每行**每次重组都要问一次的问题
+    // （`ChatThread.kt` 的 `MessageRow` 两处）。旧实现：前者先要 `messages`
+    // （`items.mapNotNull` —— 每次访问分配一个 N 元素 List）再 `lastOrNull` 扫一遍，
+    // 后者扫两遍 `queue` ⇒ 一次消息列重组 = (N/2) × O(N) 的分配与元素访问（O(N²/2)），
+    // 流式期间每秒 22 次；N=200 的长会话就是每帧几十万次元素访问。
+    //
+    // 改成两个 [derivedStateOf]：`items` / `queue` 一变**重算一次**，之后每行都是一次
+    // Map 命中（O(1)）。派生状态只在结果**真的不同**时通知读者，所以同一次重组里 N 行
+    // 读到的都是同一份缓存，流式的 delta 也不会因为「顺手问了排队位」而让每行重组。
+
+    /**
+     * `messageId → 1-based 排队位`（只含排队中的行）。语义逐字照抄旧的 [queuePosition]：
+     *  - 同一 `messageId` 出现多次时**第一条**说了算（旧实现 `firstOrNull` + `indexOfFirst`），
+     *    所以这里不能用 `associate`（重复键保留最后一个）；
+     *  - [QueuedTurn.queuePos] > 0（core 的真值）优先，否则用本地下标 + 1（假源兜底）。
+     */
+    private val queuePositionsState: State<Map<String, Int>> = derivedStateOf {
+        val positions = HashMap<String, Int>(queue.size)
+        queue.forEachIndexed { index, turn ->
+            if (!positions.containsKey(turn.messageId)) {
+                positions[turn.messageId] = if (turn.queuePos > 0) turn.queuePos else index + 1
+            }
+        }
+        positions
+    }
+
+    /**
+     * 最后一条用户消息的 id —— **唯一**可编辑的目标（`edit_resubmit` 只许改最后一条）。
+     *
+     * 一次 `items` 扫描，不建 `messages` 那个中间 List：老实现走 `messages.lastOrNull`，
+     * 每次调用都先 `mapNotNull` 出整张表再丢掉。
+     */
+    private val lastUserMessageIdState: State<String?> = derivedStateOf {
+        val row = items.lastOrNull { it is ChatItem.Message && it.message.role == ChatRole.User }
+        (row as? ChatItem.Message)?.message?.id
+    }
+
     /**
      * Only the **last** user message is editable (`edit_resubmit` notes: "only the last
      * user message is editable"), and never a queued row (its turn does not exist yet).
+     *
+     * H4 · 两个判据都来自 [queuePositionsState] / [lastUserMessageIdState] 的缓存，本函数
+     * 自己不再扫表、不再建 List —— 它是每行每帧被问一次的，不是用户动作。
      */
     fun canEditMessage(messageId: String): Boolean {
-        if (queuePosition(messageId) > 0) return false
-        val lastUserId = messages.lastOrNull { it.role == ChatRole.User }?.id ?: return false
+        if ((queuePositionsState.value[messageId] ?: 0) > 0) return false
+        val lastUserId = lastUserMessageIdState.value ?: return false
         return messageId == lastUserId
     }
 
@@ -861,12 +938,11 @@ class ChatState(
      * 1-based position shown on the badge; 0 when not queued.
      * g-chat-send · 真源条目带 core 的 `queue_pos`（[QueuedTurn.queuePos] > 0）时**只认真值**
      * —— 本地计数只在假源条目（queuePos == 0）上兜底，行为与接线前逐字节一致。
+     *
+     * H4 · 一次 Map 命中（[queuePositionsState]），不再两遍扫 `queue`：本函数由**每一行**
+     * 每次重组调用一次（`MessageRow` 的排队徽标）。
      */
-    fun queuePosition(messageId: String): Int {
-        val entry = queue.firstOrNull { it.messageId == messageId } ?: return 0
-        if (entry.queuePos > 0) return entry.queuePos
-        return queue.indexOfFirst { it.messageId == messageId }.let { if (it < 0) 0 else it + 1 }
-    }
+    fun queuePosition(messageId: String): Int = queuePositionsState.value[messageId] ?: 0
 
     /**
      * `ui/interrupt` → `turn.interrupted` (FR-8.28 / RFC-0006 §4). The generated text is
@@ -1291,7 +1367,14 @@ class ChatState(
         preview = null
     }
 
-    /** Messages only — tool rows are not part of the 「消息 → 输入区」 reading order. */
+    /**
+     * Messages only — tool rows are not part of the 「消息 → 输入区」 reading order.
+     *
+     * **每次访问都是一个新 List**（`items.mapNotNull`）。这是给用户动作路径用的
+     * （`startEdit` / `confirmEdit` / `regenerate` / 队列投影，一次点击一次）；**每行每帧**
+     * 的热路径走 [canEditMessage] / [queuePosition] 的派生缓存（H4），不许在 `MessageRow`
+     * 里读它 —— 那会把一次重组变成 N 次 N 元素分配。
+     */
     val messages: List<ChatMessage>
         get() = items.mapNotNull { (it as? ChatItem.Message)?.message }
 
