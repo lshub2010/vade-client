@@ -821,7 +821,11 @@ object PairingRuntime {
         if (!canBootstrapPairing()) {
             return CoreSwitchOutcome(
                 SessionRevocation.NotNeeded,
-                firstRunPairingAttempt(raw, enteredCode, transportFactory, allowInsecureTls),
+                firstRunPairingAttempt(
+                    raw, enteredCode,
+                    allowInsecureTls = allowInsecureTls,
+                    transportFactory = transportFactory,
+                ),
             )
         }
         // 2) 旧 core 的 UI 会话：能吊销就吊销，吊销不了也继续（记下来给 UI 提示）。
@@ -830,7 +834,11 @@ object PairingRuntime {
         // 3) 清本地旧配置 + cookie（旧 factory 的 cookie 已在 revokeSession 里作废）。
         clearPaired(previous)
         // 4) 新 core：同一条连接链，成功才装。
-        val attempt = firstRunPairingAttempt(raw, enteredCode, transportFactory, allowInsecureTls)
+        val attempt = firstRunPairingAttempt(
+            raw, enteredCode,
+            allowInsecureTls = allowInsecureTls,
+            transportFactory = transportFactory,
+        )
         if (attempt is PairingAttempt.Connected) {
             install(attempt.factory, attempt.host, attempt.port, attempt.tls)
         }
