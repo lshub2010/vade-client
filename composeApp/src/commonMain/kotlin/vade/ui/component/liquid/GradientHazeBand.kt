@@ -142,6 +142,9 @@ internal val BAND_FADE_GAP = 8.dp
  *   `TopBarTopGap`（= 卡片上方那条缝的高度），胶囊上沿之上因此拿到 alpha = 1，
  *   缝里不再漏出锐利背板。传 0 = 行为与只有两端站时逐点一致（底栏带就是这一档）。
  *   它按**实测高度**换算成比例（`rampHoldDp / 带子高`），所以与带子多高无关。
+ * @param veil 磨砂底色的**明度偏移**（通常传 `onSurface` 的低 alpha）。纯模糊在纯色
+ *   画布上没有任何东西可采样，看起来就是全透明；这一点用户已在真机上指出。veil 与
+ *   模糊共用同一条 ramp：强端有可见的磨砂感，弱端仍然归零，不会变成一块色板。
  * @param shape 默认矩形：带子要贴到窗口/内容列边缘，圆角会露出四个角。
  */
 @Composable
@@ -152,6 +155,7 @@ fun GradientHazeBand(
     blurRadiusDp: Float,
     ramp: BandRamp,
     rampHoldDp: Dp = 0.dp,
+    veil: Color? = null,
     shape: Shape = RectangleShape,
 ) {
     val state = hazeState ?: rememberHazeState()
@@ -189,6 +193,19 @@ fun GradientHazeBand(
                 )
                 onDrawWithContent {
                     drawContent()
+                    // 磨砂底：纯模糊在平色背景上没有像素差，真机看起来就是全透明。
+                    // 同一组 stops 再画一层低 alpha 的 onSurface，强端有可见质感、
+                    // 弱端仍归零；它和模糊一起被下面的 DstIn 裁成同一条渐变。
+                    if (veil != null) {
+                        val veilStops = stops.map { (y, a) -> y to veil.copy(alpha = veil.alpha * a) }
+                        drawRect(
+                            brush = Brush.verticalGradient(
+                                *Array(veilStops.size) { i ->
+                                    veilStops[i].first to veilStops[i].second
+                                },
+                            ),
+                        )
+                    }
                     drawRect(brush = mask, blendMode = BlendMode.DstIn)
                 }
             }
