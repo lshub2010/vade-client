@@ -49,6 +49,15 @@ data class VadeClientConfig(
     val host: String,
     val port: Int,
     val tls: Boolean = false,
+    /**
+     * r5-tls · 接受**自签证书 / 主机名不匹配**的 TLS 端点（trust-all）。
+     *
+     * 关掉的是整个身份校验：`true` 时中间人无法被识别。因此只有「`tls = true` **且**
+     * 用户对着警告弹层点过「仍然连接」」才许置真（见 `data/firstRunPairingAttempt` 的
+     * `allowInsecureTls` 形参；`PairingForm` 未确认时一个请求都不发）。默认 `false` =
+     * 只走系统信任链，与 `tls` 之前的行为逐字节相同。
+     */
+    val allowInsecureTls: Boolean = false,
     /** Browser pairing; `null` means the transport does no bootstrap (device sessions / page shell). */
     val browserSession: BrowserPairing? = null,
     val clientName: String = "vade-ui",

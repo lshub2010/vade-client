@@ -164,6 +164,13 @@ kotlin {
             implementation(compose.desktop.currentOs)
             // CIO engine: pure JVM, no extra native deps — the desktop default for Ktor 3.x.
             implementation("io.ktor:ktor-client-cio:3.6.1")
+            // r5-tls · 只有 `allowInsecureTls = true`（用户确认过自签证书）那一条路用它：
+            // CIO 的手握自己校验主机名（`TLSClientHandshake` → `verifyHostnameInCertificate`，
+            // 引擎还会把 `serverName` 填成请求 host），trust-all 的 trustManager 绕不过去，
+            // 而 OkHttp 同时有 `sslSocketFactory` 与 `hostnameVerifier` 两个旋钮。
+            // 因此桌面 classpath 上从此有**两个**引擎 —— `platformHttpClient` 必须显式
+            // 指定引擎（`HttpClient(CIO)` / `HttpClient(OkHttp)`），不能再靠自动发现。
+            implementation("io.ktor:ktor-client-okhttp:3.6.1")
         }
 
         androidMain.dependencies {
