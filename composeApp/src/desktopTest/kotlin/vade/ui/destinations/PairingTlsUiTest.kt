@@ -167,6 +167,7 @@ class PairingTlsUiTest {
         assertEquals(0, dialogs(), "默认关，不该有弹层")
 
         onNodeWithTag(PAIRING_TLS_SWITCH_TAG).performClick()
+        waitForIdle()
         onNodeWithTag(PAIRING_TLS_SWITCH_TAG).assertIsOn()
         onNode(codeField()).performTextInput("青松-TLS123")
         onNodeWithText(PAIRING_BUTTON_LABEL).performClick()
