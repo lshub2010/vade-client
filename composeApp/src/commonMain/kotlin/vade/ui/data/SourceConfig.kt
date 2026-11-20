@@ -793,14 +793,17 @@ object PairingRuntime {
         raw: RawSourceStrings,
         enteredCode: String,
         revokeTimeoutMs: Long = SESSION_REVOKE_TIMEOUT_MS,
-        transportFactory: (VadeClientConfig) -> VadeTransportFactory = { config ->
-            KtorTransportFactory(config)
-        },
         /**
          * r5-tls · 用户在警告弹层里确认过自签证书（`raw.tls` 为真时才生效）。
          * 默认 `false`：没有确认就只走系统信任链 —— 换 core 与首配是同一条口径。
+         *
+         * 放在 `transportFactory` **之前**：后者必须保持最后一个参数，否则现有的
+         * trailing-lambda 调用点会绑定到这个 Boolean 上（编译器会直接报类型不匹配）。
          */
         allowInsecureTls: Boolean = false,
+        transportFactory: (VadeClientConfig) -> VadeTransportFactory = { config ->
+            KtorTransportFactory(config)
+        },
     ): CoreSwitchOutcome {
         // 1) 目标配置：本地就能判死的错误不许先动旧 core（也不许烧掉用户的一次性码）。
         runCatching { SourceConfig.parse(raw.source, raw.host, raw.port, enteredCode, raw.tls) }
