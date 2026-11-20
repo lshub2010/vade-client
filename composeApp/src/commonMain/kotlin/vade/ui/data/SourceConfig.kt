@@ -559,7 +559,6 @@ internal fun pairingEndpointOf(raw: RawSourceStrings): String {
 suspend fun firstRunPairingAttempt(
     raw: RawSourceStrings,
     enteredCode: String,
-    transportFactory: (VadeClientConfig) -> VadeTransportFactory = { config -> KtorTransportFactory(config) },
     /**
      * r5-tls · 用户是否在警告弹层里确认过「信任这台主机的自签证书」。
      *
@@ -570,6 +569,9 @@ suspend fun firstRunPairingAttempt(
      * 意外打开 trust-all。
      */
     allowInsecureTls: Boolean = false,
+    // 必须保持在最后一个参数：现有调用点用 trailing lambda 传 factory，
+    // 它一旦被挤到前面，lambda 就会绑定到 Boolean 上（编译器直接报错）。
+    transportFactory: (VadeClientConfig) -> VadeTransportFactory = { config -> KtorTransportFactory(config) },
 ): PairingAttempt {
     if (!canBootstrapPairing()) {
         return PairingAttempt.Rejected(
