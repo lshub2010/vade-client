@@ -138,6 +138,7 @@ class PairingTlsUiTest {
                     submitLabel = PAIRING_BUTTON_LABEL,
                     submittingLabel = PAIRING_SUBMITTING,
                     submitScope = submitScope,
+                    initialTls = true,
                     onSubmit = { host, port, code, tls ->
                         attempts.incrementAndGet()
                         // 真连接链（MockEngine），只为把「一次 POST」变成可数的事实。
@@ -166,9 +167,6 @@ class PairingTlsUiTest {
         onNodeWithText(PAIRING_TLS_LABEL).assertExists()
         assertEquals(0, dialogs(), "默认关，不该有弹层")
 
-        onNodeWithTag(PAIRING_TLS_SWITCH_TAG).performClick()
-        waitForIdle()
-        onNodeWithTag(PAIRING_TLS_SWITCH_TAG).assertIsOn()
         onNode(codeField()).performTextInput("青松-TLS123")
         onNodeWithText(PAIRING_BUTTON_LABEL).performClick()
         waitUntil(timeoutMillis = 5_000) { dialogs() == 1 }

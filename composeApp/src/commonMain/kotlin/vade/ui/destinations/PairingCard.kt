@@ -201,6 +201,8 @@ internal fun PairingForm(
      * 面板会被切走 / 重建，而提交仍在跑 —— 状态不能跟着面板一起归零（P2）。
      */
     submittingState: MutableState<Boolean> = remember { mutableStateOf(false) },
+    /** 初始协议状态：生产恒为 false（每次打开都必须重新做一次决定）；测试用它直接进 HTTPS 路径。 */
+    initialTls: Boolean = false,
     /**
      * 跑 [onSubmit] 的作用域。默认 = 组合作用域（页面在，提交就在）；「换 core」宿主要传一个
      * 长生命周期的，否则面板一离开组合提交就被取消（见 [coreSwitchScope]）。
@@ -218,7 +220,7 @@ internal fun PairingForm(
     var failureDetail by remember { mutableStateOf<String?>(null) }
     // r5-tls · HTTPS 开关（默认关）与「自签证书警告弹层是否挂着」。两者都只活在组合内存，
     // 不进任何持久化字段 —— 每次打开面板都从「明文」开始，用户必须重新做一次决定。
-    var tls by remember { mutableStateOf(false) }
+    var tls by remember { mutableStateOf(initialTls) }
     var tlsWarning by remember { mutableStateOf(false) }
 
     if (!canBootstrapPairing()) {
