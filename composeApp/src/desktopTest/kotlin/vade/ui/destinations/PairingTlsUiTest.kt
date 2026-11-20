@@ -251,7 +251,7 @@ class PairingTlsUiTest {
                         switched += raw
                         CoreSwitchOutcome(
                             revocation = SessionRevocation.NotNeeded,
-                            attempt = PairingAttempt.Connected(MarkerFactory(), raw.host, 8443, raw.tls),
+                            attempt = PairingAttempt.Connected(MarkerFactory(), raw.host ?: "127.0.0.1", 8443, raw.tls),
                         )
                     },
                 )
