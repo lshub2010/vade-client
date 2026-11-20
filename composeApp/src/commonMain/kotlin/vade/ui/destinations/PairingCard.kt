@@ -1,7 +1,10 @@
 package vade.ui.destinations
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,9 +14,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -25,6 +30,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
@@ -32,6 +38,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -55,6 +63,7 @@ import vade.ui.data.rawSourceStrings
 import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
 import vade.ui.shell.BackLayer
+import vade.ui.skin.BtnStyle
 import vade.ui.skin.LocalSkin
 
 /**
@@ -92,8 +101,11 @@ internal fun FirstRunPairingCard(
     /** 原始配置通道：默认平台的真实通道（桌面 env / Android extras / Wasm query）。 */
     raw: () -> RawSourceStrings = ::rawSourceStrings,
     /** 提交动作：默认 = [firstRunPairingAttempt]（现有连接链的一次尝试）。 */
-    onSubmit: suspend (RawSourceStrings, String) -> PairingAttempt =
-        { rawStrings, enteredCode -> firstRunPairingAttempt(rawStrings, enteredCode) },
+    onSubmit: suspend (RawSourceStrings, String) -> PairingAttempt = { rawStrings, enteredCode ->
+        // r5-tls · 表单只在用户确认过警告弹层之后才调用这里（未确认时一个请求都不发），
+        // 所以 `rawStrings.tls` 既是「走 https」，也是「我信任这张自签证书」的凭据。
+        firstRunPairingAttempt(rawStrings, enteredCode, allowInsecureTls = rawStrings.tls)
+    },
 ) {
     // 出现条件：未配对 且 本次启动没有可用凭据。不满足就一个节点都不组合（空 item 不占
     // 行高，与 ListStatus.Connected → Unit 同一模式）。
@@ -124,13 +136,16 @@ internal fun FirstRunPairingCard(
                 submittingLabel = PAIRING_SUBMITTING,
                 // 卡片的注入缝仍然是「(原始配置, 码) -> 尝试」：表单只负责把输入装成
                 // RawSourceStrings，连接链一条都没变（测试注入的替身收到的参数逐字不变）。
-                onSubmit = { host, port, enteredCode ->
+                // r5-tls · `tls` 是表单里那个 HTTPS 开关；走到这里说明用户已经在警告
+                // 弹层上点过「仍然连接」（否则表单不会调用 onSubmit）。
+                onSubmit = { host, port, enteredCode, tls ->
                     onSubmit(
                         RawSourceStrings(
                             source = SourceConfig.REAL,
                             host = host,
                             port = port,
                             pairCode = null,
+                            tls = tls,
                         ),
                         enteredCode,
                     )
@@ -140,6 +155,8 @@ internal fun FirstRunPairingCard(
                         factory = connected.factory,
                         host = connected.host,
                         port = connected.port,
+                        // r5-tls · 协议跟着这次尝试走，否则配对成功后第一次拉列表就退回 http。
+                        tls = connected.tls,
                     )
                 },
             )
@@ -156,6 +173,12 @@ internal fun FirstRunPairingCard(
  * 直接在 [showFailure] 里给出 [PAIRING_PORT_INVALID]）。成功时调用 [onConnected]，
  * 由调用方决定「装进桥」还是「换成新 core」。
  *
+ * ## r5-tls · HTTPS 开关 + 自签证书警告（**提交前的唯一闸门**）
+ * 表单里有一个默认关的 HTTPS 开关（[PAIRING_TLS_LABEL]）。打开它之后再点提交，**先**弹
+ * [TlsWarningDialog]：自签证书无法验证 core 的身份、可能被中间人，只有「仍然连接」才会
+ * 真的发请求；「取消」什么都发、也**不烧**配对码（码原样留在输入框里）。首配卡与
+ * 「更换 core」共用本表单，所以两条路自动遵守同一条闸门 —— 没有第二份确认逻辑。
+ *
  * ## 提交态与作用域都**可从宿主注入**（R3）
  * 「换 core」的宿主要拿两样东西，所以它们从表单内部提升成形参、默认值保持旧行为：
  *  - [submittingState] —— 宿主据它禁用顶栏返回与系统返回（提交中离开 = 停在「旧已吊销、
@@ -169,7 +192,7 @@ internal fun PairingForm(
     submitLabel: String,
     submittingLabel: String,
     /** 一次提交：host / port 已校验，code 原样（不 trim —— core 的码允许中间带分隔符）。 */
-    onSubmit: suspend (host: String, port: String, code: String) -> PairingAttempt,
+    onSubmit: suspend (host: String, port: String, code: String, tls: Boolean) -> PairingAttempt,
     /** 成功后的落地动作（首配 = install；换 core 已在 [onSubmit] 里装好，这里是空实现）。 */
     onConnected: (PairingAttempt.Connected) -> Unit = {},
     /**
@@ -178,6 +201,8 @@ internal fun PairingForm(
      * 面板会被切走 / 重建，而提交仍在跑 —— 状态不能跟着面板一起归零（P2）。
      */
     submittingState: MutableState<Boolean> = remember { mutableStateOf(false) },
+    /** 初始协议状态：生产恒为 false（每次打开都必须重新做一次决定）；测试用它直接进 HTTPS 路径。 */
+    initialTls: Boolean = false,
     /**
      * 跑 [onSubmit] 的作用域。默认 = 组合作用域（页面在，提交就在）；「换 core」宿主要传一个
      * 长生命周期的，否则面板一离开组合提交就被取消（见 [coreSwitchScope]）。
@@ -193,6 +218,10 @@ internal fun PairingForm(
     var code by remember { mutableStateOf("") }
     var failure by remember { mutableStateOf<PairingFailureKind?>(null) }
     var failureDetail by remember { mutableStateOf<String?>(null) }
+    // r5-tls · HTTPS 开关（默认关）与「自签证书警告弹层是否挂着」。两者都只活在组合内存，
+    // 不进任何持久化字段 —— 每次打开面板都从「明文」开始，用户必须重新做一次决定。
+    var tls by remember { mutableStateOf(initialTls) }
+    var tlsWarning by remember { mutableStateOf(false) }
 
     if (!canBootstrapPairing()) {
         // H4 · 浏览器：不发请求、不给输入框，只给可执行的下一步。
@@ -202,6 +231,55 @@ internal fun PairingForm(
             color = skin.colors.onSurfaceVariant,
         )
         return
+    }
+
+    /**
+     * r5-tls · 真正的一次提交（本地校验 → [onSubmit]）。抽成局部函数只为一件事：
+     * 警告弹层的「仍然连接」与「开关关着直接提交」必须走**同一条**路，否则两条路的
+     * 校验/失败文案迟早分叉。
+     *
+     * 调用它的地方只有两处：提交按钮（开关关着）与弹层的「仍然连接」。弹层挂着时
+     * 一个请求都不会发到它 —— 这就是「未确认不得发任何请求」的实现。
+     */
+    fun submitNow() {
+        if (submitting) return
+        submitting = true
+        failure = null
+        failureDetail = null
+        // 快照本次的协议：提交期间开关是禁用的，但快照让「读的是点击那一刻的值」成为显然。
+        val submittedTls = tls
+        val enteredCode = code
+        submitScope.launch {
+            // 端口先本地校验：越界/非数字不发网络请求，直接在卡里说清楚
+            // （P1-4 的同一条口径：配置错误不许把应用掀掉）。
+            val enteredHost = host.trim().ifEmpty { SourceConfig.DEFAULT_HOST }
+            val enteredPort = port.trim()
+            val portOk = enteredPort.isEmpty() ||
+                enteredPort.toIntOrNull()?.let { it in 1..65535 } == true
+            if (!portOk) {
+                failure = PairingFailureKind.BadConfig
+                failureDetail = PAIRING_PORT_INVALID
+                submitting = false
+                return@launch
+            }
+            try {
+                when (val attempt = onSubmit(enteredHost, enteredPort, enteredCode, submittedTls)) {
+                    is PairingAttempt.Connected -> onConnected(attempt)
+                    is PairingAttempt.Rejected -> {
+                        failure = attempt.kind
+                        // 码被拒过（错码/过期码）→ 桥记住，卡不会因为别处的
+                        // 状态刷新而消失，用户随时能重试（H2）。
+                        if (attempt.kind == PairingFailureKind.BadCode) {
+                            PairingRuntime.noteCodeRejected()
+                        }
+                        // 传输原话，截短到卡里能读的长度（原文已 ≤300 字符）。
+                        failureDetail = attempt.cause.message?.take(160)
+                    }
+                }
+            } finally {
+                submitting = false
+            }
+        }
     }
 
     Row(
@@ -238,6 +316,34 @@ internal fun PairingForm(
             )
         }
     }
+    // r5-tls · HTTPS 开关。默认关 = 今天的明文路径。整行可点（44dp 触摸目标 + 读屏把
+    // 「HTTPS（自签证书）」念成一个开关），`skin.Switch` 自己那份 onCheckedChange 管直接
+    // 点开关本体 —— 两个 clickable 是父子关系，命中测试只会走内层那个，不会翻两次。
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .toggleable(
+                value = tls,
+                enabled = !submitting,
+                role = Role.Switch,
+                onValueChange = { tls = it },
+            )
+            .testTag(PAIRING_TLS_SWITCH_TAG),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        UiText(
+            text = PAIRING_TLS_LABEL,
+            modifier = Modifier.weight(1f),
+            size = 12,
+            color = if (tls) skin.colors.onSurface else skin.colors.onSurfaceVariant,
+        )
+        skin.Switch(
+            checked = tls,
+            onCheckedChange = { tls = it },
+            enabled = !submitting,
+        )
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -266,46 +372,29 @@ internal fun PairingForm(
             text = submitLabel,
             onClick = {
                 if (submitting || code.isBlank()) return@Button
-                submitting = true
-                failure = null
-                failureDetail = null
-                submitScope.launch {
-                    // 端口先本地校验：越界/非数字不发网络请求，直接在卡里说清楚
-                    // （P1-4 的同一条口径：配置错误不许把应用掀掉）。
-                    val enteredHost = host.trim().ifEmpty { SourceConfig.DEFAULT_HOST }
-                    val enteredPort = port.trim()
-                    val portOk = enteredPort.isEmpty() ||
-                        enteredPort.toIntOrNull()?.let { it in 1..65535 } == true
-                    if (!portOk) {
-                        failure = PairingFailureKind.BadConfig
-                        failureDetail = PAIRING_PORT_INVALID
-                        submitting = false
-                        return@launch
-                    }
-                    try {
-                        when (val attempt = onSubmit(enteredHost, enteredPort, code)) {
-                            is PairingAttempt.Connected -> onConnected(attempt)
-                            is PairingAttempt.Rejected -> {
-                                failure = attempt.kind
-                                // 码被拒过（错码/过期码）→ 桥记住，卡不会因为别处的
-                                // 状态刷新而消失，用户随时能重试（H2）。
-                                if (attempt.kind == PairingFailureKind.BadCode) {
-                                    PairingRuntime.noteCodeRejected()
-                                }
-                                // 传输原话，截短到卡里能读的长度（原文已 ≤300 字符）。
-                                failureDetail = attempt.cause.message?.take(160)
-                            }
-                        }
-                    } finally {
-                        submitting = false
-                    }
+                // r5-tls · 开了 HTTPS 就**先**要一次人对「自签证书」的确认：这里只把
+                // 弹层挂上，一个请求都不发（码也还在输入框里，没被烧）。
+                if (tls) {
+                    tlsWarning = true
+                    return@Button
                 }
+                submitNow()
             },
             enabled = !submitting && code.isNotBlank(),
         )
     }
     if (submitting) {
         UiText(submittingLabel, size = 11, color = skin.colors.onSurfaceVariant)
+    }
+    if (tlsWarning) {
+        // 唯一的「继续」入口：确认之后才真的发请求。取消 = 什么都不发、码不动。
+        TlsWarningDialog(
+            onCancel = { tlsWarning = false },
+            onConfirm = {
+                tlsWarning = false
+                submitNow()
+            },
+        )
     }
     failure?.let { kind ->
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -329,6 +418,62 @@ internal fun PairingForm(
                 size = 11,
                 color = skin.colors.onSurfaceVariant,
             )
+        }
+    }
+}
+
+/**
+ * r5-tls · 自签证书的**风险确认弹层** —— 提交前唯一的闸门（[PairingForm] 在 HTTPS 开关
+ * 打开时先挂它，未确认不调用 `onSubmit`，因此一个请求都不发）。
+ *
+ * ## 为什么不是 `material3.AlertDialog`
+ *  1. C-09 禁止 `destinations/` / `shell/` import material3（`MaterialImportGuardTest`
+ *     逐文件扫描），业务页只能走 `Skin`；
+ *  2. material3 的 AlertDialog 在 desktop 是**独立 AWT 窗口**，`runComposeUiTest` 的语义树
+ *     看不见它 —— 「弹窗出现前零请求 / 取消零请求 / 确认后恰好一次」这三条就没法测。
+ *
+ * 所以这里用设置页弹层同一套 §9 形态（`focusable` Popup + 悬浮卡：圆角 `sheet`、发丝线、
+ * 标题 + 正文 + 两个按钮），模态语义一样：点遮罩/Esc = 取消（[onCancel]），只有
+ * 「仍然连接」([PAIRING_TLS_CONFIRM_LABEL]) 才走 [onConfirm]。
+ *
+ * 文案只说事实：自签证书无法验证 core 的身份、可能被中间人、仅在你信任此主机时继续。
+ */
+@Composable
+internal fun TlsWarningDialog(
+    onCancel: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val skin = LocalSkin.current
+    val shape = RoundedCornerShape(skin.shapes.sheet)
+    Column(
+        modifier = Modifier
+                .widthIn(max = 380.dp)
+                .clip(shape)
+                .background(skin.colors.surface)
+                .border(1.dp, skin.colors.hairline, shape)
+                .padding(18.dp)
+                .testTag(PAIRING_TLS_DIALOG_TAG),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            UiText(
+                text = PAIRING_TLS_WARNING_TITLE,
+                size = 15,
+                weight = FontWeight.SemiBold,
+                color = skin.colors.error,
+            )
+            UiText(
+                text = PAIRING_TLS_WARNING_BODY,
+                size = 12,
+                color = skin.colors.onSurfaceVariant,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // 取消是**默认**动作（次要样式）：一个手滑的点击不该把 trust-all 打开。
+                skin.Button(PAIRING_TLS_CANCEL_LABEL, onCancel, style = BtnStyle.Secondary)
+            skin.Button(PAIRING_TLS_CONFIRM_LABEL, onConfirm, style = BtnStyle.Primary)
         }
     }
 }
@@ -379,9 +524,12 @@ internal fun CoreSwitchPanel(
     /**
      * 提交动作（默认 = 真的换 core）。形状与 [PairingRuntime.switchCore] 一致，只收它需要
      * 的那两个参数 —— 注入缝只给测试用，生产默认逐字节不变。
+     *
+     * r5-tls · `raw.tls` 走到这里说明用户在表单的警告弹层上确认过自签证书，所以把
+     * `allowInsecureTls` 一起交下去（换 core 与首配是同一条口径）。
      */
     onSwitch: suspend (RawSourceStrings, String) -> CoreSwitchOutcome = { raw, code ->
-        PairingRuntime.switchCore(raw, code)
+        PairingRuntime.switchCore(raw, code, allowInsecureTls = raw.tls)
     },
     /** 断开动作（默认 = [PairingRuntime.unpair]，同样是最小形状的注入缝）。 */
     onDisconnect: suspend () -> SessionRevocation = { PairingRuntime.unpair() },
@@ -554,7 +702,7 @@ internal fun CoreSwitchPanel(
                     submittingLabel = SWITCH_SUBMITTING,
                     submittingState = submittingState,
                     submitScope = coreSwitchScope,
-                    onSubmit = { host, enteredPort, enteredCode ->
+                    onSubmit = { host, enteredPort, enteredCode, tls ->
                         // 快照本次目标：之后桥退回 Unpaired 也不让表单回落到默认地址。
                         lastTarget = host to enteredPort
                         val outcome = onSwitch(
@@ -563,6 +711,8 @@ internal fun CoreSwitchPanel(
                                 host = host,
                                 port = enteredPort,
                                 pairCode = null,
+                                // r5-tls · 表单只在确认过警告弹层之后才调这里（见 PairingForm）。
+                                tls = tls,
                             ),
                             enteredCode,
                         )
@@ -774,6 +924,38 @@ internal const val PAIRING_PLACEHOLDER = "一次性配对码"
 
 /** 配对码输入框的测试 tag（三个输入框里唯一可区分的一个；见组合处的注释）。 */
 internal const val PAIRING_CODE_FIELD_TAG = "pairing-code-field"
+
+// ---------------------------------------------------------------- r5-tls · HTTPS
+
+/**
+ * HTTPS 开关的文案。**必须**把「自签证书」写出来：用户看到的不是一个中性的协议选项，
+ * 而是一个会关掉身份校验的决定。
+ */
+internal const val PAIRING_TLS_LABEL = "HTTPS（自签证书）"
+
+/** 开关整行的测试 tag（开关本体没有 modifier，测试点这一行 → 命中它的 clickable）。 */
+internal const val PAIRING_TLS_SWITCH_TAG = "pairing-tls-switch"
+
+/** 警告弹层的测试 tag（断言「弹层出现前零请求 / 取消后零请求」）。 */
+internal const val PAIRING_TLS_DIALOG_TAG = "pairing-tls-dialog"
+
+/** 弹层标题：一句话说清危险在哪。 */
+internal const val PAIRING_TLS_WARNING_TITLE = "自签证书无法验证 core 的身份"
+
+/**
+ * 弹层正文：三件事一字不能少 —— 无法验证身份、可能被中间人、只在你信任此主机时继续。
+ * 不写「高级选项」「测试用」这类会把风险说小的词。
+ */
+internal const val PAIRING_TLS_WARNING_BODY =
+    "继续连接时，客户端无法确认对端就是你要连的那台 core：同一网络里的任何人（或中间人）" +
+        "都可以冒充它，也可以读到这次通信的内容。仅在你信任这台主机（自己的局域网机器、" +
+        "或本机）时继续；公共网络里请改用带可信证书的地址。"
+
+/** 弹层的「继续」按钮：动作 + 后果都在字面上（不是「确定」）。 */
+internal const val PAIRING_TLS_CONFIRM_LABEL = "仍然连接"
+
+/** 弹层的「取消」按钮：不发请求、不烧配对码。 */
+internal const val PAIRING_TLS_CANCEL_LABEL = "取消"
 
 /** host / port 输入框占位（默认值本身就是值，占位只在清空后提示）。 */
 internal const val PAIRING_HOST_PLACEHOLDER = "host（默认 127.0.0.1）"

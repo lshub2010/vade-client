@@ -1,7 +1,6 @@
 package vade.ui.protocol
 
 import io.ktor.client.HttpClient
-import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocketSession
 import io.ktor.client.request.delete
 import io.ktor.client.request.header
@@ -93,7 +92,12 @@ internal fun parsePairingErrorBody(body: String): Pair<String, String>? {
  */
 class KtorTransportFactory(
     private val config: VadeClientConfig,
-    private val client: HttpClient = HttpClient { install(WebSockets) },
+    /**
+     * r5-tls · 默认 client 从 [platformHttpClient] 来，把 `allowInsecureTls`（= 用户在警告
+     * 弹层里确认过）带到引擎的 TLS 配置上。测试仍可注入 `HttpClient(MockEngine)` ——
+     * 注入的 client 不经过平台 TLS 配置，本用例集因此不依赖 socket。
+     */
+    private val client: HttpClient = platformHttpClient(config.allowInsecureTls),
 ) : VadeTransportFactory {
 
     @Volatile
@@ -191,9 +195,14 @@ class KtorTransportFactory(
         }
     }
 
-    private fun httpUrl(): String = "${if (config.tls) "https" else "http"}://${config.host}:${config.port}"
+    /**
+     * r5-tls · `https`/`wss` vs `http`/`ws` 只由 [VadeClientConfig.tls] 决定。
+     * `internal`（不是 private）是为了让 `TlsPairingTest` 直接钉住两个 URL —— 一个
+     * `MockEngine` 只能看见 HTTP 的那一次请求，看不见 WS 升级的 URL。
+     */
+    internal fun httpUrl(): String = "${if (config.tls) "https" else "http"}://${config.host}:${config.port}"
 
-    private fun websocketUrl(): String = "${if (config.tls) "wss" else "ws"}://${config.host}:${config.port}/ws"
+    internal fun websocketUrl(): String = "${if (config.tls) "wss" else "ws"}://${config.host}:${config.port}/ws"
 
     private companion object {
         /** Minimal JSON string escaping for the two literals we send ourselves. */

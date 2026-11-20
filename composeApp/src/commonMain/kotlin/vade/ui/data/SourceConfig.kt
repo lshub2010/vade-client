@@ -47,6 +47,19 @@ data class RawSourceStrings(
      * the plain-JSON client cannot talk (core `server.py` `_ws` → Noise handshake).
      */
     val pairCode: String? = null,
+    /**
+     * HTTPS switch (r5-tls). **Not** a platform channel: there is deliberately no
+     * `VADE_TLS` / `?tls=` key — a self-signed core can only be trusted by a human, and
+     * the only place that asks is the pairing form's switch + warning dialog
+     * (`destinations/PairingCard.kt`). The flag therefore has to be one of the LAST
+     * parameters (every positional construction of this data class in the repo passes
+     * `pairCode` last) and defaults to `false` = today's plain-HTTP behaviour.
+     *
+     * `tls = true` means "dial `https`/`wss`"; whether the self-signed certificate is
+     * accepted is a *separate* decision — see `VadeClientConfig.allowInsecureTls`, which
+     * is only set from a confirmed dialog.
+     */
+    val tls: Boolean = false,
 )
 
 /** The keys every platform uses for its own raw channel. Kept beside the parser. */
@@ -101,6 +114,11 @@ sealed interface SourceSpec {
         val port: Int,
         /** Present when the platform raw strings carried a pair code; else `null`. */
         val pairCode: String? = null,
+        /**
+         * r5-tls · 拨 `https`/`wss` 而不是 `http`/`ws`（[RawSourceStrings.tls] 透传）。
+         * 只决定**协议**；自签证书要不要接受由调用方另行决定（`allowInsecureTls`）。
+         */
+        val tls: Boolean = false,
     ) : SourceSpec
 }
 
@@ -121,8 +139,18 @@ object SourceConfig {
      * - a NON-EMPTY port that is not an integer in 1..65535 is a hard error —
      *   never a silent fallback to the default (a typo'd `VADE_PORT=8443 ` with a
      *   stray letter must fail loudly, not quietly point at 8443).
+     *
+     * [tls] is *passed through* only (r5-tls): it never changes the mode word or the
+     * port grammar, so a `tls = true` with `source = "fixtures"` still parses to
+     * [SourceSpec.Fake] and the flag is simply ignored.
      */
-    fun parse(source: String?, host: String?, port: String?, pairCode: String? = null): SourceSpec {
+    fun parse(
+        source: String?,
+        host: String?,
+        port: String?,
+        pairCode: String? = null,
+        tls: Boolean = false,
+    ): SourceSpec {
         if (source?.trim()?.lowercase() != REAL) return SourceSpec.Fake
         val trimmedHost = host?.trim()
         val resolvedHost = trimmedHost?.takeIf { it.isNotEmpty() } ?: DEFAULT_HOST
@@ -136,12 +164,12 @@ object SourceConfig {
                 )
         }
         val trimmedCode = pairCode?.trim()?.takeIf { it.isNotEmpty() }
-        return SourceSpec.Real(resolvedHost, resolvedPort, trimmedCode)
+        return SourceSpec.Real(resolvedHost, resolvedPort, trimmedCode, tls)
     }
 
-    /** Convenience entry taking the [RawSourceStrings] bundle. */
+    /** Convenience entry taking the [RawSourceStrings] bundle (incl. `tls`). */
     fun parse(raw: RawSourceStrings): SourceSpec =
-        parse(raw.source, raw.host, raw.port, raw.pairCode)
+        parse(raw.source, raw.host, raw.port, raw.pairCode, raw.tls)
 }
 
 /**
@@ -170,6 +198,10 @@ fun mergeRawStrings(primary: RawSourceStrings?, fallback: RawSourceStrings): Raw
         host = primary.host ?: fallback.host,
         port = primary.port ?: fallback.port,
         pairCode = primary.pairCode ?: fallback.pairCode,
+        // Boolean flag, not a nullable key: "either channel switched it on" wins. Neither
+        // platform channel can set it today (see [RawSourceStrings.tls]) — it is carried so a
+        // future channel cannot silently drop a `true` that the UI produced.
+        tls = primary.tls || fallback.tls,
     )
 
 /** Parse from the current platform's raw strings. */
@@ -200,7 +232,18 @@ fun sessionSourceFrom(raw: RawSourceStrings): SessionSource =
         is SourceSpec.Fake -> {
             val paired = PairingRuntime.state as? PairingRuntimeState.Paired
             if (paired != null) {
-                realAutoConnecting(VadeClientConfig(host = paired.host, port = paired.port), paired.factory)
+                // r5-tls · 桥里记着这次配对用的协议与「用户确认过自签证书」——
+                // 重建真源必须逐字复用它，否则配对成功后第一次拉列表就会退回
+                // http（或退回系统信任链，自签证书再次失败）。
+                realAutoConnecting(
+                    VadeClientConfig(
+                        host = paired.host,
+                        port = paired.port,
+                        tls = paired.tls,
+                        allowInsecureTls = paired.tls,
+                    ),
+                    paired.factory,
+                )
             } else {
                 FakeSessionSource()
             }
@@ -213,14 +256,17 @@ fun sessionSourceFrom(raw: RawSourceStrings): SessionSource =
             //
             // 浏览器（[canBootstrapPairing] = false）不注入：它读不到 `POST /ui/session`
             // 的 `Set-Cookie`，发这次请求只会把用户的一次性码烧掉（H4）。
+            //
+            // r5-tls · 协议照 `spec.tls` 透传，但 **`allowInsecureTls` 恒为 false**：
+            // trust-all 只有在用户对着警告弹层点过「仍然连接」之后才允许（见
+            // [firstRunPairingAttempt]），而这条分支来自平台原始通道（env / extras /
+            // query），那里根本没有「人确认过」这回事。今天三个 actual 都不产生
+            // `tls = true`，所以这条分支的实际行为逐字节不变。
+            val base = VadeClientConfig(host = spec.host, port = spec.port, tls = spec.tls)
             val config = if (spec.pairCode != null && canBootstrapPairing()) {
-                VadeClientConfig(
-                    host = spec.host,
-                    port = spec.port,
-                    browserSession = BrowserPairing(spec.pairCode),
-                )
+                base.copy(browserSession = BrowserPairing(spec.pairCode))
             } else {
-                VadeClientConfig(host = spec.host, port = spec.port)
+                base
             }
             // g-pair-first-run · 运行期配对桥的**消费点**：首次运行引导卡成功后把「已换到
             // cookie 的 transport factory」装进 [PairingRuntime]，这里用它建
@@ -443,11 +489,15 @@ sealed interface PairingAttempt {
      *
      * [host] / [port] 是这次尝试**实际连的**地址（用户可能在卡里改过），配对成功后
      * [PairingRuntime] 要按它建真源，而不是按启动时那条空配置。
+     *
+     * [tls] 是这次尝试**实际用的协议**（r5-tls）：桥按它重建真源（`https`/`wss`），
+     * 不再退回 `http`。`true` 同时意味着用户在警告弹层里确认过自签证书。
      */
     data class Connected(
         val factory: VadeTransportFactory,
         val host: String = SourceConfig.DEFAULT_HOST,
         val port: Int = SourceConfig.DEFAULT_PORT,
+        val tls: Boolean = false,
     ) : PairingAttempt
 
     /** 配对失败：[kind] 选文案，[cause] 是传输原话（引导卡原样展示、不二次加工）。 */
@@ -509,6 +559,18 @@ internal fun pairingEndpointOf(raw: RawSourceStrings): String {
 suspend fun firstRunPairingAttempt(
     raw: RawSourceStrings,
     enteredCode: String,
+    /**
+     * r5-tls · 用户是否在警告弹层里确认过「信任这台主机的自签证书」。
+     *
+     * 默认 `false` —— 数据层不替用户做这个决定。为 `true` 时且 [RawSourceStrings.tls]
+     * 也为真，才会把 `allowInsecureTls` 带进 [VadeClientConfig]（关掉证书链校验与主机名
+     * 校验）。UI（`PairingForm`）只在**确认之后**才调用本函数，所以「未确认不得发任何
+     * 请求」由调用点保证；这里再要求 `tls` 为真，是为了让「只确认了、但走明文」不会
+     * 意外打开 trust-all。
+     */
+    allowInsecureTls: Boolean = false,
+    // 必须保持在最后一个参数：现有调用点用 trailing lambda 传 factory，
+    // 它一旦被挤到前面，lambda 就会绑定到 Boolean 上（编译器直接报错）。
     transportFactory: (VadeClientConfig) -> VadeTransportFactory = { config -> KtorTransportFactory(config) },
 ): PairingAttempt {
     if (!canBootstrapPairing()) {
@@ -523,7 +585,7 @@ suspend fun firstRunPairingAttempt(
         )
     }
     val code = enteredCode.trim()
-    val spec = runCatching { SourceConfig.parse(raw.source, raw.host, raw.port, code) }
+    val spec = runCatching { SourceConfig.parse(raw.source, raw.host, raw.port, code, raw.tls) }
         .getOrElse { return PairingAttempt.Rejected(PairingFailureKind.BadConfig, it) }
     if (spec !is SourceSpec.Real || spec.pairCode == null) {
         // 引导卡只在「未配对」时出现；走到这里说明运行形态变了（如运行期切了假源）。
@@ -539,6 +601,10 @@ suspend fun firstRunPairingAttempt(
     val config = VadeClientConfig(
         host = spec.host,
         port = spec.port,
+        // r5-tls · 协议与「信任自签证书」一起决定这次尝试：tls 决定 https/wss，
+        // allowInsecureTls 只在用户确认过（且确实是 tls）时关掉证书校验。
+        tls = spec.tls,
+        allowInsecureTls = allowInsecureTls && spec.tls,
         browserSession = BrowserPairing(spec.pairCode),
     )
     return try {
@@ -546,7 +612,7 @@ suspend fun firstRunPairingAttempt(
         val factory = transportFactory(config)
         val probe = factory.connect()
         runCatching { probe.close() }
-        PairingAttempt.Connected(factory, spec.host, spec.port)
+        PairingAttempt.Connected(factory, spec.host, spec.port, spec.tls)
     } catch (ce: CancellationException) {
         throw ce
     } catch (t: Throwable) {
@@ -602,11 +668,18 @@ sealed interface PairingRuntimeState {
      */
     data class Unpaired(val codeRejected: Boolean = false) : PairingRuntimeState
 
-    /** 已配对：factory 里已有 `__Host-ac_ui` cookie，真源按 [host]:[port] 建。 */
+    /**
+     * 已配对：factory 里已有 `__Host-ac_ui` cookie，真源按 [host]:[port] 建。
+     *
+     * [tls] 是这次配对**实际用的协议**（r5-tls）：真源重建时照它拨 `https`/`wss`。
+     * 只有「用户确认过自签证书」的配对路径能把它置真，所以它同时是 trust-all 的凭据
+     * （[sessionSourceFrom] 用它决定 `allowInsecureTls`）。
+     */
     data class Paired(
         val factory: VadeTransportFactory,
         val host: String,
         val port: Int,
+        val tls: Boolean = false,
     ) : PairingRuntimeState
 }
 
@@ -673,8 +746,10 @@ object PairingRuntime {
         factory: VadeTransportFactory,
         host: String = SourceConfig.DEFAULT_HOST,
         port: Int = SourceConfig.DEFAULT_PORT,
+        /** r5-tls · 这次配对实际用的协议（`https`/`wss` 时置真；默认 `false` = 明文）。 */
+        tls: Boolean = false,
     ) {
-        state = PairingRuntimeState.Paired(factory, host, port)
+        state = PairingRuntimeState.Paired(factory, host, port, tls)
     }
 
     /**
@@ -720,12 +795,20 @@ object PairingRuntime {
         raw: RawSourceStrings,
         enteredCode: String,
         revokeTimeoutMs: Long = SESSION_REVOKE_TIMEOUT_MS,
+        /**
+         * r5-tls · 用户在警告弹层里确认过自签证书（`raw.tls` 为真时才生效）。
+         * 默认 `false`：没有确认就只走系统信任链 —— 换 core 与首配是同一条口径。
+         *
+         * 放在 `transportFactory` **之前**：后者必须保持最后一个参数，否则现有的
+         * trailing-lambda 调用点会绑定到这个 Boolean 上（编译器会直接报类型不匹配）。
+         */
+        allowInsecureTls: Boolean = false,
         transportFactory: (VadeClientConfig) -> VadeTransportFactory = { config ->
             KtorTransportFactory(config)
         },
     ): CoreSwitchOutcome {
         // 1) 目标配置：本地就能判死的错误不许先动旧 core（也不许烧掉用户的一次性码）。
-        runCatching { SourceConfig.parse(raw.source, raw.host, raw.port, enteredCode) }
+        runCatching { SourceConfig.parse(raw.source, raw.host, raw.port, enteredCode, raw.tls) }
             .getOrElse {
                 return CoreSwitchOutcome(
                     SessionRevocation.NotNeeded,
@@ -738,7 +821,11 @@ object PairingRuntime {
         if (!canBootstrapPairing()) {
             return CoreSwitchOutcome(
                 SessionRevocation.NotNeeded,
-                firstRunPairingAttempt(raw, enteredCode, transportFactory),
+                firstRunPairingAttempt(
+                    raw, enteredCode,
+                    allowInsecureTls = allowInsecureTls,
+                    transportFactory = transportFactory,
+                ),
             )
         }
         // 2) 旧 core 的 UI 会话：能吊销就吊销，吊销不了也继续（记下来给 UI 提示）。
@@ -747,8 +834,14 @@ object PairingRuntime {
         // 3) 清本地旧配置 + cookie（旧 factory 的 cookie 已在 revokeSession 里作废）。
         clearPaired(previous)
         // 4) 新 core：同一条连接链，成功才装。
-        val attempt = firstRunPairingAttempt(raw, enteredCode, transportFactory)
-        if (attempt is PairingAttempt.Connected) install(attempt.factory, attempt.host, attempt.port)
+        val attempt = firstRunPairingAttempt(
+            raw, enteredCode,
+            allowInsecureTls = allowInsecureTls,
+            transportFactory = transportFactory,
+        )
+        if (attempt is PairingAttempt.Connected) {
+            install(attempt.factory, attempt.host, attempt.port, attempt.tls)
+        }
         return CoreSwitchOutcome(revocation, attempt)
     }
 
