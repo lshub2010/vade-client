@@ -436,13 +436,8 @@ internal fun TlsWarningDialog(
 ) {
     val skin = LocalSkin.current
     val shape = RoundedCornerShape(skin.shapes.sheet)
-    Popup(
-        alignment = Alignment.Center,
-        onDismissRequest = onCancel,
-        properties = PopupProperties(focusable = true),
-    ) {
-        Column(
-            modifier = Modifier
+    Column(
+        modifier = Modifier
                 .widthIn(max = 380.dp)
                 .clip(shape)
                 .background(skin.colors.surface)
@@ -469,8 +464,7 @@ internal fun TlsWarningDialog(
             ) {
                 // 取消是**默认**动作（次要样式）：一个手滑的点击不该把 trust-all 打开。
                 skin.Button(PAIRING_TLS_CANCEL_LABEL, onCancel, style = BtnStyle.Secondary)
-                skin.Button(PAIRING_TLS_CONFIRM_LABEL, onConfirm, style = BtnStyle.Primary)
-            }
+            skin.Button(PAIRING_TLS_CONFIRM_LABEL, onConfirm, style = BtnStyle.Primary)
         }
     }
 }

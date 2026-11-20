@@ -101,7 +101,7 @@ class TlsPairingTest {
             wire.requests,
             "tls = true 时配对请求必须是 https",
         )
-        assertEquals("https://core.local:8443/ui/session", factory.httpUrl(), "吊销 / 配对都走同一个 scheme")
+        assertEquals("https://core.local:8443", factory.httpUrl(), "httpUrl 是 base；/ui/session 由调用点拼")
         assertEquals("wss://core.local:8443/ws", factory.websocketUrl(), "WS 升级必须跟着变 wss")
     }
 
@@ -115,7 +115,7 @@ class TlsPairingTest {
         assertNotNull(factory.ensureSessionCookie())
 
         assertEquals(listOf("POST http://core.local:8443/ui/session"), wire.requests)
-        assertEquals("http://core.local:8443/ui/session", factory.httpUrl())
+        assertEquals("http://core.local:8443", factory.httpUrl())
         assertEquals("ws://core.local:8443/ws", factory.websocketUrl())
     }
 
