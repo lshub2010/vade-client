@@ -3,6 +3,8 @@ package vade.ui.destinations
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -318,7 +320,12 @@ internal fun PairingForm(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = !submitting) { tls = !tls }
+            .toggleable(
+                value = tls,
+                enabled = !submitting,
+                role = Role.Switch,
+                onValueChange = { tls = it },
+            )
             .testTag(PAIRING_TLS_SWITCH_TAG),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),

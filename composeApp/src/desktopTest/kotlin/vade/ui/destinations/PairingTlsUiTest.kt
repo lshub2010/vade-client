@@ -4,6 +4,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
@@ -166,6 +167,7 @@ class PairingTlsUiTest {
         assertEquals(0, dialogs(), "默认关，不该有弹层")
 
         onNodeWithTag(PAIRING_TLS_SWITCH_TAG).performClick()
+        onNodeWithTag(PAIRING_TLS_SWITCH_TAG).assertIsOn()
         onNode(codeField()).performTextInput("青松-TLS123")
         onNodeWithText(PAIRING_BUTTON_LABEL).performClick()
         waitUntil(timeoutMillis = 5_000) { dialogs() == 1 }
