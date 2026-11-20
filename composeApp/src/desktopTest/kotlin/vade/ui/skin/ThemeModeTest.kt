@@ -2,6 +2,7 @@ package vade.ui.skin
 
 import java.io.File
 import androidx.compose.ui.graphics.Color
+import kotlin.math.pow
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -140,6 +141,56 @@ class ThemeModeTest {
         assertEquals(Color(0xFF2A62D4), c.glowAccent)
         assertEquals(Color(0xFF141416), c.textOnGlass)
         assertFalse(c.isDark)
+    }
+
+    // --- r3-a11y（P3）· miuix 亮色 error 的 WCAG 对比度（公式断言） ---------------------
+
+    /**
+     * WCAG 2.x 相对亮度 / 对比度，纯 Kotlin（与 `MaterialSkinDarkTest` 同一套公式，
+     * 不引依赖）。miuix 此前的 error 只有「钉值」断言：值抄对了不代表压在每种亮色底上
+     * 都过 4.5:1 —— 审计要求补一条与 material 同型的**公式**断言。
+     */
+    private fun channel(c: Double): Double =
+        if (c <= 0.03928) c / 12.92 else ((c + 0.055) / 1.055).pow(2.4)
+
+    private fun relLum(color: Color): Double =
+        0.2126 * channel(color.red.toDouble()) +
+            0.7152 * channel(color.green.toDouble()) +
+            0.0722 * channel(color.blue.toDouble())
+
+    private fun contrast(a: Color, b: Color): Double {
+        val la = relLum(a)
+        val lb = relLum(b)
+        return (maxOf(la, lb) + 0.05) / (minOf(la, lb) + 0.05)
+    }
+
+    /**
+     * r3-a11y（P3）· miuix 亮色 `error`（#C03328）是正文文字（输入框错误行、状态条），
+     * 亮色下它会压在 surface（#FFFFFF）与 canvas/surfaceVariant（#F2F1EF，也是
+     * `MiuixSkin.TextField` 的输入底）上。两档都必须 ≥4.5:1（WCAG AA），
+     * 外加白字 `onError` 压 error 实底（危险按钮）同样 ≥4.5。
+     *
+     * 实算：白 5.607:1、#F2F1EF 4.967:1。
+     */
+    @Test
+    fun miuixLightErrorTextClearsWcagAaOnEveryLightBackground() {
+        val c = MiuixSkin(dark = false).colors
+        assertEquals(Color(0xFFC03328), c.error, "被测 token 先钉住（改配色必须同时看对比度）")
+        val backgrounds = listOf(
+            "surface #FFFFFF" to c.surface,
+            "canvas/surfaceVariant #F2F1EF" to c.surfaceVariant,
+        )
+        backgrounds.forEach { (name, bg) ->
+            val ratio = contrast(c.error, bg)
+            assertTrue(
+                ratio >= 4.5,
+                "miuix 亮色 error 文字压在 $name 上只有 $ratio:1 —— 错误行是正文，要求 ≥4.5:1（WCAG AA）",
+            )
+        }
+        assertTrue(
+            contrast(c.onError, c.error) >= 4.5,
+            "miuix 亮色 onError/error（危险按钮上的白字）只有 ${contrast(c.onError, c.error)}:1",
+        )
     }
 
     // --- 三态枚举与用户可读名（设置页 chips 的文案面）-------------------------------

@@ -174,7 +174,8 @@ internal fun PairingForm(
     onConnected: (PairingAttempt.Connected) -> Unit = {},
     /**
      * 提交中的真源。宿主传自己 held 的一份来观察；不传 = 表单自持（首配卡就是这样，
-     * 行为与提升之前逐字节相同）。
+     * 行为与提升之前逐字节相同）。「换 core」传的是进程级的 [CoreSwitchNotice.submitting]：
+     * 面板会被切走 / 重建，而提交仍在跑 —— 状态不能跟着面板一起归零（P2）。
      */
     submittingState: MutableState<Boolean> = remember { mutableStateOf(false) },
     /**
@@ -345,8 +346,10 @@ internal fun PairingForm(
  * 2. 清本地旧配置与 cookie；
  * 3. 用新地址 + 新码连新 core，成功才装。
  *
- * 「旧凭证吊销失败」必须让用户看见：它在面板里显示，也写进 [CoreSwitchNotice]，换 core
- * 成功会重建 `UiState`（面板可能随之离开组合），设置页入口的副标题仍然读得到。
+ * **结果一律回执**（[CoreSwitchNotice]）：成功、单失败（新 core 被拒 + 旧凭证已吊销 /
+ * 无需吊销）、双失败都写一句话。换 core 会重建 `UiState`、用户也可能在提交中切走 tab
+ * （`AppShell` 只组合当前 tab）—— 面板是临时组合，回执必须活在它外面，设置页入口那一行
+ * 与重新打开的面板才看得见「旧凭证吊销失败 / 切换没有完成：… / 已切换到 …」。
  *
  * ## R3 · 提交中不许被「返回」取消
  * 换 core 是三段式（吊销旧 → 清本地 → 连新）。旧实现把 `submitting` 关在 [PairingForm]
@@ -356,7 +359,13 @@ internal fun PairingForm(
  *     `enabled=false`：禁用态仍是一个吃掉命中的节点），给读屏也不留「可点」的假语义；
  *  2. 系统返回由本面板再压一层 [BackLayer]，提交中以 no-op 消费掉（[busy]）；
  *  3. 提交跑在 [coreSwitchScope]（不挂在组合上），结果一律回执 [CoreSwitchNotice] ——
- *     面板真的先走了，设置页入口那一行仍然看得见「旧凭证吊销失败 / 已切换到 …」。
+ *     面板真的先走了，设置页入口那一行仍然看得见「旧凭证吊销失败 / 切换没有完成 / 已切换到 …」。
+ *
+ * ## P2 · 「在途」也必须活过面板
+ * 提交态同样不归面板所有：真源是 [CoreSwitchNotice.submitting]（与回执同一层）。面板被切走
+ * 再打开时读到的是同一个布尔 —— 仍显示「正在…」、输入框/按钮保持禁用、返回继续被 [busy]
+ * 拦住；不会出现「重建后 busy=false 又发一次」的并发切换（那会再吊销一次旧 core、再烧一个
+ * 一次性码）。
  *
  * ## 玻璃
  * 本页是**不透明**的全屏子页（与关于页同一形态），自身没有 GlassSurface，因此不注册
@@ -380,14 +389,15 @@ internal fun CoreSwitchPanel(
     val skin = LocalSkin.current
     val paired = PairingRuntime.state as? PairingRuntimeState.Paired
     val endpoint = PairingRuntime.pairedEndpoint
-    var notice by remember { mutableStateOf(CoreSwitchNotice.text) }
+    // 回执只有一份真源：[CoreSwitchNotice.text]（进程内存）。面板**不**再复制一份
+    // `remember { mutableStateOf(...) }` —— 复制品既会让「面板先销毁、结果后落地」丢提示，
+    // 也会让重新打开的面板看不到仍在跑的那次提交的结果。读的是 compose state，落地即刷新。
+    val notice = CoreSwitchNotice.text
     // 断开在途（与 submitting 分开：一个是换 core，一个是只断开）。
     var pending by remember { mutableStateOf(false) }
-    // **提交态提升到这里**：顶栏返回与系统返回都据它停手（见 KDoc 的 R3 一节）。
-    val submittingState = remember { mutableStateOf(false) }
+    // **提交态提升到面板之外**（P2）：面板销毁重开读到同一个布尔，见 KDoc 的 P2 一节。
+    val submittingState = CoreSwitchNotice.submitting
     val submitting = submittingState.value
-    // 本次提交里旧 core 的吊销结果 —— [PairingForm] 的 onSubmit 写入、onConnected 读出。
-    var revocation by remember { mutableStateOf<SessionRevocation?>(null) }
     // 提交过的目标地址。换 core 成功后桥会先退回 Unpaired，`paired` 随即变 null；
     // 若表单直接以 `paired?.host` 为初值，重组会把用户刚填的地址重置成默认值，
     // 失败文案指错主机、重试还会把同一个一次性码打到默认地址（可能把码烧掉）。
@@ -474,13 +484,11 @@ internal fun CoreSwitchPanel(
                         onClick = {
                             if (busy) return@Button
                             if (!disconnectConfirm.tap()) return@Button
-                            notice = null
+                            CoreSwitchNotice.text = null
                             pending = true
                             coreSwitchScope.launch {
                                 val result = onDisconnect()
-                                val text = revocationNotice(result, CORE_SWITCH_DISCONNECTED)
-                                CoreSwitchNotice.text = text
-                                notice = text
+                                CoreSwitchNotice.text = revocationNotice(result, CORE_SWITCH_DISCONNECTED)
                                 pending = false
                             }
                         },
@@ -498,7 +506,7 @@ internal fun CoreSwitchPanel(
         }
 
         SectionLabel("连接到另一台 core")
-        // R3 · 回执（「旧凭证吊销失败」/「已切换到 …」）放在**表单正上方**。
+        // R3 · 回执（「旧凭证吊销失败」/「切换没有完成」/「已切换到 …」）放在**表单正上方**。
         // 旧位置是页尾：双失败时表单里的失败文案在下面、吊销提示隔着一整张卡在最后，
         // 用户只看得见一条 —— 「双失败必须可见」在长屏上就是空话。两条保障：
         //  - liveRegion = Assertive：这是用户动作的**结果**，读屏必须立刻播报（polite 会
@@ -549,7 +557,6 @@ internal fun CoreSwitchPanel(
                     onSubmit = { host, enteredPort, enteredCode ->
                         // 快照本次目标：之后桥退回 Unpaired 也不让表单回落到默认地址。
                         lastTarget = host to enteredPort
-                        revocation = null
                         val outcome = onSwitch(
                             RawSourceStrings(
                                 source = SourceConfig.REAL,
@@ -559,30 +566,16 @@ internal fun CoreSwitchPanel(
                             ),
                             enteredCode,
                         )
-                        revocation = outcome.revocation
-                        // 双失败：新 core 被拒 + 旧凭证吊销也失败时，onConnected 永远不会被调用，
-                        // 若只在那里写 notice，「旧凭证吊销失败」会被静默吞掉。这里先落地。
-                        if (outcome.attempt !is PairingAttempt.Connected &&
-                            outcome.revocation is SessionRevocation.Failed
-                        ) {
-                            val text = revocationNotice(
-                                outcome.revocation,
-                                "旧 core 的会话可能仍然有效，请手动断开或等它过期",
-                            )
-                            CoreSwitchNotice.text = text
-                            notice = text
-                        }
-                        outcome.attempt
-                    },
-                    onConnected = { connected ->
-                        // switchCore 已经把新配置装进桥；这里只负责把「旧凭证吊销失败」
-                        // 这类必须让用户知道的结果留在 UI 上（面板 + 设置页入口）。
-                        val text = revocationNotice(
-                            revocation,
-                            "已切换到 ${connected.host}:${connected.port}",
+                        // P1 · **所有**终态都在这里回执（成功 / 单失败 / 双失败）：
+                        // [PairingForm] 的 onConnected 只在成功时被调用，失败文案又只活在
+                        // 表单内存里 —— 提交中切走 tab 或面板先离开组合时，只写那一支就是零提示。
+                        // 回执写进程级的 [CoreSwitchNotice]，重新打开的面板 / 设置页都读得到。
+                        CoreSwitchNotice.text = coreSwitchReceipt(
+                            revocation = outcome.revocation,
+                            attempt = outcome.attempt,
+                            target = submittedEndpoint(host, enteredPort),
                         )
-                        CoreSwitchNotice.text = text
-                        notice = text
+                        outcome.attempt
                     },
                 )
             }
@@ -595,7 +588,7 @@ internal fun CoreSwitchPanel(
  *
  * `rememberCoroutineScope()` 会随面板离开组合被取消，而换 core 是三段式
  * （吊销旧 → 清本地 → 连新）。面板先走一步（成功会重建 `UiState`；用户也可能按了返回），
- * 协程就停在「旧已吊销、新未装」的中间态，`onConnected` 永不执行 —— 一句提示都没有。
+ * 协程就停在「旧已吊销、新未装」的中间态，回执一句都写不出来 —— 用户什么都看不到。
  * 这个作用域活到进程结束；结果一律写进 [CoreSwitchNotice]，设置页入口那一行读得到。
  *
  * `Dispatchers.Unconfined` 与 `ChatState` 的出网作用域同一口径：提交是挂起式的网络往返，
@@ -638,15 +631,62 @@ internal class TwoStepConfirm(private val windowMs: Long = DISCONNECT_CONFIRM_WI
 }
 
 /**
- * 上一次「换 core / 断开」的结果提示 —— 进程内存（不落盘，与配对桥同一口径）。
+ * 「换 core / 断开」的**跨面板 UI 状态**：上一次的结果回执 + 这一次是否在途。
  *
  * 为什么不能只放在 [CoreSwitchPanel] 里：换 core 成功会让 `App` 按新的
  * [PairingRuntimeState.Paired] 重建 `UiState`（App.kt 的 remember key），面板可能就此离开
- * 组合。提示存在这里，设置页入口那一行才敢说「上次切换：旧凭证吊销失败」。
+ * 组合；用户也可能在提交中切走 tab（`AppShell` 只组合当前 tab）。面板是临时组合，
+ * `remember` 的一切都归零 —— 这两样必须活过它：
+ *  - [text]：设置页入口那一行才敢说「上次切换：旧凭证吊销失败 / 切换没有完成 / 已切换到 …」，
+ *    重新打开的面板也读同一句；
+ *  - [submitting]：重建的面板仍显示「正在…」、输入框/按钮保持禁用、返回继续被拦，
+ *    不允许并发第二次 `switchCore`（那会再吊销一次旧 core、再烧一个一次性码）。
  */
 internal object CoreSwitchNotice {
 
     var text: String? by mutableStateOf(null)
+
+    /** 换 core 在途的真源；[PairingForm] 的 `submittingState` 读写的就是这个实例。 */
+    val submitting: MutableState<Boolean> = mutableStateOf(false)
+}
+
+/**
+ * 换 core 的**终态回执**（P1）：任何结局都必须留下这一句。
+ *
+ * 旧实现只在「成功」与「双失败」两支写 [CoreSwitchNotice] —— 单失败（新 core 被拒、旧凭证
+ * 已经吊销或本来就无需吊销）时文案只活在面板内存。用户在提交中切走 tab（`AppShell` 只组合
+ * 当前 tab）或面板因重建先离开组合，回来就只剩一个「未连接」的配对入口，没有任何解释。
+ * 现在四支全覆盖：
+ *  - [PairingAttempt.Connected]：`已切换到 host:port`（吊销失败时前面拼「旧凭证吊销失败：…」）；
+ *  - [PairingAttempt.Rejected] + [SessionRevocation.Failed]：双失败，保留原句
+ *    「旧 core 的会话可能仍然有效…」；
+ *  - [PairingAttempt.Rejected] + [SessionRevocation.Revoked]：旧凭证确实吊销了，本机已断开，
+ *    但新 core 没连上；
+ *  - [PairingAttempt.Rejected] + [SessionRevocation.NotNeeded]：本地就没发吊销（配置错误等），
+ *    旧配置原样，新 core 没连上。
+ *
+ * [target] 只用于 [pairingHeadline] 的 endpoint 文案（用户填的地址，不是启动时的旧地址）。
+ */
+internal fun coreSwitchReceipt(
+    revocation: SessionRevocation,
+    attempt: PairingAttempt,
+    target: RawSourceStrings,
+): String = when (attempt) {
+    is PairingAttempt.Connected ->
+        revocationNotice(revocation, "已切换到 ${attempt.host}:${attempt.port}")
+    is PairingAttempt.Rejected -> {
+        val headline = pairingHeadline(attempt.kind, target)
+        when (revocation) {
+            is SessionRevocation.Failed -> revocationNotice(
+                revocation,
+                "旧 core 的会话可能仍然有效，请手动断开或等它过期",
+            )
+            is SessionRevocation.Revoked ->
+                "旧 core 的凭证已吊销，本机已断开；切换没有完成：$headline"
+            is SessionRevocation.NotNeeded ->
+                "没有吊销任何旧凭证（本地配置未动）；切换没有完成：$headline"
+        }
+    }
 }
 
 /**
