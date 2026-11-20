@@ -236,6 +236,9 @@ fun TopBarBand(modifier: Modifier = Modifier) {
         // 带子由 AppShell 钉在 `TOP_BAR_ZONE` 高（结构测试只有一处 `.height(TOP_BAR_ZONE)`），
         // 平台段因此正好停在胶囊上沿 8dp 处：缝内 alpha = 1，缝下才开始递减。
         rampHoldDp = TopBarTopGap,
+        // 真机反馈：纯模糊压在纯色画布上等于全透明（没有像素可采样）。10% 的
+        // onSurface 明度偏移让整条渐变在空白背景上也读得出「磨砂」，弱端仍归零。
+        veil = skin.colors.onSurface.copy(alpha = 0.10f),
     )
 }
 

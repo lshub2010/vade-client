@@ -173,6 +173,9 @@ internal fun BoxScope.ComposerBottomBlurBand(
             // 底栏带的方向：屏幕底最强、向上递减到 0。改这一行之前先看 BlurBandRampTest。
             // 这条带子**不需要**「满强度平台段」：它的强端就是屏幕底，那里没有缝。
             ramp = BandRamp.BottomHeavy,
+            // 同顶栏：纯模糊在空画布上不可见，用同一比例的 onSurface 明度偏移
+            // 把「磨砂渐变」画出来；它随 ramp 一起归零，不会盖死输入区。
+            veil = skin.colors.onSurface.copy(alpha = 0.10f),
         )
     }
 }

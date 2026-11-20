@@ -317,12 +317,21 @@ class TopBarBandTest {
         val canvas = px.luma(px.width / 2, (100 * d).toInt())
         val inBand = px.luma(px.width / 2, (30 * d).toInt())
         println("g-topbar-band 纯画布: 带内=${"%.1f".format(inBand)} 带外=${"%.1f".format(canvas)} 带内梯度=${"%.2f".format(band)}")
+        // 真机反馈：差异太小（旧口径 ≤12）就等同于全透明，用户看不到任何模糊/磨砂。
+        // 现在要求「看得见但不成为色板」：强端有明度差，同时整条仍有梯度。
         assertTrue(
-            abs(inBand - canvas) <= 12f,
-            "带子把纯画布压成了色板（带内 ${inBand} vs 带外 ${canvas}，差 ${abs(inBand - canvas)}/255 > 12）—— " +
-                "染色浓度超了，用户明确禁止「整条带变成一块不透明的色板」",
+            abs(inBand - canvas) in 5f..40f,
+            "带子在纯画布上要么全透明（差 ${abs(inBand - canvas)}/255 < 5），要么成了一块色板（> 40）—— " +
+                "带内 $inBand vs 带外 $canvas",
         )
-        assertTrue(band <= 1.5f, "带子自身在纯画布上就该是平的（梯度 ${band}）")
+        // energy() 是全区域方差，10% 的渐变摊在 84dp 上只有零点几；直接比上下两点的明度差。
+        val topL = px.luma(px.width / 2, (10 * d).toInt())
+        val lowL = px.luma(px.width / 2, (60 * d).toInt())
+        assertTrue(
+            abs(topL - lowL) >= 3f,
+            "带子自身必须仍有渐变（上 $topL / 下 $lowL，差 ${abs(topL - lowL)}）；" +
+                "平掉就说明 veil 把 ramp 盖死了（energy=$band）",
+        )
     }
 
     // ---- 3 · 结构：带子在 AppShell 里垫在卡片之前，且铺满整个 zone -------------------
