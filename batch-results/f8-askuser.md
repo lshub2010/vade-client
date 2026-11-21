@@ -67,6 +67,15 @@
 全部走真 `ChatState` + 真 `ChatThread`，假通道只替换传输层并记录帧参数（session_id /
 input_id / value）。
 
+## CI
+
+- 运行：<https://github.com/lshub2010/vade-client/actions/runs/44916561312>（`workflow_dispatch` on `tmp/f8-askuser`）
+- `client` success：`desktopTest` **1782 tests / 0 failures / 0 errors / 1 skipped**（skip 为既有）、
+  wasm `compileKotlinWasmJs` success；
+- `android` success：`assembleDebug` success。
+- 首轮曾红在两条字形守卫（`IconGuardTest` / `GlyphClearTest`）：选中标记原用 `"✓"` 字符；
+  已改画 `VadeIcons.Check` 矢量（语义由 `selectable` 的 selected 态承担），复跑全绿。
+
 ## 已知边界
 
 - 不新增依赖、不改协议层：事件与 RPC 模型用仓库已有实现。
