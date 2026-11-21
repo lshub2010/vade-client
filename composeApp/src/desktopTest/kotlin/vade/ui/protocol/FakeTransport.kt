@@ -109,8 +109,11 @@ fun eventFrame(
     seq: Long,
     payload: String = "{}",
     coalesce: Boolean = false,
+    sessionId: String? = null,
 ): String = buildString {
-    append("""{"jsonrpc":"2.0","method":"event","params":{"type":"$type","seq":$seq,"payload":$payload""")
+    append("""{"jsonrpc":"2.0","method":"event","params":{"type":"$type","seq":$seq""")
+    if (sessionId != null) append(""","session_id":"$sessionId"""")
+    append(""","payload":$payload""")
     if (coalesce) append(""","x-vade":{"coalesce":true}""")
     append("}}")
 }
