@@ -218,7 +218,7 @@ class PairingTlsUiTest {
                     submitLabel = PAIRING_BUTTON_LABEL,
                     submittingLabel = PAIRING_SUBMITTING,
                     submitScope = submitScope,
-                    onSubmit = { host, _, _, tls ->
+                    onSubmit = { host, _, _, tls, _ ->
                         calls += tls
                         PairingAttempt.Connected(MarkerFactory(), host, 8443)
                     },
