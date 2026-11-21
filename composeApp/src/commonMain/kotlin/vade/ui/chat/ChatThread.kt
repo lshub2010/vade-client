@@ -443,6 +443,10 @@ fun ChatThread(
             BackLayer(enabled = true, onBack = state::closePreview)
             ImagePreviewSheet(image, onClose = state::closePreview)
         }
+
+        // RFC-0008 · ask-user 模态问答卡是**本页层叠的最后一层**（预览之上）：它只覆盖
+        // 聊天内容链，表头 / 玻璃顶栏是它的兄弟且画在它之后 —— 问答不遮挡顶栏。
+        AskUserInputDialogHost(state)
     }
 }
 

@@ -232,7 +232,10 @@ fun SessionDetailScreen(
     // m-bar（审查 P1-2）：下留白只加在**装着 ChatThread 的那一层**（消息列表 + composer 的
     // 内容链）上。表头、模型面板、图片预览都是它的**兄弟**，所以浮层永远是满屏的 —— 容器
     // 留白时代它们会跟着被抬离屏底 104–132 dp（遮罩在屏底上方硬切一刀）。
-    val overlayOpen = modelPickerOpen || chat.preview != null
+    //
+    // RFC-0008：ask-user 问答卡同样是模态浮层（它住在 ChatThread 内部），所以一并上报 ——
+    // 底栏据此让路，否则问答期间还能切走标签页。
+    val overlayOpen = modelPickerOpen || chat.preview != null || chat.hasPendingInput
     val latestOnOverlayChange = rememberUpdatedState(onOverlayChange)
     // 上报给布局宿主（底栏据此让路）。`chat.preview` 是 ChatState 的 snapshot 字段，读出即观察。
     LaunchedEffect(overlayOpen) { latestOnOverlayChange.value?.invoke(overlayOpen) }

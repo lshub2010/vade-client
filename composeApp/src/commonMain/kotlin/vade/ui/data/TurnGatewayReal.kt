@@ -11,8 +11,12 @@ import vade.ui.protocol.ContentPart as WireContentPart
 import vade.ui.protocol.ApprovalDecision
 import vade.ui.protocol.ApprovalScope
 import vade.ui.protocol.EditResubmitParams
+import vade.ui.protocol.InputStatus
+import vade.ui.protocol.InputValue
 import vade.ui.protocol.InterruptParams
 import vade.ui.protocol.SubmitParams
+import vade.ui.protocol.TurnInputCancelParams
+import vade.ui.protocol.TurnInputParams
 import vade.ui.protocol.TurnRegenerateParams
 import vade.ui.protocol.VadeClient
 import vade.ui.protocol.VadeErrorCodes
@@ -148,6 +152,44 @@ class TurnGatewayReal(
                     "supply an ApprovalDecideChannel (RealSessionSource.decideApproval) — see shots/b6-approval/RESULT.md",
             )
         channel(requestId, decision, scope)
+    }
+
+    /**
+     * RFC-0008 §7.1 · `turn/input` — 幂等键 [inputId] 原样上帧，[value] 的三态
+     * （string / string[] / bool）由 [InputValue] 自己的编码决定。`ok=false` 说明 core
+     * 已关掉这张卡（别处作答 / 超时 / 会话关闭），**不是**客户端的错：静默返回，
+     * `turn.input_resolved` 是收尾的唯一上屏者。
+     */
+    override suspend fun answerInput(sessionId: String, inputId: String, value: InputValue) {
+        requireNonBlank(sessionId, "session_id")
+        requireNonBlank(inputId, "input_id")
+        val result = client.turnInput(
+            TurnInputParams(sessionId = sessionId, inputId = inputId, value = value),
+        )
+        if (!result.ok && result.statusEnum == InputStatus.UNKNOWN) {
+            throw VadeException(
+                VadeErrorCodes.NOT_FOUND,
+                "turn/input was rejected for input_id=$inputId (status=${result.status})",
+            )
+        }
+    }
+
+    /**
+     * RFC-0008 §7.2 · `turn/input.cancel` — 只关这一张卡，回合继续。`ok=false` 同 [answerInput]：
+     * 卡已经被 core 关掉了（超时 / 别处作答），静默即可。
+     */
+    override suspend fun cancelInput(sessionId: String, inputId: String, reason: String) {
+        requireNonBlank(sessionId, "session_id")
+        requireNonBlank(inputId, "input_id")
+        val result = client.turnInputCancel(
+            TurnInputCancelParams(sessionId = sessionId, inputId = inputId, reason = reason),
+        )
+        if (!result.ok && result.statusEnum == InputStatus.UNKNOWN) {
+            throw VadeException(
+                VadeErrorCodes.NOT_FOUND,
+                "turn/input.cancel was rejected for input_id=$inputId (status=${result.status})",
+            )
+        }
     }
 
     /** Chat-layer part union → the wire part union (RFC-0004 §6.1), field-for-field. */

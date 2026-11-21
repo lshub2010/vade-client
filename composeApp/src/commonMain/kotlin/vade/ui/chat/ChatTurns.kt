@@ -3,6 +3,7 @@ package vade.ui.chat
 import androidx.compose.runtime.Immutable
 import vade.ui.protocol.ApprovalDecision
 import vade.ui.protocol.ApprovalScope
+import vade.ui.protocol.InputValue
 
 /**
  * v1.1 · the narrow seam between the chat page and the two new turn methods
@@ -90,6 +91,39 @@ interface ChatTurnGateway {
     ): Unit = throw IllegalStateException(
         "ChatTurnGateway.decideApproval is not implemented: this gateway cannot decide approvals (implement " +
             "approval/decide or declare an explicit local-projection fake via synthetic = true)",
+    )
+
+    /**
+     * RFC-0008 §7.1 · `turn/input` — 对一次 ask-user 请求作答。[inputId] **必须**是
+     * `turn.input_required` 事件里的 `input_id`（core 分配、幂等键），[value] 的形状由
+     * `kind` 决定：free_text / single_choice → [InputValue.Text]，multi_choice →
+     * [InputValue.Multi]，confirm → [InputValue.Flag]。
+     *
+     * 默认实现是**故意的响亮失败**（同 [submit]）：真通道忘了接作答，界面会永远停在
+     * 「等你回答」，比立刻报错更糟。假实现显式声明 no-op。
+     */
+    suspend fun answerInput(
+        sessionId: String,
+        inputId: String,
+        value: InputValue,
+    ): Unit = throw IllegalStateException(
+        "ChatTurnGateway.answerInput is not implemented: this gateway cannot answer ask-user requests " +
+            "(implement turn/input or declare an explicit in-memory fake via synthetic = true)",
+    )
+
+    /**
+     * RFC-0008 §7.2 · `turn/input.cancel` — 只关掉**这一张**问答卡，回合继续跑
+     * （要结束回合用 `ui/interrupt`）。[reason] 取 C-04 语义的短码（默认 `user_cancel`）。
+     *
+     * 默认实现同上：响亮失败，不静默。
+     */
+    suspend fun cancelInput(
+        sessionId: String,
+        inputId: String,
+        reason: String = "user_cancel",
+    ): Unit = throw IllegalStateException(
+        "ChatTurnGateway.cancelInput is not implemented: this gateway cannot cancel ask-user requests " +
+            "(implement turn/input.cancel or declare an explicit in-memory fake via synthetic = true)",
     )
 }
 
@@ -184,5 +218,17 @@ class InMemoryTurnGateway : ChatTurnGateway {
      */
     override suspend fun decideApproval(requestId: String, decision: ApprovalDecision, scope: ApprovalScope) {
         // no-op — the fixture demo path owns its own local projection.
+    }
+
+    /**
+     * RFC-0008 · 假源的作答 = 本地投影（`ChatState` 移除卡片），出网空操作 ——
+     * 夹具演示路径没有 core，也就没有可答的 `input_id`。
+     */
+    override suspend fun answerInput(sessionId: String, inputId: String, value: InputValue) {
+        // no-op — the fixture demo path closes the card locally.
+    }
+
+    override suspend fun cancelInput(sessionId: String, inputId: String, reason: String) {
+        // no-op — 同上：假源没有回合可保活。
     }
 }

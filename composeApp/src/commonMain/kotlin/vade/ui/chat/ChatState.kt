@@ -13,6 +13,8 @@ import vade.ui.skin.InputMode
 import vade.ui.chat.ApprovalOutcome
 import vade.ui.protocol.ApprovalDecision
 import vade.ui.protocol.ApprovalScope
+import vade.ui.protocol.InputKind
+import vade.ui.protocol.InputValue
 import vade.ui.protocol.TurnApprovalRequired
 import vade.ui.protocol.TurnApprovalRequiredPayload
 import vade.ui.protocol.TurnApprovalResolved
@@ -20,6 +22,10 @@ import vade.ui.protocol.TurnApprovalResolvedPayload
 import vade.ui.protocol.TurnCancelled
 import vade.ui.protocol.TurnCompleted
 import vade.ui.protocol.TurnFailed
+import vade.ui.protocol.TurnInputRequired
+import vade.ui.protocol.TurnInputRequiredPayload
+import vade.ui.protocol.TurnInputResolved
+import vade.ui.protocol.TurnInputResolvedPayload
 import vade.ui.protocol.TurnInterrupted
 import vade.ui.protocol.TurnStarted
 import vade.ui.protocol.VadeErrorCodes
@@ -80,6 +86,11 @@ class ChatState(
      * 放在参数表末尾且带默认值：已有调用点一行都不用改，测试可注入一份隔离的表。
      */
     private val drafts: DraftStore = DraftStore.shared,
+    /**
+     * 页面时钟（unix ms）。默认系统时钟；测试注入固定值把 `expires_at` 倒计时 / 超时
+     * 关窗变成确定性行为（ask-user 是唯一按墙钟自动关的对话框）。
+     */
+    private val clock: () -> Long = { epochNowMs() },
 ) {
     /**
      * B2 · 真源模式：拿到真通道（[ChatTurnGateway.synthetic] == false）或显式给了读通道。
@@ -332,6 +343,7 @@ class ChatState(
         val snapshot = this.applyLive(live, event)
         projectTurnLifecycle(event)
         projectApprovalLifecycle(event)
+        projectInputLifecycle(event)
         return snapshot
     }
 
@@ -1391,6 +1403,184 @@ class ChatState(
     private fun toolCallById(callId: String): ToolCall? =
         (items.firstOrNull { it is ChatItem.Tool && it.call.id == callId } as? ChatItem.Tool)?.call
 
+    // --- ask-user 问答（RFC-0008） -------------------------------------------------
+    //
+    // core 的 `turn.input_required` 是**事件**，不是工具卡：它要求读者回答一个
+    // 固定形状的问题（free_text / single_choice / multi_choice / confirm），回合停在
+    // `waiting_input` 等这一帧。整条链路只有三件事：
+    //  1. 事件进 → [pendingInputs] 多一条，页面弹模态卡（[currentInput] 是最上面那张）；
+    //  2. 读者作答 / 取消 → 走 [ChatTurnGateway.answerInput] / [cancelInput]（`turn/input`
+    //     与 `turn/input.cancel`），成功后本地摘卡；
+    //  3. `turn.input_resolved` 到达 → **无论本地做过什么**，按 `input_id` 关掉那一张
+    //     （别处作答 / 超时 / 会话关闭都靠它；这是契约里唯一的关窗信号）。
+    //
+    // 输入框文字与勾选是纯客户端状态，不进 payload；`multi_choice` 的值按选项显示顺序
+    // 归一（见 [PendingInput.selectedInOptionOrder]）。
+
+    /** 等读者作答的请求，先到先答（`turn.input_resolved` 逐条关闭）。 */
+    val pendingInputs = mutableStateListOf<PendingInput>()
+
+    /** 当前该弹的那一张卡；null = 没有问答。 */
+    val currentInput: PendingInput? get() = pendingInputs.firstOrNull()
+
+    /** 是否有问答在等（列表徽标 / 无障碍提示用）。 */
+    val hasPendingInput: Boolean get() = pendingInputs.isNotEmpty()
+
+    /** 在途的作答 / 取消 —— 同一 `input_id` 不重复发帧（core 幂等，客户端也不浪费往返）。 */
+    private val inputsInFlight = mutableSetOf<String>()
+
+    /** 页面时钟（倒计时 / 超时的唯一来源）；[PendingInput] 的算法全部按它算。 */
+    internal fun nowMs(): Long = clock()
+
+    fun updateInputDraft(inputId: String, text: String) {
+        val index = pendingInputs.indexOfFirst { it.inputId == inputId }
+        if (index < 0) return
+        pendingInputs[index] = pendingInputs[index].copy(draft = text)
+    }
+
+    /**
+     * 勾选一个选项：`single_choice` = 替换（永远只有一个），`multi_choice` = 切换。
+     * 其它 kind（free_text / confirm）没有选中态，直接 no-op。
+     */
+    fun toggleInputOption(inputId: String, optionId: String) {
+        val index = pendingInputs.indexOfFirst { it.inputId == inputId }
+        if (index < 0) return
+        val input = pendingInputs[index]
+        if (input.options.none { it.id == optionId }) return
+        val next = when (input.kind) {
+            InputKind.SINGLE_CHOICE -> listOf(optionId)
+            InputKind.MULTI_CHOICE ->
+                if (optionId in input.selected) input.selected - optionId else input.selected + optionId
+            else -> return
+        }
+        pendingInputs[index] = input.copy(selected = next)
+    }
+
+    /**
+     * 按 `kind` 组装 `turn/input.value`（RFC-0008 §7.1）：
+     * free_text / single_choice → `string`，multi_choice → `string[]`，confirm → 两键
+     * （[submitConfirm]），不在这里猜布尔。未填够 → null（[submitInput] 给出可读提示）。
+     */
+    fun answerValueOf(input: PendingInput): InputValue? = when (input.kind) {
+        InputKind.FREE_TEXT -> input.draft.trim().takeIf { it.isNotEmpty() }?.let { InputValue.Text(it) }
+        InputKind.SINGLE_CHOICE -> input.selectedInOptionOrder().firstOrNull()?.let { InputValue.Text(it) }
+        InputKind.MULTI_CHOICE -> input.selectedInOptionOrder()
+            .takeIf { it.isNotEmpty() }
+            ?.let { InputValue.Multi(it) }
+        // confirm 的答案是布尔，由两键直接给；不靠选中态推断。
+        InputKind.CONFIRM, InputKind.UNKNOWN -> null
+    }
+
+    /** 主按钮可用态（空输入 / 未勾选 / confirm 不走这里）。 */
+    fun canSubmitInput(inputId: String): Boolean {
+        val input = pendingInputs.firstOrNull { it.inputId == inputId } ?: return false
+        return answerValueOf(input) != null
+    }
+
+    /** 提交按钮 / ⌘Enter：组装值 → `turn/input`。成功后摘卡，失败留在原地可重试。 */
+    fun submitInput(inputId: String): Boolean {
+        val input = pendingInputs.firstOrNull { it.inputId == inputId } ?: return false
+        val value = answerValueOf(input) ?: run {
+            lastNotice = when (input.kind) {
+                InputKind.FREE_TEXT -> "回答不能为空"
+                InputKind.MULTI_CHOICE -> "至少勾选一项"
+                InputKind.SINGLE_CHOICE -> "先选一个选项"
+                else -> "这张问答卡不能这样提交"
+            }
+            return false
+        }
+        return sendAnswer(inputId, value)
+    }
+
+    /** confirm 的两键：`true` = 是，`false` = 否（wire 是布尔，不是字符串）。 */
+    fun submitConfirm(inputId: String, confirmed: Boolean): Boolean {
+        val input = pendingInputs.firstOrNull { it.inputId == inputId } ?: return false
+        if (input.kind != InputKind.CONFIRM) return false
+        return sendAnswer(inputId, InputValue.Flag(confirmed))
+    }
+
+    /**
+     * 取消这张卡（`turn/input.cancel`，reason=`user_cancel`）：**只关问答，回合继续**。
+     * 成功后摘卡 + 一行状态；失败留在原地（关掉了却没送到 = 屏上撒谎）。
+     */
+    fun cancelInput(inputId: String): Boolean {
+        if (pendingInputs.none { it.inputId == inputId }) return false
+        if (inputId in inputsInFlight) return false
+        inputsInFlight += inputId
+        wireScope.launch { cancelInputOverWire(inputId) }
+        return true
+    }
+
+    /**
+     * `expires_at` 已过：本地关窗 + 提示。**不发 cancel** —— core 自己的超时（timeout =
+     * cancel）会发 `turn.input_resolved`；`default` 永远不会变成答案。
+     */
+    fun timeoutInput(inputId: String): Boolean {
+        if (pendingInputs.none { it.inputId == inputId }) return false
+        closeInput(inputId)
+        lastNotice = INPUT_TIMEOUT_NOTICE
+        return true
+    }
+
+    private fun sendAnswer(inputId: String, value: InputValue): Boolean {
+        if (inputId in inputsInFlight) return false
+        inputsInFlight += inputId
+        wireScope.launch { sendAnswerOverWire(inputId, value) }
+        return true
+    }
+
+    private suspend fun sendAnswerOverWire(inputId: String, value: InputValue) {
+        try {
+            turns.answerInput(sessionId, inputId, value)
+            closeInput(inputId)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            inputsInFlight.remove(inputId)
+            lastNotice = "回答未送达（${loadErrorCategoryOf(error).label}）：" +
+                "${error.message?.takeIf { it.isNotBlank() } ?: "通道异常"}，可重试"
+        }
+    }
+
+    private suspend fun cancelInputOverWire(inputId: String) {
+        try {
+            turns.cancelInput(sessionId, inputId, INPUT_CANCEL_REASON)
+            closeInput(inputId)
+            lastNotice = "已取消作答（回合继续）"
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            inputsInFlight.remove(inputId)
+            lastNotice = "取消未送达（${loadErrorCategoryOf(error).label}）：" +
+                "${error.message?.takeIf { it.isNotBlank() } ?: "通道异常"}，可重试"
+        }
+    }
+
+    /** 唯一的摘卡路径：本地提交成功、取消成功、超时、`turn.input_resolved` 都走这里。 */
+    private fun closeInput(inputId: String) {
+        inputsInFlight.remove(inputId)
+        pendingInputs.removeAll { it.inputId == inputId }
+    }
+
+    /**
+     * `turn.input_required` → 弹卡；`turn.input_resolved` → 按 `input_id` 关卡。
+     * 只服务真源（假源没有 core，也没有 input_id）；重放幂等：同一个 `input_id` 不会
+     * 叠出第二张卡，迟到/重复的 resolved 也不会碰别的卡。
+     */
+    private fun projectInputLifecycle(event: VadeEvent) {
+        if (!isRealSource) return
+        when (event) {
+            is TurnInputRequired -> onInputRequired(event.payload)
+            is TurnInputResolved -> closeInput(event.payload.inputId)
+            else -> Unit
+        }
+    }
+
+    private fun onInputRequired(p: TurnInputRequiredPayload) {
+        if (pendingInputs.any { it.inputId == p.inputId }) return
+        pendingInputs += PendingInput(request = p)
+    }
+
     // --- preview --------------------------------------------------------------
 
     fun openPreview(image: ContentPart.Image) {
@@ -1528,6 +1718,14 @@ class ChatState(
 
         /** 异常没带 message 时的兜底原因。 */
         const val LOAD_FAILED_FALLBACK: String = "历史快照读取异常"
+
+        // --- RFC-0008 · ask-user 问答 -------------------------------------------
+
+        /** `turn/input.cancel` 的 `reason`：读者主动关掉这一张卡（回合继续）。 */
+        const val INPUT_CANCEL_REASON: String = "user_cancel"
+
+        /** `expires_at` 到期后的状态行（超时 = 未作答；`default` 不生效）。 */
+        const val INPUT_TIMEOUT_NOTICE: String = "回答超时（未作答），回合继续"
     }
 }
 
