@@ -1,8 +1,9 @@
 # f6-render · CI 收敛报告
 
-分支：`tmp/f6-render`（`5882e93`）
-CI：run `44915989687` — **success**，1774 tests / 1 skipped / 0 failed
-（workflow_dispatch，desktopTest xvfb + real core）
+分支：`tmp/f6-render`
+CI：run `44916854423`（commit `aba31e4`）— **success**，1774 tests / 1 skipped / 0 failed
+（workflow_dispatch，desktopTest xvfb + real core；代码 commit `5882e93` 的
+run `44915989687` 同样 success）
 
 ## 结论
 
