@@ -23,7 +23,6 @@ import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import vade.ui.component.liquid.rememberGlassBackdrop
 import vade.ui.destinations.Destination
 import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.LocalSkin
@@ -107,14 +106,12 @@ class BottomBarSemanticsTest : IsolatedPreferencesTest() {
     ) {
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin(dark = dark)) {
-                val backdrop = rememberGlassBackdrop()
                 Box(Modifier) {
                     VadeBottomBar(
                         items = barItems(),
                         selected = selectedIndex,
                         onSelect = onSelect,
                         style = style,
-                        backdrop = backdrop,
                     )
                 }
             }
@@ -133,14 +130,12 @@ class BottomBarSemanticsTest : IsolatedPreferencesTest() {
         var selected by mutableStateOf(0)
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
-                val backdrop = rememberGlassBackdrop()
                 Box(Modifier) {
                     VadeBottomBar(
                         items = barItems(),
                         selected = selected,
                         onSelect = { selected = it },
                         style = BottomBarStyle.Fixed,
-                        backdrop = backdrop,
                     )
                 }
             }
@@ -246,7 +241,6 @@ class BottomBarSemanticsTest : IsolatedPreferencesTest() {
     fun twoFormsCountTheirSelectionIndependently() = runComposeUiTest {
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
-                val backdrop = rememberGlassBackdrop()
                 Column(Modifier) {
                     // 固定底栏选中「会话」(0)
                     VadeBottomBar(
@@ -254,7 +248,6 @@ class BottomBarSemanticsTest : IsolatedPreferencesTest() {
                         selected = 0,
                         onSelect = {},
                         style = BottomBarStyle.Fixed,
-                        backdrop = backdrop,
                     )
                     Row(Modifier) {
                         // 浮动胶囊选中「能力」(2)
@@ -263,7 +256,6 @@ class BottomBarSemanticsTest : IsolatedPreferencesTest() {
                             selected = 2,
                             onSelect = {},
                             style = BottomBarStyle.Floating,
-                            backdrop = backdrop,
                         )
                     }
                 }

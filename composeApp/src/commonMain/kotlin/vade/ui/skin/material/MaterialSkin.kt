@@ -42,7 +42,6 @@ import vade.ui.icon.VadeIcons
 import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.BtnStyle
 import vade.ui.skin.NavItem
-import vade.ui.skin.glass.GlassBackdropPolicy
 import vade.ui.skin.glass.GlassSurface
 
 /**
@@ -453,15 +452,16 @@ class MaterialSkin(
 
             BottomBarStyle.FloatingBlur -> {
                 // v2 §5：这个形态 = 真背景模糊。用 skin/glass/GlassSurface（根 hazeSource
-                // 由 shell/ 接线；未接线时按其文档降级为 hairline + 阴影，绝不用垂直
+                // 由 shell/ 接线；未接线时按其文档降级为 tint + hairline + 高光，绝不用垂直
                 // alpha 渐变假装模糊 —— v2 明令禁止）。
+                //
+                // 注意：**shell 不走这条分支**（`shell/BottomBar.kt` 的三种形态全部路由到
+                // `VadeBottomBar` / `FloatingBottomBar`）。它是 C-09 契约里的形态表达，修
+                // §5 层数时不要把这里当成"真的上屏的那一层"—— 审查 P1-5 记的正是这件事。
                 Box(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp)) {
                     GlassSurface(
                         shape = pillShape,
                         skin = this@MaterialSkin,
-                        // U3 之前这条底栏就是「私有空 state + 无条件 haze 节点」，像素钉钉的是它；
-                        // 显式写出来，不让读代码的人以为这里"真的能模糊"。
-                        backdropPolicy = GlassBackdropPolicy.HazeAlwaysCompat,
                     ) { row() }
                 }
             }

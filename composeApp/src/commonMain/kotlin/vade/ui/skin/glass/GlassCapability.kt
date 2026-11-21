@@ -28,34 +28,19 @@ enum class GlassCapability {
 }
 
 /**
- * 玻璃层**是否建 haze 节点**的策略 —— 与「平台能做到哪一档」正交。
+ * 这条链上到底建不建 haze 节点 —— **只看能力**，没有第二个输入。
  *
- * 这两件事被混在一起过一次：让共享调用点给 `glassCapability` 传一个假的
- * `hasBackdrop = true` 去保住像素，结果是「能力」这个词在代码里不再可信（审查 P1-5）。
- * 现在能力只看真实背景，绘制策略由调用点显式声明：
+ * 曾经这里还有一个 `GlassBackdropPolicy` 参数，[HazeAlwaysCompat] 可以在平台能力是
+ * `TintStroke` 时把结论强行拉回 `true`（"保住 U3 之前的像素"）。后果就是真机反馈的那三条
+ * 症状：API<31 的顶栏 / 搜索浮层 / 模型卡 / 图片预览仍然建 haze 节点，而 haze 在没有
+ * `RenderEffect` 的平台上走 `ScrimBlurVisualEffectDelegate` —— **只画一层 tint，不画模糊**。
+ * 于是"玻璃"只剩一块灰罩，`TintStroke` 那一档（染色 + 描边 + 高光）一次都没被执行过。
  *
- *  - [HazeAlwaysCompat] —— **兼容模式**：无论有没有背景都建 haze 节点。U3 之前所有
- *    共享调用点（material 的 FloatingBlur 底栏、TopBar、GlassNavBar、SearchOverlay、
- *    ChatThread 的各种浮层、模型选择卡）就是这个行为，CI 的像素钉钉的是它。名字里带
- *    `Compat` 是为了让读的人知道：这里不是"真的能模糊"，而是历史像素的显式保留。
- *  - [DegradeWithoutBackdrop] —— glass 皮肤自己的组件：采不到背景就不建 haze 节点，
- *    直接染色 + 描边 + 高光（`TintStroke`），因为一条采不到背景的 haze 链什么都不画。
+ * 现在没有覆盖入口：能力说不能模糊，就不建节点、走 [GlassCapability.TintStroke] 的完整
+ * 形状；像素基线要变，就更新一次基线，别让运行时策略承担。调用点也不需要再表态（少一个
+ * 可以被写错的参数）。
  */
-enum class GlassBackdropPolicy {
-    HazeAlwaysCompat,
-    DegradeWithoutBackdrop,
-}
-
-/**
- * 这条链上到底建不建 haze 节点。
- *
- * 抽成纯函数只为一件事：让「共享调用点像素不变」这条约束可断言，而不是靠人读 diff。
- * `capability.blurs` 是"平台 + 背景"的结论；[GlassBackdropPolicy.HazeAlwaysCompat]
- * 是一个**覆盖**：它保留 U3 之前那个「私有空 state 也硬跑 hazeBlur」的像素，哪怕
- * 能力档位是 [GlassCapability.TintStroke]。
- */
-fun drawsHazeLayer(capability: GlassCapability, policy: GlassBackdropPolicy): Boolean =
-    capability.blurs || policy == GlassBackdropPolicy.HazeAlwaysCompat
+fun drawsHazeLayer(capability: GlassCapability): Boolean = capability.blurs
 
 /**
  * Android 的模糊门槛：API 31（Android 12）。
@@ -72,7 +57,7 @@ const val ANDROID_GLASS_BLUR_MIN_SDK: Int = 31
  * 为什么放在 commonMain 而不是 androidMain：下游的 `platformGlassCapability()` 是
  * `expect/actual`，desktopTest 看不到 androidMain，于是「24–30 必须降级」这条最容易
  * 回归（有人把它改回无条件 Blur）的断言就没有地方写。把判定与 `Build.VERSION` 分开，
- * 单测就能把 23…34 全走一遍，不需要一台 Android 11 设备。
+ * 单测就能把 21…35 全走一遍，不需要一台 Android 11 设备。
  */
 fun androidGlassCapability(sdkInt: Int): GlassCapability =
     if (sdkInt >= ANDROID_GLASS_BLUR_MIN_SDK) GlassCapability.Blur else GlassCapability.TintStroke
@@ -89,11 +74,20 @@ fun androidGlassCapability(sdkInt: Int): GlassCapability =
 expect fun platformGlassCapability(): GlassCapability
 
 /**
+ * 一行平台指纹，**降级日志的正文**（审查 P1-10：真机上"变成灰罩"在日志里零痕迹）。
+ *
+ * 只写可从平台事实里直接读到的东西，不猜：SDK 号、模糊门槛、以及这条阶梯考虑过的候选
+ * 档位。格式固定为 `key=value` 空格分隔、单行 —— 日志可以被 `adb logcat | grep vade.glass`
+ * 直接读，也可以被单测断言。
+ */
+expect fun glassPlatformDiagnostic(): String
+
+/**
  * 测试缝（**internal**，生产代码不许写它）。
  *
  * 任务书 §T3 要求"降级路径必须有单测（可用 fake shader 编译失败模拟）"。真造一个
  * "shader 编译失败"的平台是不可能的（那要一台 API 33 真机 + 一个坏 shader），所以这里
- * 留一个可替换的探针：测试把它设成抛异常，就能走到 [glassCapability] 的 catch 分支。
+ * 留一个可替换的探针：测试把它设成抛异常，就能走到 [glassCapabilityDecision] 的 catch 分支。
  */
 internal var glassPlatformCapabilityProbe: (() -> GlassCapability)? = null
 
@@ -106,22 +100,108 @@ fun glassPlatformCapability(): GlassCapability =
     glassPlatformCapabilityProbe?.invoke() ?: platformGlassCapability()
 
 /**
+ * 一次能力判定的**结论 + 理由**。
+ *
+ * 理由不是给人看的装饰：它是降级日志的正文（[GlassDegradeLog]），也是能力矩阵测试的
+ * 断言对象 —— "为什么这层只画 tint"必须能从代码里读出来，而不是靠看截图猜。
+ */
+internal data class GlassCapabilityDecision(
+    val capability: GlassCapability,
+    val hasBackdrop: Boolean,
+    val reason: String,
+    /** 这条链上考虑过的档位（从强到弱），日志里原样打出。 */
+    val candidates: List<GlassCapability>,
+)
+
+/**
  * 实际能力 = 平台上限 ∩ 是否真的采得到背景。
  *
  * 纯函数（不读组合状态），所以 `GlassSkinTest` 能直接断言降级结果，不需要起一个组合。
  * `try/catch` 是硬要求（任务书 §七：禁止在能力探测失败时抛到 UI）：任何 actual 抛异常
- * 都收敛到 [GlassCapability.TintStroke]，把玻璃层降成"染色 + 描边"，不是白屏。
+ * 都收敛到 [GlassCapability.TintStroke]，把玻璃层降成"染色 + 描边 + 高光"，不是白屏。
  *
  * @param hasBackdrop 页面是否**真的**提供了 `LocalGlassHazeState`（`GlassScope` 已接上）。
- *   这里只接受真实值：想保留「没背景也建 haze 节点」的历史像素，用
- *   [GlassBackdropPolicy.HazeAlwaysCompat] / [drawsHazeLayer]，不要在这个参数上说谎。
+ *   这里只接受真实值 —— 想改画法只有一个入口：[drawsHazeLayer]（它只认能力）。
  */
-fun glassCapability(hasBackdrop: Boolean): GlassCapability {
-    if (!hasBackdrop) return GlassCapability.TintStroke
-    return try {
+internal fun glassCapabilityDecision(hasBackdrop: Boolean): GlassCapabilityDecision {
+    val ladder = listOf(GlassCapability.Blur, GlassCapability.TintStroke)
+    if (!hasBackdrop) {
+        return GlassCapabilityDecision(
+            capability = GlassCapability.TintStroke,
+            hasBackdrop = false,
+            reason = "no backdrop (GlassScope absent ⇒ LocalGlassHazeState is null)",
+            candidates = ladder,
+        )
+    }
+    val platform = try {
         glassPlatformCapability()
-    } catch (_: Throwable) {
+    } catch (t: Throwable) {
         // 探测本身炸了：当作"平台上什么都采不到"，绝不把异常冒到组合里。
-        GlassCapability.TintStroke
+        return GlassCapabilityDecision(
+            capability = GlassCapability.TintStroke,
+            hasBackdrop = true,
+            reason = "capability probe threw ${t::class.simpleName}: ${t.message}",
+            candidates = ladder,
+        )
+    }
+    return GlassCapabilityDecision(
+        capability = platform,
+        hasBackdrop = true,
+        reason = "platform cap=$platform (${glassPlatformDiagnostic()})",
+        candidates = ladder,
+    )
+}
+
+/**
+ * 实际能力（[glassCapabilityDecision] 的结论），并在**降级时**记一行日志。
+ *
+ * 生产调用点用这个：玻璃层 → 灰罩这件事必须能在 `adb logcat` 里看到，而不是只能靠真机
+ * 肉眼看。日志按 `(hasBackdrop, capability, reason)` 去重 —— 组合热路径上每帧都调用它，
+ * 但同一结论只打一行。
+ */
+fun glassCapability(hasBackdrop: Boolean): GlassCapability =
+    glassCapabilityDecision(hasBackdrop).also { decision ->
+        if (!decision.capability.blurs) GlassDegradeLog.note(decision)
+    }
+
+/**
+ * 降级观测点（审查 P1-10）。
+ *
+ * 一行、单行、可 grep：
+ *
+ * ```text
+ * vade.glass degrade: capability=TintStroke hasBackdrop=false platform=android sdk=30 blurMinSdk=31
+ *   candidates=[Blur,TintStroke] reason=no backdrop (...)
+ * ```
+ *
+ * `internal` 的读口只给测试用（`GlassCapabilityMatrixTest` 断言 SDK / hasBackdrop / 候选
+ * 三件事都在行里），生产不读它。
+ */
+internal object GlassDegradeLog {
+
+    /** 最近一行降级日志；测试读它，生产只写。 */
+    var lastLine: String? = null
+        private set
+
+    /** 已经打过的结论键 —— 同一结论只打一行，组合热路径不刷屏。 */
+    private var emitted: String? = null
+
+    fun note(decision: GlassCapabilityDecision) {
+        val candidates = decision.candidates.joinToString(",") { it.name }
+        val line = "vade.glass degrade: capability=${decision.capability.name} " +
+            "hasBackdrop=${decision.hasBackdrop} " +
+            "platform=${glassPlatformDiagnostic()} " +
+            "candidates=[$candidates] reason=${decision.reason}"
+        val key = "${decision.capability.name}|${decision.hasBackdrop}|${decision.reason}|$candidates"
+        if (key == emitted) return
+        emitted = key
+        lastLine = line
+        println(line)
+    }
+
+    /** 测试缝：清空去重与记录，让下一条日志一定会打出来。 */
+    internal fun reset() {
+        emitted = null
+        lastLine = null
     }
 }

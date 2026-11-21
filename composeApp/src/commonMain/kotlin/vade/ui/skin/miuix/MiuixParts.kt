@@ -72,7 +72,6 @@ import vade.ui.skin.SkinTypography
 import vade.ui.skin.ToolCallView
 import vade.ui.skin.ToolCardState
 import vade.ui.skin.cardAccentBar
-import vade.ui.skin.glass.GlassBackdropPolicy
 import vade.ui.skin.glass.GlassSurface
 
 /**
@@ -770,7 +769,6 @@ internal fun MiuixInputBar(
                     // §8.2 shadow2 档位显式写出来（默认值就是它）：这一层是**浮层**。
                     shadow = VadeShadows.float,
                     degradeColor = colors.surfaceGlass,
-                    backdropPolicy = GlassBackdropPolicy.DegradeWithoutBackdrop,
                 ) {
                     // g-inline-second-row / P1-2（审查 r1-client-chat）：面板高度动画必须挂在
                     // **面板内容这一层**，与 material `MaterialParts` / glass `GlassSkin` 同一个位置、

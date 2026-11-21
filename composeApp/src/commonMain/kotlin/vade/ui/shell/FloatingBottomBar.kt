@@ -11,10 +11,9 @@
 //    a theme object.
 //  - KernelSU's finger-following `InteractiveHighlight` (white AGSL spotlight)
 //    is intentionally NOT ported: it is Android-only in KernelSU and outside this
-//    batch's required parameter set. The gravity highlight survives through
-//    `rememberPillHighlight` (tilt parallax on Android, static elsewhere).
-//  - Item rendering is owned by the bar (icon/glyph/label/badge) so the pill can
-//    draw an accent-tinted hidden copy for the refraction to smear.
+//    batch's required parameter set. The edge bloom survives as the 1dp hairline
+//    border below (the miuix `BloomStroke` retired with the capture pipeline).
+//  - Item rendering is owned by the bar (icon/glyph/label/badge).
 
 package vade.ui.shell
 
@@ -72,13 +71,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
-import vade.ui.component.liquid.GlassBackdrop
-import vade.ui.component.liquid.LiquidRefraction
 import vade.ui.component.liquid.dropHalo
-import vade.ui.component.liquid.glassSurface
-import vade.ui.component.liquid.rememberPillHighlight
 import vade.ui.icon.VadeIcons
 import vade.ui.skin.LocalSkin
+import vade.ui.skin.glass.glassPaint
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -163,8 +159,10 @@ internal fun shouldReportTabRelease(
  *    or 28 dp — see [BottomBarForm]);
  *  - press scales the pill to 78/56 ≈ 1.39×;
  *  - inner shadow radius rides the press progress (8 dp · progress);
- *  - the pill body blurs (4 dp) + vibrancy + edge lens (24/24 dp) over the
- *    content backdrop, with a BloomStroke edge highlight at 0.75 alpha;
+ *  - the pill body is **haze glass** (与顶栏 / composer 同一条管线，`glassPaint`):
+ *    24 dp 高斯 + §5 的 26 %/34 % 染色 + 1 dp hairline。**没有**折射、**没有** vibrancy、
+ *    **没有** miuix `BloomStroke`（那三样随 `captureGlassBackdrop` 管线一起删掉了：
+ *    它们的像素来源是整窗每帧重录，而 §5/T3 本来就不做折射）；
  *  - 4 dp rubber band: the whole pill row shifts while dragging past the ends.
  *
  * g-nav-selected: KernelSU's own *moving indicator* (a full-tab-width lens that stretches
@@ -183,10 +181,14 @@ internal fun FloatingBottomBar(
     items: List<BottomBarItem>,
     selectedIndex: Int,
     onSelected: (index: Int) -> Unit,
-    backdrop: GlassBackdrop,
     isBlurEnabled: Boolean,
     dark: Boolean,
     modifier: Modifier = Modifier,
+    /**
+     * 是否**自己**采样背景。`false` = 同一块背景已经有别的玻璃层在糊（会话页的底栏带）——
+     * 胶囊只补染色 + hairline，不建第二个 haze 节点（§5 同屏层数上限）。
+     */
+    samplesBackdrop: Boolean = true,
 ) {
     val skin = LocalSkin.current
     val pillShape: Shape = remember { CircleShape }
@@ -201,8 +203,6 @@ internal fun FloatingBottomBar(
     val density = LocalDensity.current
     val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
     val animationScope = rememberCoroutineScope()
-
-    val contentBackdrop = remember(backdrop) { backdrop.asSurfaceBackdrop() }
 
     var tabWidthPx by remember { mutableFloatStateOf(0f) }
     var totalWidthPx by remember { mutableFloatStateOf(0f) }
@@ -316,10 +316,6 @@ internal fun FloatingBottomBar(
         dampedDragAnimation.animateToValue(index.toFloat())
     }
 
-    val baseHighlight = rememberPillHighlight(dark)
-    val pillHighlight = rememberPillHighlight(dark)
-    val pillBodyHighlight = baseHighlight.withAlpha(0.75f)
-
     Box(
         modifier = modifier.width(IntrinsicSize.Min),
         contentAlignment = Alignment.CenterStart
@@ -333,7 +329,16 @@ internal fun FloatingBottomBar(
                     tabWidthPx = (contentWidthPx / items.size).coerceAtLeast(0f)
                 }
                 .selectableGroup()
-                .graphicsLayer { translationX = panelOffset }
+                .graphicsLayer {
+                    translationX = panelOffset
+                    // 按压放大：与 miuix `layerBlock` 同一个式子（宽度归一，78/56 的幅度上限），
+                    // 但读的是 draw 阶段的 `pressProgress` —— 不触发重组。以前这段写在
+                    // `glassSurface(layerBlock = …)` 里，管线删掉之后挪到同一节点上，行为不变。
+                    val width = size.width.coerceAtLeast(1f)
+                    val s = lerp(1f, 1f + 16.dp.toPx() / width, dampedDragAnimation.pressProgress)
+                    scaleX = s
+                    scaleY = s
+                }
                 // §8.3: directional. The light sits above and in front, so the halo is
                 // pushed DOWN by blur/2 and never sideways (offsetX = 0). Without this the
                 // pill's shadow is a symmetric ring — the "糊一层" the spec bans.
@@ -348,23 +353,19 @@ internal fun FloatingBottomBar(
                     offset = androidx.compose.ui.unit.DpOffset(0.dp, 5.dp),
                     alpha = if (dark) FloatingHaloAlphaDark else FloatingHaloAlphaLight,
                 )
+                // §5：玻璃层走与顶栏 / composer **同一条** haze 管线（[glassPaint]）。
+                // 这里以前是 miuix-blur 的 `glassSurface`：它的像素来源是 AppShell 挂在整窗
+                // 内容 Row 上的 `captureGlassBackdrop`，那个捕获节点**每帧**把整块窗口重录
+                // 一遍（`LayerBackdropNode.draw` 无条件 `DrawScope.record`），而且一次都没查
+                // 能力门禁。现在没有捕获、没有第三套管线：模糊读页面自己的 haze source，
+                // 能力不足时自动落到 tint + hairline（不是灰罩）。
                 .then(
                     if (isBlurEnabled) {
-                        Modifier.glassSurface(
-                            backdrop = contentBackdrop,
-                            shape = { pillShape },
-                            blurRadiusDp = 24f,
-                            vibrancy = true,
-                            extraPaddingDp = 40f,
-                            refraction = { LiquidRefraction(refractionHeight = 24.dp, refractionAmount = 24.dp) },
-                            highlight = { pillBodyHighlight },
-                            layerBlock = {
-                                val width = size.width.coerceAtLeast(1f)
-                                val s = lerp(1f, 1f + 16.dp.toPx() / width, dampedDragAnimation.pressProgress)
-                                scaleX = s
-                                scaleY = s
-                            },
-                            onDrawSurface = { drawRect(containerColor) },
+                        Modifier.glassPaint(
+                            skin = skin,
+                            shape = pillShape,
+                            tint = containerColor,
+                            blurBackdrop = samplesBackdrop,
                         )
                     } else {
                         Modifier.background(containerColor, pillShape)

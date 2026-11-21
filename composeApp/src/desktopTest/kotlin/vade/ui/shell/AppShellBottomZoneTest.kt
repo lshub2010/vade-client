@@ -47,7 +47,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.first
-import vade.ui.component.liquid.rememberGlassBackdrop
 import vade.ui.destinations.Destination
 import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.LocalSkin
@@ -209,7 +208,6 @@ class AppShellBottomZoneTest {
     fun desktopPillRendersExactlyTheReservedZoneTall() = runComposeUiTest {
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
-                val backdrop = rememberGlassBackdrop()
                 Box(Modifier.width(400.dp).fillMaxHeight().testTag(STAGE)) {
                     Box(
                         Modifier
@@ -227,7 +225,6 @@ class AppShellBottomZoneTest {
                             selected = 0,
                             onSelect = {},
                             style = BottomBarStyle.FloatingBlur,
-                            backdrop = backdrop,
                             modifier = Modifier.testTag(PILL),
                         )
                     }
@@ -262,7 +259,6 @@ class AppShellBottomZoneTest {
     fun lastRowScrollsClearOfTheRenderedPill() = runComposeUiTest {
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
-                val backdrop = rememberGlassBackdrop()
                 val scroll = rememberScrollState()
                 LaunchedEffect(Unit) {
                     // First layout has to settle before maxValue is meaningful.
@@ -297,7 +293,6 @@ class AppShellBottomZoneTest {
                             selected = 0,
                             onSelect = {},
                             style = BottomBarStyle.FloatingBlur,
-                            backdrop = backdrop,
                             modifier = Modifier.testTag(PILL),
                         )
                     }

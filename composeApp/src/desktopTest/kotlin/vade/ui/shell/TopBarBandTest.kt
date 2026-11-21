@@ -66,9 +66,11 @@ import vade.ui.skin.material.MaterialSkin
  *     掉到卡内模糊区的同一量级。
  *  2. **方向**：下空隙的能量必须**明显高于**上空隙 —— 渐变到带子底部归零，所以越往下
  *     越接近修前的锐利。方向写反（顶部 0、底部满）时这一条先红。
- *  3. **卡片本体逐像素不变**：两遍渲染里卡片**内部**（离边 6dp 的矩形）必须一致（≤2/255，
- *     留抗锯齿的余量）。这正是「垫在卡片背后」这个做法的合法性证明：卡片自己的玻璃是
- *     不透明的，背后的东西透不进来。哪天有人把带子改成画在卡片**上面**，这条会先红。
+ *  3. **合并后卡内仍然在糊里**：`TopBar` 的胶囊从 P0-5 起 `blurBackdrop = false` —— 它的模糊
+ *     由这条带子提供（带子的平台段覆盖到胶囊底沿），两层合并成**一个** haze 节点。所以
+ *     「卡片本体逐字节不变」这条旧断言不再成立也不再是目标（带子的 veil 会透到卡内），改成
+ *     钉两件更本质的事：① 卡内没有锐利字形、与缝内同量级；② 胶囊的补偿染色让**合成浓度**
+ *     仍等于 §5 的单层 26 %/34 %（`capsuleTintOverBand` 是纯函数，单独断言）。
  *  4. **不是一块色板**：带子铺在纯色画布上时，与画布的差必须很小（≤12/255）——用户明确
  *     禁止「整条带变成一块不透明的色板」。
  *
@@ -230,7 +232,6 @@ class TopBarBandTest {
         val beforeTopGap = before.px.energy(left, topL, right, topB)
         val afterTopGap = after.px.energy(left, topL, right, topB)
         val beforeBottomGap = before.px.energy(left, botT, right, botB)
-        val afterBottomGap = after.px.energy(left, botT, right, botB)
 
         // 参照：卡内**没有文字**的右半区（纯模糊背景）——「同一量级」的标尺。
         val cardRefLeft = (right - 60 * d).toInt()
@@ -264,34 +265,68 @@ class TopBarBandTest {
             "上空隙 ${afterTopGap} 与卡内模糊区 ${cardRef} 不同量级（卡外比卡内清楚太多）—— " +
                 "缝里的 alpha 没到 1，或两条缝的模糊半径/染色已经漂了。" + numbers,
         )
-        // 方向（2026-11-18 口径）：顶部最强、向下递减到 0 ⇒ 下空隙必须比上空隙**锐**得多。
-        // 这一条同时是「渐变方向写反」的哨兵：顶部 0 / 底部满时它立刻红。
+        // 方向（2026-11-18 口径 + P0-5 合并）：顶部最强，带子底部归零。合并之后满强度平台段
+        // 覆盖到**胶囊底沿（64dp）**，所以「下空隙」整体是过渡段；方向仍然可测，量它的**最外沿**
+        // （最后 4dp，ramp 上 alpha ≤ 0.2 的那一段）必须明显比上空隙锐。
+        val tailT = (bandBottom - (4 * d).toInt()).coerceAtLeast(botT)
+        val afterBleedTail = after.px.energy(left, tailT, right, botB)
+        val beforeBleedTail = before.px.energy(left, tailT, right, botB)
         assertTrue(
-            afterTopGap * 2f <= afterBottomGap,
-            "渐变方向不对：上空隙 ${afterTopGap} 必须明显比下空隙 ${afterBottomGap} 更糊" +
-                "（顶部最强、向下递减到 0）—— 两者反过来就是用户看到的「模糊方向反了」。" + numbers,
+            afterTopGap * 2f <= afterBleedTail,
+            "渐变方向不对：上空隙 ${afterTopGap} 必须明显比带子底沿 ${afterBleedTail} 更糊" +
+                "（顶部最强、向下递减到 0）—— 两者反过来就是用户看到的「模糊方向反了」。",
         )
-        // 下空隙回到接近修前的锐利（渐变在这里已经归零）：允许 20% 的残余染色/抗锯齿余量，
-        // 但必须明显比「整条均匀糊」的时代锐（那一版这个比值是 1/10 以下）。
+        // 归零点真的归零：最外沿要回到接近修前的锐利（允许一半的残余染色/抗锯齿余量）。
         assertTrue(
-            afterBottomGap >= beforeBottomGap * 0.6f,
-            "下空隙 ${afterBottomGap} 仍被糊住了（修前 ${beforeBottomGap}）—— 渐变没有在带子底部归零。" + numbers,
+            afterBleedTail >= beforeBleedTail * 0.5f,
+            "带子底沿 ${afterBleedTail} 仍被糊住了（修前 ${beforeBleedTail}）—— 渐变没有在带子底部归零。",
         )
 
-        // 卡片本体：28dp 圆角内侧的矩形（水平 8dp / 垂直 14dp 起，四角都在形状里）必须与
-        // 修前一致（≤2/255，抗锯齿余量）。取样矩形若啃到圆角外侧，量到的就是带子本身。
+        // 卡内：合并之后胶囊自己的模糊由**这条带子**提供（`blurBackdrop = false`），所以不再
+        // 要求「逐字节不变」（带子的 veil 会透进卡内），而是要求两件本质的事：
+        //  ① 卡内仍然没有锐利字形 —— 能量与缝内同量级；
+        //  ② 合并没有把卡内变锐 —— 与修前同量级（≤1.5× + 1）。
         val dx = (8 * d).toInt()
         val dy = (14 * d).toInt()
-        val (bodyDelta, bx, by) = maxDelta(
-            before.px, after.px,
-            left + dx, top + dy, right - dx, bottom - dy,
+        val afterBody = after.px.energy(left + dx, top + dy, right - dx, bottom - dy)
+        val beforeBody = before.px.energy(left + dx, top + dy, right - dx, bottom - dy)
+        assertTrue(
+            afterBody <= afterTopGap * 3f + 1f,
+            "卡片本体能量 ${afterBody} 与缝内 ${afterTopGap} 不同量级 —— 卡内出现锐利字形，" +
+                "说明胶囊退成了透明层（它的模糊必须由带子提供）",
         )
         assertTrue(
-            bodyDelta <= 2f,
-            "卡片本体变了（最大 ${bodyDelta}/255，在 (${bx},${by})，卡片 ${left}..${right} × ${top}..${bottom}）" +
-                "—— 带子必须垫在卡片**背后**；卡片玻璃是不透明的，" +
-                "任何可见差异都说明它被画到了卡片之上，或模糊源被改了",
+            afterBody <= beforeBody * 1.5f + 1f,
+            "卡片本体在合并后变锐了（修前 ${beforeBody} → 修后 ${afterBody}）—— 带子没有覆盖到卡内",
         )
+    }
+
+    /**
+     * 合并的**染色补偿**：带子先压 `TopBarBandTintScale` 那一份，胶囊只补差额，
+     * 合成后必须回到 §5 的单层浓度（26 % 亮 / 34 % 暗）且 ≤45 % 上限。
+     *
+     * 这条是"合并两层模糊但不改卡片外观"的全部依据 —— 合成浓度一旦漂了，浮卡就会从
+     * "同一块料"变成"两层叠加的灰罩"。
+     */
+    @Test
+    fun capsuleTintCompensatesTheBandSoTheCompositeStaysAtTheSection5Density() {
+        val light = MaterialSkin().glass.tintLight
+        val dark = MaterialSkin(dark = true).glass.tintDark
+        for (tint in listOf(light, dark)) {
+            val own = capsuleTintOverBand(tint)
+            val composite = 1f - (1f - tint.alpha * TopBarBandTintScale) * (1f - own.alpha)
+            assertEquals(
+                tint.alpha,
+                composite,
+                0.01f,
+                "补偿后合成浓度必须仍是 §5 的单层值（目标 ${tint.alpha}，实际 $composite）",
+            )
+            assertTrue(composite <= 0.45f, "§5 上限 45 %：合成 $composite")
+            assertTrue(
+                own.alpha < tint.alpha,
+                "补偿后的胶囊必须比单层更淡（${own.alpha} vs ${tint.alpha}），否则合成必然超标",
+            )
+        }
     }
 
     // ---- 2 · 带子不是一块不透明的色板 ------------------------------------------------

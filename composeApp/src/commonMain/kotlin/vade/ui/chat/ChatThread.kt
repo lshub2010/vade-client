@@ -108,7 +108,6 @@ import vade.ui.component.insets.composerNavClearance
 import vade.ui.component.liquid.VadeShadows
 import vade.ui.component.liquid.layeredShadow
 import vade.ui.skin.cardAccentBar
-import vade.ui.skin.glass.GlassBackdropPolicy
 import vade.ui.skin.glass.GlassSurface
 import vade.ui.skin.glass.LocalGlassHazeState
 import vade.ui.glass.asGlassSource
@@ -1763,8 +1762,7 @@ private fun ImagePreviewSheet(image: ContentPart.Image, onClose: () -> Unit) {
                 ),
             shape = RoundedCornerShape(0.dp),
             skin = skin,
-            // 共享调用点：恒建 haze 节点（U3 之前的像素）。
-            backdropPolicy = GlassBackdropPolicy.HazeAlwaysCompat,
+            // 能力门禁只看真实背景 + 平台阶梯（API<31 没有 RenderEffect ⇒ tint+hairstroke+高光）。
         ) {
             Box(Modifier.fillMaxSize().background(skin.colors.previewScrim))
         }
@@ -1777,8 +1775,7 @@ private fun ImagePreviewSheet(image: ContentPart.Image, onClose: () -> Unit) {
                 .padding(12.dp),
             shape = sheetShape,
             skin = skin,
-            // 共享调用点：恒建 haze 节点（U3 之前的像素）。
-            backdropPolicy = GlassBackdropPolicy.HazeAlwaysCompat,
+            // 能力门禁只看真实背景 + 平台阶梯（API<31 没有 RenderEffect ⇒ tint+hairstroke+高光）。
         ) {
             Column(
                 modifier = Modifier

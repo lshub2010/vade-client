@@ -120,13 +120,13 @@ kotlin {
             // already pinned in the root build), and its four Android AARs declare
             // minCompileSdk=37 (this module is already on 37). No AGP/Gradle/compileSdk change.
             implementation("top.yukonga.miuix.kmp:miuix-ui:0.9.4")
-            // w2-bottombar · KernelSU-style floating pill. miuix-blur is a *separate*
-            // artifact from miuix-ui (same version line, four variants: android /
-            // desktop / js / wasmJs); it provides rememberLayerBackdrop /
-            // Modifier.layerBackdrop / drawBackdrop + BackdropEffectScope (blur /
-            // colorControls / runtimeShaderEffect) and the BloomStroke highlight.
-            // Consumed ONLY via vade.ui.component.liquid (shell must stay toolkit-free).
-            implementation("top.yukonga.miuix.kmp:miuix-blur:0.9.4")
+            // w2-bottombar 的 miuix-blur（`rememberLayerBackdrop` / `Modifier.layerBackdrop` /
+            // `drawBackdrop`）**已删除**：它的像素来源是挂在整窗内容 Row 上的捕获节点，
+            // `LayerBackdropNode.draw` 每帧无条件 `DrawScope.record` 一次全屏 —— 空转帧、
+            // 滚动帧、IME 帧都在付费，而它只服务一个 64dp 的浮动胶囊。浮动胶囊与固定底栏现在
+            // 走 haze（`skin/glass/GlassPaint.kt` 的 `glassPaint`），与顶栏 / composer 同一条
+            // 门禁、同一次采样，能力不足时降级成 tint + hairline。D22/T3 本来就不做折射，
+            // `lens` / `vibrancy` / BloomStroke 因此没有留下第二条管线可以漂移。
             // v2 Wave 0 · real backdrop blur (docs/visual-language.md §5). 2.1.0 is the
             // probe-verified version (shots of tmp/haze-probe: three targets compile, desktop
             // really blurs); its `androidApiElements` / `jvmApiElements` / `wasmJsApiElements`

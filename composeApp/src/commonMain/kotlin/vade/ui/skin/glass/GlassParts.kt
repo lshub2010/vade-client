@@ -201,7 +201,6 @@ internal fun GlassListItem(
         // hover 不会因为「玻璃出现」而丢一次 enter。
         if (showGlass) {
             GlassSurface(
-                backdropPolicy = GlassBackdropPolicy.DegradeWithoutBackdrop,
                 modifier = Modifier.matchParentSize(),
                 shape = shape,
                 skin = skin,
@@ -289,7 +288,6 @@ internal fun GlassSwitch(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         GlassSurface(
-            backdropPolicy = GlassBackdropPolicy.DegradeWithoutBackdrop,
             modifier = Modifier.width(52.dp).height(32.dp),
             shape = CircleShape,
             skin = skin,
@@ -342,7 +340,6 @@ private fun GlassBarPanel(
     content: @Composable () -> Unit,
 ) {
     GlassSurface(
-        backdropPolicy = GlassBackdropPolicy.DegradeWithoutBackdrop,
         modifier = Modifier.fillMaxWidth(),
         shape = shape,
         skin = skin,
@@ -517,7 +514,6 @@ internal fun GlassApprovalDialog(
         contentAlignment = Alignment.Center,
     ) {
         GlassSurface(
-            backdropPolicy = GlassBackdropPolicy.DegradeWithoutBackdrop,
             modifier = Modifier.widthIn(max = 400.dp),
             shape = cardShape,
             skin = skin,
@@ -675,7 +671,6 @@ internal fun GlassAttachmentChip(
     val shape = RoundedCornerShape(shapes.md)
 
     GlassSurface(
-        backdropPolicy = GlassBackdropPolicy.DegradeWithoutBackdrop,
         modifier = Modifier.heightIn(min = 44.dp),
         shape = shape,
         skin = skin,
@@ -778,7 +773,6 @@ internal fun GlassToolCallCard(
     val shape = RoundedCornerShape(shapes.md)
 
     GlassSurface(
-        backdropPolicy = GlassBackdropPolicy.DegradeWithoutBackdrop,
         modifier = Modifier.fillMaxWidth(),
         shape = shape,
         skin = skin,
@@ -987,7 +981,6 @@ internal fun GlassSendOrb(
         contentAlignment = Alignment.Center,
     ) {
         GlassSurface(
-            backdropPolicy = GlassBackdropPolicy.DegradeWithoutBackdrop,
             modifier = Modifier.fillMaxSize(),
             shape = CircleShape,
             skin = skin,

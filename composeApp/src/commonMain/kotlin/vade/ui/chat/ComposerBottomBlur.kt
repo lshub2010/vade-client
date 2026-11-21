@@ -5,9 +5,11 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
@@ -22,6 +24,32 @@ import vade.ui.skin.glass.LocalGlassHazeState
  * 底栏**界限之外**那条渐变模糊带的测试锚点（`ComposerBottomBlurTest` 用它量几何）。
  */
 internal const val ComposerBottomBlurTag = "vade.chat.composer.blurBand"
+
+/**
+ * 带子染色的减淡比例（0.5–0.6 之间，取 0.55）。
+ *
+ * 带子与胶囊是**同色系、不同浓度**：胶囊（composer / 顶栏卡）拿 §5 的 26 %/34 %，
+ * 带子再减一档，否则「浮卡外圈加同色遮罩」会变成「整条带是一个色块」，浮卡轮廓消失。
+ * 顶栏带用的是同一个比例（`TopBarBandTintScale = 0.6`）；这里取 0.55 是因为底栏带的
+ * 满强度落点正好压在 bar 区与 composer 下沿，视觉重量本来就更大。
+ */
+internal const val ComposerBandTintScale = 0.55f
+
+/**
+ * 底栏带的染色 —— **纯函数**，`ComposerBottomBlurTest` 用它断言 §5 的上限。
+ *
+ * 以前这里直接给 `colors.surfaceGlass`（亮 84 % / 暗 78 %）：那是**退化色**（"没有模糊时
+ * 那块实色"，`GlassSurface` 的 KDoc 自己说的），语义与"模糊染色"相反 —— 前者要求盖住，
+ * 后者要求透出来。乘上带子满强度处 ≈0.93 的 ramp 之后合成 ≈78–81 % 白 / 73–75 % 黑，
+ * 一条近实心的色带紧贴输入框上沿，背后消息只剩 ~25 % 信号 —— 真机读到的就是「灰罩」，
+ * 而且 28dp 圆角被这条同色带填平、浮卡的圆角在视觉上不存在。
+ *
+ * 现在读 `Skin.glass.tintLight/tintDark`（与顶栏带、胶囊同一份 token）×
+ * [ComposerBandTintScale]：26 % × 0.55 ≈ 14 %（亮）/ 34 % × 0.55 ≈ 19 %（暗），
+ * 远低于 §5 的 45 % 上限，背景的形状与文字轮廓仍然透得出来。
+ */
+internal fun composerBandTint(glassTint: Color, scale: Float = ComposerBandTintScale): Color =
+    glassTint.copy(alpha = glassTint.alpha * scale)
 
 /**
  * 这条带子的几何 —— 两个数就够，且都能从**已经存在的 token** 推出来。
@@ -145,12 +173,16 @@ internal fun BoxScope.ComposerBottomBlurBand(
     val geometry = composerBottomBandGeometry(composerHeight = composerHeight)
     if (geometry.height <= 0.dp) return
 
+    // §10：带子与胶囊 / 输入框同一套圆角语言（xl = 28dp），上沿不再是硬直角。
+    // `RoundedCornerShape` 在绘制时按实际尺寸夹紧半径，带子再矮也不会画出病态圆角。
+    val bandShape = RoundedCornerShape(topStart = skin.shapes.xl, topEnd = skin.shapes.xl)
+
     Box(
         Modifier
             .align(Alignment.BottomCenter)
             .fillMaxWidth()
-            // 摆放层：padding 在外、height 在内 —— 整块贴屏底对齐后，内容区（= 带子）
-            // 的下沿就是窗口底（`bottomInset = 0`）。
+            // 摆放层：padding 在外、height 在内 —— 整块贴屏底对齐后，内容区（= 带子）的
+            // 下沿就是窗口底（`bottomInset = 0`）。
             .padding(bottom = geometry.bottomInset),
     ) {
         GradientHazeBand(
@@ -166,16 +198,22 @@ internal fun BoxScope.ComposerBottomBlurBand(
                 .fillMaxWidth()
                 .height(geometry.height),
             hazeState = LocalGlassHazeState.current,
-            // 现成 token：`colors.surfaceGlass` 就是本皮肤的玻璃染色
-            // （glass 皮肤里它就是 `GlassTokens.tint(isDark)`，见 `colorsFrom`）。
-            tint = skin.colors.surfaceGlass,
+            // §5 的玻璃染色（与顶栏带 / 胶囊同一份 `Skin.glass` token）× 0.55 减淡 ——
+            // 不再是 `surfaceGlass` 的 84 %/78 %（那个是"没有模糊时那块实色"，语义相反）。
+            tint = composerBandTint(
+                if (skin.colors.isDark) skin.glass.tintDark else skin.glass.tintLight,
+            ),
             blurRadiusDp = skin.glass.blurRadiusDp,
             // 底栏带的方向：屏幕底最强、向上递减到 0。改这一行之前先看 BlurBandRampTest。
             // 这条带子**不需要**「满强度平台段」：它的强端就是屏幕底，那里没有缝。
             ramp = BandRamp.BottomHeavy,
             // 同顶栏：纯模糊在空画布上不可见，用同一比例的 onSurface 明度偏移
-            // 把「磨砂渐变」画出来；它随 ramp 一起归零，不会盖死输入区。
+            // 把「磨砂渐变」画出来；它随 ramp 一起归零（只乘一次，见 GradientHazeBand）。
             veil = skin.colors.onSurface.copy(alpha = 0.10f),
+            shape = bandShape,
+            // §5：「模糊层与内容之间必须有 1px hairline」。描边不随 ramp 归零 —— 归零点
+            // 那条边正是最需要边界的像素行（否则就是「纯透明玻璃无边界」）。
+            stroke = skin.colors.hairline,
         )
     }
 }

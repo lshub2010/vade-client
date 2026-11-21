@@ -39,10 +39,9 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import vade.ui.component.liquid.GlassBackdrop
-import vade.ui.component.liquid.glassSurface
 import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.LocalSkin
+import vade.ui.skin.glass.glassPaint
 
 /**
  * One bottom-bar entry. This is the shell-side item model: the frozen C-09
@@ -85,8 +84,14 @@ internal fun floatingBarBottomMargin(navInset: Dp): Dp =
     if (navInset > 0.dp) 8.dp + navInset else 28.dp
 
 /**
- * The three bottom-bar forms. [backdrop] is the app-content capture (attached
- * in `AppShell`); the fixed bar blurs it, the floating pill refracts it.
+ * The three bottom-bar forms. 模糊走与顶栏/输入框**同一条** haze 管线（`glassPaint`）——
+ * 这里以前是 miuix-blur 的第二条管线（整窗 `captureGlassBackdrop` + `drawBackdrop`），
+ * 它的捕获节点每帧把整个内容区重录一次（`LayerBackdropNode.draw` 无条件 `DrawScope.record`），
+ * 是"滑动掉帧"最像的一块；而且它一次都没查过 [GlassCapability]（审查 P1-2）。
+ *
+ * @param barZoneBlurred 这一页的**栏区已经被另一层玻璃糊过**（会话页的底栏带：带子最强端
+ *   就在屏幕底，正好盖住整条栏区）。为 `true` 时底栏**不建自己的 haze 节点**，只画染色 +
+ *   hairline —— §5「同屏模糊层数 ≤3」的落地方式：同一块背景只买一次采样。
  */
 @Composable
 internal fun VadeBottomBar(
@@ -94,16 +99,21 @@ internal fun VadeBottomBar(
     selected: Int,
     onSelect: (Int) -> Unit,
     style: BottomBarStyle,
-    backdrop: GlassBackdrop,
     modifier: Modifier = Modifier,
+    barZoneBlurred: Boolean = false,
 ) {
     when (style) {
-        BottomBarStyle.Fixed -> FixedBottomBar(items, selected, onSelect, backdrop, modifier)
+        BottomBarStyle.Fixed -> FixedBottomBar(
+            items = items,
+            selected = selected,
+            onSelect = onSelect,
+            modifier = modifier,
+            barZoneBlurred = barZoneBlurred,
+        )
         BottomBarStyle.Floating -> FloatingBottomBar(
             items = items,
             selectedIndex = selected,
             onSelected = onSelect,
-            backdrop = backdrop,
             isBlurEnabled = false,
             dark = LocalSkin.current.colors.isDark,
             modifier = modifier
@@ -119,9 +129,10 @@ internal fun VadeBottomBar(
             items = items,
             selectedIndex = selected,
             onSelected = onSelect,
-            backdrop = backdrop,
             isBlurEnabled = true,
             dark = LocalSkin.current.colors.isDark,
+            // 会话页：底栏带已经把这整条栏区糊掉了 ⇒ 胶囊只补染色，不再采一次背景。
+            samplesBackdrop = !barZoneBlurred,
             modifier = modifier
                 .pointerInput(Unit) {
                     detectTapGestures { }
@@ -149,8 +160,8 @@ private fun FixedBottomBar(
     items: List<BottomBarItem>,
     selected: Int,
     onSelect: (Int) -> Unit,
-    backdrop: GlassBackdrop,
     modifier: Modifier = Modifier,
+    barZoneBlurred: Boolean = false,
 ) {
     val skin = LocalSkin.current
     val tint = if (skin.colors.isDark) skin.glass.tintDark else skin.glass.tintLight
@@ -161,11 +172,13 @@ private fun FixedBottomBar(
             Modifier
                 .fillMaxWidth()
                 .height(FloatingBarPillHeight + navInset)
-                .glassSurface(
-                    backdrop = backdrop.asSurfaceBackdrop(),
-                    shape = { RectangleShape },
-                    blurRadiusDp = skin.glass.blurRadiusDp,
-                    onDrawSurface = { drawRect(tint) },
+                // 与顶栏 / composer 同一条门禁（能力 + 有无背景），染色取 §5 的 26 %/34 %。
+                // `barZoneBlurred` ⇒ 不建节点：会话页的底栏带已经把这条栏区糊过了。
+                .glassPaint(
+                    skin = skin,
+                    shape = RectangleShape,
+                    tint = tint,
+                    blurBackdrop = !barZoneBlurred,
                 ),
         ) {
             Row(

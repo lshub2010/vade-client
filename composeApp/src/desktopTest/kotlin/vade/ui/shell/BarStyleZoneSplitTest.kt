@@ -52,7 +52,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.first
-import vade.ui.component.liquid.rememberGlassBackdrop
 import vade.ui.destinations.Destination
 import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.LocalSkin
@@ -254,7 +253,6 @@ class BarStyleZoneSplitTest {
     fun desktopFixedBlankDropsFromThirtyNineToZero() = runComposeUiTest {
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
-                val backdrop = rememberGlassBackdrop()
                 Box(Modifier.width(400.dp).fillMaxHeight().testTag(FIXED_STAGE)) {
                     // ShellBody's Fixed branch: barInsets = PaddingValues(0.dp).
                     Box(Modifier.align(Alignment.BottomCenter)) {
@@ -263,7 +261,6 @@ class BarStyleZoneSplitTest {
                             selected = 0,
                             onSelect = {},
                             style = BottomBarStyle.Fixed,
-                            backdrop = backdrop,
                             modifier = Modifier.testTag(FIXED_BAR),
                         )
                     }
@@ -281,7 +278,6 @@ class BarStyleZoneSplitTest {
                             selected = 0,
                             onSelect = {},
                             style = BottomBarStyle.Floating,
-                            backdrop = backdrop,
                             modifier = Modifier.testTag(FLOATING_BAR),
                         )
                     }
@@ -330,7 +326,6 @@ class BarStyleZoneSplitTest {
     fun floatingBarRendersExactlyItsZoneTall() = runComposeUiTest {
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
-                val backdrop = rememberGlassBackdrop()
                 Box(Modifier.width(400.dp).fillMaxHeight().testTag(FIXED_STAGE)) {
                     Box(
                         Modifier
@@ -344,7 +339,6 @@ class BarStyleZoneSplitTest {
                             selected = 0,
                             onSelect = {},
                             style = BottomBarStyle.Floating,
-                            backdrop = backdrop,
                             modifier = Modifier.testTag(FLOATING_BAR),
                         )
                     }
@@ -372,7 +366,6 @@ class BarStyleZoneSplitTest {
     fun fixedBarRendersExactlyItsZoneTall() = runComposeUiTest {
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
-                val backdrop = rememberGlassBackdrop()
                 Box(Modifier.width(400.dp).fillMaxHeight().testTag(FIXED_STAGE)) {
                     Box(Modifier.align(Alignment.BottomCenter)) {
                         VadeBottomBar(
@@ -380,7 +373,6 @@ class BarStyleZoneSplitTest {
                             selected = 0,
                             onSelect = {},
                             style = BottomBarStyle.Fixed,
-                            backdrop = backdrop,
                             modifier = Modifier.testTag(FIXED_BAR),
                         )
                     }
@@ -416,7 +408,6 @@ class BarStyleZoneSplitTest {
     fun fixedContentScrollsClearOfTheDockedBar() = runComposeUiTest {
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
-                val backdrop = rememberGlassBackdrop()
                 val scroll = rememberScrollState()
                 LaunchedEffect(Unit) {
                     snapshotFlow { scroll.maxValue }.first { it > 0 }
@@ -448,7 +439,6 @@ class BarStyleZoneSplitTest {
                             selected = 0,
                             onSelect = {},
                             style = BottomBarStyle.Fixed,
-                            backdrop = backdrop,
                             modifier = Modifier.testTag(FIXED_BAR),
                         )
                     }

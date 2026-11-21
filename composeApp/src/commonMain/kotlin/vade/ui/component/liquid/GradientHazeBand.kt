@@ -1,10 +1,8 @@
 package vade.ui.component.liquid
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.BlendMode
@@ -13,6 +11,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -21,7 +21,9 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.blur.HazeBlurStyle
 import dev.chrisbanes.haze.blur.HazeColorEffect
 import dev.chrisbanes.haze.blur.hazeBlur
-import dev.chrisbanes.haze.rememberHazeState
+import vade.ui.skin.glass.drawsHazeLayer
+import vade.ui.skin.glass.glassCapability
+import vade.ui.skin.glass.rememberGlassBlurNode
 
 /**
  * 一条玻璃带子的**渐变方向** —— 哪条边拿满模糊（另一条边归零）。
@@ -34,8 +36,8 @@ import dev.chrisbanes.haze.rememberHazeState
  *    上方那条缝整个盖成满强度 —— 纯直线在缝里只剩 ~94% 的 alpha，漏出的 6% 锐利字形
  *    就是「卡外比卡内清楚」）。写反的那一版是「贴卡片那条边最糊、越往上越清」，用户看到
  *    的就是方向颠倒。
- *  - [BottomHeavy] —— 底栏带（会话页 composer 之上那条）：带子**底边**（= 底栏上沿）
- *    最强，向上递减到 0（= 输入框上沿再往上 [BAND_FADE_GAP]）。
+ *  - [BottomHeavy] —— 底栏带（会话页 composer 之上那条）：带子**底边**（= 屏幕底）最强，
+ *    向上递减到 0（= 输入框上沿再往上 [BAND_FADE_GAP]）。
  */
 enum class BandRamp { TopHeavy, BottomHeavy }
 
@@ -46,11 +48,9 @@ enum class BandRamp { TopHeavy, BottomHeavy }
  * 缓动曲线的差别不到一个 8bit 量化台阶，没什么可调的。
  *
  * [holdFraction] 是**唯一允许的中间站**，而且它不是审美参数，是一条**几何约束**：
- * 顶栏带满强度必须一直保持到胶囊上沿（卡片上方那条缝的下沿），再向下递减到 0。
- * 只写 `(0,1) → (1,0)` 时，缝里还漏着 `1 − alpha(y)` 的锐利背板 —— 上空隙量到
- * 2.14 而卡内只有 0.16，差的那 13 倍就是这 5% 的漏光，用户看到的就是「胶囊上面那条缝
- * 比卡里清楚」。**比例由调用方按自己的实测高度算**（见 [GradientHazeBand] 的
- * `rampHoldDp`），这里只吃一个 0..1 的比例，不认任何 dp 常量。
+ * 顶栏带满强度必须一直保持到胶囊底沿，再向下递减到 0（带子的强端因此覆盖整个胶囊 ——
+ * 胶囊自己不建节点，它的模糊由这条带子提供）。比例由调用方按自己的实测高度算
+ * （见 [GradientHazeBand] 的 `rampHoldDp`），这里只吃一个 0..1 的比例，不认任何 dp 常量。
  *
  * 返回 `List<Pair<Float, Float>>`（位置 → alpha）而不是 [Brush]，是为了让
  * 「方向对不对」能被一个**纯函数单测**钉住 —— 截图只能证明「看起来像」，钉不住
@@ -119,19 +119,33 @@ internal val BAND_FADE_GAP = 8.dp
  *
  *  1. `graphicsLayer { compositingStrategy = Offscreen }` 把这条带子单独装进一张离屏层
  *     （**必须先有层边界**，否则下一步的 `DstIn` 会把带子背后那些消息一起挖穿）；
- *  2. `drawWithCache` 里先 `drawContent()`（= haze 已经画好的模糊 + 染色），再用一条
- *     `DstIn` 的竖向渐变矩形**乘**上去：alpha = 1 的那头原样保留，alpha = 0 的那头
- *     整层透明 —— 模糊、染色一起从「满」衰减到「看不见」，不会留下一条硬边（用户要的
- *     「归零」，不是「突然截断」）。
+ *  2. `drawWithCache` 里先 `drawContent()`（= haze 已经画好的模糊 + 染色），再画磨砂底，
+ *     最后用一条 `DstIn` 的竖向渐变矩形**乘**上去：alpha = 1 的那头原样保留，alpha = 0
+ *     的那头整层透明 —— 模糊、染色、磨砂一起从「满」衰减到「看不见」，不会留下一条硬边
+ *     （用户要的「归零」，不是「突然截断」）。
  *  3. 每个像素每帧只有一次 haze 采样 + 一次渐变乘法；渐变 brush 在 `drawWithCache` 的
  *     build 块里建一次（只在「尺寸或 [rampHoldDp] 变了」时重建，稳态每帧零分配）。
  *
- * ## 退化的形状（不崩、不白屏）
+ * ## ramp 只乘一次（审查 P1-8）
  *
- * [hazeState] 为 `null`（未提供 `GlassScope` 的预览 / 单测）时与 [GlassBand] 同构：用一个
- * 私有空 state 走同一条 haze 链 —— 采不到背景时它画不出模糊，只剩被同一条渐变乘过的染色，
- * 近乎不可见。这是诚实的退化：没有背景可采时「渐变模糊」本来就是不存在的东西，画一条
- * 平淡的同色带子只会假装有模糊。
+ * 磨砂底（[veil]）曾经自己先乘一遍 ramp、再被 `DstIn` 乘一遍 ⇒ 磨砂按 `a²` 衰减而模糊按
+ * `a` 衰减：中段（a≈0.5）磨砂只剩 0.25，视觉上「模糊还在、磨砂先没了」。现在 [veil]
+ * 按**原值**画，ramp 由 `DstIn` 统一乘一次 —— 两者落点一致。
+ *
+ * ## 能力门禁（审查 P1-3）
+ *
+ * 带子**不再无条件建 haze 节点**：与 `GlassSurface` 同一条门禁（[glassCapability] 只看真实
+ * 背景 + 平台阶梯，[drawsHazeLayer] 只认 `capability.blurs`）。采不到背景（页面没接
+ * `GlassScope`）或平台没有 `RenderEffect`（API<31）时，带子画的是
+ * `background(tint)` × ramp —— 一条随 ramp 归零的染色带 + 1px hairline，而不是一条采不到
+ * 像素的 haze 链（那条链在真机上什么都不会画）。
+ *
+ * ## 形状（§10）
+ *
+ * [shape] 由调用方给（默认矩形）：底栏带传「上方 28dp 圆角」—— 与胶囊 / 输入框同一套圆角
+ * 语言，带子的上沿不再是一条硬直角；[stroke] 沿着**同一条 outline** 画 1px hairline
+ * （§5「禁止纯透明玻璃无边界」）。描边画在 `DstIn` **之后**，所以它不随 ramp 一起归零：
+ * 归零点那条边正是最需要边界的像素行。
  *
  * @param hazeState 环境共享的 [HazeState]（`LocalGlassHazeState`）；`null` = 退化。
  * @param tint 叠在模糊层之上的染色；透明度由调用方决定（带子应当比卡片更淡）。
@@ -139,13 +153,15 @@ internal val BAND_FADE_GAP = 8.dp
  * @param ramp 渐变方向 —— 见 [BandRamp]；**这是本组件唯一的方向输入**。
  * @param rampHoldDp 从**强的那一端**量起的满强度距离（0 = 纯两端线性）。
  *   它是「这一段必须和卡片内部一样糊」的几何表达，不是审美参数：顶栏带传
- *   `TopBarTopGap`（= 卡片上方那条缝的高度），胶囊上沿之上因此拿到 alpha = 1，
- *   缝里不再漏出锐利背板。传 0 = 行为与只有两端站时逐点一致（底栏带就是这一档）。
- *   它按**实测高度**换算成比例（`rampHoldDp / 带子高`），所以与带子多高无关。
+ *   `TopBarTopGap + TopBarHeight`（带子强端覆盖整个胶囊 —— 胶囊自己不建节点），
+ *   底栏带传 0（强端就是屏幕底，那里没有缝）。它按**实测高度**换算成比例
+ *   （`rampHoldDp / 带子高`），所以与带子多高无关。
  * @param veil 磨砂底色的**明度偏移**（通常传 `onSurface` 的低 alpha）。纯模糊在纯色
  *   画布上没有任何东西可采样，看起来就是全透明；这一点用户已在真机上指出。veil 与
- *   模糊共用同一条 ramp：强端有可见的磨砂感，弱端仍然归零，不会变成一块色板。
- * @param shape 默认矩形：带子要贴到窗口/内容列边缘，圆角会露出四个角。
+ *   模糊共用同一条 ramp（由 `DstIn` 统一乘一次）：强端有可见的磨砂感，弱端仍然归零。
+ * @param shape 带子形状：圆角跟着它走（底栏带 = 上方 28dp）。
+ * @param stroke 1px hairline 的颜色；`null` = 不画。
+ * @param strokeWidth hairline 宽度（§5: 1px）。
  */
 @Composable
 fun GradientHazeBand(
@@ -157,8 +173,14 @@ fun GradientHazeBand(
     rampHoldDp: Dp = 0.dp,
     veil: Color? = null,
     shape: Shape = RectangleShape,
+    stroke: Color? = null,
+    strokeWidth: Dp = 1.dp,
 ) {
-    val state = hazeState ?: rememberHazeState()
+    // 与 GlassSurface / GlassBand 同一套能力门禁：能力说不能模糊，就不建节点。
+    val capability = glassCapability(hasBackdrop = hazeState != null)
+    val drawsHaze = hazeState != null && drawsHazeLayer(capability)
+    if (drawsHaze) rememberGlassBlurNode()
+
     // 与 GlassSurface / GlassBand 同一套 haze 2.1.0 参数（探针结论照抄，勿"简化"）：
     // 染色只能走 colorEffects —— backgroundColor 画在不透明模糊层之后，完全无效。
     val style = remember(tint, blurRadiusDp, shape) {
@@ -178,8 +200,6 @@ fun GradientHazeBand(
                 // 掩膜在 build 块里建：hold 是**距离**，比例 = rampHoldDp / 带子实测高度，
                 // 只有这里手里有 size。build 块只在尺寸/参数变了时重跑一次，稳态每帧仍然
                 // 只有「一次 haze 采样 + 一次乘法」，零分配、零重建。
-                //   没有 hold ⇒ stops 就是两端线性（与上一版逐点相同，底栏带走的就是这档）；
-                //   有 hold ⇒ 强端先平铺 rampHoldDp，再线性递减到 0。
                 val holdFraction =
                     if (rampHoldDp <= 0.dp || size.height <= 0f) 0f
                     else (rampHoldDp.toPx() / size.height).coerceIn(0f, 1f)
@@ -193,23 +213,32 @@ fun GradientHazeBand(
                 )
                 onDrawWithContent {
                     drawContent()
+                    // 降级 / 不采样：带子自己的染色。与模糊走同一条 ramp，所以强弱落点一致。
+                    if (!drawsHaze) drawRect(color = tint)
                     // 磨砂底：纯模糊在平色背景上没有像素差，真机看起来就是全透明。
-                    // 同一组 stops 再画一层低 alpha 的 onSurface，强端有可见质感、
-                    // 弱端仍归零；它和模糊一起被下面的 DstIn 裁成同一条渐变。
-                    if (veil != null) {
-                        val veilStops = stops.map { (y, a) -> y to veil.copy(alpha = veil.alpha * a) }
-                        drawRect(
-                            brush = Brush.verticalGradient(
-                                *Array(veilStops.size) { i ->
-                                    veilStops[i].first to veilStops[i].second
-                                },
-                            ),
+                    // **按原值画**（不预乘 ramp）—— 由下面的 DstIn 统一乘一次，
+                    // 否则磨砂按 a² 衰减、模糊按 a 衰减，中段磨砂先消失（审查 P1-8）。
+                    if (veil != null) drawRect(color = veil)
+                    // 唯一的 ramp 乘法：模糊 + 染色 + 磨砂一起按 a 衰减。
+                    drawRect(brush = mask, blendMode = BlendMode.DstIn)
+                    // hairline 画在掩膜之后：不随 ramp 归零 —— 归零点那条边正是最需要
+                    // 边界的那一行（§5「禁止纯透明玻璃无边界」）。
+                    if (stroke != null) {
+                        drawOutline(
+                            outline = shape.createOutline(size, layoutDirection, this),
+                            color = stroke,
+                            style = Stroke(width = strokeWidth.toPx()),
                         )
                     }
-                    drawRect(brush = mask, blendMode = BlendMode.DstIn)
                 }
             }
-            .hazeBlur(input = HazeInput.Sources(state = state), style = style)
+            .then(
+                if (drawsHaze && hazeState != null) {
+                    Modifier.hazeBlur(input = HazeInput.Sources(state = hazeState), style = style)
+                } else {
+                    Modifier
+                },
+            )
             // 与 GlassSurface 同一条契约：退化层（无 haze 时）不得画出方角。
             .clip(shape),
     )

@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
@@ -40,7 +41,6 @@ import vade.ui.component.liquid.GradientHazeBand
 import vade.ui.skin.LocalReduceMotion
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.ReduceMotion
-import vade.ui.skin.glass.GlassBackdropPolicy
 import vade.ui.skin.glass.GlassSurface
 import vade.ui.skin.glass.LocalGlassHazeState
 
@@ -61,6 +61,26 @@ internal const val TopBarBandTag = "vade.shell.topbar.band"
  * 还是要压住卡外那两条空隙里字形的高频，模糊是主力、染色只是把它拉到与卡内同一个色温。
  */
 internal const val TopBarBandTintScale = 0.6f
+
+/**
+ * 合并之后胶囊**自己**要补的染色：带子已经把 [TopBarBandTintScale] 那一份压在它下面了，
+ * 胶囊再按满浓度画就会叠成 37 %（§5 上限 45 % 之内，但比单层厚一档，"浮卡"读起来就变了）。
+ *
+ * 目标是**合成后仍等于 §5 的单层浓度** t（亮 26 % / 暗 34 %）：
+ *
+ * ```text
+ * 1 − (1 − t) = (1 − t·s)·(1 − c)  ⇒  c = 1 − (1 − t) / (1 − t·s)
+ * ```
+ *
+ * 亮色 t = 0.26、s = 0.6 ⇒ c ≈ 0.123；暗色 t = 0.34 ⇒ c ≈ 0.169。纯函数，`TopBarBandTest`
+ * 直接断言"合成回 26 %/34 %"——这条不变量是"合并两层模糊但**不改卡片外观**"的全部依据。
+ */
+internal fun capsuleTintOverBand(glassTint: Color, bandScale: Float = TopBarBandTintScale): Color {
+    val target = glassTint.alpha.coerceIn(0f, 1f)
+    val band = (target * bandScale).coerceIn(0f, 1f)
+    val own = if (band >= 1f) 0f else 1f - (1f - target) / (1f - band)
+    return glassTint.copy(alpha = own.coerceIn(0f, 1f))
+}
 
 /** Glass capsule height. Internal so TopGlassGuardTest pins the rendered geometry. */
 internal val TopBarHeight = 56.dp
@@ -126,8 +146,14 @@ fun TopBar(
             .testTag(TopBarGlassTag),
         shape = RoundedCornerShape(skin.shapes.xl),
         skin = skin,
-        // 共享调用点：像素与 U3 之前一致（恒建 haze 节点），显式声明而不是靠默认值。
-        backdropPolicy = GlassBackdropPolicy.HazeAlwaysCompat,
+        // §5 层数上限（≤3）：顶栏的模糊由**带子**提供（`TopBarBand` 的满强度平台段一直
+        // 覆盖到胶囊底沿），胶囊自己不再建第二个 haze 节点 —— 同一块背景只买一次采样。
+        // 染色按 [capsuleTintOverBand] 补偿，合成后仍是 §5 的单层浓度（26 %/34 %），
+        // 所以"合并两层模糊"不改卡片外观。
+        blurBackdrop = false,
+        tintOverride = capsuleTintOverBand(
+            if (skin.colors.isDark) skin.glass.tintDark else skin.glass.tintLight,
+        ),
     ) {
         Row(
             modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp),
@@ -203,19 +229,22 @@ private fun TopBarTitlePair(title: String, subtitle: String?, onSubtitleClick: (
  *  - 颜色取卡片用的同一个 `Skin.glass` 染色（`tintLight` / `tintDark`），再按
  *    [TopBarBandTintScale] 减淡 —— 同色系、不同浓度，浮卡才还看得出是浮卡；
  *  - 模糊半径取 `Skin.glass.blurRadiusDp`，与卡片逐点相同：带子与卡内是同一套料；
- *  - **渐变方向固定 [BandRamp.TopHeavy]，且满强度一直保持到胶囊上沿**
- *    （用户 2026-11-18 真机反馈）：窗口顶（`y = 0`）模糊量最大，**整条 `TopBarTopGap`
- *    （卡片上方那条缝）都是满强度**，从胶囊上沿（`y = TopBarTopGap`，= 带子顶 + 缝高）
- *    才开始向下递减，到带子底边（`TOP_BAR_ZONE`）归零。上一版是「贴卡片那条边最糊、
- *    越往上越清」—— 方向反了，看上去像一条「从下往上长的雾」；再上一版是「1→0 拉满
- *    整条 72dp」，缝里漏着 `1 − alpha ≈ 5%` 的锐利字形，用户看到的就是「胶囊上面那条缝
- *    比卡里清楚」（`TopBarBandTest` 量到空隙 2.14 / 卡内 0.16 就是这个漏光）。
- *    方向由 [bandRampStops] 这一个纯函数定义、`BlurBandRampTest` 逐点钉住，
- *    平台段的长度直接取 `TopBarTopGap`（缝的常量），不是新造的魔法数。
+ *  - **渐变方向固定 [BandRamp.TopHeavy]**（用户 2026-11-18 真机反馈）：窗口顶（`y = 0`）
+ *    模糊量最大，向下递减到 0。上一版是「贴卡片那条边最糊、越往上越清」—— 方向反了，
+ *    看上去像一条「从下往上长的雾」；再上一版是「1→0 拉满整条 72dp」，缝里漏着
+ *    `1 − alpha ≈ 5%` 的锐利字形，用户看到的就是「胶囊上面那条缝比卡里清楚」
+ *    （`TopBarBandTest` 量到空隙 2.14 / 卡内 0.16 就是这个漏光）。
+ *    方向由 [bandRampStops] 这一个纯函数定义、`BlurBandRampTest` 逐点钉住。
  *
- * 平台段**终止于胶囊上沿**，所以带子绝不会在胶囊内部再糊一遍：那 8dp 之上是卡的背景，
- * 之下由卡片自己的玻璃（不透明）盖住 —— 双向都不会出现「同一块内容被糊两次」。像素证据
- * 是 `TopBarBandTest` 的「卡片本体逐像素不变（≤2/255）」。
+ * 平台段**终止于胶囊底沿**（`TopBarTopGap + TopBarHeight` = 64dp），所以：
+ *
+ *  - 胶囊**外**的 8dp 缝（0–8dp）与胶囊**内**（8–64dp）是同一份满强度模糊 —— 缝里不再漏
+ *    锐利字形，卡内也不再需要第二个 haze 节点（§5 同屏层数上限：带子 + 胶囊合并成一层）；
+ *  - 64dp 之下（12dp 的 `TOP_BAR_BAND_BLEED`）从满强度线性归零 —— 用户 2026-11-19 要的
+ *    "在顶栏下方一点点归零"，不是硬截断。
+ *
+ * 胶囊自己的染色按 `capsuleTintOverBand` 补偿：带子先压了 60 % 的那一份，胶囊只补差额，
+ * 合成后仍等于 §5 的单层 26 %/34 %（`TopBarBandTest` 断言这条不变量）。
  *
  * 不画描边、不画阴影、不加圆角（三条理由见 [vade.ui.component.liquid.GlassBand] 的 KDoc）。
  * 没有 `GlassScope` 的环境（孤立预览、不注册 backdrop 的单测）退化为「只有染色」——那时
@@ -232,10 +261,12 @@ fun TopBarBand(modifier: Modifier = Modifier) {
         blurRadiusDp = skin.glass.blurRadiusDp,
         // 顶栏带的方向：顶部最强、向下递减到 0。改这一行之前先看 BlurBandRampTest。
         ramp = BandRamp.TopHeavy,
-        // 满强度 = 卡片上方那条缝的完整高度（`TopBarTopGap`，也是卡片的上边距）。
-        // 带子由 AppShell 钉在 `TOP_BAR_ZONE` 高（结构测试只有一处 `.height(TOP_BAR_ZONE)`），
-        // 平台段因此正好停在胶囊上沿 8dp 处：缝内 alpha = 1，缝下才开始递减。
-        rampHoldDp = TopBarTopGap,
+        // 满强度 = 缝 + **整个胶囊**（`TopBarTopGap + TopBarHeight` = 64dp）。胶囊自己不建
+        // haze 节点（`TopBar` 的 `blurBackdrop = false`），它的模糊就是这一段 —— 两块区域
+        // 共用同一个节点、同一次采样。
+        // 带子由 AppShell 钉在 `TOP_BAR_BAND_HEIGHT`（84dp）高，所以 64dp 之后还剩 20dp
+        // 用来把模糊归零（`TOP_BAR_BAND_BLEED` 及以下）。
+        rampHoldDp = TopBarTopGap + TopBarHeight,
         // 真机反馈：纯模糊压在纯色画布上等于全透明（没有像素可采样）。10% 的
         // onSurface 明度偏移让整条渐变在空白背景上也读得出「磨砂」，弱端仍归零。
         veil = skin.colors.onSurface.copy(alpha = 0.10f),

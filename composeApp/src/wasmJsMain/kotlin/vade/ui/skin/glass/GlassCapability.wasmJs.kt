@@ -18,3 +18,10 @@ package vade.ui.skin.glass
  * `GlassCapability.TintStroke` 即可，组件侧一个字都不用动 —— 这正是阶梯存在的意义。
  */
 actual fun platformGlassCapability(): GlassCapability = GlassCapability.Blur
+
+/**
+ * 降级日志的平台指纹。Wasm 的模糊"尽力"（见上），所以这里同时标出候选档位：若某天证实
+ * 模糊在该目标上是 no-op，把上面那行改成 [GlassCapability.TintStroke] 即可，日志会立即
+ * 显示 `capability=TintStroke`。
+ */
+actual fun glassPlatformDiagnostic(): String = "wasmJs candidates=Blur,TintStroke"
