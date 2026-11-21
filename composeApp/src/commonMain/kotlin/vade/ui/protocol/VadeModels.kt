@@ -53,6 +53,18 @@ internal fun reqParam(value: String?, name: String): String =
 data class AttachParams(
     val sessionId: String? = null,
     val lastSeq: Long? = null,
+    /**
+     * P0-3 · 「要快照」的显式请求，**不上线**（帧里仍然只有 `session_id` / `last_seq`）。
+     *
+     * `last_seq` 为 null 有两种完全不同的语义，光看 frame 分不出来：
+     *  - **同会话重连续订**（reconnect）：带上本会话已应用的 seq，让 core 重放缺口；
+     *  - **跨会话/首次读历史**：必须什么都不带，core 才会回快照。
+     *
+     * [vade.ui.protocol.VadeClient.attach] 的 seq 替换只作用于前者，而「后者」需要一个
+     * 明确的标记 —— 否则它只能靠「恰好没有跟踪会话」这种偶然条件成立。读历史的调用点
+     * （`RealSessionSource.messages`）显式置真：即使当前正跟踪同一个会话，也要快照。
+     */
+    val forceSnapshot: Boolean = false,
 ) {
     fun toJson(): JsonObject = buildJsonObject {
         // A4-1 · `session_id` is `"string|null"` and the null form is MEANINGFUL: it is the

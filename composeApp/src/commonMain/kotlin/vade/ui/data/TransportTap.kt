@@ -75,6 +75,12 @@ internal class TeeTransportFactory(private val inner: VadeTransportFactory) : Va
     var current: TeeTransport? = null
         private set
 
+    /** P0-4 · 透传「退休」状态：桥 dispose 掉内层 factory 之后，这一层也立刻不可用。 */
+    override val isUsable: Boolean get() = inner.isUsable
+
+    /** P0-1 · cookie 透传（持久化读的是真正持有 `__Host-ac_ui` 的那一层）。 */
+    override val sessionCookie: String? get() = inner.sessionCookie
+
     override suspend fun connect(): VadeTransport =
         TeeTransport(inner.connect()).also { current = it }
 
