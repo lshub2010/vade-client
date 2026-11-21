@@ -76,7 +76,11 @@ fun Modifier.glassPaint(
     val resolvedTint = tint ?: if (skin.colors.isDark) skin.glass.tintDark else skin.glass.tintLight
     // 降级 / 不采样：不建 haze 节点，直接染色。一个采不到背景的 haze 链什么都不画。
     if (state == null || !drawsHazeLayer(capability) || !blurBackdrop) {
-        return this.background(degradeColor ?: resolvedTint, shape)
+        // 与 [vade.ui.skin.glass.GlassSurface] 同一条判据：「没有背景」才允许退到
+        // [degradeColor] 那块实色；有背景、平台只是糊不了（API 24–30 的 TintStroke）
+        // 只画 tint —— 否则又是一块近实心板（审查 F6-P0-1）。
+        val fill = if (state == null) degradeColor ?: resolvedTint else resolvedTint
+        return this.background(fill, shape)
     }
     rememberGlassBlurNode()
     return this.glassHaze(

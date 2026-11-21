@@ -73,9 +73,11 @@ val LocalGlassHazeState = staticCompositionLocalOf<HazeState?> { null }
  *
  *  - [tintOverride] — a per-call tint. Used by the glass `Button`: 危险操作用红主导的
  *    tint，`SkinGlass.tintLight`（白 42%）会把 `colors.error` 冲成粉色。
- *  - [degradeColor] — 采不到背景时那块**实色**（默认 `null` = 用 tint）。material / miuix
- *    的 composer 靠它把「没有 backdrop」退化回原来的 `surfaceGlass`，像素与接入玻璃前
- *    逐点一致；有 backdrop 时它不参与绘制。
+ *  - [degradeColor] — **采不到背景**时那块**实色**（默认 `null` = 用 tint）。material / miuix
+ *    的 composer 靠它把「页面没接 `GlassScope`」退化回原来的 `surfaceGlass`，像素与接入玻璃前
+ *    逐点一致。判据是 `LocalGlassHazeState == null` —— "有背景、平台糊不了"（API 24–30 的
+ *    `TintStroke`）**不算**采不到背景：那一档必须画 §5 的 tint + 描边 + 高光，否则 composer
+ *    在真机上就是一块 84 %/78 % 的实色板（审查 F6-P0-1 的「灰罩换成了白板」）。
  *  - [stroke] / [strokeWidth] — 描边色与宽度。输入框聚焦时描边加亮（2dp accent）；
  *    默认仍是**内侧 1dp**、`SkinGlass.hairlineOnGlass`。
  *  - [highlight] — 顶部高光（[GlassTokens.highlight]）。画在染色之上、内容之下：它只
@@ -105,6 +107,11 @@ val LocalGlassHazeState = staticCompositionLocalOf<HazeState?> { null }
  * 一次都没执行过。现在没有覆盖入口：降级到 `TintStroke` 时**根本不建 haze 节点**，直接
  * `background(tint, shape)` + 1dp hairline + 顶部高光（[GlassTokens.highlight] 默认补齐）。
  *
+ * 「糊不了」与「没有背景」是两件事，画法也不同（审查 F6-P0-1）：
+ * `LocalGlassHazeState == null` 时才允许 [degradeColor] 那块历史实色；有背景但平台只到
+ * `TintStroke` 时只画 tint —— 否则 API 24–30 的 composer 会退成 84 %/78 % 的实色板，
+ * 看起来还是一块白板/黑板。
+ *
  * 折射（Android 13+ AGSL）**不在本文件**：它要求背景单独成层，属任务书 §五 T3，且本批
  * 无法上机验证。阶梯已经能表达 `Refraction`（见 [GlassCapability]），但没有平台返回它，
  * 所以这里没有第二条绘制路径可以漂移。
@@ -127,7 +134,12 @@ fun GlassSurface(
      * 存在的理由只有一条：`surfaceGlass` 与 §5 的玻璃 tint 不是一个数（material 84 % vs
      * 26 %）。面板在没有 backdrop 的环境（单测、预览、页面还没接 `GlassScope`）必须**逐
      * 像素**退回它原来那块实色，否则每一条 composer 像素钉都会红；而有 backdrop 时它完全
-     * 不参与绘制（模糊层自己带 tint）。所以它是「退化底」而不是第二个 tint。
+     * 不参与绘制（模糊层自己带 tint）。
+     *
+     * 判据是**背景是否真的存在**（`LocalGlassHazeState == null`），不是「这一层糊不糊得
+     * 成」：平台只有 `TintStroke`（API 24–30）时背景是在的，那一档走 §5 的 tint + 描边 +
+     * 高光，绝不能退回这块实色 —— 否则真机上的 composer 是一块 84 %/78 % 的白板/黑板
+     * （审查 F6-P0-1）。所以它是「没有背景的退化底」而不是第二个 tint。
      */
     degradeColor: Color? = null,
     stroke: Color? = null,
@@ -184,12 +196,19 @@ fun GlassSurface(
             blurRadiusDp = skin.glass.blurRadiusDp,
         )
     } else {
-        // 降级档（没有背景可采 / 这一层不采样）：不建 haze 节点，直接染色。整层仍然是
-        // 一个完整的、有描边和高光的层 —— 这就是"不白屏"那条要求的落地方式。
+        // 降级档（没有背景可采 / 这一层不采样 / 平台糊不了）：不建 haze 节点，直接染色。
+        // 整层仍然是一个完整的、有描边和高光的层 —— 这就是"不白屏"那条要求的落地方式。
         //
-        // [degradeColor] 是**逐像素退化**的出口：给了它就画它，而不是 tint。composer 用它
-        // 保住「没接 GlassScope 时那块 84 % surfaceGlass」的历史像素。
-        Modifier.background(degradeColor ?: tint, shape)
+        // **两种"不模糊"必须分开画**（审查 F6-P0-1）：
+        //
+        //  - `ambient == null`：页面根本没有背景可采（单测 / 预览 / 还没接 `GlassScope`）。
+        //    [degradeColor] 是这条路径的**逐像素退化**出口 —— 给了它就画它，composer 因此
+        //    保住「没接 GlassScope 时那块 84 % surfaceGlass」的历史像素。
+        //  - `ambient != null` 但能力只有 `TintStroke`（API 24–30 的真机形态）：背景是有的，
+        //    只是这台设备糊不了。这一档画 [degradeColor] 就是审查里的 P0 —— 输入条退成
+        //    84 %/78 % 的近实心白/黑板，用户看到的仍然「一块板」，只是灰罩换成了白板。
+        //    所以这里只画染色：§5 的 tint + 1dp hairline + 顶部高光。
+        Modifier.background(if (ambient == null) degradeColor ?: tint else tint, shape)
     }
 
     // 降级层必须自带高光（§5：染色 + 描边 + 高光 的完整形态）；调用点显式传的优先。

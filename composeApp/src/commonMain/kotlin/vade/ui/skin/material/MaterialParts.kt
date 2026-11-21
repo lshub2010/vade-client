@@ -649,6 +649,10 @@ internal fun MaterialInputBar(
     // 与下行阴影（同一个 `downwardShelf`，`outsideOnly` 语义）都还是原来的那一份，所以所有
     // composer 像素钉不动。
     //
+    // **API 24–30 不是这一档**：那里的背景是在的，只是平台糊不了（`TintStroke`）。GlassSurface
+    // 在那种情况下只画 tint + hairline + 高光，`degradeColor` 不参与 —— 否则输入条会退成一块
+    // 84 % 的近实心白板（审查 F6-P0-1）。这条分叉由 `TintStrokeComposerTest` 逐像素钉住。
+    //
     // RFC-0011：面板**不再自带 16dp 浮层外边距** —— 页面把 [＋] [InputBar] [12dp] [SendOrb]
     // 拼进同一行时，组件内边距会叠加成 32dp、框球间距变成 28dp，§1/§2 的数字全部失真
     // （RFC §4.1/D5）。面板紧贴自身槽位，边距归页面布局。

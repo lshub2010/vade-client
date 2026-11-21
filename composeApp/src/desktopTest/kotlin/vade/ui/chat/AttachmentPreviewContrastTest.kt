@@ -12,12 +12,13 @@
 //      一侧的基色区）每个像素 = 皮肤 previewCardBase 本色 ±2 —— 半透明底在这里是
 //      base@0.686 过画布（Δ≈4/255），且 mock 图右下角网格的**振幅** ≤6：半透明底会让
 //      背后正文以 0.78 的可见度漏进 mock 的透明端（振幅 ≈55/255）。
-//   2. 亮色（回归方向）：同一 ring 的每个像素 = surfaceGlass@0.739 过 canvas 的解析
-//      复合色 ±3 —— 这是「亮色 ≤3/255」的测试化；mock 网格振幅 ≤70 如实记录既有
-//      半透明观感（0.206×230≈47，修复前后同一表达式）。
+//   2. 亮色（回归方向）：同一 ring 的每个像素 = previewScrim ⊕ tint ⊕ previewCardBase 的
+//      解析复合色 ±3（遮罩是纯色层；卡片是 tint 退化底）—— 这是「亮色 ≤3/255」的测试化；
+//      mock 网格振幅 ≤70 如实记录既有半透明观感（0.206×230≈47，修复前后同一表达式）。
 //   3. 遮罩行（卡顶上方 16px，横穿背后正文）：暗色 max ≤112/255（0.44×237=104；改前
 //      0.76×237=180 或带玻璃 tint 119 —— 两种实现都过不了这条）；亮色 max ≤200 / min ≤75。
-//      min/spread 双断言保证该行确实压在正文上（非空转对照）。
+//      min/spread 双断言保证该行确实压在正文上（非空转对照）。**方向性**：遮罩行亮度必须
+//      ≤ 画布（它是纯色压暗层，任何高光都会让顶部比画布还亮 —— 审查 F6-P1-1）。
 //
 // 所有几何由 mock 图检测推导（标题栏 accent 色带 → mock 外接矩形 → 卡边距 16dp），
 // 不写死像素坐标。夹具背后垫满长文本行，保证卡后与遮罩行下都有正文可漏。
@@ -44,7 +45,6 @@ import kotlin.test.assertTrue
 import vade.ui.protocol.VadeEvent
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.SkinColors
-import vade.ui.skin.glass.highlightAlphaAt
 import vade.ui.skin.material.MaterialSkin
 import vade.ui.skin.material.MaterialTokens
 import vade.ui.skin.miuix.MiuixSkin
@@ -333,32 +333,33 @@ class AttachmentPreviewContrastTest {
      * 亮色预览卡在**没有 backdrop**（单测 / 预览 / 页面未接 GlassScope）时的解析复合栈：
      *
      * ```text
-     * canvas → glass tint → previewScrim → glass tint → previewCardBase
+     * canvas → previewScrim（纯色遮罩）→ glass tint → previewCardBase
      * ```
      *
-     * 两层 tint 分别是遮罩 GlassSurface 与卡片 GlassSurface 的退化底（§5「采不到背景 =
-     * 染色 + 描边 + 高光」），卡片内容再压 previewCardBase@88%。本批把「恒建 haze 节点」
-     * 换成真正的 TintStroke 退化后，这条栈比旧像素多了一层卡片 tint —— 这是**刻意的**
-     * 新基线，所以测试从 token 逐层算出期望（而不是继续写死某一个实测数）。
+     * 遮罩自本批起是**纯色压暗层**，不再是 `GlassSurface`：整屏玻璃遮罩在降级档会被补一条
+     * 34 % 顶部高光（遮罩「先提亮再压暗」，审查 F6-P1-1），而且永远占一层模糊预算。所以这里
+     * 少了一层 tint，期望值比上一版低约 2–4/255 —— 这是刻意的形态，不是漂移。
+     * 卡片仍是玻璃（`tint` 退化底），卡内再压 `previewCardBase`@88%。
      */
     private fun lightCardComposite(colors: SkinColors, tint: Color): Triple<Float, Float, Float> {
         val canvas = rgb(colors.canvas)
-        val scrim = over(colors.previewScrim, over(tint, canvas))
+        val scrim = over(colors.previewScrim, canvas)
         return over(colors.previewCardBase, over(tint, scrim))
     }
 
     /**
-     * 遮罩行**在黑色 previewScrim 之下**的底色亮度。
+     * 遮罩行**不得亮于画布**（审查 F6-P1-1 的方向性不变量）。
      *
-     * TintStroke 退化档的遮罩也是一个完整的 GlassSurface：tint（§5 染色）+ 顶部高光，
-     * 最后才是 previewScrim 的黑。高光在整帧顶部是 34% 白（[highlightAlphaAt]），暗色
-     * 顶部行的底色因此远亮于 canvas（实测 y=12 时约 92/255）—— 继续拿 canvas 当分母
-     * 会把 alpha 算成负数（-1.90 就是这么来的），不是遮罩变亮，是分母错了。
+     * 遮罩自己的底色就是画布（它是一层纯色 alpha），所以判定只有一条方向：观测亮度 ≤
+     * 画布亮度。旧实现把「遮罩 = GlassSurface（tint + 34 % 顶部高光）+ previewScrim」
+     * 当成基线逐层算出来，于是遮罩被洗白（暗色顶部行 ≈92/255，比画布还亮）也照样绿。
      */
-    private fun scrimBackdropLuma(colors: SkinColors, tint: Color, y: Int, frameHeight: Int): Float {
-        val tinted = over(tint, rgb(colors.canvas))
-        val highlight = highlightAlphaAt((y + 0.5f) / frameHeight.coerceAtLeast(1))
-        return luma(over(Color.White.copy(alpha = highlight), tinted))
+    private fun scrimMustNotBrightenCanvas(mean: Float, colors: SkinColors, rowY: Int) {
+        val canvas = luma(rgb(colors.canvas))
+        assertTrue(
+            mean <= canvas + 1f,
+            "遮罩行(y=$rowY)亮度 $mean > 画布 $canvas —— 遮罩在提亮画面（顶部高光又回来了？）",
+        )
     }
 
     // ---- 1 · dark：卡底不透明（缺陷方向） ------------------------------------------
@@ -455,22 +456,18 @@ class AttachmentPreviewContrastTest {
             geo.mockLeft - 8,
             geo.mockRight + 8,
         )
-        // 底色 = 遮罩 GlassSurface 的 tint + 顶部高光（见 scrimBackdropLuma）；遮罩黑压在其上。
-        val backdropLuma = scrimBackdropLuma(
-            colors,
-            MaterialSkin(dark = true).glass.tintDark,
-            rowY,
-            g.pm.height,
-        )
-        val alpha = 1f - mean / backdropLuma
-        println("遮罩 dark: rowY=$rowY mean=$mean backdrop=$backdropLuma alpha=$alpha spread=$spread")
+        // 遮罩现在是一层纯色 alpha 压在画布上：底色就是画布亮度，方向必须**只降不升**。
+        scrimMustNotBrightenCanvas(mean, colors, rowY)
+        val canvasLuma = luma(rgb(colors.canvas))
+        val alpha = 1f - mean / canvasLuma
+        println("遮罩 dark: rowY=$rowY mean=$mean canvas=$canvasLuma alpha=$alpha spread=$spread")
         assertTrue(
             spread <= 3f,
             "暗色遮罩行(y=$rowY)不均匀（spread=$spread）—— 对照失效，该行压到了内容",
         )
         assertTrue(
             alpha >= 0.48f,
-            "暗色遮罩行(y=$rowY)实测 alpha=$alpha（mean=$mean / backdrop=$backdropLuma）—— 遮罩必须 ≥48%",
+            "暗色遮罩行(y=$rowY)实测 alpha=$alpha（mean=$mean / canvas=$canvasLuma）—— 遮罩必须 ≥48%",
         )
     }
 
@@ -563,21 +560,17 @@ class AttachmentPreviewContrastTest {
             geo.mockLeft - 8,
             geo.mockRight + 8,
         )
-        val backdropLuma = scrimBackdropLuma(
-            colors,
-            MaterialSkin().glass.tintLight,
-            rowY,
-            g.pm.height,
-        )
-        val alpha = 1f - mean / backdropLuma
-        println("遮罩 light: rowY=$rowY mean=$mean backdrop=$backdropLuma alpha=$alpha spread=$spread")
+        scrimMustNotBrightenCanvas(mean, colors, rowY)
+        val canvasLuma = luma(rgb(colors.canvas))
+        val alpha = 1f - mean / canvasLuma
+        println("遮罩 light: rowY=$rowY mean=$mean canvas=$canvasLuma alpha=$alpha spread=$spread")
         assertTrue(
             spread <= 3f,
             "亮色遮罩行(y=$rowY)不均匀（spread=$spread）—— 对照失效",
         )
         assertTrue(
             alpha in 0.21f..0.27f,
-            "亮色遮罩行(y=$rowY)实测 alpha=$alpha（mean=$mean / backdrop=$backdropLuma）—— 必须保持 24%",
+            "亮色遮罩行(y=$rowY)实测 alpha=$alpha（mean=$mean / canvas=$canvasLuma）—— 必须保持 24%",
         )
     }
 
