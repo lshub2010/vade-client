@@ -239,7 +239,7 @@ internal fun PairingForm(
     submitLabel: String,
     submittingLabel: String,
     /** 一次提交：host / port 已校验，code 原样（不 trim —— core 的码允许中间带分隔符）。 */
-    onSubmit: suspend (host: String, port: String, code: String, tls: Boolean) -> PairingAttempt,
+    onSubmit: suspend (host: String, port: String, code: String, tls: Boolean, insecure: Boolean) -> PairingAttempt,
     /**
      * P0-6 · 「用户刚刚对**自签证书**点过仍然连接」的那一次重试。
      *
@@ -317,9 +317,10 @@ internal fun PairingForm(
             }
             try {
                 val attempt = if (allowInsecureTls && submittedTls) {
-                    (onSubmitSelfSigned ?: onSubmit)(enteredHost, enteredPort, enteredCode, submittedTls)
+                    onSubmitSelfSigned?.invoke(enteredHost, enteredPort, enteredCode, submittedTls)
+                        ?: onSubmit(enteredHost, enteredPort, enteredCode, submittedTls, true)
                 } else {
-                    onSubmit(enteredHost, enteredPort, enteredCode, submittedTls)
+                    onSubmit(enteredHost, enteredPort, enteredCode, submittedTls, false)
                 }
                 when (attempt) {
                     is PairingAttempt.Connected -> onConnected(attempt)
