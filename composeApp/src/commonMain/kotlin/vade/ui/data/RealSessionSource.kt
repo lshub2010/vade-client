@@ -367,7 +367,12 @@ class RealSessionSource(
      * and the thread meanwhile streams in through [observeEvents].
      */
     override suspend fun messages(sessionId: String): List<ChatMessage> {
-        val result = attachedClient().uiAttach(AttachParams(sessionId = sessionId, lastSeq = null))
+        // `lastSeq = 0` (not null): `VadeClient.attach` substitutes the
+        // tracked cursor when a null last_seq names the *tracked* session, and
+        // that is the reconnect path. A history read wants the full snapshot,
+        // so it must not be rewritten into "replay from where I left off" —
+        // otherwise leaving and re-entering a session shows an empty thread.
+        val result = attachedClient().uiAttach(AttachParams(sessionId = sessionId, lastSeq = 0L))
         return snapshotToMessages(result.snapshot?.messages)
     }
 
