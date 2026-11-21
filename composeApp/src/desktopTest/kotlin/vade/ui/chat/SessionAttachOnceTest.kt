@@ -79,7 +79,7 @@ class SessionAttachOnceTest {
         ): SubmitReceipt = SubmitReceipt("t-1", 0)
 
         override fun transcript(): ChatTranscriptSource =
-            ChatTranscriptSource.of(source::messages, source::observeEvents)
+            ChatTranscriptSource.of({ source.messages(it) }, { source.observeEvents() })
     }
 
     /** `resolveChatState` 只查 `uploader()` 与 `turns()`；其余查找在本用例里不参与。 */
