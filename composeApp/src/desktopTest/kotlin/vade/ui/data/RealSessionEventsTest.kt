@@ -3,14 +3,18 @@ package vade.ui.data
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import vade.ui.protocol.FakeTransport
 import vade.ui.protocol.FakeTransportFactory
 import vade.ui.protocol.eventFrame
+import vade.ui.protocol.idOf
+import vade.ui.protocol.responseFrame
 import vade.ui.protocol.waitUntil
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -200,6 +204,17 @@ class RealSessionEventsTest {
             val (source, transport) = connectedSource(factory)
             val received = Channel<VadeEvent>(Channel.UNLIMITED)
             val collector = collectEvents(source, received)
+            // P0-3 · 水位按会话记：先 attach 到 s-1，`queue.updated` 的 session_id 才和
+            // 「当前跟踪的会话」是同一个 —— 否则这一帧只会推进 s-1 自己的水位，与本用例要
+            // 钉的「跟踪中的会话 last_seq 前进」不是一回事。
+            val attach = async { source.attach("s-1") }
+            transport.push(
+                responseFrame(
+                    idOf(transport.awaitSent()),
+                    """{"session_id":"s-1","from_seq":0,"snapshot":null}""",
+                ),
+            )
+            withTimeout(5_000) { attach.await() }
             // queue.updated parses fine but is NOT one of the six projected events.
             transport.push(eventFrame("queue.updated", 1, """{"session_id":"s-1"}"""))
             val late = withTimeoutOrNull(400) { received.receive() }
@@ -207,6 +222,7 @@ class RealSessionEventsTest {
             // The frame still counts as applied: last_seq advanced to 1.
             waitUntil { source.client?.lastSeq == 1L }
             assertEquals(1L, source.client!!.lastSeq)
+            assertEquals(1L, source.client!!.lastSeqFor("s-1"), "推进的是这一帧自己的会话水位")
             source.disconnect()
             collector.cancel()
         }

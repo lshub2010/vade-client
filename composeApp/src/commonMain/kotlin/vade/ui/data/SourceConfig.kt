@@ -6,16 +6,22 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import vade.ui.chat.ChatMessage
 import vade.ui.protocol.ApprovalDecision
 import vade.ui.protocol.ApprovalScope
 import vade.ui.protocol.BrowserPairing
 import vade.ui.protocol.KtorTransportFactory
+import vade.ui.protocol.SessionCookie
+import vade.ui.protocol.TlsTrustMode
 import vade.ui.protocol.VadeClientConfig
 import vade.ui.protocol.VadeErrorCodes
 import vade.ui.protocol.VadeException
+import vade.ui.protocol.VadeTransport
 import vade.ui.protocol.VadeTransportFactory
+import vade.ui.protocol.isCredentialHandshakeFailure
 
 /**
  * g-live · the three-target real-data switch, in ONE place.
@@ -232,15 +238,18 @@ fun sessionSourceFrom(raw: RawSourceStrings): SessionSource =
         is SourceSpec.Fake -> {
             val paired = PairingRuntime.state as? PairingRuntimeState.Paired
             if (paired != null) {
-                // r5-tls · 桥里记着这次配对用的协议与「用户确认过自签证书」——
-                // 重建真源必须逐字复用它，否则配对成功后第一次拉列表就会退回
-                // http（或退回系统信任链，自签证书再次失败）。
+                // r5-tls · 桥里记着这次配对用的协议与**信任档位** —— 重建真源必须逐字复用它。
+                //
+                // P0-6 · 这里以前是 `allowInsecureTls = paired.tls`：只要用了 HTTPS（哪怕是
+                // 正规 CA 签发的证书）重建出来的真源就一律 trust-all。协议与信任是两件事，
+                // 现在只有 `trustMode == InsecureConfirmed`（用户对着自签警告点过「仍然连接」）
+                // 才会打开 trust-all；SystemChain 永远走正常校验。
                 realAutoConnecting(
                     VadeClientConfig(
                         host = paired.host,
                         port = paired.port,
                         tls = paired.tls,
-                        allowInsecureTls = paired.tls,
+                        allowInsecureTls = paired.trustMode == TlsTrustMode.InsecureConfirmed,
                     ),
                     paired.factory,
                 )
@@ -478,6 +487,16 @@ enum class PairingFailureKind {
      * `POST /ui/session`，直接给「请用桌面/手机配对」的可行动文案。
      */
     NotAvailableHere,
+
+    /**
+     * P0-6 · TLS 握手阶段的**证书不被信任**（自签 / 主机名不匹配 / 链不完整）。
+     *
+     * 它是唯一会触发「信任这张证书？」二次确认的分类：先按 [TlsTrustMode.SystemChain]
+     * 试一次，证书不被系统信任时**一个字节的请求都还没发出去**（TLS 在 HTTP 之前失败，
+     * 一次性码没被烧），用户确认后再以 [TlsTrustMode.InsecureConfirmed] 重试一次。
+     * 正规 CA 签发的证书永远走不到这里 —— 那才是「合法 CA 正常校验」。
+     */
+    CertificateUntrusted,
 }
 
 /** 一次首次运行配对尝试的结局。 */
@@ -498,6 +517,12 @@ sealed interface PairingAttempt {
         val host: String = SourceConfig.DEFAULT_HOST,
         val port: Int = SourceConfig.DEFAULT_PORT,
         val tls: Boolean = false,
+        /**
+         * P0-6 · 这次尝试**实际用的信任档位**：SystemChain（默认，合法 CA 正常校验）或
+         * InsecureConfirmed（用户对自签证书显式确认过）。桥与持久化都按它记 —— 重建真源时
+         * 只有后者才允许 trust-all。
+         */
+        val trustMode: TlsTrustMode = TlsTrustMode.SystemChain,
     ) : PairingAttempt
 
     /** 配对失败：[kind] 选文案，[cause] 是传输原话（引导卡原样展示、不二次加工）。 */
@@ -522,7 +547,10 @@ fun needsFirstRunPairing(raw: RawSourceStrings): Boolean {
     when (val runtime = PairingRuntime.state) {
         is PairingRuntimeState.Paired -> return false
         is PairingRuntimeState.NotBooted -> return false
-        is PairingRuntimeState.Unpaired -> if (runtime.codeRejected) return true
+        is PairingRuntimeState.Unpaired ->
+            // 码被拒过 / 上次持久化的凭据被 core 拒了 / 凭据留着但 core 暂时不可达 ——
+            // 三种都要出卡（第三种还要带「用已保存的配对重连」，见 PairingCard）。
+            if (runtime.codeRejected || runtime.credentialRejected || runtime.storedCredentialKept) return true
     }
     val spec = runCatching { SourceConfig.parse(raw) }.getOrNull() ?: return false
     return when (spec) {
@@ -601,18 +629,20 @@ suspend fun firstRunPairingAttempt(
     val config = VadeClientConfig(
         host = spec.host,
         port = spec.port,
-        // r5-tls · 协议与「信任自签证书」一起决定这次尝试：tls 决定 https/wss，
-        // allowInsecureTls 只在用户确认过（且确实是 tls）时关掉证书校验。
+        // r5-tls · 协议与「信任档位」一起决定这次尝试：tls 决定 https/wss；
+        // allowInsecureTls 只在用户确认过（且确实是 tls）时关掉证书校验 —— 这是
+        // [TlsTrustMode.of] 唯一的推导，合法 CA 的 HTTPS 永远走 SystemChain（P0-6）。
         tls = spec.tls,
         allowInsecureTls = allowInsecureTls && spec.tls,
         browserSession = BrowserPairing(spec.pairCode),
     )
+    val trustMode = TlsTrustMode.of(spec.tls, allowInsecureTls)
     return try {
         // factory 构造也在尝试之内：任何环节的失败都要被分类，而不是把原话裸抛给 UI。
         val factory = transportFactory(config)
         val probe = factory.connect()
         runCatching { probe.close() }
-        PairingAttempt.Connected(factory, spec.host, spec.port, spec.tls)
+        PairingAttempt.Connected(factory, spec.host, spec.port, spec.tls, trustMode)
     } catch (ce: CancellationException) {
         throw ce
     } catch (t: Throwable) {
@@ -627,6 +657,9 @@ suspend fun firstRunPairingAttempt(
 internal fun pairingFailureKindOf(t: Throwable): PairingFailureKind = when {
     t is VadeException && t.code in PAIR_CODE_ERRORS -> PairingFailureKind.BadCode
     t is IllegalArgumentException -> PairingFailureKind.BadConfig
+    // P0-6 · 证书不被信任（自签 / 名字不匹配）：唯一会要求「显式确认」的一类。它发生在
+    // TLS 握手阶段 —— 请求还没发出去、一次性码没被烧，所以可以重试一次（InsecureConfirmed）。
+    isCertificateTrustFailure(t) -> PairingFailureKind.CertificateUntrusted
     // A2 · Android 的明文策略拒绝这个地址（`CLEARTEXT communication to … not permitted`）：
     // 这是**地址不被允许**，不是网络不通 —— 分类到 BadConfig，卡片才会让用户改地址
     // （回环 / 模拟器别名 / `adb reverse`），而不是让他反复点「重试」。
@@ -635,6 +668,42 @@ internal fun pairingFailureKindOf(t: Throwable): PairingFailureKind = when {
         m.contains("refused", ignoreCase = true) || m.contains("ECONNREFUSED", ignoreCase = true)
     } == true -> PairingFailureKind.ServerDown
     else -> PairingFailureKind.Network
+}
+
+/**
+ * P0-6 · 这次失败是不是「对端证书不被系统信任」。
+ *
+ * 三端的异常形状不同（JVM/OkHttp：`SSLHandshakeException` + `CertPathValidatorException`；
+ * Android：`SSLHandshakeException: Trust anchor for certification path not found`；
+ * 名字不匹配：`No subject alternative DNS name matching …` 或 `HostnameVerifier` 的
+ * `CertificateException`），共同点是**类型名或原话里带证书语义**。因此同时看类型名、
+ * 原话与 cause 链。
+ *
+ * 只用于「要不要弹自签确认」这个决定，所以宁可漏判成 Network（用户重试/看诊断），
+ * 也不能把普通网络错误误判成证书问题（那会把「core 没起来」变成「你不信任证书」）。
+ */
+internal fun isCertificateTrustFailure(t: Throwable, depth: Int = 0): Boolean {
+    if (depth >= 8) return false
+    val name = t::class.simpleName.orEmpty()
+    if (name.contains("SSLHandshake") ||
+        name.contains("CertificateException") ||
+        name.contains("CertPathValidator") ||
+        name.contains("CertPathBuilder")
+    ) {
+        return true
+    }
+    val message = t.message.orEmpty()
+    if (message.contains("PKIX", ignoreCase = true) ||
+        message.contains("certification path", ignoreCase = true) ||
+        message.contains("Trust anchor", ignoreCase = true) ||
+        message.contains("SSLHandshake", ignoreCase = true) ||
+        message.contains("unable to find valid certification path", ignoreCase = true) ||
+        message.contains("subject alternative", ignoreCase = true)
+    ) {
+        return true
+    }
+    val cause = t.cause ?: return false
+    return isCertificateTrustFailure(cause, depth + 1)
 }
 
 private val PAIR_CODE_ERRORS: Set<String> = setOf(
@@ -663,23 +732,39 @@ sealed interface PairingRuntimeState {
     data object NotBooted : PairingRuntimeState
 
     /**
-     * 入口已启动、尚未配对。[codeRejected] = 上一次码被 core 拒过（错码/过期码/启动参数里
-     * 带的码失效）→ 引导卡必须仍然出现，用户才能重试（H2）。
+     * 入口已启动、尚未配对。
+     *
+     * [codeRejected] = 上一次码被 core 拒过（错码/过期码/启动参数里带的码失效）→ 引导卡
+     * 必须仍然出现，用户才能重试（H2）。
+     *
+     * [credentialRejected] = **持久化下来的那张 cookie** 被 core 拒了（401 / 握手失败）。
+     * 凭据已被删除，卡片要出现且要说清「上次的配对已失效」，而不是继续僵尸重连（P0-2）。
+     *
+     * [storedCredentialKept] = 凭据还在，但这次没能连上（core 没起来 / 网络不通 / 证书
+     * 变了）。卡片除了输入新码，还要给「用已保存的配对重连」—— 否则一次 core 晚启动就
+     * 逼用户去终端再捞一个码。
      */
-    data class Unpaired(val codeRejected: Boolean = false) : PairingRuntimeState
+    data class Unpaired(
+        val codeRejected: Boolean = false,
+        val credentialRejected: Boolean = false,
+        val storedCredentialKept: Boolean = false,
+    ) : PairingRuntimeState
 
     /**
      * 已配对：factory 里已有 `__Host-ac_ui` cookie，真源按 [host]:[port] 建。
      *
      * [tls] 是这次配对**实际用的协议**（r5-tls）：真源重建时照它拨 `https`/`wss`。
-     * 只有「用户确认过自签证书」的配对路径能把它置真，所以它同时是 trust-all 的凭据
-     * （[sessionSourceFrom] 用它决定 `allowInsecureTls`）。
+     *
+     * [trustMode] 是证书信任档位（P0-6）：只有用户在自签警告上确认过的
+     * [TlsTrustMode.InsecureConfirmed] 才会让重建出来的真源打开 trust-all；
+     * [TlsTrustMode.SystemChain]（默认）永远走正常校验 —— 即使 `tls = true`。
      */
     data class Paired(
         val factory: VadeTransportFactory,
         val host: String,
         val port: Int,
         val tls: Boolean = false,
+        val trustMode: TlsTrustMode = TlsTrustMode.SystemChain,
     ) : PairingRuntimeState
 }
 
@@ -724,6 +809,39 @@ data class CoreSwitchOutcome(
     val attempt: PairingAttempt,
 )
 
+/**
+ * P0-1 · 启动恢复的探测预算：一次 WS 升级 + 一帧请求。
+ *
+ * 5 s 够一次局域网往返，又不会让「core 没起来」把冷启动拖成一张白屏（UNAVAILABLE 之后
+ * 卡片立刻出现，凭据还留着，用户可以点「用已保存的配对重连」）。
+ */
+const val PAIRING_PROBE_TIMEOUT_MS: Long = 5_000L
+
+/** 活性探针：一帧带 id 的普通请求；任何 JSON-RPC 回包（result 或 error）都证明会话是活的。 */
+private const val PAIRING_PROBE_FRAME: String =
+    """{"jsonrpc":"2.0","id":1,"method":"ui/state.get","params":{}}"""
+
+/** [PairingRuntime.restoreStoredCredential] 的结局。 */
+sealed interface PairingRestoreOutcome {
+
+    /** 没有存过凭据（或显式通道接管了本次启动）—— 什么都不做，走首次运行流程。 */
+    data object NoCredential : PairingRestoreOutcome
+
+    /** 探测成功：桥已进 Paired，凭据已刷新落盘（App 据此重建真源）。 */
+    data class Restored(
+        val host: String,
+        val port: Int,
+        val tls: Boolean,
+        val trustMode: TlsTrustMode,
+    ) : PairingRestoreOutcome
+
+    /** 凭据被拒（401 / 握手失败 / 升级后无应答）：已删除，桥退回 Unpaired → 引导卡出现。 */
+    data class Rejected(val cause: Throwable) : PairingRestoreOutcome
+
+    /** 凭据还在，但这次连不上（core 没起 / 网络 / 证书）：桥退回 Unpaired(kept) → 卡片可重试。 */
+    data class Unreachable(val cause: Throwable) : PairingRestoreOutcome
+}
+
 object PairingRuntime {
 
     /** 桥的唯一可变字段（守卫测试钉住「码不进任何字段」：类型里没有 String 码）。 */
@@ -736,20 +854,43 @@ object PairingRuntime {
     /** 已配对时的 `host:port`（文案用）；`null` = 未配对。 */
     val pairedEndpoint: String? get() = (state as? PairingRuntimeState.Paired)?.let { "${it.host}:${it.port}" }
 
+    /** 启动恢复 / 「用已保存的配对重连」互斥：同一时刻只允许一次探测。 */
+    private val restoreMutex = Mutex()
+
     /** 入口（[sessionSourceFromEnvironment]）调用：本次启动没有任何可用凭据 → 允许出卡。 */
     fun noteBooted() {
         if (state is PairingRuntimeState.NotBooted) state = PairingRuntimeState.Unpaired()
     }
 
-    /** 引导卡成功后调用；compose state —— 读取它的组合（入口源构造、引导卡可见性）会跟着刷新。 */
+    /**
+     * 引导卡 / 换 core / 启动恢复成功后调用；compose state —— 读取它的组合（入口源构造、
+     * 引导卡可见性）会跟着刷新。
+     *
+     * [trustMode] 是这次配对**实际用的信任档位**（P0-6）：调用方必须把
+     * [PairingAttempt.Connected.trustMode] 原样传进来，不许再从 `tls` 推 —— 「走 https」
+     * 与「接受任意证书」是两件事。
+     *
+     * [persist] · **生产调用点必须为 true**（配对成功 / 换 core / 启动恢复）：把
+     * `{host, port, tls, trustMode}` + 这张 `__Host-ac_ui` 写进平台 KV，下次启动先用它探测。
+     * 默认 `false` 是为了测试与「只装进内存」的旧路径不碰磁盘。
+     */
     fun install(
         factory: VadeTransportFactory,
         host: String = SourceConfig.DEFAULT_HOST,
         port: Int = SourceConfig.DEFAULT_PORT,
         /** r5-tls · 这次配对实际用的协议（`https`/`wss` 时置真；默认 `false` = 明文）。 */
         tls: Boolean = false,
+        /** P0-6 · 信任档位；`tls = false` 时恒按 SystemChain 记（明文没有证书可验）。 */
+        trustMode: TlsTrustMode = TlsTrustMode.SystemChain,
+        persist: Boolean = false,
     ) {
-        state = PairingRuntimeState.Paired(factory, host, port, tls)
+        val resolvedTrust = if (tls) trustMode else TlsTrustMode.SystemChain
+        state = PairingRuntimeState.Paired(factory, host, port, tls, resolvedTrust)
+        if (persist) {
+            factory.sessionCookie?.let { cookie ->
+                PairingStores.save(StoredPairing(host, port, tls, resolvedTrust, cookie))
+            }
+        }
     }
 
     /**
@@ -758,6 +899,150 @@ object PairingRuntime {
      */
     fun noteCodeRejected() {
         if (state !is PairingRuntimeState.Paired) state = PairingRuntimeState.Unpaired(codeRejected = true)
+    }
+
+    /**
+     * P0-2 · 持久化下来的那张 `__Host-ac_ui` 已经不被 core 认了（401 / 握手失败 / core
+     * 重启后会话表清空）。
+     *
+     * 三件事必须同时发生，否则就是本报告里最严重的那条「僵尸重连」：
+     *  1. **删掉磁盘上的凭据**（留着只会下次启动再演一遍）；
+     *  2. 桥退回「未配对 + 凭据被拒」→ 引导卡重新出现（`needsFirstRunPairing` 为真）；
+     *  3. 调用方（`RealSessionSource`）随桥状态重建源 —— 旧 client 的无限退避随之结束。
+     *
+     * 与 [noteCodeRejected] 分开：那个是「用户输的码不对」，这个是「上次的凭据失效」，
+     * 卡片的解释与下一步不同。
+     */
+    fun noteCredentialRejected() {
+        // 凭据已死：删磁盘 + 桥退回「已拒绝」。运行期（core 重启）也会走到这里：factory
+        // 已经把本地 cookie 清掉了，桥再留着 Paired 只会让 UI 永远显示「重连中」。
+        PairingStores.clear()
+        state = PairingRuntimeState.Unpaired(credentialRejected = true)
+    }
+
+    /**
+     * P0-1 · **启动恢复**：读回上次的凭据，`{host, port, tls, trustMode}` + cookie，
+     * **先用这张 cookie 探测**（一次 WS 升级 + 一帧请求），成功了才进 [Paired]。
+     *
+     * 为什么不直接信任磁盘：cookie 可能已经失效（core 重启过、30 天到期、被别的端吊销）。
+     * 直接进 Paired 会回到「一直重连、卡片永不出现」的老路；所以探测是入口唯一合法路径。
+     *
+     * 三种结局（[PairingRestoreOutcome]）：
+     *  - [PairingRestoreOutcome.Restored]：桥进 Paired，App 据此重建真源；
+     *  - [PairingRestoreOutcome.Rejected]：401 / 握手失败 → **删凭据** + 桥退回
+     *    `Unpaired(credentialRejected)`，引导卡出现（不再僵尸重连）；
+     *  - [PairingRestoreOutcome.Unreachable]：core 没起来 / 网络不通 / 证书变了 → 凭据
+     *    **原样留着**（一张好 cookie 不该因为 core 晚启动而被删），桥退回
+     *    `Unpaired(storedCredentialKept)`，卡片出现并带「用已保存的配对重连」。
+     *
+     * [raw] 的优先级：显式通道（`source=fixtures`，或带了 `pair_code` 的 real）优先，
+     * 恢复不插手 —— 那是开发者/旧路径明确选择的连接方式。
+     */
+    suspend fun restoreStoredCredential(
+        raw: RawSourceStrings = rawSourceStrings(),
+        probeTimeoutMs: Long = PAIRING_PROBE_TIMEOUT_MS,
+        transportFactory: (VadeClientConfig) -> VadeTransportFactory = { config -> KtorTransportFactory(config) },
+    ): PairingRestoreOutcome = restoreMutex.withLock {
+        val already = state as? PairingRuntimeState.Paired
+        if (already != null) {
+            return@withLock PairingRestoreOutcome.Restored(
+                already.host,
+                already.port,
+                already.tls,
+                already.trustMode,
+            )
+        }
+        val explicit = runCatching { SourceConfig.parse(raw) }.getOrNull()
+        if (explicit is SourceSpec.Real && explicit.pairCode != null) {
+            return@withLock PairingRestoreOutcome.NoCredential
+        }
+        if (explicit is SourceSpec.Fake && !raw.source.isNullOrBlank()) {
+            return@withLock PairingRestoreOutcome.NoCredential
+        }
+        probeStoredLocked(probeTimeoutMs, transportFactory)
+    }
+
+    /**
+     * 「用已保存的配对重连」（引导卡上的按钮）：与启动恢复**同一条**探测路径，只是不做
+     * 显式通道的判定 —— 用户刚刚亲手点了它。
+     */
+    suspend fun retryStoredCredential(
+        probeTimeoutMs: Long = PAIRING_PROBE_TIMEOUT_MS,
+        transportFactory: (VadeClientConfig) -> VadeTransportFactory = { config -> KtorTransportFactory(config) },
+    ): PairingRestoreOutcome = restoreMutex.withLock {
+        val already = state as? PairingRuntimeState.Paired
+        if (already != null) {
+            return@withLock PairingRestoreOutcome.Restored(
+                already.host,
+                already.port,
+                already.tls,
+                already.trustMode,
+            )
+        }
+        probeStoredLocked(probeTimeoutMs, transportFactory)
+    }
+
+    private suspend fun probeStoredLocked(
+        probeTimeoutMs: Long,
+        transportFactory: (VadeClientConfig) -> VadeTransportFactory,
+    ): PairingRestoreOutcome {
+        val stored = PairingStores.load() ?: return PairingRestoreOutcome.NoCredential
+        val config = VadeClientConfig(
+            host = stored.host,
+            port = stored.port,
+            tls = stored.tls,
+            // P0-6 · 信任档位是**记住的那一个**：持久化时只有「用户确认过的自签」才是
+            // InsecureConfirmed；合法的 CA 证书恢复后照旧走 SystemChain。
+            allowInsecureTls = stored.trustMode == TlsTrustMode.InsecureConfirmed,
+            sessionCookie = SessionCookie(stored.cookie),
+        )
+        val factory = try {
+            transportFactory(config)
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (t: Throwable) {
+            return restoreFailure(t)
+        }
+        val probe = try {
+            withTimeoutOrNull(probeTimeoutMs) { factory.connect() }
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (t: Throwable) {
+            runCatching { factory.dispose() }
+            return restoreFailure(t)
+        }
+        if (probe == null) {
+            runCatching { factory.dispose() }
+            return credentialRejected("websocket upgrade did not answer within ${probeTimeoutMs}ms")
+        }
+        // 活性探针：core 若把这张 cookie 当「设备 peer」并在等 Noise 握手，升级会成功但
+        // 一个字节都不回 —— 与 401 同义（凭据已死），而且正是僵尸重连的起点（P0-2）。
+        val answered = withTimeoutOrNull(probeTimeoutMs) {
+            runCatching { probe.send(PAIRING_PROBE_FRAME) }
+            probe.incoming.first { frame -> frame.contains("\"jsonrpc\"") }
+        }
+        runCatching { probe.close() }
+        if (answered == null) {
+            runCatching { factory.dispose() }
+            return credentialRejected("core accepted the socket but never answered within ${probeTimeoutMs}ms")
+        }
+        install(factory, stored.host, stored.port, stored.tls, stored.trustMode, persist = true)
+        return PairingRestoreOutcome.Restored(stored.host, stored.port, stored.tls, stored.trustMode)
+    }
+
+    /** 非「凭据已死」的失败：凭据留着，桥退到「凭据还在但连不上」。 */
+    private fun restoreFailure(t: Throwable): PairingRestoreOutcome {
+        val dead = (t as? VadeException)?.code == VadeErrorCodes.AUTH_FAILED || isCredentialHandshakeFailure(t)
+        if (dead) return credentialRejected(t.message ?: "the stored session cookie was rejected")
+        state = PairingRuntimeState.Unpaired(storedCredentialKept = true)
+        return PairingRestoreOutcome.Unreachable(t)
+    }
+
+    /** 凭据已死：删磁盘 + 桥退回「已拒绝」，引导卡出现。 */
+    private fun credentialRejected(reason: String): PairingRestoreOutcome {
+        PairingStores.clear()
+        state = PairingRuntimeState.Unpaired(credentialRejected = true)
+        return PairingRestoreOutcome.Rejected(VadeException(VadeErrorCodes.AUTH_FAILED, reason))
     }
 
     /**
@@ -778,26 +1063,31 @@ object PairingRuntime {
     }
 
     /**
-     * 换 core：**先吊销旧 core，再清本地，再配新 core，最后装新配置**。
+     * 换 core：**先拿到新 core 的 cookie，成功后才吊销旧会话并切换**。
      *
-     * 顺序是用户能观察到的语义（也由 `CoreSwitchTest` 用 MockEngine 钉住）：
+     * P1-6 / P0-4 的顺序（旧实现是「先吊销旧的、清本地，再去配新的」，新 core 一旦失败
+     * 用户就停在未配对 —— 旧 cookie 已吊销、factory 已 dispose，没有任何回退）：
      *  1. 目标配置先解析：端口越界这类**本地**错误原地拒绝，一个请求都不发，旧配置原样保留；
-     *  2. `DELETE /ui/session` → 旧 core（best-effort，超时 / 失败不阻塞，结果回传 UI）；
-     *  3. 清本地旧配置与 cookie：桥退回「未配对」，旧 factory 不再被任何人读取；
-     *  4. 用用户填的新地址 + 码走**同一条**连接链（[firstRunPairingAttempt]，恰好一次
-     *     `POST /ui/session`）；成功才 [install] 新配置 —— 失败就停在未配对态，引导卡可重试。
+     *  2. 用用户填的新地址 + 码走**同一条**连接链（[firstRunPairingAttempt]，恰好一次
+     *     `POST /ui/session`）。**这一步失败 → 什么都不动**：旧 core 的会话没被吊销、
+     *     旧 factory 没被 dispose、桥仍是 `Paired(old)` —— 用户还在原来的连接上；
+     *  3. 只有新凭据到手之后，才向旧 core 发 `DELETE /ui/session`（best-effort，超时/失败
+     *     不阻塞，结果回传 UI）；
+     *  4. 一次性切换桥到新 core 并落盘；旧 factory [VadeTransportFactory.dispose]（
+     *     `isUsable` 从此为 false —— 任何迟到的重连都不会把它复活，P0-4）。
      *
-     * 第 3 步先于第 4 步是刻意的：一次性码只在「已经在换」的时候才烧，而本地旧凭据不许
-     * 在新 core 失败时偷偷留下的「假连接」。代价是失败后旧 core 也没了 —— 但它上一步已经
-     * 被吊销，这正是「换 core」这个动作的语义（调用方要保留旧连接就别调它）。
+     * 取消（[CancellationException]）永远是「旧连接不动」：第 2 步取消 → 桥与本地配置一个
+     * 字节都不变；第 3 步取消 → 桥仍是旧 core，但刚到手的新 factory 会被
+     * [VadeTransportFactory.dispose]（既不进桥就没人会用它，留着只是泄漏）。一次性码在
+     * 第 2 步就已被 core 消费，取消不会「退回」它 —— 本地配置错误仍然一个请求都不发。
      */
     suspend fun switchCore(
         raw: RawSourceStrings,
         enteredCode: String,
         revokeTimeoutMs: Long = SESSION_REVOKE_TIMEOUT_MS,
         /**
-         * r5-tls · 用户在警告弹层里确认过自签证书（`raw.tls` 为真时才生效）。
-         * 默认 `false`：没有确认就只走系统信任链 —— 换 core 与首配是同一条口径。
+         * P0-6 · 用户在**自签证书警告**上确认过（`raw.tls` 为真时才生效）。
+         * 默认 `false`：合法 CA 的正常 HTTPS 只走系统信任链，换 core 与首配同一条口径。
          *
          * 放在 `transportFactory` **之前**：后者必须保持最后一个参数，否则现有的
          * trailing-lambda 调用点会绑定到这个 Boolean 上（编译器会直接报类型不匹配）。
@@ -828,19 +1118,40 @@ object PairingRuntime {
                 ),
             )
         }
-        // 2) 旧 core 的 UI 会话：能吊销就吊销，吊销不了也继续（记下来给 UI 提示）。
-        val previous = state as? PairingRuntimeState.Paired
-        val revocation = revokeBestEffort(previous?.factory, revokeTimeoutMs)
-        // 3) 清本地旧配置 + cookie（旧 factory 的 cookie 已在 revokeSession 里作废）。
-        clearPaired(previous)
-        // 4) 新 core：同一条连接链，成功才装。
+        // 2) 先拿新 core 的 cookie。失败 = 回退：旧连接一个字节都不动。
         val attempt = firstRunPairingAttempt(
             raw, enteredCode,
             allowInsecureTls = allowInsecureTls,
             transportFactory = transportFactory,
         )
-        if (attempt is PairingAttempt.Connected) {
-            install(attempt.factory, attempt.host, attempt.port, attempt.tls)
+        if (attempt !is PairingAttempt.Connected) {
+            return CoreSwitchOutcome(SessionRevocation.NotNeeded, attempt)
+        }
+        // 3) 新凭据到手，才吊销旧 core 的 UI 会话（best-effort：超时 / 失败不阻塞切换）。
+        val previous = state as? PairingRuntimeState.Paired
+        val revocation = try {
+            revokeBestEffort(previous?.factory, revokeTimeoutMs)
+        } catch (ce: CancellationException) {
+            // 取消发生在这一步：桥还没切，旧连接原样保留（正确），但刚换到的新 factory
+            // 既不进桥、也没有任何调用方持有 —— 必须放掉它的 HttpClient / cookie，
+            // 否则每取消一次就漏一个连接池 + 一份仍然有效的服务端会话。
+            if (previous?.factory !== attempt.factory) {
+                runCatching { attempt.factory.dispose() }
+            }
+            throw ce
+        }
+        // 4) 一次性切换 + 新凭据落盘；旧 factory 退休。`dispose()` 之后
+        //    `isUsable == false`，runner 见它直接终止 —— 旧 core 不会被重连复活。
+        install(
+            factory = attempt.factory,
+            host = attempt.host,
+            port = attempt.port,
+            tls = attempt.tls,
+            trustMode = attempt.trustMode,
+            persist = true,
+        )
+        if (previous != null && previous.factory !== attempt.factory) {
+            runCatching { previous.factory.dispose() }
         }
         return CoreSwitchOutcome(revocation, attempt)
     }
@@ -872,19 +1183,28 @@ object PairingRuntime {
         }
 
     /**
-     * 清本地凭据：桥退回「未配对」，旧 factory 的资源顺手放掉。
+     * 清本地凭据：桥退回「未配对」，旧 factory 的资源顺手放掉，**磁盘上的凭据也删掉**
+     * （P0-1：断开 = 用户不再使用这台 core，下次启动不该自己连回去）。
      *
      * 旧 factory 归桥所有（`RealSessionSource` 对**注入**的 factory 从不 dispose，见其
      * KDoc），换 core 之后不会再有引用 —— 这里关掉它的 `HttpClient`，不然每换一次 core
-     * 就漏一个连接池。dispose 失败不影响清配置。
+     * 就漏一个连接池。`dispose()` 同时把 `isUsable` 置假：任何迟到的重连都不会复活它。
+     * dispose 失败不影响清配置。
      */
     private suspend fun clearPaired(previous: PairingRuntimeState.Paired?) {
         state = PairingRuntimeState.Unpaired()
+        PairingStores.clear()
         previous?.let { runCatching { it.factory.dispose() } }
     }
 
-    /** 测试专用：把桥清回「未启动」（桥是全局单例，用例之间必须互不污染）。 */
+    /**
+     * 测试专用：把桥清回「未启动」（桥是全局单例，用例之间必须互不污染）。
+     *
+     * 同时把凭据存储换成**内存实现**：任何用例都不会读写开发者本机的真文件，也不会
+     * 因为上一次用例写下的凭据而意外「恢复成功」。
+     */
     internal fun clearForTests() {
         state = PairingRuntimeState.NotBooted
+        PairingStores.resetForTests()
     }
 }

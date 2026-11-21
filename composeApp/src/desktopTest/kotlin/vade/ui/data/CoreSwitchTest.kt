@@ -11,16 +11,20 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import vade.ui.protocol.BrowserPairing
 import vade.ui.protocol.FakeTransport
@@ -34,16 +38,19 @@ import vade.ui.protocol.VadeTransportFactory
 /**
  * 缺陷⑩(b) · 换 core 的线上顺序与 best-effort 语义。
  *
- * 契约（任务棒给定的，core 一侧已实现）：`DELETE /ui/session`（带 `__Host-ac_ui` cookie）
- * → 204，吊销当前 UI 会话。这一组用例钉住：
+ * 契约（P1-6 / P0-4）：**先拿到新 core 的 cookie，成功后才吊销旧会话**。旧顺序
+ * （先吊销旧的、清本地、再去配新的）在新 core 拒绝时会把用户丢在未配对态 ——
+ * 旧 cookie 已吊销、factory 已 dispose，没有任何回退。这一组用例钉住：
  *
- *  1. **顺序**：旧 core 的 `DELETE /ui/session` 先于新 core 的配对（MockEngine 看得见的那一次
- *     真实 HTTP 请求，日志里排在新 core 的 `POST /ui/session` 之前）；
- *  2. **best-effort**：旧 core 回 500 / 超时都不阻塞切换 —— 新配置照样装上，吊销结果回传；
- *  3. **取消不清配置**：切换协程被取消时，旧 factory / endpoint 一个字节都不动，也不去配新
- *     core（一次性码没被烧）；
- *  4. **本地配置错误自己先挡**：端口越界不发任何请求、不碰旧配置；
- *  5. [PairingRuntime.unpair] 也是「先吊销、再清」，未配对时是 no-op。
+ *  1. **顺序**：新 core 的 `POST /ui/session` 先于旧 core 的 `DELETE /ui/session`；吊销那一步
+ *     在日志里排在配对成功之后（`MockEngine` 看得见真实 HTTP 请求的那一条）；
+ *  2. **失败可回退**：新 core 拒绝配对 → 一次吊销都不发、旧 factory 不 dispose、桥仍是
+ *     `Paired(old)` —— 用户还在原来的连接上；
+ *  3. **best-effort**：新 core 到手之后，旧 core 回 500 / 超时都不阻塞切换，结果回传 UI；
+ *  4. **取消不清配置**：取消发生在配对阶段 → 旧 factory / endpoint 一个字节都不动，也不发
+ *     吊销；取消发生在吊销阶段 → 旧连接原样保留，刚拿到的新 factory 被放掉（不许泄漏）；
+ *  5. **本地配置错误自己先挡**：端口越界不发任何请求、不碰旧配置；
+ *  6. [PairingRuntime.unpair] 是「先吊销、再清」，未配对时是 no-op。
  */
 class CoreSwitchTest {
 
@@ -121,6 +128,20 @@ class CoreSwitchTest {
         override suspend fun revokeSession() = onRevoke()
     }
 
+    /**
+     * 新 core 的替身：`connect()` 成功（= 已经换到 cookie），并让用例看见它有没有被放掉。
+     * 用来钉「取消在吊销阶段时，那份刚到手的新凭据不许泄漏」。
+     */
+    private class TrackedFactory : VadeTransportFactory {
+        private var disposed = false
+        override val isUsable: Boolean get() = !disposed
+        override val sessionCookie: String? = "tok-new"
+        override suspend fun connect(): VadeTransport = FakeTransport()
+        override suspend fun dispose() {
+            disposed = true
+        }
+    }
+
     private val newRaw = RawSourceStrings("real", "new.local", "9443", null)
 
     @BeforeTest
@@ -129,10 +150,10 @@ class CoreSwitchTest {
     @AfterTest
     fun resetBridgeAfter() = PairingRuntime.clearForTests()
 
-    // -------------------------------------------------------- 顺序：DELETE 先于新 core 配对
+    // -------------------------------------------------------- 顺序：先配新 core，成功后才吊销旧会话
 
     @Test
-    fun oldCoreIsRevokedBeforeTheNewCoreIsAskedToPair() = runBlocking {
+    fun theNewCoreIsPairedBeforeTheOldSessionIsRevoked() = runBlocking {
         val wire = Wire()
         val old = oldCoreFactory(wire)
         // 旧 core 上真的有一张 __Host-ac_ui（= 生产里它配对成功的那一刻）。
@@ -148,9 +169,9 @@ class CoreSwitchTest {
         }
 
         assertEquals(
-            listOf("old DELETE /ui/session", "new POST /ui/session"),
+            listOf("new POST /ui/session", "old DELETE /ui/session"),
             wire.log,
-            "旧 core 的 DELETE /ui/session 必须先于新 core 的配对请求",
+            "必须先拿到新 core 的 cookie，成功之后才吊销旧会话 —— 否则新 core 一失败就没有回退",
         )
         assertEquals(
             listOf<String?>("__Host-ac_ui=tok-old"),
@@ -166,6 +187,13 @@ class CoreSwitchTest {
         val connected = assertIs<PairingAttempt.Connected>(outcome.attempt)
         assertSame(newFactory, connected.factory)
         assertEquals("new.local:9443", PairingRuntime.pairedEndpoint, "成功后桥里是新 core")
+        // 新 core 收到 POST 的那一刻，桥里仍是旧 core —— 这就是「失败可回退」的前提。
+        val atConnect = assertIs<PairingRuntimeState.Paired>(
+            wire.statesAtConnect.single(),
+            "新 core 配对期间旧凭据必须还在（失败才能原样退回旧连接）",
+        )
+        assertEquals("old.local", atConnect.host)
+        assertSame(old, atConnect.factory)
     }
 
     // -------------------------------------------------------- best-effort：失败 / 超时不阻塞
@@ -256,19 +284,58 @@ class CoreSwitchTest {
     }
 
     @Test
-    fun theSwitchCancelledBeforeItFinishesNeverPairsTheNewCore() = runBlocking {
+    fun cancellingWhileTheNewCoreIsAskedToPairLeavesTheOldCoreAlone() = runBlocking {
+        // 取消落在**第一步**（兑换一次性码）：一次吊销请求都不许发，旧连接原样保留。
         val old = StubFactory { delay(60_000) }
         PairingRuntime.install(old, "10.0.0.9", 19999)
         val wire = Wire()
-        val newFactory = RecordingFactory("new", wire)
+        val hanging = object : VadeTransportFactory {
+            override suspend fun connect(): VadeTransport {
+                wire.statesAtConnect += PairingRuntime.state
+                wire.log += "new POST /ui/session"
+                awaitCancellation() // 配对在途：码正在兑换，cookie 还没到手
+            }
+        }
 
         val outcome = withTimeoutOrNull(200) {
-            PairingRuntime.switchCore(newRaw, "青松-NEW123", revokeTimeoutMs = 60_000) { newFactory }
+            PairingRuntime.switchCore(newRaw, "青松-NEW123", revokeTimeoutMs = 60_000) { hanging }
         }
 
         assertNull(outcome, "取消里的切换不会返回结局")
-        assertTrue(wire.log.isEmpty(), "取消之后不许去碰新 core（一次性码没被烧）：${wire.log}")
-        assertEquals("10.0.0.9:19999", PairingRuntime.pairedEndpoint)
+        assertEquals(
+            listOf("new POST /ui/session"),
+            wire.log,
+            "取消发生在配对阶段：旧 core 一次吊销请求都不许收到",
+        )
+        assertEquals("10.0.0.9:19999", PairingRuntime.pairedEndpoint, "取消后旧 endpoint 一个字节都不动")
+        assertSame(old, PairingRuntime.pairedFactory, "取消后旧 factory 还在桥里")
+    }
+
+    @Test
+    fun cancellingDuringTheOldRevocationKeepsTheOldCoreAndRetiresTheNewFactory() = runBlocking {
+        // 取消落在**第三步**（新 cookie 已到手，正在吊销旧会话）：桥还没切，旧连接必须留着；
+        // 而刚拿到的新 factory 既不进桥也没人再引用 —— 必须放掉，否则每取消一次漏一个 HttpClient。
+        val revoking = CompletableDeferred<Unit>()
+        val old = object : VadeTransportFactory {
+            override suspend fun connect(): VadeTransport = throw IllegalStateException("old must not connect")
+            override suspend fun revokeSession() {
+                revoking.complete(Unit)
+                delay(60_000)
+            }
+        }
+        PairingRuntime.install(old, "10.0.0.9", 19999)
+        val newFactory = TrackedFactory()
+
+        val job = launch(Dispatchers.Default) {
+            runCatching { PairingRuntime.switchCore(newRaw, "青松-NEW123", revokeTimeoutMs = 60_000) { newFactory } }
+        }
+        withTimeout(5_000) { revoking.await() }
+        job.cancel()
+        job.join()
+
+        assertEquals("10.0.0.9:19999", PairingRuntime.pairedEndpoint, "取消后旧连接原样保留（桥还没切）")
+        assertSame(old, PairingRuntime.pairedFactory)
+        assertFalse(newFactory.isUsable, "被取消的那次切换必须放掉刚建好的新 factory（资源不许泄漏）")
     }
 
     @Test
@@ -292,7 +359,8 @@ class CoreSwitchTest {
     }
 
     @Test
-    fun aRejectedNewCoreLeavesTheBridgeUnpairedAndDisposesTheOld() = runBlocking {
+    fun aRejectedNewCoreLeavesTheOldCorePairedAndUntouched() = runBlocking {
+        // 新 core 拒绝 = 回退：旧会话不被吊销、旧 factory 不被 dispose、桥仍是 Paired(old)。
         val wire = Wire()
         val old = oldCoreFactory(wire)
         old.ensureSessionCookie()
@@ -310,18 +378,27 @@ class CoreSwitchTest {
 
         val outcome = PairingRuntime.switchCore(newRaw, "青松-NEW123") { RejectingFactory(wire) }
 
-        assertIs<PairingAttempt.Rejected>(outcome.attempt, "新 core 拒绝配对，必须是可重试的 Rejected")
-        assertEquals(SessionRevocation.Revoked, outcome.revocation)
+        val rejected = assertIs<PairingAttempt.Rejected>(outcome.attempt, "新 core 拒绝配对，必须是可重试的 Rejected")
+        assertEquals(PairingFailureKind.BadCode, rejected.kind)
         assertEquals(
-            PairingRuntimeState.Unpaired(),
-            PairingRuntime.state,
-            "新 core 失败后停在未配对（引导卡可重试），不能留一个假的已连接态",
+            SessionRevocation.NotNeeded,
+            outcome.revocation,
+            "新 core 失败时一次吊销都不许发：旧连接还在服务，凭据不能先作废",
         )
-        assertNull(PairingRuntime.pairedFactory, "旧 factory 不许继续挂在桥上")
-        assertTrue(disposed, "旧 factory 的资源必须在换 core 时释放")
-        assertIs<PairingRuntimeState.Unpaired>(
+        assertEquals(
+            "old.local:8443",
+            PairingRuntime.pairedEndpoint,
+            "旧配置原样保留（用户还在原来的连接上，可以重试或继续用）",
+        )
+        assertSame(counting, PairingRuntime.pairedFactory, "旧 factory 不许离开桥")
+        assertFalse(disposed, "旧 factory 的资源不许被 dispose —— 它还要继续服务这条连接")
+        assertTrue(
+            wire.log.none { it.startsWith("old DELETE") },
+            "旧 core 一个吊销请求都不许收到：${wire.log}",
+        )
+        assertIs<PairingRuntimeState.Paired>(
             wire.statesAtConnect.single(),
-            "新 core 收到 POST 时旧凭据必须已经清掉（clear 先于 POST）",
+            "新 core 收到 POST 时旧凭据必须还在（这就是失败可回退的原因）",
         )
         Unit
     }

@@ -52,6 +52,7 @@ import vade.ui.data.PairingAttempt
 import vade.ui.data.PairingFailureKind
 import vade.ui.data.PairingRuntime
 import vade.ui.data.PairingRuntimeState
+import vade.ui.data.PairingStores
 import vade.ui.data.RawSourceStrings
 import vade.ui.data.SessionRevocation
 import vade.ui.data.SourceConfig
@@ -100,11 +101,15 @@ internal fun FirstRunPairingCard(
     modifier: Modifier = Modifier,
     /** 原始配置通道：默认平台的真实通道（桌面 env / Android extras / Wasm query）。 */
     raw: () -> RawSourceStrings = ::rawSourceStrings,
-    /** 提交动作：默认 = [firstRunPairingAttempt]（现有连接链的一次尝试）。 */
-    onSubmit: suspend (RawSourceStrings, String) -> PairingAttempt = { rawStrings, enteredCode ->
-        // r5-tls · 表单只在用户确认过警告弹层之后才调用这里（未确认时一个请求都不发），
-        // 所以 `rawStrings.tls` 既是「走 https」，也是「我信任这张自签证书」的凭据。
-        firstRunPairingAttempt(rawStrings, enteredCode, allowInsecureTls = rawStrings.tls)
+    /**
+     * 提交动作：默认 = [firstRunPairingAttempt]（现有连接链的一次尝试）。
+     *
+     * 第三个参数 = 「用户刚刚在**自签证书警告**上点过仍然连接」。只有它为真时
+     * `allowInsecureTls` 才会打开（P0-6）；普通 HTTPS 一律走系统信任链 —— 合法 CA 的正常
+     * 校验不会因为「开了 HTTPS 开关」而被跳过。
+     */
+    onSubmit: suspend (RawSourceStrings, String, Boolean) -> PairingAttempt = { rawStrings, enteredCode, insecure ->
+        firstRunPairingAttempt(rawStrings, enteredCode, allowInsecureTls = insecure)
     },
 ) {
     // 出现条件：未配对 且 本次启动没有可用凭据。不满足就一个节点都不组合（空 item 不占
@@ -113,6 +118,12 @@ internal fun FirstRunPairingCard(
     if (PairingRuntime.pairedFactory != null || !needsFirstRunPairing(rawNow)) return
 
     val skin = LocalSkin.current
+    // P0-1 · 「用已保存的配对重连」：core 只是暂时不可达时，凭据还在磁盘上，让用户
+    // 一个按钮就重试 —— 而不是逼他去 core 的终端再捞一个一次性码。
+    val retryScope = rememberCoroutineScope()
+    var retrying by remember { mutableStateOf(false) }
+    val unpaired = PairingRuntime.state as? PairingRuntimeState.Unpaired
+    val saved = PairingStores.cached
     skin.Card(
         modifier = modifier
             .fillMaxWidth()
@@ -128,6 +139,34 @@ internal fun FirstRunPairingCard(
                 size = 11,
                 color = skin.colors.onSurfaceVariant,
             )
+            if (unpaired?.credentialRejected == true) {
+                // 上次的配对凭据被 core 拒了（401 / 握手失败 / core 重启）：已删除，必须
+                // 重新配对。说清原因，别让用户以为是网络问题（P0-2）。
+                UiText(
+                    text = PAIRING_CREDENTIAL_REJECTED,
+                    size = 11,
+                    color = skin.colors.error,
+                )
+            }
+            if (unpaired?.storedCredentialKept == true && saved != null) {
+                UiText(
+                    text = PAIRING_SAVED_KEPT,
+                    size = 11,
+                    color = skin.colors.onSurfaceVariant,
+                )
+                skin.Button(
+                    text = if (retrying) PAIRING_SAVED_RETRYING else PAIRING_SAVED_RETRY,
+                    onClick = {
+                        if (retrying) return@Button
+                        retrying = true
+                        retryScope.launch {
+                            runCatching { PairingRuntime.retryStoredCredential() }
+                            retrying = false
+                        }
+                    },
+                    enabled = !retrying,
+                )
+            }
             PairingForm(
                 initialHost = rawNow.host?.trim()?.takeIf { it.isNotEmpty() } ?: SourceConfig.DEFAULT_HOST,
                 initialPort = rawNow.port?.trim()?.takeIf { it.isNotEmpty() }
@@ -136,9 +175,8 @@ internal fun FirstRunPairingCard(
                 submittingLabel = PAIRING_SUBMITTING,
                 // 卡片的注入缝仍然是「(原始配置, 码) -> 尝试」：表单只负责把输入装成
                 // RawSourceStrings，连接链一条都没变（测试注入的替身收到的参数逐字不变）。
-                // r5-tls · `tls` 是表单里那个 HTTPS 开关；走到这里说明用户已经在警告
-                // 弹层上点过「仍然连接」（否则表单不会调用 onSubmit）。
-                onSubmit = { host, port, enteredCode, tls ->
+                // P0-6 · `tls` 只是协议；第四个参数才是「用户确认过自签证书」。
+                onSubmit = { host, port, enteredCode, tls, insecure ->
                     onSubmit(
                         RawSourceStrings(
                             source = SourceConfig.REAL,
@@ -148,15 +186,19 @@ internal fun FirstRunPairingCard(
                             tls = tls,
                         ),
                         enteredCode,
+                        insecure,
                     )
                 },
                 onConnected = { connected ->
+                    // P0-1 · 配对成功 = 立刻落盘（{host, port, tls, trustMode} + cookie）；
+                    // P0-6 · 信任档位原样进桥 —— 不许从 `tls` 推。
                     PairingRuntime.install(
                         factory = connected.factory,
                         host = connected.host,
                         port = connected.port,
-                        // r5-tls · 协议跟着这次尝试走，否则配对成功后第一次拉列表就退回 http。
                         tls = connected.tls,
+                        trustMode = connected.trustMode,
+                        persist = true,
                     )
                 },
             )
@@ -173,11 +215,16 @@ internal fun FirstRunPairingCard(
  * 直接在 [showFailure] 里给出 [PAIRING_PORT_INVALID]）。成功时调用 [onConnected]，
  * 由调用方决定「装进桥」还是「换成新 core」。
  *
- * ## r5-tls · HTTPS 开关 + 自签证书警告（**提交前的唯一闸门**）
- * 表单里有一个默认关的 HTTPS 开关（[PAIRING_TLS_LABEL]）。打开它之后再点提交，**先**弹
- * [TlsWarningDialog]：自签证书无法验证 core 的身份、可能被中间人，只有「仍然连接」才会
- * 真的发请求；「取消」什么都发、也**不烧**配对码（码原样留在输入框里）。首配卡与
- * 「更换 core」共用本表单，所以两条路自动遵守同一条闸门 —— 没有第二份确认逻辑。
+ * ## r5-tls · HTTPS 开关 + 自签证书警告（**证书失败之后**的闸门，P0-6）
+ * 表单里有一个默认关的 HTTPS 开关（[PAIRING_TLS_LABEL]）。打开它之后点提交，表单**先按
+ * 系统信任链试一次**（`TlsTrustMode.SystemChain`）：证书由正规 CA 签发就直接成功 ——
+ * 不再有「只要 HTTPS 就 trust-all」这一条。
+ *
+ * 只有**证书不被系统信任**（自签 / 名字不匹配 / 链不完整）时才弹 [TlsWarningDialog]：
+ * 自签证书无法验证 core 的身份、可能被中间人，只有「仍然连接」才会以
+ * `TlsTrustMode.InsecureConfirmed` **重试一次**；「取消」什么都不发、也**不烧**配对码
+ * （码原样留在输入框里，第一次尝试在 TLS 握手就失败了，请求根本没发出去）。
+ * 首配卡与「更换 core」共用本表单，所以两条路自动遵守同一条闸门 —— 没有第二份确认逻辑。
  *
  * ## 提交态与作用域都**可从宿主注入**（R3）
  * 「换 core」的宿主要拿两样东西，所以它们从表单内部提升成形参、默认值保持旧行为：
@@ -192,7 +239,14 @@ internal fun PairingForm(
     submitLabel: String,
     submittingLabel: String,
     /** 一次提交：host / port 已校验，code 原样（不 trim —— core 的码允许中间带分隔符）。 */
-    onSubmit: suspend (host: String, port: String, code: String, tls: Boolean) -> PairingAttempt,
+    onSubmit: suspend (host: String, port: String, code: String, tls: Boolean, insecure: Boolean) -> PairingAttempt,
+    /**
+     * P0-6 · 「用户刚刚对**自签证书**点过仍然连接」的那一次重试。
+     *
+     * 只有证书失败的确认弹层会调用它；普通提交永远走 [onSubmit]（= SystemChain，合法 CA
+     * 正常校验）。`null`（默认）= 退回 [onSubmit]（测试替身 / 不支持二次确认的调用点）。
+     */
+    onSubmitSelfSigned: (suspend (host: String, port: String, code: String, tls: Boolean) -> PairingAttempt)? = null,
     /** 成功后的落地动作（首配 = install；换 core 已在 [onSubmit] 里装好，这里是空实现）。 */
     onConnected: (PairingAttempt.Connected) -> Unit = {},
     /**
@@ -234,14 +288,13 @@ internal fun PairingForm(
     }
 
     /**
-     * r5-tls · 真正的一次提交（本地校验 → [onSubmit]）。抽成局部函数只为一件事：
-     * 警告弹层的「仍然连接」与「开关关着直接提交」必须走**同一条**路，否则两条路的
-     * 校验/失败文案迟早分叉。
+     * r5-tls · 真正的一次提交（本地校验 → [onSubmit]）。
      *
-     * 调用它的地方只有两处：提交按钮（开关关着）与弹层的「仍然连接」。弹层挂着时
-     * 一个请求都不会发到它 —— 这就是「未确认不得发任何请求」的实现。
+     * [allowInsecureTls] 是**唯一的** trust-all 入口：只有证书失败的确认弹层会以 `true`
+     * 调它（并因此走 [onSubmitSelfSigned]）。提交按钮永远传 `false` —— 普通 HTTPS 先按
+     * 系统信任链试一次，合法 CA 直接就成功了（P0-6）。
      */
-    fun submitNow() {
+    fun submitNow(allowInsecureTls: Boolean) {
         if (submitting) return
         submitting = true
         failure = null
@@ -263,17 +316,33 @@ internal fun PairingForm(
                 return@launch
             }
             try {
-                when (val attempt = onSubmit(enteredHost, enteredPort, enteredCode, submittedTls)) {
+                val attempt = if (allowInsecureTls && submittedTls) {
+                    onSubmitSelfSigned?.invoke(enteredHost, enteredPort, enteredCode, submittedTls)
+                        ?: onSubmit(enteredHost, enteredPort, enteredCode, submittedTls, true)
+                } else {
+                    onSubmit(enteredHost, enteredPort, enteredCode, submittedTls, false)
+                }
+                when (attempt) {
                     is PairingAttempt.Connected -> onConnected(attempt)
                     is PairingAttempt.Rejected -> {
-                        failure = attempt.kind
-                        // 码被拒过（错码/过期码）→ 桥记住，卡不会因为别处的
-                        // 状态刷新而消失，用户随时能重试（H2）。
-                        if (attempt.kind == PairingFailureKind.BadCode) {
-                            PairingRuntime.noteCodeRejected()
+                        if (attempt.kind == PairingFailureKind.CertificateUntrusted &&
+                            submittedTls &&
+                            !allowInsecureTls
+                        ) {
+                            // P0-6 · 证书不被系统信任。这一次**一个字节的请求都还没发出去**
+                            // （TLS 在 HTTP 之前失败，一次性码没被烧）→ 把「是否信任这张
+                            // 证书」交给用户；确认后以 InsecureConfirmed 重试一次。
+                            tlsWarning = true
+                        } else {
+                            failure = attempt.kind
+                            // 码被拒过（错码/过期码）→ 桥记住，卡不会因为别处的状态刷新而
+                            // 消失，用户随时能重试（H2）。
+                            if (attempt.kind == PairingFailureKind.BadCode) {
+                                PairingRuntime.noteCodeRejected()
+                            }
+                            // 传输原话，截短到卡里能读的长度（原文已 ≤300 字符）。
+                            failureDetail = attempt.cause.message?.take(160)
                         }
-                        // 传输原话，截短到卡里能读的长度（原文已 ≤300 字符）。
-                        failureDetail = attempt.cause.message?.take(160)
                     }
                 }
             } finally {
@@ -372,13 +441,10 @@ internal fun PairingForm(
             text = submitLabel,
             onClick = {
                 if (submitting || code.isBlank()) return@Button
-                // r5-tls · 开了 HTTPS 就**先**要一次人对「自签证书」的确认：这里只把
-                // 弹层挂上，一个请求都不发（码也还在输入框里，没被烧）。
-                if (tls) {
-                    tlsWarning = true
-                    return@Button
-                }
-                submitNow()
+                // P0-6 · 普通提交 = SystemChain：开了 HTTPS 也**先按系统信任链试一次**，
+                // 合法 CA 直接就成功，trust-all 一个字节都不打开。只有证书不被信任时
+                // 才会挂确认弹层（见 submitNow 的 CertificateUntrusted 分支）。
+                submitNow(allowInsecureTls = false)
             },
             enabled = !submitting && code.isNotBlank(),
         )
@@ -387,12 +453,12 @@ internal fun PairingForm(
         UiText(submittingLabel, size = 11, color = skin.colors.onSurfaceVariant)
     }
     if (tlsWarning) {
-        // 唯一的「继续」入口：确认之后才真的发请求。取消 = 什么都不发、码不动。
+        // 唯一以 InsecureConfirmed 重试的入口。取消 = 什么都不发、码不动（码没被烧）。
         TlsWarningDialog(
             onCancel = { tlsWarning = false },
             onConfirm = {
                 tlsWarning = false
-                submitNow()
+                submitNow(allowInsecureTls = true)
             },
         )
     }
@@ -486,10 +552,10 @@ internal fun TlsWarningDialog(
  * core：用户搬了机器、core 换了端口、或者想从 A 机切到 B 机，只能重装应用。现在这一行
  * 永远可点：未配对时它就是配对入口，已配对时它是「换一台」。
  *
- * ## 换 core 的顺序（[PairingRuntime.switchCore]）
- * 1. `DELETE /ui/session` → 旧 core（best-effort，超时/失败不阻塞）；
- * 2. 清本地旧配置与 cookie；
- * 3. 用新地址 + 新码连新 core，成功才装。
+ * ## 换 core 的顺序（[PairingRuntime.switchCore]，P0-4）
+ * 1. **先**用新地址 + 新码连新 core（成功才拿到新 cookie）；失败 = 什么都不动，旧连接还在；
+ * 2. 新凭据到手**才** `DELETE /ui/session` → 旧 core（best-effort，超时/失败不阻塞）；
+ * 3. 一次性切换桥到新 core 并落盘，旧 factory 退休（不会被重连复活）。
  *
  * **结果一律回执**（[CoreSwitchNotice]）：成功、单失败（新 core 被拒 + 旧凭证已吊销 /
  * 无需吊销）、双失败都写一句话。换 core 会重建 `UiState`、用户也可能在提交中切走 tab
@@ -497,7 +563,7 @@ internal fun TlsWarningDialog(
  * 与重新打开的面板才看得见「旧凭证吊销失败 / 切换没有完成：… / 已切换到 …」。
  *
  * ## R3 · 提交中不许被「返回」取消
- * 换 core 是三段式（吊销旧 → 清本地 → 连新）。旧实现把 `submitting` 关在 [PairingForm]
+ * 换 core 是三段式（连新 core → 成功后才吊销旧 → 切换并落盘）。旧实现把 `submitting` 关在 [PairingForm]
  * 里、把提交跑在 `rememberCoroutineScope()` 上，于是面板一离开组合（成功的重建、或用户按
  * 返回）协程就被取消 —— 用户停在「旧已吊销、新未装、零提示」。现在三处一起改：
  *  1. [submittingState] 提升到本面板：顶栏返回在提交中**不挂 clickable**（不是
@@ -525,11 +591,20 @@ internal fun CoreSwitchPanel(
      * 提交动作（默认 = 真的换 core）。形状与 [PairingRuntime.switchCore] 一致，只收它需要
      * 的那两个参数 —— 注入缝只给测试用，生产默认逐字节不变。
      *
-     * r5-tls · `raw.tls` 走到这里说明用户在表单的警告弹层上确认过自签证书，所以把
-     * `allowInsecureTls` 一起交下去（换 core 与首配是同一条口径）。
+     * P0-6 · 普通提交 = `SystemChain`（合法 CA 正常校验）。trust-all 只在
+     * [onSwitchSelfSigned] 里发生，而它唯一的调用点是「证书不被信任 → 用户确认」那一次重试。
      */
     onSwitch: suspend (RawSourceStrings, String) -> CoreSwitchOutcome = { raw, code ->
-        PairingRuntime.switchCore(raw, code, allowInsecureTls = raw.tls)
+        PairingRuntime.switchCore(raw, code, allowInsecureTls = false)
+    },
+    /**
+     * P0-6 · 「用户确认过自签证书」的那一次换 core（`InsecureConfirmed`）。
+     *
+     * 默认就是真实的 `switchCore(..., allowInsecureTls = true)`；注入缝留给测试。生产里
+     * 只有 [TlsWarningDialog] 的「仍然连接」能走到这里 —— 普通提交永远不打开 trust-all。
+     */
+    onSwitchSelfSigned: suspend (RawSourceStrings, String) -> CoreSwitchOutcome = { raw, code ->
+        PairingRuntime.switchCore(raw, code, allowInsecureTls = true)
     },
     /** 断开动作（默认 = [PairingRuntime.unpair]，同样是最小形状的注入缝）。 */
     onDisconnect: suspend () -> SessionRevocation = { PairingRuntime.unpair() },
@@ -690,7 +765,7 @@ internal fun CoreSwitchPanel(
         GroupCard {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 UiText(
-                    text = "填入另一台 core 的地址与配对码。旧 core 上的本机凭证会先被吊销，再连新的。",
+                    text = "填入另一台 core 的地址与配对码。先连上新 core（成功才拿到新凭证），之后才吊销旧 core 上的本机凭证；新 core 连不上时旧连接原样保留。",
                     size = 11,
                     color = skin.colors.onSurfaceVariant,
                 )
@@ -702,7 +777,7 @@ internal fun CoreSwitchPanel(
                     submittingLabel = SWITCH_SUBMITTING,
                     submittingState = submittingState,
                     submitScope = coreSwitchScope,
-                    onSubmit = { host, enteredPort, enteredCode, tls ->
+                    onSubmit = { host, enteredPort, enteredCode, tls, _ ->
                         // 快照本次目标：之后桥退回 Unpaired 也不让表单回落到默认地址。
                         lastTarget = host to enteredPort
                         val outcome = onSwitch(
@@ -711,7 +786,8 @@ internal fun CoreSwitchPanel(
                                 host = host,
                                 port = enteredPort,
                                 pairCode = null,
-                                // r5-tls · 表单只在确认过警告弹层之后才调这里（见 PairingForm）。
+                                // P0-6 · `tls` 只是协议；trust-all 的确认走下面的
+                                // onSubmitSelfSigned 那一条（证书失败之后才可能发生）。
                                 tls = tls,
                             ),
                             enteredCode,
@@ -720,6 +796,25 @@ internal fun CoreSwitchPanel(
                         // [PairingForm] 的 onConnected 只在成功时被调用，失败文案又只活在
                         // 表单内存里 —— 提交中切走 tab 或面板先离开组合时，只写那一支就是零提示。
                         // 回执写进程级的 [CoreSwitchNotice]，重新打开的面板 / 设置页都读得到。
+                        CoreSwitchNotice.text = coreSwitchReceipt(
+                            revocation = outcome.revocation,
+                            attempt = outcome.attempt,
+                            target = submittedEndpoint(host, enteredPort),
+                        )
+                        outcome.attempt
+                    },
+                    onSubmitSelfSigned = { host, enteredPort, enteredCode, tls ->
+                        lastTarget = host to enteredPort
+                        val outcome = onSwitchSelfSigned(
+                            RawSourceStrings(
+                                source = SourceConfig.REAL,
+                                host = host,
+                                port = enteredPort,
+                                pairCode = null,
+                                tls = tls,
+                            ),
+                            enteredCode,
+                        )
                         CoreSwitchNotice.text = coreSwitchReceipt(
                             revocation = outcome.revocation,
                             attempt = outcome.attempt,
@@ -737,7 +832,7 @@ internal fun CoreSwitchPanel(
  * 「换 core / 断开」的提交作用域：**不挂在组合上**。
  *
  * `rememberCoroutineScope()` 会随面板离开组合被取消，而换 core 是三段式
- * （吊销旧 → 清本地 → 连新）。面板先走一步（成功会重建 `UiState`；用户也可能按了返回），
+ * （连新 core → 成功后才吊销旧 → 切换并落盘）。面板先走一步（成功会重建 `UiState`；用户也可能按了返回），
  * 协程就停在「旧已吊销、新未装」的中间态，回执一句都写不出来 —— 用户什么都看不到。
  * 这个作用域活到进程结束；结果一律写进 [CoreSwitchNotice]，设置页入口那一行读得到。
  *
@@ -877,14 +972,14 @@ internal const val CORE_SWITCH_PANEL_TAG = "core-switch-panel"
 internal const val SWITCH_BUTTON_LABEL = "配对并切换"
 
 /** 换 core 进行中的提示（吊销 + 配对两段都在里面）。 */
-internal const val SWITCH_SUBMITTING = "正在吊销旧凭证并连接新 core…"
+internal const val SWITCH_SUBMITTING = "正在连接新 core（成功后吊销旧凭证）…"
 
 /** 「吊销失败」提示的前缀 —— UI 契约：失败必须说这几个字。 */
 internal const val REVOKE_FAILED_NOTICE = "旧凭证吊销失败"
 
 /** 当前连接卡的说明：把顺序说清，用户才知道旧 core 会发生什么。 */
 internal const val CORE_SWITCH_HOW =
-    "换 core 时先向旧 core 发 DELETE /ui/session 吊销本机的 UI 凭证，再清掉本地配置，最后才连新的。"
+    "换 core 时先用新地址与配对码连上新 core；拿到新凭证之后，才向旧 core 发 DELETE /ui/session 吊销本机的 UI 凭证。新 core 连不上时旧连接原样保留。"
 
 /** 断开按钮。 */
 internal const val CORE_SWITCH_DISCONNECT = "断开当前 core（吊销本机凭证）"
@@ -928,10 +1023,10 @@ internal const val PAIRING_CODE_FIELD_TAG = "pairing-code-field"
 // ---------------------------------------------------------------- r5-tls · HTTPS
 
 /**
- * HTTPS 开关的文案。**必须**把「自签证书」写出来：用户看到的不是一个中性的协议选项，
- * 而是一个会关掉身份校验的决定。
+ * HTTPS 开关的文案。它是**协议**选项，不再等于「我接受自签证书」：打开它先按系统信任链
+ * 连接，只有证书不被信任时才会弹确认（P0-6 之后两者是两件事）。
  */
-internal const val PAIRING_TLS_LABEL = "HTTPS（自签证书）"
+internal const val PAIRING_TLS_LABEL = "HTTPS"
 
 /** 开关整行的测试 tag（开关本体没有 modifier，测试点这一行 → 命中它的 clickable）。 */
 internal const val PAIRING_TLS_SWITCH_TAG = "pairing-tls-switch"
@@ -977,6 +1072,25 @@ internal const val PAIRING_SUBMITTING = "正在配对…"
 /** 端口本地校验失败的说明（不发网络请求）。 */
 internal const val PAIRING_PORT_INVALID = "端口必须是 1..65535 的整数"
 
+// ---------------------------------------------------------------- P0-1 · 持久化凭据
+
+/**
+ * 上次的配对凭据被 core 拒了（401 / 握手失败 / core 重启后会话表清空）。
+ * 必须点明「已失效、已清除」，否则用户会把它当成网络故障反复重试。
+ */
+internal const val PAIRING_CREDENTIAL_REJECTED =
+    "上次保存的配对已失效（core 重启过，或凭证被吊销）。已清除，请重新填一个新码。"
+
+/** 凭据还在、只是这次没连上（core 没起来 / 网络不通 / 证书变了）。 */
+internal const val PAIRING_SAVED_KEPT =
+    "上次配对的凭据还在本机。core 恢复后可以直接重连，不必再取新码。"
+
+/** 「用已保存的配对重连」按钮。 */
+internal const val PAIRING_SAVED_RETRY = "用已保存的配对重连"
+
+/** 重连在途时的同一个按钮。 */
+internal const val PAIRING_SAVED_RETRYING = "正在重连已保存的配对…"
+
 /** H4 · 浏览器/Wasм 的替代路径（不发起 POST，也不消耗码）。 */
 internal const val PAIRING_UNAVAILABLE_HERE =
     "浏览器版读不到配对 cookie，所以这里不会发配对请求（你的一次性码不会被用掉）。" +
@@ -993,6 +1107,7 @@ internal fun pairingHeadline(kind: PairingFailureKind, raw: RawSourceStrings): S
     PairingFailureKind.Network -> "网络不通：连不上 core"
     PairingFailureKind.BadConfig -> "地址填得不对：${pairingEndpointOf(raw)}"
     PairingFailureKind.NotAvailableHere -> "浏览器版不能直接配对"
+    PairingFailureKind.CertificateUntrusted -> "core 的证书不被信任：${pairingEndpointOf(raw)}"
 }
 
 /**
@@ -1016,4 +1131,7 @@ internal fun pairingNextStep(kind: PairingFailureKind, raw: RawSourceStrings): S
     PairingFailureKind.NotAvailableHere ->
         "下一步：在桌面应用或手机 App 里填同一个地址与配对码完成配对；浏览器版随后用 " +
             "`?source=real&host=…&port=…` 打开即可（已配对的机器上 cookie 由浏览器自己发送）。"
+    PairingFailureKind.CertificateUntrusted ->
+        "下一步：如果这台 core 用的是自签证书（自己的局域网机器 / 本机），确认「仍然连接」后" +
+            "会再试一次；否则请换成带可信证书的地址，或先在系统里信任那张证书。"
 }

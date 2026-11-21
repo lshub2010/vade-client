@@ -3,6 +3,7 @@ package vade.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import vade.ui.destinations.Destination
@@ -63,6 +64,18 @@ fun App(
     // 重新走 `sessionSourceFromEnvironment()`（桥在 Fake 分支里被消费）。
     // 未配对时 `effectiveSource` 恒等于传进来的 [source] —— 与旧行为逐字节相同。
     val paired = PairingRuntime.state as? PairingRuntimeState.Paired
+    // P0-1 · 启动恢复：平台 KV 里可能存着上次配对成功留下的 `{host, port, tls, trustMode}`
+    // 与那张 `__Host-ac_ui`。**先用它探测一次**（一次 WS 升级 + 一帧请求）：
+    //  - 成功 → 桥进 Paired，下面这行 `remember` 换源、列表开始拉真数据；
+    //  - 401 / 握手失败 → 桥退回 Unpaired（凭据已删），引导卡出现 —— 不再僵尸重连；
+    //  - core 暂时不可达 → 凭据留着，卡片带「用已保存的配对重连」。
+    // 只在入口声明过本次启动（`Unpaired`）时跑：UI 测试直构的组合（`NotBooted`）一个字节
+    // 都不读，夹具路径的行为逐字不变。
+    LaunchedEffect(Unit) {
+        if (PairingRuntime.state is PairingRuntimeState.Unpaired) {
+            runCatching { PairingRuntime.restoreStoredCredential() }
+        }
+    }
     val effectiveSource = remember(source, paired) {
         // P1-4 · 配对桥里的 endpoint 是用户填过的合法值，但**环境通道**可能仍然是坏的
         // （例如应用启动后 `VADE_PORT` 被改成了 `8443x`）。这里再解析一次时不能把

@@ -193,9 +193,10 @@ kotlin {
             implementation(kotlin("test"))
             // A5 · render test for the 关于 subpage: runComposeUiTest on the JVM target.
             implementation(compose.uiTest)
-            // 缺陷⑩ · 换 core 的线上顺序（旧 core `DELETE /ui/session` 先于新 core 的
-            // `POST /ui/session`）由 `CoreSwitchTest` 用 MockEngine 直接断言 —— 不起 socket，
-            // 也不依赖 e2e 夹具。MockEngine 只在这个测试源集里用，不进任何 main 变体。
+            // 缺陷⑩ · 换 core 的线上顺序（新 core 的 `POST /ui/session` 先拿到 cookie，成功
+            // 之后才向旧 core 发 `DELETE /ui/session`）由 `CoreSwitchTest` 用 MockEngine 直接
+            // 断言 —— 不起 socket，也不依赖 e2e 夹具。MockEngine 只在这个测试源集里用，
+            // 不进任何 main 变体。
             implementation("io.ktor:ktor-client-mock:3.6.1")
         }
     }

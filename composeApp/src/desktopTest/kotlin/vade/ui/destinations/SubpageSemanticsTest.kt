@@ -68,7 +68,7 @@ class SubpageSemanticsTest : IsolatedPreferencesTest() {
                     submitLabel = PAIRING_BUTTON_LABEL,
                     submittingLabel = PAIRING_SUBMITTING,
                     // 本用例只读语义树，不提交：真跑连接链要 core。
-                    onSubmit = { _, _, _, _ -> error("本用例不提交") },
+                    onSubmit = { _, _, _, _, _ -> error("本用例不提交") },
                 )
             }
         }
@@ -103,7 +103,7 @@ class SubpageSemanticsTest : IsolatedPreferencesTest() {
                     initialPort = "8443",
                     submitLabel = PAIRING_BUTTON_LABEL,
                     submittingLabel = PAIRING_SUBMITTING,
-                    onSubmit = { _, _, _, _ -> error("本用例不提交") },
+                    onSubmit = { _, _, _, _, _ -> error("本用例不提交") },
                 )
             }
         }

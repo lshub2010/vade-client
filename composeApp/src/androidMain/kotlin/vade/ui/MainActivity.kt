@@ -64,6 +64,9 @@ import vade.ui.skin.ThemeController
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         vade.ui.skin.VadePreferenceContext.install(applicationContext)
+        // P0-1 · 配对凭据的 SharedPreferences 需要 Context：与外观偏好同一个时机安装，
+        // 之后「启动恢复配对」读到的就是上次配对成功写下的那张 cookie。
+        vade.ui.data.PairingStoreContext.install(applicationContext)
         super.onCreate(savedInstanceState)
         // K1 · 系统「动画程序时长缩放 = 0」⇒ 降级；必须在 setContent 之前，首帧即按降级时长。
         ReduceMotion.install(systemReduceMotion())

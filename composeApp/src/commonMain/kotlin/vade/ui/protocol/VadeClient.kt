@@ -27,6 +27,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import kotlin.concurrent.Volatile
@@ -38,6 +39,24 @@ data class BrowserPairing(
     /** Free-form name, <=64 chars, shown in the admin device list. */
     val clientName: String = "vade-ui",
 )
+
+/**
+ * P0-1 · `__Host-ac_ui` 的**值**（不含头名）。单独一个类型只为一件事：`toString` 永远
+ * 掩码。
+ *
+ * 这个值会被塞进 [VadeClientConfig]，而配置是 data class —— 默认的 `toString()` 会把
+ * cookie 原样打进日志/崩溃报告/测试输出。cookie 是**唯一**的长期凭据（配对码一次性、
+ * 用完即焚），泄露它等于泄露这台 core 的完整 UI 权限（含 `approval/decide`）。
+ * 因此这里覆盖 `toString`，值只在需要发请求时通过 [value] 显式读取。
+ */
+class SessionCookie(val value: String) {
+
+    override fun toString(): String = "SessionCookie(***)"
+
+    override fun equals(other: Any?): Boolean = other is SessionCookie && other.value == value
+
+    override fun hashCode(): Int = value.hashCode()
+}
 
 /**
  * Client configuration. Defaults match the core's own bounds: request timeout 30 s,
@@ -60,6 +79,13 @@ data class VadeClientConfig(
     val allowInsecureTls: Boolean = false,
     /** Browser pairing; `null` means the transport does no bootstrap (device sessions / page shell). */
     val browserSession: BrowserPairing? = null,
+    /**
+     * P0-1 · 上次配对成功后持久化下来的 `__Host-ac_ui`（[vade.ui.data.PairingStore] 读回来的）。
+     *
+     * 有它时 factory **不再** `POST /ui/session`（一次性码早已被消费），直接把这张 cookie
+     * 带在 WS 升级上；401 / 握手失败 → 清掉它（本地与磁盘）并回到配对卡。`null` = 旧行为。
+     */
+    val sessionCookie: SessionCookie? = null,
     val clientName: String = "vade-ui",
     val requestTimeoutMs: Long = 30_000,
     val reconnectBaseMs: Long = 500,
@@ -81,7 +107,16 @@ data class VadeClientConfig(
      */
     val onMalformed: ((eventType: String?, error: Throwable) -> Unit)? = null,
     val json: Json = VadeJson.default,
-)
+) {
+
+    /**
+     * P0-6 · 信任档位的**可读名字**（唯一真源仍是 [allowInsecureTls]，引擎只认那一个布尔）。
+     * 让调用点（桥 / 持久化 / 测试）说「SystemChain 还是 InsecureConfirmed」，而不是再说一次
+     * 「https 所以 trust-all」这种把两个决定绑在一起的话。
+     */
+    val trustMode: TlsTrustMode
+        get() = if (allowInsecureTls) TlsTrustMode.InsecureConfirmed else TlsTrustMode.SystemChain
+}
 
 /** Connection lifecycle, observable for UI banners (reconnecting badges etc.). */
 sealed class VadeConnectionState {
@@ -244,13 +279,31 @@ class VadeClient(
     private var attachedSessionId: String? = null
 
     /**
-     * The last event `seq` this client applied for the tracked session (0 before the
-     * first event). Every frame — including unknown and duplicate-dropped ones —
-     * advances it; it is what reconnect's `ui/attach.last_seq` carries.
+     * P0-3 · 每个会话**各自**的水位：`sessionId -> 已应用的最后一个 seq`。
+     *
+     * 以前是一个 `@Volatile var lastSeq` —— 一个数字代表所有会话的 seq 空间。而 `seq` 是
+     * **per-session**（design.md §2.6）单调递增的：A 会话到 500 之后切到 B，B 的 1..500
+     * 会被当成「重放重叠」全部丢掉（包括 `session.attached` 本身），于是 B 的历史为空、
+     * 之后的实时事件也永远进不来。单值还让 `ui/attach.last_seq` 把 A 的水位塞进 B 的快照
+     * 请求，core 因此回 replay 而不是 snapshot。
+     *
+     * 换成不可变映射 + 整体替换（`@Volatile` 保证读者看见完整快照，写者在 [sessionMutex]
+     * 下做 copy-on-write）：读侧（[lastSeq] / [lastSeqFor]）不加锁，写侧天然串行。
+     * 空串键 = 「还没有跟踪任何会话」时的兜底槽位（旧行为：没有会话也推进一个全局水位）。
      */
     @Volatile
-    var lastSeq: Long = 0
-        private set
+    private var seqBySession: Map<String, Long> = emptyMap()
+
+    /**
+     * The last event `seq` this client applied for the **tracked** session (0 before the
+     * first event). Every frame — including unknown and duplicate-dropped ones — advances
+     * it; it is what reconnect's `ui/attach.last_seq` carries.
+     */
+    val lastSeq: Long
+        get() = lastSeqFor(attachedSessionId ?: UNTRACKED_SESSION)
+
+    /** [sessionId] 已应用到的 seq（0 = 还没有任何事件）。 */
+    fun lastSeqFor(sessionId: String): Long = seqBySession[sessionId] ?: 0L
 
     /** The currently tracked session, if any (`ui/attach` sets it, `ui/detach` clears it). */
     val attachedSession: String?
@@ -301,6 +354,13 @@ class VadeClient(
     private suspend fun runLoop() {
         var attempt = 0
         while (currentCoroutineContext().isActive && !closed) {
+            // P0-4 · 被桥退休（换 core / 断开）的 factory 不许被重连复活：它的 HttpClient
+            // 已经关了，再连只会每次抛错、按退避无限重试 —— 用户看到的是「一直在重连」。
+            // 这里直接终止 runner（Closed），把「这条连接已经不存在」变成事实。
+            if (!factory.isUsable) {
+                _state.value = VadeConnectionState.Closed
+                break
+            }
             val newTransport: VadeTransport = try {
                 if (attempt == 0) {
                     _state.value = VadeConnectionState.Connecting
@@ -400,16 +460,25 @@ class VadeClient(
             config.onMalformed?.invoke(type, IllegalArgumentException("event frame without type or seq"))
             return
         }
-        if (seq <= lastSeq) return // replay overlap: drop the duplicate, do not re-apply
-        if (lastSeq > 0 && seq > lastSeq + 1) {
-            config.onGap?.invoke(lastSeq, seq)
+        // P0-3 · 事件归**哪个会话**：payload 自带的 `session_id` 优先（同一条 socket 上可能
+        // 有多个 sink 推来的事件，别的会话的 seq 空间与当前跟踪的那个无关），否则归当前
+        // 跟踪的会话，再否则落到兜底槽位（与旧行为一致：没有会话也推进一个水位）。
+        val owner = (params["payload"] as? JsonObject)
+            ?.get("session_id")
+            ?.let { (it as? JsonPrimitive)?.contentOrNull }
+            ?: attachedSessionId
+            ?: UNTRACKED_SESSION
+        val applied = sessionMutex.withLock { seqBySession[owner] ?: 0L }
+        if (seq <= applied) return // replay overlap: drop the duplicate, do not re-apply
+        if (applied > 0 && seq > applied + 1) {
+            config.onGap?.invoke(applied, seq)
         }
         val coalesceFlag = (params["x-vade"] as? JsonObject)?.get("coalesce")
         val coalesced = coalesceFlag is JsonPrimitive && coalesceFlag.booleanOrNull == true
         val event = VadeEventParser.parse(type, seq, coalesced, params["payload"], config.onMalformed)
-        // Advance last_seq regardless of the parse outcome: an undecodable event still
-        // counts as applied, or a reconnect would replay it into the same dead end.
-        lastSeq = seq
+        // Advance that session's last_seq regardless of the parse outcome: an undecodable
+        // event still counts as applied, or a reconnect would replay it into the same dead end.
+        sessionMutex.withLock { seqBySession = seqBySession + (owner to seq) }
         if (event != null) _events.emit(event)
     }
 
@@ -528,25 +597,24 @@ class VadeClient(
     /**
      * `ui/attach`. When [AttachParams.lastSeq] is `null` **and the params name the tracked
      * session**, the tracked [lastSeq] is substituted (the reconnect path); pass `lastSeq`
-     * explicitly to override. On a snapshot attach the client adopts the snapshot's
-     * `from_seq` as its new [lastSeq]; on a replay attach it keeps tracking.
+     * explicitly to override.
      *
-     * A4-1 · the substitution is strictly a SAME-SESSION re-attach: it fires only when
-     * [AttachParams.sessionId] is non-null. A CREATE (`session_id = null`) and a switch to
-     * a foreign session must not inherit the tracked session's seq — their replay windows
-     * are unrelated, and the CREATE frame must stay exactly `{"session_id":null}` (the
-     * contract's create form; core `manager.attach()` reads null and mints a session).
+     * P0-3 · 替换是**严格同会话**的重连语义：`params.sessionId == attachedSessionId`。
+     * 以前只要求「两边都非 null」，于是切到 B 时会把 A 的水位（比如 500）塞进 B 的
+     * attach 帧 —— core 的 `replay.covers(B, 500)` 只要缓冲够长就成立，回的是 replay 而不是
+     * snapshot：历史为空、B 的 1..500 又全被 `seq <= lastSeq` 丢掉（整条流静默冻结）。
+     *
+     * [AttachParams.forceSnapshot] 是「读历史」的显式请求：即使正跟踪同一个会话也不替换，
+     * core 于是照约定回快照。
+     *
+     * On a snapshot attach the client adopts the snapshot's `from_seq` as that session's new
+     * watermark; on a replay attach it keeps tracking.
      */
     suspend fun attach(params: AttachParams): AttachResult {
-        val effective = if (params.lastSeq == null &&
-            params.sessionId != null &&
-            attachedSessionId != null &&
-            params.sessionId == attachedSessionId
-        ) {
-            // ONLY a same-session re-attach resumes from the tracked cursor.
-            // A switch to another session (A -> B) must ask for B's full
-            // snapshot; inheriting A's seq made B's thread empty.
-            params.copy(lastSeq = lastSeq)
+        val tracked = attachedSessionId
+        val sameSession = params.sessionId != null && params.sessionId == tracked
+        val effective = if (params.lastSeq == null && !params.forceSnapshot && sameSession) {
+            params.copy(lastSeq = lastSeqFor(params.sessionId!!))
         } else {
             params
         }
@@ -557,22 +625,25 @@ class VadeClient(
         val result = call(VadeMethod.UI_ATTACH, params.toJson()) { AttachResult.fromJson(it) }
         sessionMutex.withLock {
             attachedSessionId = result.sessionId
-        }
-        if (result.snapshot != null) {
-            // Trust the core's snapshot point verbatim (not max): after a core restart
-            // the counter may legitimately be lower than a stale local value.
-            lastSeq = result.snapshot.fromSeq
+            // 每个会话只接受自己的水位：快照是那一会话的**权威**起点（core 重启后计数可能
+            // 比本地旧值低，所以按快照逐字覆盖，不是 max）。replay 分支一个字节都不动 ——
+            // 旧水位继续有效，重放的事件按 seq 顺序接上。
+            val snapshot = result.snapshot
+            if (snapshot != null) {
+                seqBySession = seqBySession + (result.sessionId to snapshot.fromSeq)
+            }
         }
         return result
     }
 
-    /** `ui/detach`; clears the tracked session/lastSeq when it matches. */
+    /** `ui/detach`; clears the tracked session and ITS watermark when it matches. */
     suspend fun detach(params: DetachParams): OkResult {
         val result = call(VadeMethod.UI_DETACH, params.toJson()) { OkResult.fromJson(it) }
         sessionMutex.withLock {
             if (params.sessionId == attachedSessionId) {
                 attachedSessionId = null
-                lastSeq = 0
+                // 只丢这一个会话的水位：别的会话各自的水位继续有效（P0-3 的另一半）。
+                seqBySession = seqBySession - params.sessionId
             }
         }
         return result
@@ -793,6 +864,9 @@ suspend fun uiStateGet(params: StateGetParams): StateGetResult =
     companion object {
         /** The notification method core sends every UI event with. */
         const val EVENT_METHOD = "event"
+
+        /** 「还没有跟踪任何会话」时水位落到的槽位（空串不可能是真实 session id）。 */
+        private const val UNTRACKED_SESSION = ""
 
         const val EVENT_ATTACH = "ui/attach"
         const val EVENT_DETACH = "ui/detach"

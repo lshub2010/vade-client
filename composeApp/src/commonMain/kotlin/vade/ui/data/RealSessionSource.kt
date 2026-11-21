@@ -40,6 +40,7 @@ import vade.ui.protocol.SubmitParams
 import vade.ui.protocol.SubmitResult
 import vade.ui.protocol.VadeClient
 import vade.ui.protocol.VadeClientConfig
+import vade.ui.protocol.VadeConnectionState
 import vade.ui.protocol.VadeErrorCodes
 import vade.ui.protocol.VadeEvent as VadeProtocolEvent
 import vade.ui.protocol.VadeException
@@ -272,7 +273,13 @@ class RealSessionSource(
             collectorJobs = listOf(
                 s.launch {
                     stateReady.complete(Unit)
-                    created.state.collect { protocolState -> _state.value = protocolState.toRealState() }
+                    created.state.collect { protocolState ->
+                        _state.value = protocolState.toRealState()
+                        // P0-2 · 运行期凭据失效（core 重启 → 会话表清空 → 带 cookie 的升级
+                        // 被拒/无应答）：桥一旦知道，引导卡就会出现、App 会重建源 —— 而不是
+                        // 带着一张死 cookie 无限退避重连（那就是「僵尸重连」）。
+                        maybeResetBridgeCredential(created, protocolState)
+                    }
                 },
                 s.launch {
                     eventsReady.complete(Unit)
@@ -360,17 +367,17 @@ class RealSessionSource(
     }
 
     /**
-     * The message thread of one session, from `ui/attach`'s snapshot. Attaching with
-     * `last_seq = null` is deliberate: for a switched/foreign session the tracked
-     * last_seq does not apply and core answers with the snapshot ("not covered → the
-     * only honest answer"); for a re-attach of the SAME session it replays the gap,
-     * and the thread meanwhile streams in through [observeEvents].
+     * The message thread of one session, from `ui/attach`'s snapshot.
+     *
+     * P0-3 · `forceSnapshot = true` 是显式的「我读的是历史，给我快照」：`last_seq` 省略在
+     * 线上有两种含义（同会话重连续订 vs 首次读历史），光靠「恰好没跟踪会话」来区分是偶然的。
+     * 以前这里只是省略 last_seq，于是当客户端正跟踪同一个会话时，`VadeClient.attach` 会把
+     * 该会话的水位补上 → core 回 replay（无 snapshot）→ 消息列表空、UI 显示「还没有消息」。
      */
     override suspend fun messages(sessionId: String): List<ChatMessage> {
-        // A history read must ask for a snapshot, not a replay: `attachFresh`
-        // bypasses the same-session last_seq substitution, and omitting
-        // last_seq is the only form core always answers with a snapshot.
-        val result = attachedClient().uiAttachFresh(sessionId)
+        val result = attachedClient().uiAttach(
+            AttachParams(sessionId = sessionId, lastSeq = null, forceSnapshot = true),
+        )
         return snapshotToMessages(result.snapshot?.messages)
     }
 
@@ -456,12 +463,40 @@ class RealSessionSource(
     private fun connectFactory(): TeeTransportFactory {
         tapFactory?.let { return it }
         val inner = transportFactory
+        // P0-4 · 桥已经把这张 factory 退休（换 core / 断开）：不许再拿它建一条新连接。
+        // 这里直接失败而不是「建一个马上抛」的 client —— 后者会被 runner 的退避包成
+        // 「一直在重连」，用户永远等不到错误。
+        if (inner != null && !inner.isUsable) {
+            throw VadeException(
+                VadeErrorCodes.UNAVAILABLE,
+                "the pairing for this core was retired (core switch / unpair); reconnect is not allowed",
+            )
+        }
+        val resolved = inner
             ?: (ownedFactoryProvider?.invoke() ?: KtorTransportFactory(config)).also { ownedFactory = it }
-        return TeeTransportFactory(inner).also { tapFactory = it }
+        return TeeTransportFactory(resolved).also { tapFactory = it }
     }
 
     private fun attachedClient(): VadeClient =
         _client ?: throw VadeException(VadeErrorCodes.UNAVAILABLE, "source is disconnected")
+
+    /**
+     * P0-2 · 运行期凭据失效检测：**只看**「本源的 factory 就是桥里那一张」且失败是
+     * `AUTH_FAILED`（WS 升级被拒 / 握手无应答）。
+     *
+     * 三条限制都是为了不误伤：
+     *  - 测试替身 / 设备会话 / 自建 factory 的 `AUTH_FAILED` 与配对凭据无关；
+     *  - 码错（首配卡路径）不经过这里 —— 那条路的 factory 不在桥里；
+     *  - 只有 `Reconnecting`（runner 已经判定这次连接失败）才看 `lastConnectFailure`。
+     */
+    private fun maybeResetBridgeCredential(created: VadeClient, protocolState: VadeConnectionState) {
+        if (protocolState !is VadeConnectionState.Reconnecting) return
+        val cause = created.lastConnectFailure ?: return
+        if ((cause as? VadeException)?.code != VadeErrorCodes.AUTH_FAILED) return
+        val bridgeFactory = PairingRuntime.pairedFactory ?: return
+        if (bridgeFactory !== transportFactory) return
+        PairingRuntime.noteCredentialRejected()
+    }
 
     private var clientMsgSeq = 0
 

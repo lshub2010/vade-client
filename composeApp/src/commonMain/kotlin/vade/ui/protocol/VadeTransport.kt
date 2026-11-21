@@ -45,6 +45,25 @@ interface VadeTransport {
  * single connection — because reconnect (exponential backoff) is the client's job.
  */
 interface VadeTransportFactory {
+
+    /**
+     * P0-4 · 这个 factory 还能不能用来建连接。
+     *
+     * 桥在「换 core / 断开」时把旧 factory [dispose] 掉（它的 `HttpClient` 已经关了），
+     * 之后任何重连都不许把它复活：`VadeClient.runLoop` 见 `false` 直接终止，
+     * `RealSessionSource` 见 `false` 直接失败 —— 而不是按退避无限重试成「一直在重连」。
+     */
+    val isUsable: Boolean get() = true
+
+    /**
+     * P0-1 · 本 factory 持有的 `__Host-ac_ui` 的**值**（不含头名）。`null` = 没有 UI 会话
+     * （device 会话 / 测试替身 / 还没 bootstrap）。
+     *
+     * 持久化层在配对成功后读它落盘；重启后由 [VadeClientConfig.sessionCookie] 重新交回
+     * factory，于是重连**不再**兑换一次性码（码已经被消费）。
+     */
+    val sessionCookie: String? get() = null
+
     /** Open a new transport. Throws on failure; the client treats any throw as "retry later". */
     suspend fun connect(): VadeTransport
 
@@ -100,35 +119,75 @@ class KtorTransportFactory(
     private val client: HttpClient = platformHttpClient(config.allowInsecureTls),
 ) : VadeTransportFactory {
 
+    /**
+     * P0-1 · 初始 cookie：优先用配置里持久化下来的那张（[VadeClientConfig.sessionCookie]，
+     * 重启恢复路径），否则 `null`（等 `POST /ui/session` 换一张）。
+     */
     @Volatile
-    private var cookieHeader: String? = null
+    private var cookieHeader: String? = config.sessionCookie?.let { "$COOKIE_NAME=${it.value}" }
+
+    /** P0-4 · 被桥退休之后不再可用；`connect()` 直接抛而不是让调用方无限重试。 */
+    @Volatile
+    private var disposed = false
 
     private val bootstrapMutex = Mutex()
 
+    override val isUsable: Boolean get() = !disposed
+
+    override val sessionCookie: String?
+        get() = cookieHeader?.substringAfter("=", "")?.takeIf { it.isNotEmpty() }
+
     override suspend fun connect(): VadeTransport {
+        if (disposed) {
+            throw VadeException(
+                VadeException.TRANSPORT_CLOSED_CODE,
+                "this transport factory was retired (core switch / unpair); a retired factory must not reconnect",
+            )
+        }
         val cookie = ensureSessionCookie()
-        val session = client.webSocketSession {
-            url(websocketUrl())
-            if (cookie != null) {
-                // The JS engine may refuse custom headers on the upgrade — a browser
-                // carries cookies itself, so a refusal there is harmless; on JVM the
-                // header is the whole authentication.
-                runCatching { header(HttpHeaders.Cookie, cookie) }
+        val session = try {
+            client.webSocketSession {
+                url(websocketUrl())
+                if (cookie != null) {
+                    // The JS engine may refuse custom headers on the upgrade — a browser
+                    // carries cookies itself, so a refusal there is harmless; on JVM the
+                    // header is the whole authentication.
+                    runCatching { header(HttpHeaders.Cookie, cookie) }
+                }
             }
+        } catch (ce: kotlinx.coroutines.CancellationException) {
+            throw ce
+        } catch (t: Throwable) {
+            // P0-2 · 升级被拒 = 这张 cookie 已经没人认了（core 重启过 / 过期 / 被吊销）。
+            // 先本地作废再抛出：否则下一次重连还会带着同一张死 cookie，成了僵尸重连。
+            if (isCredentialHandshakeFailure(t)) {
+                cookieHeader = null
+                throw VadeException(
+                    VadeErrorCodes.AUTH_FAILED,
+                    "websocket upgrade rejected the stored __Host-ac_ui cookie: ${t.message}",
+                )
+            }
+            throw t
         }
         return KtorVadeTransport(session)
     }
 
     override suspend fun dispose() {
+        disposed = true
         client.close()
     }
 
     /**
      * `POST /ui/session` 那一步（换 `__Host-ac_ui` cookie），单独成函数以便 [connect] 在 WS
-     * 升级前调用、[revokeSession] 的用例也能只走 HTTP。device 会话（[VadeClientConfig.browserSession]
-     * 为 null）没有可引导的 UI 会话 → `null`，一次请求都不发。
+     * 升级前调用、[revokeSession] 的用例也能只走 HTTP。
+     *
+     * - 有一次性码（[VadeClientConfig.browserSession]）→ `POST /ui/session` 换一张；
+     * - 没有码但有持久化的 cookie（重启恢复）→ 直接用它，**一次请求都不发**（码早已消费，
+     *   再 POST 只会 401）；
+     * - 两者都没有（device 会话）→ `null`。
      */
-    internal suspend fun ensureSessionCookie(): String? = config.browserSession?.let { ensureCookie() }
+    internal suspend fun ensureSessionCookie(): String? =
+        config.browserSession?.let { ensureCookie() } ?: cookieHeader
 
     /**
      * `DELETE /ui/session`（契约：204）—— 吊销本 factory 名下的 UI 会话。
@@ -189,7 +248,7 @@ class KtorTransportFactory(
                     message = "/ui/session response carried no __Host-ac_ui cookie " +
                         "(browser targets cannot read Set-Cookie: pair through the page shell instead)",
                 )
-            val header = "__Host-ac_ui=$token"
+            val header = "$COOKIE_NAME=$token"
             cookieHeader = header
             header
         }
@@ -205,6 +264,9 @@ class KtorTransportFactory(
     internal fun websocketUrl(): String = "${if (config.tls) "wss" else "ws"}://${config.host}:${config.port}/ws"
 
     private companion object {
+        /** `Set-Cookie` 里的头名（RFC-0004 §8.2）。 */
+        const val COOKIE_NAME = "__Host-ac_ui"
+
         /** Minimal JSON string escaping for the two literals we send ourselves. */
         fun jsonString(raw: String): String = buildString {
             append('"')
@@ -221,6 +283,37 @@ class KtorTransportFactory(
             append('"')
         }
     }
+}
+
+/**
+ * P0-2 · 这次失败是不是「本机那张 `__Host-ac_ui` 已经不被 core 认了」。
+ *
+ * `/ws` 的正常拒绝形态是握手阶段的状态码（401 / 403）；Ktor 会把它包成
+ * `ResponseException`（`expectSuccess` 打开时）或 `WebSocketException("Handshake exception,
+ * expected status code 101 but was 401")`。两种都认，另外再看一眼 cause 链 —— 引擎经常把
+ * 真正的状态码埋在 `cause` 里。
+ *
+ * 只用于**清除本地凭据**这个决定，因此宁可保守：普通网络错误（拒绝连接 / 超时 / DNS）
+ * 一个都不命中，否则一次 core 没起来就会把用户的有效 cookie 删掉。
+ */
+fun isCredentialHandshakeFailure(t: Throwable): Boolean {
+    var current: Throwable? = t
+    var depth = 0
+    while (current != null && depth < 8) {
+        val status = (current as? io.ktor.client.plugins.ResponseException)?.response?.status?.value
+        if (status == 401 || status == 403) return true
+        val message = current.message.orEmpty()
+        if (message.contains("401") ||
+            message.contains("403") ||
+            message.contains("Unauthorized", ignoreCase = true) ||
+            message.contains("Forbidden", ignoreCase = true)
+        ) {
+            return true
+        }
+        current = current.cause
+        depth += 1
+    }
+    return false
 }
 
 /**
