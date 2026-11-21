@@ -2,6 +2,7 @@ package vade.ui.chat
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import vade.ui.protocol.ApprovalDecision
 import vade.ui.protocol.ApprovalScope
@@ -329,7 +330,7 @@ class ToolCardProjectionTest {
     @Test
     fun approvalBindsToItsToolCardInPlace() = runBlocking {
         val probe = ToolCardProbe(EmptyTranscript())
-        val chat = ChatState("s-real", turns = probe)
+        val chat = ChatState("s-real", turns = probe, wireDispatcher = Dispatchers.Unconfined)
         chat.loadHistory()
         chat.applyLiveEvent(toolCall(seq = 1, callId = "call-1"))
         val cardIndexBefore = cardIndex(chat, "call-1")
