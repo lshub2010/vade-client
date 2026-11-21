@@ -195,27 +195,30 @@ class KtorTransportFactory(
      * 只在**已经**拿到 cookie 时发：没 bootstrap 过就没有本进程的 UI 会话可吊销，再拿一次性
      * 配对码去 POST 只会白烧一个码（[ensureCookie] 的 memo 里没有码可用）。
      *
-     * 无论成功失败都把本地 cookie 清掉（`finally`）：调用它的场景是「旧 core 不再使用」，
-     * 留着一张已经/即将失效的凭证只会在下一次重连时冒充登录态。失败原样抛给
-     * `PairingRuntime` 的 best-effort 包装（超时 / 失败不阻塞切换，只记录 + 提示）。
+     * P1-3 · **只有 core 确认（2xx）之后才忘掉本地 cookie**。旧实现用 `finally` 无条件清：
+     * `switchCore` 在吊销这一步被取消（或旧 core 超时 / 拒绝）时，桥仍然是 `Paired(old)`、
+     * factory 也还是那一个，但本地 cookie 已经没了 —— 下一次重连不带 cookie，core 按 device
+     * peer 走 Noise，升级可能"成功"却一个字节都不回，界面显示已连接而所有 RPC 超时。
+     * 用户点了取消却把旧连接悄悄弄坏，比干净失败更难诊断。
+     *
+     * 失败原样抛给 `PairingRuntime` 的 best-effort 包装（超时 / 失败不阻塞切换，只记录 +
+     * 提示）。撤销成功后本地不再持有这张凭证；撤销失败时它可能仍然有效，留着才是对的。
      */
     override suspend fun revokeSession() {
         val cookie = cookieHeader ?: return
-        try {
-            val response = client.delete {
-                url(httpUrl() + "/ui/session")
-                header(HttpHeaders.Cookie, cookie)
-            }
-            if (response.status.value !in 200..299) {
-                throw VadeException(
-                    code = VadeErrorCodes.AUTH_FAILED,
-                    message = "DELETE /ui/session failed with HTTP ${response.status.value}: " +
-                        response.bodyAsText().take(200),
-                )
-            }
-        } finally {
-            cookieHeader = null
+        val response = client.delete {
+            url(httpUrl() + "/ui/session")
+            header(HttpHeaders.Cookie, cookie)
         }
+        if (response.status.value !in 200..299) {
+            throw VadeException(
+                code = VadeErrorCodes.AUTH_FAILED,
+                message = "DELETE /ui/session failed with HTTP ${response.status.value}: " +
+                    response.bodyAsText().take(200),
+            )
+        }
+        // 到这里 core 已经确认吊销：本机再留着这张 cookie 只会冒充登录态。
+        cookieHeader = null
     }
 
     private suspend fun ensureCookie(): String = bootstrapMutex.withLock {
@@ -303,8 +306,9 @@ fun isCredentialHandshakeFailure(t: Throwable): Boolean {
         val status = (current as? io.ktor.client.plugins.ResponseException)?.response?.status?.value
         if (status == 401 || status == 403) return true
         val message = current.message.orEmpty()
-        if (message.contains("401") ||
-            message.contains("403") ||
+        // P1-1 · 状态码按**词边界**匹配：裸子串会把端口 `4013` / `14013` 或正文里的一段
+        // 数字当成 401 —— 那条路上紧接着就是「删掉磁盘上的凭据」，一次误判 = 用户回终端捞码。
+        if (HTTP_AUTH_STATUS.containsMatchIn(message) ||
             message.contains("Unauthorized", ignoreCase = true) ||
             message.contains("Forbidden", ignoreCase = true)
         ) {
@@ -315,6 +319,13 @@ fun isCredentialHandshakeFailure(t: Throwable): Boolean {
     }
     return false
 }
+
+/**
+ * 握手拒绝的状态码，**带词边界**：`\b401\b` 命中 `HTTP 401` / `code 401 but was`，
+ * 不命中端口 `:4013` 或 `4013`。
+ */
+private val HTTP_AUTH_STATUS = Regex("""\b(?:401|403)\b""")
+
 
 /**
  * [VadeTransport] over a Ktor WebSocket session. Core sends BINARY frames (UTF-8 JSON

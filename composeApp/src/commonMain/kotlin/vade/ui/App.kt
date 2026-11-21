@@ -12,6 +12,9 @@ import vade.ui.data.FakeSessionSource
 import vade.ui.data.PairingRuntime
 import vade.ui.data.PairingRuntimeState
 import vade.ui.data.SessionSource
+import vade.ui.data.UnpairedSessionSource
+import vade.ui.data.isExplicitFixtureChannel
+import vade.ui.data.rawSourceStrings
 import vade.ui.data.sessionSourceFromEnvironment
 import vade.ui.shell.AppShell
 import vade.ui.shell.BackDispatcher
@@ -60,10 +63,19 @@ fun App(
     Skins.installBuiltIns()
     // H1 · 首次运行配对成功后，**入口重读配对桥**并交出带上 cookie 的新源：UiState 随源
     // 重建、loader 重新拉列表（真数据上屏）。默认启动（无参数）= 夹具源 + 列表顶部的
-    // 引导卡；配对成功那一刻 [PairingRuntime] 从 Unpaired 变 Paired，这一行读出变化、
-    // 重新走 `sessionSourceFromEnvironment()`（桥在 Fake 分支里被消费）。
-    // 未配对时 `effectiveSource` 恒等于传进来的 [source] —— 与旧行为逐字节相同。
-    val paired = PairingRuntime.state as? PairingRuntimeState.Paired
+    // 配对成功那一刻 [PairingRuntime] 从 Unpaired 变 Paired，这一行读出变化、重新走
+    // `sessionSourceFromEnvironment()`（桥在 Fake 分支里被消费）。未配对时 `effectiveSource`
+    // 通常等于传进来的 [source]；唯一的例外是 P1-6 的「真数据丢过」状态（见下）。
+    val pairingState = PairingRuntime.state
+    val paired = pairingState as? PairingRuntimeState.Paired
+    // P1-6 · 桥退回 Unpaired（凭据被拒 / 用户断开 / 磁盘凭据这次连不上）时，列表**不许**
+    // 回落到启动时的夹具源：那会把「配对失效」变成「会话还在」（假数据），用户能点进假
+    // 会话、发假消息。改成空源 + 分类横幅（[UnpairedSessionSource] + `ListStatus.Unpaired`）。
+    //
+    // 首次运行（裸 `Unpaired()`）不算：那时夹具就是脚手架，配对卡在上方说「假数据」。
+    // 显式 `source=fixtures` 的开发者通道也不算：那是调用方明确选择的逃生口。
+    val lostRealData = (pairingState as? PairingRuntimeState.Unpaired)?.lostRealData == true
+    val explicitFixtures = remember { isExplicitFixtureChannel(rawSourceStrings()) }
     // P0-1 · 启动恢复：平台 KV 里可能存着上次配对成功留下的 `{host, port, tls, trustMode}`
     // 与那张 `__Host-ac_ui`。**先用它探测一次**（一次 WS 升级 + 一帧请求）：
     //  - 成功 → 桥进 Paired，下面这行 `remember` 换源、列表开始拉真数据；
@@ -76,11 +88,15 @@ fun App(
             runCatching { PairingRuntime.restoreStoredCredential() }
         }
     }
-    val effectiveSource = remember(source, paired) {
+    val effectiveSource = remember(source, paired, lostRealData, explicitFixtures) {
         // P1-4 · 配对桥里的 endpoint 是用户填过的合法值，但**环境通道**可能仍然是坏的
         // （例如应用启动后 `VADE_PORT` 被改成了 `8443x`）。这里再解析一次时不能把
         // 组合炸掉：解析失败就沿用入口传进来的源，错误屏已经在入口渲染过了。
-        if (paired != null) runCatching { sessionSourceFromEnvironment() }.getOrElse { source } else source
+        when {
+            paired != null -> runCatching { sessionSourceFromEnvironment() }.getOrElse { source }
+            lostRealData && !explicitFixtures && source is FakeSessionSource -> UnpairedSessionSource()
+            else -> source
+        }
     }
     // g-pair-first-run：`remember` 以 [effectiveSource] 为 key —— 源换了，UiState 一起换。
     // DisposableEffect：随源重建时把旧 UiState 的 loader/连接停掉 —— 没配上对的旧源

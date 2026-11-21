@@ -4,6 +4,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpStatusCode
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermission
@@ -15,6 +16,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.runBlocking
 import vade.ui.protocol.FakeTransport
 import vade.ui.protocol.KtorTransportFactory
@@ -102,6 +106,36 @@ class PairingRestoreTest {
     private class CookieFactory(private val cookie: String) : VadeTransportFactory {
         override val sessionCookie: String get() = cookie
         override suspend fun connect(): VadeTransport = FakeTransport()
+    }
+
+    /**
+     * `connect()` 永不返回 —— 防火墙 DROP / VPN 断 / 错误网段 / NAT 黑洞的形状：
+     * TCP 连不上也不报错，只有探针预算会先到。
+     */
+    private class HangingFactory : VadeTransportFactory {
+        private var disposed = false
+        override val isUsable: Boolean get() = !disposed
+        override suspend fun connect(): VadeTransport = awaitCancellation()
+        override suspend fun dispose() {
+            disposed = true
+        }
+    }
+
+    /**
+     * 升级成功、但流在回任何帧之前**正常结束** —— 旧实现里 `probe.incoming.first{}` 会抛
+     * `NoSuchElementException` 穿出探针（factory 泄漏 + 桥停在裸 `Unpaired()`）。
+     */
+    private class EmptyStreamFactory : VadeTransportFactory {
+        private var disposed = false
+        override val isUsable: Boolean get() = !disposed
+        override suspend fun connect(): VadeTransport = object : VadeTransport {
+            override val incoming: Flow<String> = emptyFlow()
+            override suspend fun send(frame: String) = Unit
+            override suspend fun close() = Unit
+        }
+        override suspend fun dispose() {
+            disposed = true
+        }
     }
 
     /** 真 [KtorTransportFactory] + [MockEngine]：每次 HTTP 请求都记在 [wire] 里。 */
@@ -226,6 +260,127 @@ class PairingRestoreTest {
         )
     }
 
+    // ------------------------------------------------- 探针：超时 / 流结束 / 误判 401
+
+    /**
+     * P1-1 · 升级超时**不是**「凭据已死」。
+     *
+     * 防火墙 DROP / VPN 断 / 错误网段 / NAT 黑洞时 TCP 连不上也不报错，5 s 预算先到。
+     * 旧实现走 `credentialRejected`（删磁盘凭据 + 桥 credentialRejected）—— 一次网络
+     * 黑洞就销毁唯一凭据，用户必须回 core 终端捞新码。现在只能判 `Unreachable`：凭据留着，
+     * 卡片给「用已保存的配对重连」。
+     */
+    @Test
+    fun aHangingUpgradeKeepsTheStoredCredentialAndOnlyReportsUnreachable(): Unit = runBlocking {
+        PairingRuntime.install(CookieFactory("tok-hang"), "core.local", 8443, persist = true)
+        restart()
+
+        val factory = HangingFactory()
+        val outcome = PairingRuntime.restoreStoredCredential(
+            raw = RawSourceStrings(null, null, null, null),
+            probeTimeoutMs = 50,
+            transportFactory = { factory },
+        )
+
+        val unreachable = assertIs<PairingRestoreOutcome.Unreachable>(
+            outcome,
+            "升级超时 = 核心暂时不可达，不是凭据被拒（P1-1）",
+        )
+        assertEquals(VadeErrorCodes.TIMEOUT, (unreachable.cause as? VadeException)?.code, "原因是超时，不是 401")
+        assertTrue(Files.isRegularFile(pairingFile()), "一次网络黑洞不许删掉唯一凭据")
+        assertEquals("tok-hang", PairingStores.load()?.cookie, "磁盘上的 cookie 必须原样还在")
+        val unpaired = assertIs<PairingRuntimeState.Unpaired>(PairingRuntime.state)
+        assertTrue(unpaired.storedCredentialKept, "卡片要给「用已保存的配对重连」")
+        assertFalse(unpaired.credentialRejected, "不许说「上次的配对已失效」—— 它没有失效")
+        assertFalse(factory.isUsable, "没进桥的 factory 必须被 dispose（连接池不许泄漏）")
+    }
+
+    /**
+     * P1-1 的误判面：错误原文里出现「401」不一定是 401。
+     *
+     * core 端口 `4013` 的连接失败原文形如 `Connect to core.local:4013 failed: ...` ——
+     * 旧实现用 `message.contains("401")` 判「凭据已死」并删盘。现在按词边界匹配，只能
+     * 走 `Unreachable`。
+     */
+    @Test
+    fun aConnectionFailureWhoseMessageMentionsPort4013IsNotACredentialRejection(): Unit = runBlocking {
+        PairingRuntime.install(CookieFactory("tok-4013"), "core.local", 4013, persist = true)
+        restart()
+
+        val outcome = PairingRuntime.restoreStoredCredential(
+            raw = RawSourceStrings(null, null, null, null),
+            transportFactory = {
+                object : VadeTransportFactory {
+                    override suspend fun connect(): VadeTransport =
+                        throw IOException("Connect to core.local:4013 failed: Connection timed out")
+                }
+            },
+        )
+
+        assertIs<PairingRestoreOutcome.Unreachable>(outcome, "端口数字巧合不许判成 401")
+        assertTrue(Files.isRegularFile(pairingFile()), "连接失败不许删凭据")
+        assertEquals("tok-4013", PairingStores.load()?.cookie)
+    }
+
+    /**
+     * 升级成功、core 一个字节都不回（把 cookie 当 device peer 在等 Noise 握手）：这才是
+     * **真的**凭据已死 —— 保留 P0-2 的删除语义，否则就是僵尸重连。
+     */
+    @Test
+    fun aCoreThatAcceptsTheSocketAndNeverAnswersIsTreatedAsADeadCredential(): Unit = runBlocking {
+        PairingRuntime.install(CookieFactory("tok-silent"), "core.local", 8443, persist = true)
+        restart()
+
+        val outcome = PairingRuntime.restoreStoredCredential(
+            raw = RawSourceStrings(null, null, null, null),
+            probeTimeoutMs = 50,
+            transportFactory = {
+                object : VadeTransportFactory {
+                    override suspend fun connect(): VadeTransport = FakeTransport()
+                }
+            },
+        )
+
+        assertIs<PairingRestoreOutcome.Rejected>(outcome, "升级成功但永不应答 = 凭据已死（僵尸重连的起点）")
+        assertFalse(Files.exists(pairingFile()), "死凭据必须删掉，否则下次启动再演一遍")
+        val unpaired = assertIs<PairingRuntimeState.Unpaired>(PairingRuntime.state)
+        assertTrue(unpaired.credentialRejected, "桥要说「上次的配对已失效」")
+    }
+
+    /**
+     * P1-2 · 探针读失败（流在回包前正常结束 → `NoSuchElementException`）不许穿出
+     * `restoreStoredCredential`。
+     *
+     * 旧实现只把 `probe.send` 包进 `runCatching`：`first{}` 抛出的异常直接穿出去 →
+     * `factory.dispose()` 不执行（HttpClient/连接池泄漏）、桥停在裸 `Unpaired()`（既没有
+     * `credentialRejected` 也没有 `storedCredentialKept`，卡片上连重连按钮都没有），而磁盘上
+     * 的凭据明明还在。现在整段 `runCatching` + `finally dispose` + 按类型映射。
+     */
+    @Test
+    fun aProbeWhoseStreamEndsWithoutAFrameKeepsTheCredentialAndDisposesTheFactory(): Unit = runBlocking {
+        PairingRuntime.install(CookieFactory("tok-eof"), "core.local", 8443, persist = true)
+        restart()
+
+        val factory = EmptyStreamFactory()
+        // 这一行本身不许抛：异常若穿出探针，测试会红在这里（而不是红在断言上）。
+        val outcome = PairingRuntime.restoreStoredCredential(
+            raw = RawSourceStrings(null, null, null, null),
+            probeTimeoutMs = 1_000,
+            transportFactory = { factory },
+        )
+
+        assertIs<PairingRestoreOutcome.Unreachable>(outcome, "流提前结束不是「凭据已死」的证据")
+        assertTrue(Files.isRegularFile(pairingFile()), "凭据必须留着")
+        assertEquals("tok-eof", PairingStores.load()?.cookie)
+        val unpaired = assertIs<PairingRuntimeState.Unpaired>(PairingRuntime.state)
+        assertTrue(
+            unpaired.storedCredentialKept,
+            "桥必须是「凭据还在但连不上」，不许是裸 Unpaired（那样卡片没有重连入口）",
+        )
+        assertFalse(unpaired.credentialRejected)
+        assertFalse(factory.isUsable, "探针异常路径也必须 dispose factory（旧实现泄漏 HttpClient）")
+    }
+
     @Test
     fun aFreshProcessWithoutACredentialHasNothingToRestore(): Unit = runBlocking {
         val outcome = PairingRuntime.restoreStoredCredential(
@@ -235,8 +390,6 @@ class PairingRestoreTest {
         assertEquals(PairingRestoreOutcome.NoCredential, outcome)
         assertEquals(PairingRuntimeState.NotBooted, PairingRuntime.state, "没有凭据 = 不动桥")
     }
-
-    // ------------------------------------------------------------------ 桌面 actual：路径 + 0600
 
     @Test
     fun theDesktopStoreWritesAPrivateFileUnderTheConfigHome() {

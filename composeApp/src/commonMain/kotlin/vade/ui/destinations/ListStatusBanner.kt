@@ -15,6 +15,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import vade.ui.UiText
@@ -71,6 +72,16 @@ sealed interface ListStatus {
     data object Connected : ListStatus
 
     /**
+     * P1-6 · 现在**没有任何真源**：桥从 `Paired` 退回了 `Unpaired`（凭据被拒 / 用户断开 /
+     * 磁盘凭据这次连不上），列表由 `UnpairedSessionSource` 供给，必然是空的。
+     *
+     * 为什么单独一个分支而不是 `Connected`（空列表就安静）：这里的空**不是**「core 上没有
+     * 会话」，也不是「还没读到」—— 不说清楚就会被当成数据丢了。也不能用 `Failed`：读取
+     * 根本不该发生（重试对「没有凭据」没有意义），可操作的出口是上方的配对卡。
+     */
+    data object Unpaired : ListStatus
+
+    /**
      * 真源，读取失败。[headline] 是用户视角的一句结论，[detail] 是分类文案 + 传输原话，
      * [remedy] 是那条可以照抄的启动命令（含 `VADE_SOURCE` / `VADE_PAIR_CODE` 与配对码从哪取）。
      * 三者都可能被单独断言，所以它们是字段而不是拼在渲染里的字符串。
@@ -89,6 +100,20 @@ sealed interface ListStatus {
  */
 const val FIXTURE_NOTE: String =
     "假数据 · 未连接 core（U1-a 只做骨架，U1-b 接线）"
+
+/**
+ * P1-6 · 没有任何真源（桥退回 Unpaired）时列表顶部那一行。
+ *
+ * 必须同时说清两件事：**列表为什么是空的**（不是「core 上没有会话」）与**下一步在哪**
+ * （上方配对卡）。这句话只在 [ListStatus.Unpaired] 下出现 —— 真源连上时它会是谎。
+ */
+const val UNPAIRED_NOTE: String =
+    "未连接 core · 列表为空（不是「没有会话」，而是当前没有数据源）；配对成功后会加载真数据。"
+
+/** [UNPAIRED_NOTE] 那条横幅的测试 tag（`App` 级用例断言「空列表 + 分类横幅」）。 */
+const val UNPAIRED_NOTE_TAG: String = "list-status-unpaired"
+
+
 
 /**
  * 首帧之后再算一遍的 [ListStatus]。
@@ -166,6 +191,18 @@ internal fun ListStatusBanner(
             size = 10,
             color = skin.colors.onSurfaceVariant,
             modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+        )
+
+        // P1-6 · 没有数据源：列表是空的，而且这不是「0 个会话」。用错误色会读成「读失败」
+        // （有重试的含义），这里用普通说明色 —— 下一步（重新配对）在上方的配对卡里。
+        ListStatus.Unpaired -> UiText(
+            text = UNPAIRED_NOTE,
+            size = 11,
+            color = skin.colors.onSurfaceVariant,
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp)
+                .testTag(UNPAIRED_NOTE_TAG),
         )
 
         is ListStatus.Connecting -> UiText(

@@ -53,11 +53,37 @@ class ListStatusOfTest {
         error: LoadError? = null,
         fixture: Boolean = false,
         hasRows: Boolean = false,
+        unpaired: Boolean = false,
         raw: () -> RawSourceStrings = { raw(host = "127.0.0.1", port = "18755") },
     ): ListStatus =
-        listStatusOf(fixture = fixture, phase = phase, error = error, hasRows = hasRows, raw = raw)
+        listStatusOf(
+            fixture = fixture,
+            phase = phase,
+            error = error,
+            hasRows = hasRows,
+            unpaired = unpaired,
+            raw = raw,
+        )
 
     // ------------------------------------------------------- 1 · 只有假源能说「假数据」
+
+    @Test
+    fun anUnpairedSourceSaysSoInsteadOfFixturesOrConnected() {
+        // P1-6 · 桥退回 Unpaired 之后列表由 UnpairedSessionSource 供给：它既不是夹具，
+        // 也不许被读成「连上了但 0 个会话」（后者会让空白页看起来像「数据没了」）。
+        for (phase in LoadPhase.entries) {
+            assertEquals(
+                ListStatus.Unpaired,
+                statusOf(phase = phase, unpaired = true),
+                "没有数据源 + $phase 必须是 Unpaired（空列表要解释，不能静默）",
+            )
+        }
+        assertEquals(
+            ListStatus.Unpaired,
+            statusOf(phase = LoadPhase.Ready, fixture = true, unpaired = true),
+            "没有数据源优先于夹具判定",
+        )
+    }
 
     @Test
     fun fakeSourceAlwaysSaysFixtures() {

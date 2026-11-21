@@ -37,6 +37,7 @@ import vade.ui.data.AdapterProvider
 import vade.ui.data.FakeSessionSource
 import vade.ui.data.SessionGroup
 import vade.ui.data.SessionSummary
+import vade.ui.data.UnpairedSessionSource
 import vade.ui.destinations.SessionDetailScreen
 import vade.ui.destinations.SessionsScreen
 import vade.ui.destinations.settledListStatus
@@ -464,6 +465,7 @@ private fun DrawerSessionList(
             phase = state.sessionsPhase,
             error = state.sessionsError,
             hasRows = state.sessionRows.isNotEmpty(),
+            unpaired = state.source is UnpairedSessionSource,
         )
     }
     SessionsScreen(

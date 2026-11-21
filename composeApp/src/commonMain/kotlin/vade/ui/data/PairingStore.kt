@@ -22,6 +22,25 @@ import vade.ui.protocol.TlsTrustMode
  * 存在的理由：`POST /ui/session` 成功后 cookie 是唯一凭据，而 core 只在**它自己启动时**
  * 铸新码 —— 客户端重启后屏幕上不可能出现新码。不落盘 = 每次「关掉再打开」都要去 core
  * 的终端捞码，等于主路径不可用。
+ *
+ * ## 已知取舍（审查 P1-5，**本棒未做**）
+ *
+ * [TlsTrustMode.InsecureConfirmed] 目前是**对这个 endpoint 的空白授权**：恢复时只要
+ * `trustMode == InsecureConfirmed` 就重新打开 trust-all，而这份记录里**没有**证书指纹。
+ * 后果：同一 `host:port` 上以后出现的任何证书都被接受（自签轮换、DHCP 复用 IP、ARP/DNS
+ * 劫持后的中间人），用户永远不会被告知「证书变了」。
+ *
+ * 修法（下一棒）：在确认成功那一刻持久化 SPKI 的 SHA-256（至少是整证书指纹），
+ * `probeStoredLocked` 在 trust-all 连接建立后比对；不一致 → 不 install、凭据留着、桥退回
+ * 「需要重新确认」并给出重新配对的入口（TOFU + pinning）。
+ *
+ * 为什么这次没做：指纹只能在 TLS 握手/trust-manager 一侧拿到，而本仓的 trust-all 在
+ * **两个平台 actual**（桌面 OkHttp、Android OkHttp）里各自构造 —— 要先给
+ * `expect fun platformHttpClient` 增加「观察到叶子证书」的出口、再把它穿过
+ * `KtorTransportFactory` 带到 `PairingRuntime.install`，并新增一个「证书变了」的
+ * `Unpaired` 原因与卡片文案/按钮。这是一整条跨平台改动的量级，塞进本棒会让 P1-1/2/3/4/6
+ * 这些真正破坏凭据与信任边界的修复失去可验证性。**在它落地之前，用户点「仍然连接」时应被
+ * 视为对本机的一次性授权，而不是永久 pin。**
  */
 data class StoredPairing(
     val host: String,
