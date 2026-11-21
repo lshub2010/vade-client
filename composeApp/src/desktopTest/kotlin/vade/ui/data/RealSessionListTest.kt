@@ -191,7 +191,7 @@ class RealSessionListTest {
             // `last_seq = 0` = full snapshot. A null here would be rewritten by
             // VadeClient into the tracked cursor on re-entry, yielding an empty
             // thread (events after the cursor only, no snapshot).
-            assertEquals(0L, (params["last_seq"] as JsonPrimitive).long)
+            assertEquals(0L, (params["last_seq"] as JsonPrimitive).content.toLong())
             transport.push(
                 responseFrame(
                     idOf(transport.record[0]),
