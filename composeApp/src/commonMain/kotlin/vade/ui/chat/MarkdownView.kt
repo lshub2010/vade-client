@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import vade.ui.skin.LocalSkin
@@ -171,7 +172,7 @@ private fun rememberRuns(
  * The inline subset → `AnnotatedString`. Pure (no composition reads): the skin tokens it
  * needs are passed in, which is what lets [rememberRuns] cache the result.
  */
-private fun annotated(
+internal fun annotated(
     runs: List<MdRun>,
     color: Color,
     size: Int,
@@ -179,6 +180,10 @@ private fun annotated(
     codeBackground: Color,
     linkColor: Color,
 ): AnnotatedString = buildAnnotatedString {
+    // 基色必须包住整段：助手消息没有气泡 Surface，BasicText 会回落到
+    // LocalContentColor（深色皮肤下是黑色）。链接/代码的 SpanStyle 在里层，
+    // 仍然覆盖这里的颜色。
+    withStyle(SpanStyle(color = color)) {
     runs.forEach { run ->
         val start = length
         append(run.text)
@@ -198,6 +203,7 @@ private fun annotated(
             styles += SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)
         }
         styles.forEach { addStyle(it, start, end) }
+    }
     }
 }
 
