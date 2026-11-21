@@ -12,6 +12,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -53,7 +54,8 @@ class EditResubmitFlowTest {
             call.content,
             "② content 与输入框一致",
         )
-        assertTrue(call.clientMsgId.startsWith("c-e-"), "edit resubmits get their own idempotency key")
+        assertTrue(call.clientMsgId.startsWith("ui-"), "edit resubmits mint a ui-<ms>-<seq> key")
+        assertNotEquals(originalId, call.clientMsgId, "the idempotency key is not the original message id")
     }
 
     // ③ — the row is projected in place: new text + 「已编辑」, attachments carried over

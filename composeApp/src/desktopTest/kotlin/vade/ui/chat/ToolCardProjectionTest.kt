@@ -317,7 +317,7 @@ class ToolCardProjectionTest {
         chat.applyLiveEvent(toolCall(seq = 4, callId = "call-2"))
 
         val keys = chat.items.map { it.key }
-        val msgIndex = keys.indexOfFirst { it.startsWith("m:live:") }
+        val msgIndex = keys.indexOfFirst { it.startsWith("m:") }
         assertTrue(msgIndex >= 0, "live 行在时间线上")
         assertTrue(msgIndex < cardIndex(chat, "call-1"), "第一张卡跟在它回合的行后（不堆尾也不越位）")
         assertTrue(cardIndex(chat, "call-1") < cardIndex(chat, "call-2"), "两张卡保持事件到达顺序")
