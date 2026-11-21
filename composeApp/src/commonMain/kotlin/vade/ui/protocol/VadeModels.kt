@@ -49,10 +49,17 @@ internal fun reqParam(value: String?, name: String): String =
  * `ui/attach`. `sessionId = null` attaches to a NEW session (core creates it and returns
  * the id). `lastSeq` is what this client already applied for that session — `null` on a
  * first-ever attach, the tracked value on every reconnect ([VadeClient.lastSeq]).
+ *
+ * [resume] is a **client-side** directive, never encoded on the wire: `true` = "a null
+ * [lastSeq] may be filled in with the tracked cursor" (the reconnect form); `false` =
+ * "answer with the snapshot, do not resume" — what a history read
+ * (`RealSessionSource.messages`) needs, because a replay-only answer carries no snapshot
+ * and would come back as an empty thread even for the same session.
  */
 data class AttachParams(
     val sessionId: String? = null,
     val lastSeq: Long? = null,
+    val resume: Boolean = true,
 ) {
     fun toJson(): JsonObject = buildJsonObject {
         // A4-1 · `session_id` is `"string|null"` and the null form is MEANINGFUL: it is the
@@ -62,6 +69,7 @@ data class AttachParams(
         // ALWAYS present: a string for an existing session, an explicit JsonNull to create.
         // `last_seq` stays omission-encoded: its null really is "nothing to say" (a fresh
         // attach), and [VadeClient.attach] substitutes the tracked seq where it applies.
+        // `resume` is deliberately absent here: it steers the client, not core.
         put("session_id", sessionId?.let(::JsonPrimitive) ?: JsonNull)
         putLng("last_seq", lastSeq)
     }

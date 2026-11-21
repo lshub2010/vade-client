@@ -360,14 +360,19 @@ class RealSessionSource(
     }
 
     /**
-     * The message thread of one session, from `ui/attach`'s snapshot. Attaching with
-     * `last_seq = null` is deliberate: for a switched/foreign session the tracked
-     * last_seq does not apply and core answers with the snapshot ("not covered → the
-     * only honest answer"); for a re-attach of the SAME session it replays the gap,
-     * and the thread meanwhile streams in through [observeEvents].
+     * The message thread of one session, from `ui/attach`'s snapshot.
+     *
+     * `resume = false` is deliberate and load-bearing (P0-1): this is a **history read**,
+     * so core must answer with the snapshot. Passing `lastSeq = null` alone used to let
+     * [VadeClient.attach] substitute the tracked cursor for the same session, and core
+     * then answered replay-only (`snapshot = null`) — the thread came back empty on every
+     * re-entry. A switch to a foreign session never inherits the cursor either (the
+     * substitution is same-session only).
      */
     override suspend fun messages(sessionId: String): List<ChatMessage> {
-        val result = attachedClient().uiAttach(AttachParams(sessionId = sessionId, lastSeq = null))
+        val result = attachedClient().uiAttach(
+            AttachParams(sessionId = sessionId, lastSeq = null, resume = false),
+        )
         return snapshotToMessages(result.snapshot?.messages)
     }
 

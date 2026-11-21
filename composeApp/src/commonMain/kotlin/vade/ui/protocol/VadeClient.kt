@@ -526,23 +526,31 @@ class VadeClient(
     // ------------------------------------------------------------------ session lifecycle
 
     /**
-     * `ui/attach`. When [AttachParams.lastSeq] is `null` **and the params name the tracked
-     * session**, the tracked [lastSeq] is substituted (the reconnect path); pass `lastSeq`
-     * explicitly to override. On a snapshot attach the client adopts the snapshot's
-     * `from_seq` as its new [lastSeq]; on a replay attach it keeps tracking.
+     * `ui/attach`. When [AttachParams.lastSeq] is `null`, **the params name the tracked
+     * session** and [AttachParams.resume] is on, the tracked [lastSeq] is substituted
+     * (the reconnect path); pass `lastSeq` explicitly to override. On a snapshot attach the
+     * client adopts the snapshot's `from_seq` as its new [lastSeq]; on a replay attach it
+     * keeps tracking.
      *
      * A4-1 · the substitution is strictly a SAME-SESSION re-attach: it fires only when
-     * [AttachParams.sessionId] is non-null. A CREATE (`session_id = null`) and a switch to
-     * a foreign session must not inherit the tracked session's seq — their replay windows
-     * are unrelated, and the CREATE frame must stay exactly `{"session_id":null}` (the
-     * contract's create form; core `manager.attach()` reads null and mints a session).
+     * [AttachParams.sessionId] equals the tracked session. A CREATE (`session_id = null`)
+     * and a switch to a foreign session must not inherit the tracked session's seq — their
+     * replay windows are unrelated, and the CREATE frame must stay exactly
+     * `{"session_id":null}` (the contract's create form; core `manager.attach()` reads null
+     * and mints a session).
+     *
+     * A history read ([AttachParams.resume] == false, used by
+     * `RealSessionSource.messages`) must never resume either: even for the SAME session a
+     * replay-only answer carries no snapshot, so the thread would come back empty. Only an
+     * explicit reconnect asks to resume.
      */
     suspend fun attach(params: AttachParams): AttachResult {
-        val effective = if (params.lastSeq == null && params.sessionId != null && attachedSessionId != null) {
-            params.copy(lastSeq = lastSeq)
-        } else {
-            params
-        }
+        val resumes = params.lastSeq == null &&
+            params.resume &&
+            params.sessionId != null &&
+            attachedSessionId != null &&
+            params.sessionId == attachedSessionId
+        val effective = if (resumes) params.copy(lastSeq = lastSeq) else params
         return attachInternal(effective)
     }
 
