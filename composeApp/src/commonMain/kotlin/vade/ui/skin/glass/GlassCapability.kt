@@ -160,8 +160,9 @@ internal fun glassCapabilityDecision(hasBackdrop: Boolean): GlassCapabilityDecis
  * 但同一结论只打一行。
  */
 fun glassCapability(hasBackdrop: Boolean): GlassCapability =
-    glassCapabilityDecision(hasBackdrop).also { decision ->
+    glassCapabilityDecision(hasBackdrop).let { decision ->
         if (!decision.capability.blurs) GlassDegradeLog.note(decision)
+        decision.capability
     }
 
 /**
