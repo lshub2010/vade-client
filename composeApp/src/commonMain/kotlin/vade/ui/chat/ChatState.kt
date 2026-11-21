@@ -30,10 +30,13 @@ import vade.ui.data.VadeErrorMapping
 import vade.ui.data.epochNowMs
 import vade.ui.data.loadErrorCategoryOf
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlin.concurrent.Volatile
 import kotlin.time.TimeSource
 
 /**
@@ -80,6 +83,18 @@ class ChatState(
      * 放在参数表末尾且带默认值：已有调用点一行都不用改，测试可注入一份隔离的表。
      */
     private val drafts: DraftStore = DraftStore.shared,
+    /**
+     * `client_msg_id` 的铸造时钟 —— **唯一**入口是 [ClientMsgIds]（见 [newClientMsgId]）。
+     * 注入 [ClientMsgIds] 用的毫秒时钟，测试用固定值钉住 `ui-<epochMs>-<seq>` 形状与
+     * 「两次 submit 不相等」。
+     */
+    private val nowMs: () -> Long = { epochNowMs() },
+    /**
+     * 真源 RPC 的发射调度器。默认 [Dispatchers.Default]（不在调用者线程上跑网络/挂起
+     * 逻辑，也不把 UI 线程当协程调度器）；测试注入 `Dispatchers.Unconfined` 让假 gateway
+     * 的回包在 `submit()` 返回前落地，断言因此是确定的。
+     */
+    private val wireDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
     /**
      * B2 · 真源模式：拿到真通道（[ChatTurnGateway.synthetic] == false）或显式给了读通道。
@@ -169,10 +184,38 @@ class ChatState(
     //  - [runningTurnId]：最近一个 turn.started 的回合 —— ui/interrupt 的目标；
     //  - [interruptInFlight]：中断在途去重（重复点 ■ 不再发第二次）。
 
-    /** 真源 RPC 的发射作用域：Unconfined 让假 gateway 的记录在 submit() 返回前确定（测试可用）。 */
-    private val wireScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    /**
+     * 真源 RPC 的发射作用域。默认跑 [Dispatchers.Default]：网络/挂起逻辑不占调用者线程。
+     * 测试注入 `Unconfined` 让假 gateway 的记录在 `submit()` 返回前确定。
+     *
+     * **必须可销毁**：页面离开组合时 `ChatState.dispose()` 取消这个作用域，在途回包
+     * 因此不会再写进一个已经下屏的对象（见 [disposed]）。
+     */
+    private val wireScope = CoroutineScope(SupervisorJob() + wireDispatcher)
+
+    /** 页面是否已经离开组合。**所有异步回写**都先看这一位，销毁后一个字段都不许改。 */
+    @Volatile
+    private var disposed = false
+
+    /** 测试 / 宿主可见的销毁态（在途回写被丢弃的判据）。 */
+    val isDisposed: Boolean get() = disposed
+
+    /**
+     * `client_msg_id` 的**唯一**铸造器：submit / edit_resubmit / regenerate 全部经
+     * [newClientMsgId]，绝不从 `items.count { … }` 之类的行数派生（那会让两个动作撞在
+     * 同一个幂等键上）。
+     */
+    private val clientMsgIds = ClientMsgIds(nowMs)
+
+    private fun newClientMsgId(): String = clientMsgIds.next()
 
     private val clientMsgIdByTurnId = HashMap<String, String>()
+
+    /** 真源发送在途去重：回包（成功/失败）之前不再接受第二次发送。 */
+    private var submitInFlight by mutableStateOf(false)
+
+    /** 真源 `ui/queue.cancel` 在途的 client_msg_id（重复点 ✕ 只发一次）。 */
+    private val queueCancelInFlight = mutableSetOf<String>()
 
     /**
      * 最近一个 `turn.started` 的回合 —— `ui/interrupt` 的目标。
@@ -239,8 +282,10 @@ class ChatState(
      * not content (上传中点发送不带未完成附件); it stays in the composer and keeps moving.
      */
     val canSend: Boolean
-        get() = draft.isNotBlank() ||
-            staged.any { it.attachment.state == AttachmentState.Uploaded }
+        get() = !submitInFlight && (
+            draft.isNotBlank() ||
+                staged.any { it.attachment.state == AttachmentState.Uploaded }
+            )
 
     /**
      * H2 跟进 · composer 的输入态也是**派生标量**。
@@ -290,6 +335,7 @@ class ChatState(
      */
     suspend fun loadHistory(): Boolean {
         if (!isRealSource) return false
+        if (disposed) return false
         val channel = transcript
         if (channel == null) {
             phase = ChatPhase.Failed
@@ -300,6 +346,8 @@ class ChatState(
         loadError = null
         return try {
             val rows = channel.history(sessionId)
+            // 快照在途期间页面可能已经销毁（切会话 / 退详情）：一个字段都不许写。
+            if (disposed) return false
             live.seed(rows)
             // 用投影器的行序重建：快照行 + 加载期间已经到达的 live 行，一次到位、不叠行。
             // A3 · 已投影的工具卡一并重建（按 call_id 幂等；同回合的 live 行可定位时插回其行后）。
@@ -311,6 +359,7 @@ class ChatState(
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
+            if (disposed) return false
             phase = ChatPhase.Failed
             loadError = error.message?.takeIf { it.isNotBlank() } ?: LOAD_FAILED_FALLBACK
             false
@@ -329,6 +378,7 @@ class ChatState(
      * 失败行的可读化 —— 全部幂等，未知的 turn 是 no-op，假源一行都不动。
      */
     fun applyLiveEvent(event: VadeEvent): List<ChatMessage> {
+        if (disposed) return emptyList()
         val snapshot = this.applyLive(live, event)
         projectTurnLifecycle(event)
         projectApprovalLifecycle(event)
@@ -422,9 +472,13 @@ class ChatState(
      * （[loadHistory] 重建时会把 live 行带上）。
      */
     suspend fun collectLiveEvents() {
+        if (disposed) return
         val channel = transcript ?: return
         try {
-            channel.events().collect { event -> applyLiveEvent(event) }
+            channel.events().collect { event ->
+                if (disposed) return@collect
+                applyLiveEvent(event)
+            }
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
@@ -593,7 +647,7 @@ class ChatState(
         val text = editDraft.trim()
         if (text.isEmpty()) return false
         val original = messages.firstOrNull { it.id == messageId } ?: return false
-        val clientMsgId = "c-e-${items.count { it is ChatItem.Message } + 1}"
+        val clientMsgId = newClientMsgId()
         val receipt = try {
             turns.editResubmit(sessionId, messageId, listOf(ContentPart.Text(text)), clientMsgId)
         } catch (error: CancellationException) {
@@ -624,6 +678,7 @@ class ChatState(
                     text = text,
                     reason = "edit_resubmit",
                     queuePos = receipt.queuePos,
+                    turnId = receipt.turnId,
                 )
             }
         } else if (isStreaming) {
@@ -664,7 +719,7 @@ class ChatState(
      */
     suspend fun regenerate(messageId: String): Boolean {
         if (!canRegenerate(messageId)) return false
-        val clientMsgId = "c-r-${items.count { it is ChatItem.Message } + 1}"
+        val clientMsgId = newClientMsgId()
         // g-chat-send · 真源的行 id 是 `live:<turn_id>`：上帧必须还原成 core 的 turn_id
         //（快照行没有前缀，原样透传 —— 假源的合成 id 同样透传）。
         val turnId = messageId.removePrefix(LiveTranscript.LIVE_ID_PREFIX)
@@ -695,6 +750,7 @@ class ChatState(
                         text = owner.bodyText,
                         reason = "regenerate",
                         queuePos = receipt.queuePos,
+                        turnId = receipt.turnId,
                     )
                 }
             }
@@ -759,14 +815,14 @@ class ChatState(
         val request = uploadRequests[uploadId] ?: return
         try {
             val blobId = uploader.upload(request, uploadId) { progress ->
-                if (uploadId !in cancelledUploads) updateUploadProgress(uploadId, progress)
+                if (uploadId !in cancelledUploads && !disposed) updateUploadProgress(uploadId, progress)
             }
-            if (uploadId in cancelledUploads) return // late completion is dropped
+            if (uploadId in cancelledUploads || disposed) return // late completion is dropped
             completeUpload(uploadId, blobId, request)
         } catch (error: CancellationException) {
             throw error // structured cancellation propagates; the chip is already gone
         } catch (error: Exception) {
-            if (uploadId in cancelledUploads) return
+            if (uploadId in cancelledUploads || disposed) return
             failUpload(uploadId, error.message?.takeIf { it.isNotBlank() } ?: "上传失败")
         }
     }
@@ -873,10 +929,13 @@ class ChatState(
      * queue_pos）；失败落在气泡上（四类口径），绝不静默。假源路径逐字节不变。
      */
     fun submit(): String? {
+        if (disposed) return null
+        // 回包未归：同一时刻只允许一次 ui/submit 在途，双击发送不会铸出第二个气泡。
+        if (submitInFlight) return null
         val text = draft.trim()
         val ready = staged.filter { it.attachment.state == AttachmentState.Uploaded }
         if (text.isEmpty() && ready.isEmpty()) return null
-        val clientMsgId = "c-${items.count { it is ChatItem.Message } + 1}"
+        val clientMsgId = newClientMsgId()
         val messageId = "m-${sessionId}-${clientMsgId}"
         val parts = buildList {
             if (text.isNotEmpty()) add(ContentPart.Text(text))
@@ -894,15 +953,17 @@ class ChatState(
             ),
         )
         staged.removeAll { it.attachment.state == AttachmentState.Uploaded }
-        draft = ""
         lastNotice = null
 
         if (isRealSource) {
-            // 真源：出网。同步入口不动本地回合语义（startAssistantTurn 在真源下本就 no-op），
-            // 排队与否由 core 的回包说了算。
-            wireScope.launch { submitOverWire(messageId, clientMsgId, parts) }
+            // 真源：出网。**草稿留到回包**（成功才清、失败退回）—— 发送失败时用户的话
+            // 必须还在输入框里，不能让一次网络抖动吃掉半天的草稿。
+            submitInFlight = true
+            wireScope.launch { submitOverWire(messageId, clientMsgId, parts, text) }
             return clientMsgId
         }
+        // 假源：本地脚本回合没有回包，按「立即成功」处理（行为与接线前逐字节相同）。
+        draft = ""
         if (busy) {
             queue += QueuedTurn(messageId = messageId, clientMsgId = clientMsgId, text = text)
         } else {
@@ -913,21 +974,35 @@ class ChatState(
 
     /**
      * 真源 `ui/submit` 的出网与回包落地。回包规则：
-     *  - `queue_pos > 0` 且该回合还没有可见的 live 行 → 建排队条目（#N = 真 queue_pos），
-     *    气泡穿 Queued；
+     *  - `queue_pos > 0` 且该回合还没有可见的 live 行 → 建排队条目（#N = 真 queue_pos，
+     *    `turn_id` 留给 `ui/queue.cancel`）;
      *  - `queue_pos == 0` → core 立即开始：清掉本地乐观置队的痕迹，交给事件流；
      *  - 回包晚于回合的可见行（事件跑赢了 RPC 回包）→ **不补**排队痕迹，只把可能存在的
      *    乐观 Queued 纠正回去 —— 顺序反转不许在屏上撒谎。
+     *
+     * 草稿：**只有成功回包才清空**（且只在用户没有继续编辑时）；失败把正文退回输入框
+     * （见 [restoreDraftAfterFailure]），气泡同时挂上可读的失败徽标。
      */
-    private suspend fun submitOverWire(messageId: String, clientMsgId: String, parts: List<ContentPart>) {
+    private suspend fun submitOverWire(
+        messageId: String,
+        clientMsgId: String,
+        parts: List<ContentPart>,
+        text: String,
+    ) {
         val receipt = try {
             turns.submit(sessionId, parts, clientMsgId)
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
+            if (disposed) return
+            submitInFlight = false
             markSubmitFailed(messageId, error)
+            restoreDraftAfterFailure(text)
             return
         }
+        if (disposed) return
+        submitInFlight = false
+        clearDraftAfterSuccess(text)
         clientMsgIdByTurnId[receipt.turnId] = clientMsgId
         val row = live.messageById(LiveTranscript.liveRowId(receipt.turnId))
         if (receipt.queuePos > 0 && row == null) {
@@ -938,9 +1013,13 @@ class ChatState(
                     clientMsgId = clientMsgId,
                     text = bubbleText(messageId),
                     queuePos = receipt.queuePos,
+                    turnId = receipt.turnId,
                 )
             } else if (existing.queuePos != receipt.queuePos) {
-                queue[queue.indexOf(existing)] = existing.copy(queuePos = receipt.queuePos)
+                queue[queue.indexOf(existing)] = existing.copy(
+                    queuePos = receipt.queuePos,
+                    turnId = receipt.turnId,
+                )
             }
             setBubbleState(messageId, from = null, to = MessageState.Queued)
         } else {
@@ -949,23 +1028,94 @@ class ChatState(
         }
     }
 
+    /**
+     * 成功回包后清草稿：只在用户**没有继续编辑**时清。若回包到达前用户已经改了输入框，
+     * 那几行新文字是比「清空」更重要的事实，保留它们。
+     */
+    private fun clearDraftAfterSuccess(sent: String) {
+        if (preset != ChatPreset.Live) return
+        if (draft.trim() == sent) draft = ""
+    }
+
+    /**
+     * 失败回写：把这次没发出去的正文退回输入框。
+     *
+     * 只在输入框为空时退回 —— 失败回包到达前用户可能已经开始写下一句，覆盖那是更糟的
+     * 数据丢失。失败的气泡保留正文与重试入口，因此不退回也不算丢字。
+     */
+    private fun restoreDraftAfterFailure(sent: String) {
+        if (preset != ChatPreset.Live) return
+        if (sent.isEmpty()) return
+        if (draft.isBlank()) draft = sent
+    }
+
     /** 发送失败不能吞：气泡就地 Failed + 四类口径的可读文案（正文仍是用户自己的话）。 */
     private fun markSubmitFailed(messageId: String, error: Exception) {
         setBadge(messageId, wireFailureBadge("发送失败", error))
         setBubbleState(messageId, from = null, to = MessageState.Failed)
     }
 
-    /** `ui/queue.cancel` (FR-8.36): the row disappears and the rest shift up immediately. */
+    /**
+     * FR-8.36 `ui/queue.cancel` — 取消**排队中**的回合。
+     *
+     * 真源：先出网，**成功才**删本地条目。失败时条目留在队列里（#N 不动），状态行给出
+     * 四类口径的可读原因 —— 屏幕上消失、core 里仍在排队的幽灵回合比报错更糟。
+     * `turn_id` 取自创建该条目的回包（[QueuedTurn.turnId]）；拿不到就明确拒绝，不编 id。
+     *
+     * 假源：没有出网回合，保留原来的纯本地语义（删条目，立即前移）。
+     *
+     * @return 取消是否**已发起**（真源出网是异步的，完成以队列条目消失为准）。
+     */
     fun cancelQueued(clientMsgId: String): Boolean {
-        val removed = queue.firstOrNull { it.clientMsgId == clientMsgId } ?: return false
-        queue.remove(removed)
-        // A `submit` entry owns the bubble it created — cancelling deletes it. An
-        // `edit_resubmit` entry only queues the rerun of an EXISTING row: cancelling
-        // drops the queued turn and the (edited) row stays.
-        if (removed.reason == "submit") {
-            items.removeAll { it is ChatItem.Message && it.message.id == removed.messageId }
+        val entry = queue.firstOrNull { it.clientMsgId == clientMsgId } ?: return false
+        if (isRealSource) {
+            if (disposed) return false
+            val turnId = entry.turnId
+            if (turnId == null) {
+                lastNotice = "这条排队还没有 turn_id（等回包后再取消）"
+                return false
+            }
+            if (!queueCancelInFlight.add(clientMsgId)) return false
+            wireScope.launch { cancelQueuedOverWire(entry, turnId) }
+            return true
         }
+        dropQueuedLocally(entry)
         return true
+    }
+
+    /**
+     * `ui/queue.cancel` 的出网与成功回写。失败 = 本地条目**保留** + 可见原因；
+     * 页面销毁后的晚到回包一个字段都不写。
+     */
+    private suspend fun cancelQueuedOverWire(entry: QueuedTurn, turnId: String) {
+        try {
+            turns.cancelQueued(sessionId, turnId)
+        } catch (error: CancellationException) {
+            queueCancelInFlight.remove(entry.clientMsgId)
+            throw error
+        } catch (error: Exception) {
+            queueCancelInFlight.remove(entry.clientMsgId)
+            if (disposed) return
+            lastNotice = "${wireFailureBadge("取消排队失败", error)}；这条仍在队列里"
+            return
+        }
+        queueCancelInFlight.remove(entry.clientMsgId)
+        if (disposed) return
+        dropQueuedLocally(entry)
+    }
+
+    /**
+     * 本地删条目并同步气泡状态。
+     *
+     * A `submit` entry owns the bubble it created — cancelling deletes it. An
+     * `edit_resubmit` entry only queues the rerun of an EXISTING row: cancelling
+     * drops the queued turn and the (edited) row stays.
+     */
+    private fun dropQueuedLocally(entry: QueuedTurn) {
+        if (!queue.remove(entry)) return
+        if (entry.reason == "submit") {
+            items.removeAll { it is ChatItem.Message && it.message.id == entry.messageId }
+        }
     }
 
     /**
@@ -988,6 +1138,7 @@ class ChatState(
      * 下一个排队回合都由事件驱动）。在途去重：同一回合的重复 ■ 不发第二次。
      */
     fun stop(): Boolean {
+        if (disposed) return false
         if (isRealSource) {
             val turnId = realRunningTurnId() ?: return false
             if (interruptInFlight == turnId) return false
@@ -1027,6 +1178,7 @@ class ChatState(
             throw error
         } catch (error: Exception) {
             interruptInFlight = null // 允许用户再点一次
+            if (disposed) return
             val row = live.messageById(LiveTranscript.liveRowId(turnId))
             if (row != null && row.state != MessageState.Running) return // 事件已收尾：报错就是噪音
             lastNotice = "${wireFailureBadge("中断失败", error)}，可再试一次"
@@ -1411,6 +1563,37 @@ class ChatState(
      */
     val messages: List<ChatMessage>
         get() = items.mapNotNull { (it as? ChatItem.Message)?.message }
+
+    // --- lifecycle -------------------------------------------------------------
+
+    /**
+     * 页面离开组合（切会话 / 退详情 / 换适配器重建）时**必须**调用 —— `SessionDetailScreen`
+     * 的 `DisposableEffect` 负责这一条。
+     *
+     * 做三件事：
+     *  1. 置 [disposed]：所有异步回写（RPC 回包、历史快照、上传进度、事件投影）先看这一位，
+     *     销毁后一个字段都不许写 —— 否则一个晚到的 `ui/submit` 回包会往已经下屏的
+     *     `ChatState` 里建排队条目，用户再进会话时看到幽灵 #N；
+     *  2. 取消 `wireScope`：在途 RPC 不再占着连接，也不再有机会回写；
+     *  3. [drafts] 的防抖窗口 **flush**：半句话立刻落盘，而不是等 500ms 后由一个已经没人
+     *     持有的协程写完。
+     *
+     * 幂等：重复调用是 no-op。
+     */
+    fun dispose() {
+        if (disposed) return
+        disposed = true
+        wireScope.cancel()
+        drafts.flush(sessionId)
+    }
+
+    /**
+     * 输入框失焦 / 页面把焦点让出去时调用：把草稿的防抖窗口立刻落盘。
+     * 语义与 [DraftStore.flush] 相同，页面不必知道 `DraftStore` 的存在。
+     */
+    fun flushDraft() {
+        drafts.flush(sessionId)
+    }
 
     init {
         // The fixture ends mid-stream: adopt it as the live turn so `tick` continues the same

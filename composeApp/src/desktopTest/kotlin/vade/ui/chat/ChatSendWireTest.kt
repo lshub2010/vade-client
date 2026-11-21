@@ -1,6 +1,7 @@
 package vade.ui.chat
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.runBlocking
@@ -21,6 +22,7 @@ import vade.ui.protocol.VadeUsage
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -61,10 +63,13 @@ class ChatSendWireTest {
         val submits = mutableListOf<SubmitCall>()
         val interrupts = mutableListOf<Pair<String, String>>()
         val regenerates = mutableListOf<Triple<String, String, String>>()
+        /** `ui/queue.cancel` 的 (session_id, turn_id)。 */
+        val cancels = mutableListOf<Pair<String, String>>()
+        var cancelError: Exception? = null
 
-        /** 出网写调用总数（submit + interrupt + regenerate + edit）——「重试 1→2」口径。 */
+        /** 出网写调用总数（submit + interrupt + regenerate + cancel）——「重试 1→2」口径。 */
         val totalCalls: Int
-            get() = submits.size + interrupts.size + regenerates.size
+            get() = submits.size + interrupts.size + regenerates.size + cancels.size
 
         override suspend fun submit(
             sessionId: String,
@@ -81,6 +86,11 @@ class ChatSendWireTest {
         override suspend fun interrupt(sessionId: String, turnId: String) {
             interrupts += sessionId to turnId
             interruptError?.let { throw it }
+        }
+
+        override suspend fun cancelQueued(sessionId: String, turnId: String) {
+            cancels += sessionId to turnId
+            cancelError?.let { throw it }
         }
 
         override suspend fun regenerate(
@@ -138,7 +148,13 @@ class ChatSendWireTest {
         payload = TurnFailedPayload(turn, "failed", code, message, null, null),
     )
 
-    private fun realChat(probe: WireProbe): ChatState = ChatState("s-real", turns = probe)
+    private fun realChat(probe: WireProbe): ChatState = ChatState(
+        "s-real",
+        turns = probe,
+        drafts = DraftStore(),
+        // 假 gateway 的记录必须同步落地；生产的默认调度器是 Dispatchers.Default。
+        wireDispatcher = Dispatchers.Unconfined,
+    )
 
     private fun userRows(chat: ChatState) = chat.messages.filter { it.role == ChatRole.User }
 
@@ -163,6 +179,31 @@ class ChatSendWireTest {
         assertEquals(clientMsgId, bubble.clientMsgId, "client_msg_id 与屏上气泡一致")
         assertEquals(1, chat.items.size, "真源不造助手回复：只有本地回显这一条")
         assertFalse(chat.isStreaming)
+        assertEquals("", chat.draft, "成功回包之后才清草稿")
+    }
+
+    @Test
+    fun twoSubmitsMintDifferentClientMsgIdsEvenInTheSameMillisecond() = runBlocking {
+        // 固定时钟：两次 submit 落在同一毫秒，旧实现（行数派生）会给出同一个键。
+        val probe = WireProbe(FakeTranscript())
+        val chat = ChatState(
+            "s-real",
+            turns = probe,
+            drafts = DraftStore(),
+            nowMs = { 1_700_000_000_000L },
+            wireDispatcher = Dispatchers.Unconfined,
+        )
+        chat.loadHistory()
+
+        chat.updateDraft("第一条")
+        val first = assertNotNull(chat.submit())
+        chat.updateDraft("第二条")
+        val second = assertNotNull(chat.submit())
+
+        assertNotEquals(first, second, "两次发送的幂等键必须不同")
+        assertEquals("ui-1700000000000-0", first)
+        assertEquals("ui-1700000000000-1", second)
+        assertEquals(listOf(first, second), probe.submits.map { it.clientMsgId })
     }
 
     @Test
@@ -355,6 +396,8 @@ class ChatSendWireTest {
         assertEquals(1, probe.submits.size, "出网发生了，失败的是回包")
         val bubble = userRows(chat).single()
         assertEquals(MessageState.Failed, bubble.state, "发送失败落在气泡上，不是静默")
+        assertEquals("发不出去的一条", chat.draft, "失败必须把正文退回草稿")
+        assertTrue(chat.canSend, "退回的草稿可以再次发送")
         assertTrue(
             bubble.badges.any {
                 it.contains("发送失败") && it.contains("需要用户操作") && it.contains("会话已归档或关闭")
@@ -388,5 +431,38 @@ class ChatSendWireTest {
         probe.interruptError = null
         assertTrue(chat.stop())
         assertEquals(2, probe.interrupts.size)
+    }
+
+    // --- 取消排队：真出网 ui/queue.cancel，成功才删本地 ------------------------------
+
+    @Test
+    fun cancelQueuedGoesOverTheWireAndOnlyDropsTheRowOnSuccess() = runBlocking {
+        val probe = WireProbe(FakeTranscript())
+        probe.receipt = SubmitReceipt("t-q", 2)
+        val chat = realChat(probe)
+        chat.loadHistory()
+
+        chat.updateDraft("排队的一条")
+        val clientMsgId = assertNotNull(chat.submit())
+        assertEquals(1, chat.queue.size)
+        assertEquals("t-q", chat.queue.single().turnId, "QueuedTurn 必须存回包的 turn_id")
+
+        // 失败：出网发生，本地条目与气泡都留着（屏幕不撒谎）
+        probe.cancelError = VadeException(VadeErrorCodes.UNAVAILABLE, "socket 断了")
+        assertTrue(chat.cancelQueued(clientMsgId))
+        assertEquals(listOf("s-real" to "t-q"), probe.cancels, "取消排队必须出网 ui/queue.cancel")
+        assertEquals(1, chat.queue.size, "出网失败不许删本地排队条目")
+        assertEquals(MessageState.Queued, userRows(chat).single().state)
+        assertTrue(
+            chat.lastNotice.orEmpty().contains("取消排队失败"),
+            "失败必须可见：${chat.lastNotice}",
+        )
+
+        // 成功：本地条目与它建的气泡一起消失
+        probe.cancelError = null
+        assertTrue(chat.cancelQueued(clientMsgId))
+        assertEquals(2, probe.cancels.size)
+        assertTrue(chat.queue.isEmpty(), "成功回包之后才删本地条目")
+        assertTrue(userRows(chat).isEmpty(), "submit 条目被取消 → 它的气泡一并删掉")
     }
 }

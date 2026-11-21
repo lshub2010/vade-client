@@ -1,6 +1,8 @@
 package vade.ui.chat
 
 import vade.ui.destinations.resolveChatState
+import vade.ui.skin.InMemoryPreferenceStore
+import vade.ui.testutil.IsolatedPreferencesTest
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -15,12 +17,14 @@ import kotlin.test.assertTrue
  * 用户要的是「点底栏切到别的 tab 再回会话页，输入框里的半句话还在」。页面在这条路径上被
  * 销毁重建，所以断言的是**重建后的 [ChatState]** 而不是某个 state 实例内部的字段：
  * ① 保存/读取原样往返 ② 空串等同清除 ③ 会话之间不串味
- * ④ 重建后草稿仍在 ⑤ 发送成功后草稿（和 store）都清空。
+ * ④ 重建后草稿仍在 ⑤ 发送成功后草稿（和 store）都清空
+ * ⑥ 落盘：500ms 防抖窗口内不写、窗口外写一次、失焦 / dispose 立即 flush。
  *
- * 大多数用例注入自己的一份 [DraftStore]（隔离）；只有「默认参数＝进程内单例」那条按产品
- * 路径跑真的 [DraftStore.shared]，并在每个用例后清干净，绝不给别的测试留残留。
+ * 大多数用例注入自己的一份 [DraftStore]（隔离，纯内存）；产品路径那条按真的
+ * [DraftStore.shared] 跑，并继承 [IsolatedPreferencesTest]：`Preferences.store` 在每个
+ * 用例前换成内存实现，断言不会写进开发机的真实偏好文件。
  */
-class DraftStoreTest {
+class DraftStoreTest : IsolatedPreferencesTest() {
 
     @AfterTest
     fun cleanTheProcessWideStore() {
@@ -176,5 +180,77 @@ class DraftStoreTest {
         val queue = ChatState("s-preset", preset = ChatPreset.Queue, drafts = store)
         assertEquals("用户真的草稿", store.load("s-preset"), "Queue 预设的 submit 不许清掉真实草稿")
         assertEquals("用户真的草稿", ChatState("s-preset", drafts = store).draft)
+    }
+
+    // --- ⑥ 落盘（Preferences 窄口）：500ms 防抖 + 失焦 / dispose flush ---------------
+
+    @Test
+    fun theDefaultDebounceWindowIsHalfASecond() {
+        assertEquals(500L, DraftStore.DEFAULT_DEBOUNCE_MS, "用户要求 500ms 防抖")
+    }
+
+    @Test
+    fun aKeystrokeIsNotWrittenBeforeTheDebounceWindowCloses() {
+        val prefs = InMemoryPreferenceStore()
+        val drafts = DraftStore(store = prefs, debounceMs = 120L)
+
+        drafts.save("s-debounce", "刚敲下的半句")
+
+        assertEquals(null, prefs.read("vade.draft.s-debounce"), "防抖窗口内不许落盘")
+        Thread.sleep(400)
+        assertEquals("刚敲下的半句", prefs.read("vade.draft.s-debounce"), "窗口关闭后写一次")
+    }
+
+    @Test
+    fun flushWritesThePendingDraftImmediatelyOnBlur() {
+        val prefs = InMemoryPreferenceStore()
+        val drafts = DraftStore(store = prefs, debounceMs = 60_000L)
+        drafts.save("s-blur", "失焦时这行要马上落盘")
+
+        drafts.flush()
+
+        assertEquals("失焦时这行要马上落盘", prefs.read("vade.draft.s-blur"))
+    }
+
+    @Test
+    fun clearAlsoRemovesThePersistedValue() {
+        val prefs = InMemoryPreferenceStore()
+        val drafts = DraftStore(store = prefs, debounceMs = 60_000L)
+        drafts.save("s-clear-disk", "要删的")
+
+        drafts.clear("s-clear-disk")
+
+        assertEquals(null, prefs.read("vade.draft.s-clear-disk"))
+    }
+
+    @Test
+    fun aFreshStoreLoadsThePersistedDraft() {
+        val prefs = InMemoryPreferenceStore(mapOf("vade.draft.s-restart" to "重启后还在"))
+        assertEquals("重启后还在", DraftStore(store = prefs).load("s-restart"))
+    }
+
+    @Test
+    fun chatDisposeFlushesThePendingDraft() {
+        val prefs = InMemoryPreferenceStore()
+        val drafts = DraftStore(store = prefs, debounceMs = 60_000L)
+        val chat = ChatState("s-dispose-flush", drafts = drafts)
+        chat.updateDraft("销毁前的那一刻")
+
+        chat.dispose()
+
+        assertTrue(chat.isDisposed)
+        assertEquals("销毁前的那一刻", prefs.read("vade.draft.s-dispose-flush"))
+    }
+
+    @Test
+    fun chatFlushDraftWritesWithoutWaitingForTheWindow() {
+        val prefs = InMemoryPreferenceStore()
+        val drafts = DraftStore(store = prefs, debounceMs = 60_000L)
+        val chat = ChatState("s-blur-flush", drafts = drafts)
+        chat.updateDraft("点外部就该落盘")
+
+        chat.flushDraft()
+
+        assertEquals("点外部就该落盘", prefs.read("vade.draft.s-blur-flush"))
     }
 }

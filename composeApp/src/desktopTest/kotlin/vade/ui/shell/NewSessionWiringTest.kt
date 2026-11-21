@@ -197,12 +197,9 @@ class NewSessionWiringTest {
             // 恰好一次建会话调用；返回的 id 成为当前会话 id。
             assertEquals(listOf(1), src.createCalls)
             assertEquals("srv-1", ui.selectedSessionId)
-            assertEquals("srv-1", ui.messagesSessionId)
-            // isDraft=true 的切换分支：loader 不再拉线程 —— 创建 attach 已带回（空）快照
-            // 并建好 sink；第二次 attach = 同连接双 sink（本批禁令）。
+            // 选中只写 selectedSessionId：loader 不读线程（ChatState 进页面后才 attach）。
+            // 创建那次 attach 已带回（空）快照并建好 sink；第二次 attach = 同连接双 sink。
             assertEquals(emptyList<String>(), src.messagesCalls)
-            assertEquals(emptyList<ChatMessage>(), ui.messages)
-            assertEquals(LoadPhase.Ready, ui.messagesPhase)
             assertEquals(LoadPhase.Ready, ui.newSessionPhase)
             assertNull(ui.newSessionError)
             // 没有伪造本地草稿。

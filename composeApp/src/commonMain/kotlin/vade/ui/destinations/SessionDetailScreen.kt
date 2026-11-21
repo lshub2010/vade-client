@@ -160,12 +160,6 @@ fun SessionDetailScreen(
      */
     onOverlayChange: ((Boolean) -> Unit)? = null,
     /**
-     * Shell-owned failure banner (g-error-retry) for the **message-thread** read. A slot, so
-     * the screen keeps knowing nothing about the loader; the retry inside it calls
-     * `UiState.retryMessages()`, never the list retry.
-     */
-    banner: (@Composable () -> Unit)? = null,
-    /**
      * 空态形状（审查 P1-5）。`true` = 单栏 / 手机抽屉宿主（没有「左侧」，列表是盖在详情
      * 之上的抽屉）；`false` = 左侧真有列表的双栏，文案沿用「在左侧选择一个会话」。
      *
@@ -205,6 +199,12 @@ fun SessionDetailScreen(
         resolveChatState(session.id, preset, adapters)
     }
     val chat = chatSeam.value
+    // 生命周期归页面：切会话 / 退详情 / 换适配器重建时，旧 ChatState 必须 dispose ——
+    // 在途 RPC 回包与历史快照不许写进一个已经下屏的对象（否则回到会话会看到幽灵排队行）。
+    // 同时把草稿防抖窗口 flush 掉，半句话不留在 500ms 的窗口里。
+    DisposableEffect(chat) {
+        onDispose { chat.dispose() }
+    }
     val modelSeam = remember(session.id, modelActions, adapters) {
         resolveSessionModelActions(modelActions, adapters, session.id, session.model)
     }
@@ -250,7 +250,13 @@ fun SessionDetailScreen(
             //
             // 例外：模型浮层（[ModelPickerSheet]）打开期间不收回。那张卡是模态的，点它
             // 是在**用浮层**，不是在把 composer 让出去；否则关掉浮层后模型行无声消失。
-            .observePointerTap { if (!modelPickerOpen) composerExpanded = false },
+            .observePointerTap {
+                if (!modelPickerOpen) {
+                    composerExpanded = false
+                    // 点 composer 外部 = 输入框失焦：把草稿的防抖窗口立刻落盘。
+                    chat.flushDraft()
+                }
+            },
     ) {
         Box(
             Modifier
@@ -281,9 +287,8 @@ fun SessionDetailScreen(
                 chat = chat,
                 showTitle = showTitle,
             )
-            // Load-failure banner sits right under the header, above the thread: the reader
-            // sees *why* the thread is empty before the (kept) old messages.
-            banner?.invoke()
+            // Load-failure banner 已删除：线程的 Loading / 空 / 失败三态由 ChatThread
+            // 从 `chat.phase` / `chat.loadError` 一处渲染，重试走 `chat.retryHistory()`。
         }
         if (modelPickerOpen) {
             ModelPickerSheet(

@@ -256,6 +256,13 @@ data class QueuedTurn(
      * 本地条目（badge 落回本地计数）——真源模式下 #N **只**认这个真值，不用本地计数。
      */
     val queuePos: Int = 0,
+    /**
+     * 取消排队（`ui/queue.cancel`）的 handle —— 回包里的 `turn_id`。
+     *
+     * 真源条目的唯一来源是回包，因此必然非 null；假源（fixtures）条目没有出网回合，
+     * 保持 null。`ui/queue.cancel` 只认这个值，绝不用 `client_msg_id` 冒充 turn id。
+     */
+    val turnId: String? = null,
 )
 
 // --- formatting helpers (pure; unit-tested) ----------------------------------
