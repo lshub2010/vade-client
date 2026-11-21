@@ -44,6 +44,7 @@ import kotlin.test.assertTrue
 import vade.ui.protocol.VadeEvent
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.SkinColors
+import vade.ui.skin.glass.highlightAlphaAt
 import vade.ui.skin.material.MaterialSkin
 import vade.ui.skin.material.MaterialTokens
 import vade.ui.skin.miuix.MiuixSkin
@@ -346,6 +347,20 @@ class AttachmentPreviewContrastTest {
         return over(colors.previewCardBase, over(tint, scrim))
     }
 
+    /**
+     * 遮罩行**在黑色 previewScrim 之下**的底色亮度。
+     *
+     * TintStroke 退化档的遮罩也是一个完整的 GlassSurface：tint（§5 染色）+ 顶部高光，
+     * 最后才是 previewScrim 的黑。高光在整帧顶部是 34% 白（[highlightAlphaAt]），暗色
+     * 顶部行的底色因此远亮于 canvas（实测 y=12 时约 92/255）—— 继续拿 canvas 当分母
+     * 会把 alpha 算成负数（-1.90 就是这么来的），不是遮罩变亮，是分母错了。
+     */
+    private fun scrimBackdropLuma(colors: SkinColors, tint: Color, y: Int, frameHeight: Int): Float {
+        val tinted = over(tint, rgb(colors.canvas))
+        val highlight = highlightAlphaAt((y + 0.5f) / frameHeight.coerceAtLeast(1))
+        return luma(over(Color.White.copy(alpha = highlight), tinted))
+    }
+
     // ---- 1 · dark：卡底不透明（缺陷方向） ------------------------------------------
 
     @Test
@@ -440,16 +455,22 @@ class AttachmentPreviewContrastTest {
             geo.mockLeft - 8,
             geo.mockRight + 8,
         )
-        // 画布 = 纯色对照：遮罩 alpha = 1 − 遮罩后画布亮度 / 画布亮度。
-        val canvasLuma = rgb(colors.canvas).let { 0.2126f * it.first + 0.7152f * it.second + 0.0722f * it.third }
-        val alpha = 1f - mean / canvasLuma
+        // 底色 = 遮罩 GlassSurface 的 tint + 顶部高光（见 scrimBackdropLuma）；遮罩黑压在其上。
+        val backdropLuma = scrimBackdropLuma(
+            colors,
+            MaterialSkin(dark = true).glass.tintDark,
+            rowY,
+            g.pm.height,
+        )
+        val alpha = 1f - mean / backdropLuma
+        println("遮罩 dark: rowY=$rowY mean=$mean backdrop=$backdropLuma alpha=$alpha spread=$spread")
         assertTrue(
             spread <= 3f,
             "暗色遮罩行(y=$rowY)不均匀（spread=$spread）—— 对照失效，该行压到了内容",
         )
         assertTrue(
             alpha >= 0.48f,
-            "暗色遮罩行(y=$rowY)实测 alpha=$alpha（mean=$mean / canvas=$canvasLuma）—— 遮罩必须 ≥48%",
+            "暗色遮罩行(y=$rowY)实测 alpha=$alpha（mean=$mean / backdrop=$backdropLuma）—— 遮罩必须 ≥48%",
         )
     }
 
@@ -542,15 +563,21 @@ class AttachmentPreviewContrastTest {
             geo.mockLeft - 8,
             geo.mockRight + 8,
         )
-        val canvasLuma = rgb(colors.canvas).let { 0.2126f * it.first + 0.7152f * it.second + 0.0722f * it.third }
-        val alpha = 1f - mean / canvasLuma
+        val backdropLuma = scrimBackdropLuma(
+            colors,
+            MaterialSkin().glass.tintLight,
+            rowY,
+            g.pm.height,
+        )
+        val alpha = 1f - mean / backdropLuma
+        println("遮罩 light: rowY=$rowY mean=$mean backdrop=$backdropLuma alpha=$alpha spread=$spread")
         assertTrue(
             spread <= 3f,
             "亮色遮罩行(y=$rowY)不均匀（spread=$spread）—— 对照失效",
         )
         assertTrue(
             alpha in 0.21f..0.27f,
-            "亮色遮罩行(y=$rowY)实测 alpha=$alpha（mean=$mean / canvas=$canvasLuma）—— 必须保持 24%",
+            "亮色遮罩行(y=$rowY)实测 alpha=$alpha（mean=$mean / backdrop=$backdropLuma）—— 必须保持 24%",
         )
     }
 
