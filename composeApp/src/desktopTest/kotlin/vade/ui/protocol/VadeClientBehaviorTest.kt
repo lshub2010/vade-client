@@ -383,6 +383,7 @@ class VadeClientBehaviorTest {
             val first = async { client.attach(AttachParams("s1", null)) }
             val firstFrame = transport.awaitSent()
             transport.push(responseFrame(idOf(firstFrame), """{"session_id":"s1","from_seq":7,"snapshot":null}"""))
+            transport.push(eventFrame("turn.delta", 7, """{"turn_id":"t1","text":"x"}"""))
             withTimeout(5000) { first.await() }
             waitUntil { client.lastSeq >= 7 }
 
