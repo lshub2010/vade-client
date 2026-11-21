@@ -118,7 +118,7 @@ class PairingCardUiTest {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
                 FirstRunPairingCard(
                     raw = { realNoCode },
-                    onSubmit = { raw, code ->
+                    onSubmit = { raw, code, _ ->
                         calls.add(raw to code)
                         PairingAttempt.Connected(marker, "10.0.0.9", 19999)
                     },
@@ -192,7 +192,7 @@ class PairingCardUiTest {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
                 FirstRunPairingCard(
                     raw = { RawSourceStrings("real", "127.0.0.1", "8443", null) },
-                    onSubmit = { _, _ -> PairingAttempt.Rejected(kind, cause) },
+                    onSubmit = { _, _, _ -> PairingAttempt.Rejected(kind, cause) },
                 )
             }
         }

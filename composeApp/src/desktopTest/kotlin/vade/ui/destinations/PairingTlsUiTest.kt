@@ -139,7 +139,7 @@ class PairingTlsUiTest {
                     submittingLabel = PAIRING_SUBMITTING,
                     submitScope = submitScope,
                     initialTls = true,
-                    onSubmit = { host, port, code, tls ->
+                    onSubmit = { host, port, code, tls, _ ->
                         attempts.incrementAndGet()
                         // 真连接链（MockEngine），只为把「一次 POST」变成可数的事实。
                         firstRunPairingAttempt(
