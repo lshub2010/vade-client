@@ -232,6 +232,7 @@ class TopBarBandTest {
         val beforeTopGap = before.px.energy(left, topL, right, topB)
         val afterTopGap = after.px.energy(left, topL, right, topB)
         val beforeBottomGap = before.px.energy(left, botT, right, botB)
+        val afterBottomGap = after.px.energy(left, botT, right, botB)
 
         // 参照：卡内**没有文字**的右半区（纯模糊背景）——「同一量级」的标尺。
         val cardRefLeft = (right - 60 * d).toInt()
