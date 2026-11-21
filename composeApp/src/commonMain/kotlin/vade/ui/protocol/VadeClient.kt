@@ -583,6 +583,16 @@ class VadeClient(
     /** `ui/attach` — see [attach] for the last_seq semantics. */
     suspend fun uiAttach(params: AttachParams): AttachResult = attach(params)
 
+    /**
+     * Full-snapshot attach: bypasses the same-session last_seq substitution.
+     *
+     * `ui/attach` treats `last_seq = 0` as "replay from the beginning" and may
+     * answer with `snapshot = null`; that is not a history read. Omitting
+     * last_seq is the only wire form that always asks for a snapshot.
+     */
+    suspend fun uiAttachFresh(sessionId: String): AttachResult =
+        attachInternal(AttachParams(sessionId = sessionId, lastSeq = null))
+
     /** `ui/detach`. */
     suspend fun uiDetach(params: DetachParams): OkResult = detach(params)
 
