@@ -297,6 +297,9 @@ class ChatState(
      * 幂等：重复调用（重试 / 重进）按 id 重建，不会叠加重复行。[LiveTranscript.seed] 让
      * 快照行对后续 `message.edited` / `turn.superseded` 可解析。
      *
+     * 快照里的 `pending_inputs` 也在这里落地（[mergeSnapshotInputs]）：重进会话 / 断线重连
+     * 之后问答卡必须回来，否则回合永远停在 `waiting_input` 而客户端再也拿不到这张卡。
+     *
      * @return 是否成功进入 Ready（假源直接返回 false：它没有读通道，也不需要）。
      */
     suspend fun loadHistory(): Boolean {
@@ -310,13 +313,15 @@ class ChatState(
         phase = ChatPhase.Loading
         loadError = null
         return try {
-            val rows = channel.history(sessionId)
-            live.seed(rows)
+            // 一次读拿全：消息 + 未作答问答（两次 attach = 同连接双 sink，见 ChatHistory）。
+            val snapshot = channel.snapshot(sessionId)
+            live.seed(snapshot.messages)
             // 用投影器的行序重建：快照行 + 加载期间已经到达的 live 行，一次到位、不叠行。
             // A3 · 已投影的工具卡一并重建（按 call_id 幂等；同回合的 live 行可定位时插回其行后）。
             items.clear()
             live.messages.forEach { items += ChatItem.Message(it) }
             live.toolItems.forEach { upsertToolItem(it.call) }
+            mergeSnapshotInputs(snapshot.pendingInputs)
             phase = ChatPhase.Ready
             true
         } catch (error: CancellationException) {
@@ -369,16 +374,20 @@ class ChatState(
                 if (runningTurnId == event.payload.turnId) runningTurnId = null
                 if (interruptInFlight == event.payload.turnId) interruptInFlight = null
                 dequeueTurn(event.payload.turnId)
+                // 回合没了，还开着的问答也就没有意义了（resolved 丢了 / 被直接杀回合）。
+                dropInputsForTurn(event.payload.turnId, INPUT_TURN_ENDED_NOTICE)
             }
             is TurnCancelled -> {
                 if (runningTurnId == event.payload.turnId) runningTurnId = null
                 dequeueTurn(event.payload.turnId)
+                dropInputsForTurn(event.payload.turnId, INPUT_TURN_ENDED_NOTICE)
             }
             is TurnFailed -> {
                 if (runningTurnId == event.payload.turnId) runningTurnId = null
                 if (interruptInFlight == event.payload.turnId) interruptInFlight = null
                 dequeueTurn(event.payload.turnId)
                 makeFailureReadable(event.payload.turnId)
+                dropInputsForTurn(event.payload.turnId, INPUT_TURN_ENDED_NOTICE)
             }
             else -> Unit
         }
@@ -1412,7 +1421,11 @@ class ChatState(
     //  2. 读者作答 / 取消 → 走 [ChatTurnGateway.answerInput] / [cancelInput]（`turn/input`
     //     与 `turn/input.cancel`），成功后本地摘卡；
     //  3. `turn.input_resolved` 到达 → **无论本地做过什么**，按 `input_id` 关掉那一张
-    //     （别处作答 / 超时 / 会话关闭都靠它；这是契约里唯一的关窗信号）。
+    //     （别处作答 / 超时 / 会话关闭都靠它；这是契约里唯一的关窗信号）；
+    //  4. 回合的**终态事件**（cancelled / failed / interrupted）按 `turnId` 清掉还没关的卡
+    //     —— resolved 丢了（断线跳 seq / queue.cancel 直接杀回合）时的兜底；
+    //  5. 重进会话 / 断线重连：`ui/attach` 快照的 `pending_inputs` 在 [loadHistory] 里
+    //     按 `input_id` 幂等合并（[mergeSnapshotInputs]），卡从快照重建，不靠 live 重放。
     //
     // 输入框文字与勾选是纯客户端状态，不进 payload；`multi_choice` 的值按选项显示顺序
     // 归一（见 [PendingInput.selectedInOptionOrder]）。
@@ -1428,6 +1441,17 @@ class ChatState(
 
     /** 在途的作答 / 取消 —— 同一 `input_id` 不重复发帧（core 幂等，客户端也不浪费往返）。 */
     private val inputsInFlight = mutableSetOf<String>()
+
+    /**
+     * 已经**在本地收尾**过的 `input_id`（作答 / 取消 / 超时 / `turn.input_resolved` /
+     * 回合终态清理）。
+     *
+     * 为什么需要它：快照是异步读的，读的过程中 live 事件可能已经把某张卡 resolved 掉了。
+     * 那份快照里它仍然在 `pending_inputs` 里（快照点更早），如果只按「当前 pending 里有没有」
+     * 去重，就会把一张已经关掉的卡**复活**。这张表只存 id、只增不减（会话级，量级 = 本次
+     * 会话问过的次数），用来挡住这种迟到重建。
+     */
+    private val settledInputs = mutableSetOf<String>()
 
     /** 页面时钟（倒计时 / 超时的唯一来源）；[PendingInput] 的算法全部按它算。 */
     internal fun nowMs(): Long = clock()
@@ -1512,13 +1536,27 @@ class ChatState(
     }
 
     /**
-     * `expires_at` 已过：本地关窗 + 提示。**不发 cancel** —— core 自己的超时（timeout =
-     * cancel）会发 `turn.input_resolved`；`default` 永远不会变成答案。
+     * 到期（[PendingInput.expiresAtMs] 已过）：本地关窗 + 提示，**并补发一次幂等的**
+     * `turn/input.cancel(reason = "timeout")`。
+     *
+     * 为什么还要发：本地判超时用的是**本机**对期限的解读（时钟偏差已由
+     * [PendingInput.fromEvent] 兜底，但 core 的期限仍可能比本机早/晚）。不发这一帧，
+     * core 会继续认为问题开着，直到它自己的 60–600s 超时 —— 期间这个回合在 UI 上没有卡，
+     * 用户每次提交都被 core 拒绝。cancel 是幂等的：core 已经关掉这张卡时它按 `ok=false`
+     * 静默（见 `TurnGatewayReal.cancelInput`），成功后 core 照常发 `turn.input_resolved`。
+     *
+     * 失败**不**上屏：卡已经按期限摘了，「已超时」才是读者该看到的读数；这一帧只是让 core
+     * 提前收尾，送不到也不必再打扰。
      */
     fun timeoutInput(inputId: String): Boolean {
         if (pendingInputs.none { it.inputId == inputId }) return false
+        // 已经有一帧在途（作答 / 取消）：那一帧到 core 之后这张卡自然关，不再补一发。
+        val alreadyOnTheWire = inputId in inputsInFlight
         closeInput(inputId)
         lastNotice = INPUT_TIMEOUT_NOTICE
+        if (alreadyOnTheWire) return true
+        inputsInFlight += inputId
+        wireScope.launch { cancelInputOverWire(inputId, INPUT_TIMEOUT_CANCEL_REASON, successNotice = null) }
         return true
     }
 
@@ -1542,24 +1580,36 @@ class ChatState(
         }
     }
 
-    private suspend fun cancelInputOverWire(inputId: String) {
+    private suspend fun cancelInputOverWire(
+        inputId: String,
+        reason: String = INPUT_CANCEL_REASON,
+        // 成功时上屏的那句话；null = 调用方自己已经给过状态行（超时那条），不要覆盖。
+        successNotice: String? = INPUT_CANCELLED_NOTICE,
+    ) {
         try {
-            turns.cancelInput(sessionId, inputId, INPUT_CANCEL_REASON)
+            turns.cancelInput(sessionId, inputId, reason)
             closeInput(inputId)
-            lastNotice = "已取消作答（回合继续）"
+            successNotice?.let { lastNotice = it }
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
             inputsInFlight.remove(inputId)
-            lastNotice = "取消未送达（${loadErrorCategoryOf(error).label}）：" +
-                "${error.message?.takeIf { it.isNotBlank() } ?: "通道异常"}，可重试"
+            // 超时那一发是「顺带让 core 提前收尾」，送不到不覆盖「已超时」的读数。
+            if (successNotice != null) {
+                lastNotice = "取消未送达（${loadErrorCategoryOf(error).label}）：" +
+                    "${error.message?.takeIf { it.isNotBlank() } ?: "通道异常"}，可重试"
+            }
         }
     }
 
-    /** 唯一的摘卡路径：本地提交成功、取消成功、超时、`turn.input_resolved` 都走这里。 */
+    /**
+     * 唯一的摘卡路径：本地提交成功、取消成功、超时、`turn.input_resolved`、回合终态清理
+     * 都走这里。摘掉的 id 记进 [settledInputs] —— 迟到的快照不许把它复活。
+     */
     private fun closeInput(inputId: String) {
         inputsInFlight.remove(inputId)
         pendingInputs.removeAll { it.inputId == inputId }
+        settledInputs += inputId
     }
 
     /**
@@ -1578,7 +1628,46 @@ class ChatState(
 
     private fun onInputRequired(p: TurnInputRequiredPayload) {
         if (pendingInputs.any { it.inputId == p.inputId }) return
-        pendingInputs += PendingInput(request = p)
+        if (p.inputId in settledInputs) return
+        // 期限在「卡出现的那一刻」按本机时钟解释一次（时钟偏差 → 相对预算，见 PendingInput）。
+        pendingInputs += PendingInput.fromEvent(p, clock())
+    }
+
+    /**
+     * 把 `ui/attach` 快照里的 `pending_inputs` 合并进来（重进 / 重连 / 切走再切回）。
+     *
+     * 按 `input_id` 幂等：已经在屏上的不重复弹，**本地已经收过尾的不复活**（[settledInputs]）；
+     * 顺序沿用快照（core 的到达顺序 = 先到先答）。快照是在详情页打开时读的，live 事件可能
+     * 已经先到了 —— 两路合流后每一张卡都只出现一次。
+     */
+    private fun mergeSnapshotInputs(pending: List<TurnInputRequiredPayload>) {
+        if (pending.isEmpty()) return
+        val known = pendingInputs.mapTo(mutableSetOf()) { it.inputId }
+        pending.forEach { payload ->
+            if (payload.inputId in known) return@forEach
+            if (payload.inputId in settledInputs) return@forEach
+            // 快照里的卡可能是断线期间真的过期了：照 core 的期限判，过期立刻关（并补发 cancel）。
+            pendingInputs += PendingInput.fromSnapshot(payload, clock())
+            known += payload.inputId
+        }
+        // 快照里已经过期的卡不留在屏上：逐张按超时收尾（每张都会补一发幂等 cancel）。
+        pendingInputs.filter { it.isExpired(clock()) }.map { it.inputId }.forEach { timeoutInput(it) }
+    }
+
+    /**
+     * 回合终态（`turn.cancelled` / `turn.failed` / `turn.interrupted`）把该回合还开着的
+     * 问答一并收起。
+     *
+     * 契约说 `turn.input_resolved` 会在终态事件之前到；但如果事件丢了（断线按 seq 跳号）、
+     * 或者 `queue.cancel` 直接把回合杀了，卡片会永久停在屏上 —— 读者每次提交都被 core
+     * 拒绝，UI 上只表现为「点了提交，卡消失，回合没动」。清理按 `request.turnId` 取值，
+     * 所以同一个会话里别的回合的卡不受影响。
+     */
+    private fun dropInputsForTurn(turnId: String, notice: String) {
+        val stale = pendingInputs.filter { it.request.turnId == turnId }
+        if (stale.isEmpty()) return
+        stale.forEach { closeInput(it.inputId) }
+        lastNotice = notice
     }
 
     // --- preview --------------------------------------------------------------
@@ -1724,8 +1813,17 @@ class ChatState(
         /** `turn/input.cancel` 的 `reason`：读者主动关掉这一张卡（回合继续）。 */
         const val INPUT_CANCEL_REASON: String = "user_cancel"
 
+        /** `turn/input.cancel` 的 `reason`：本机判到期，顺手让 core 提前收尾（幂等）。 */
+        const val INPUT_TIMEOUT_CANCEL_REASON: String = "timeout"
+
+        /** 取消成功后的状态行（超时那条不走这里，见 [timeoutInput]）。 */
+        const val INPUT_CANCELLED_NOTICE: String = "已取消作答（回合继续）"
+
         /** `expires_at` 到期后的状态行（超时 = 未作答；`default` 不生效）。 */
         const val INPUT_TIMEOUT_NOTICE: String = "回答超时（未作答），回合继续"
+
+        /** 回合在问答期间被取消 / 失败 / 中断：卡片一并收起（防 `turn.input_resolved` 丢失）。 */
+        const val INPUT_TURN_ENDED_NOTICE: String = "回合已结束，问题已收起"
     }
 }
 

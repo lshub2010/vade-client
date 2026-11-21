@@ -38,9 +38,9 @@ class TurnGatewayReal(
      * B2 · 读通道（历史快照 + 事件流）。`null` = 本实例只提供写能力 —— 那不是错误，
      * `ChatState` 会进失败态并明说「没有读历史的通道」，**绝不回退 fixtures**。
      *
-     * 组合根（[RealAdapters]）把 `RealSessionSource::messages` / `::observeEvents` 传进来，
-     * 于是读侧是**委托**而不是适配：两个方法引用的签名与
-     * [ChatTranscriptSource.of] 的 `history` / `events` 逐字相同。
+     * 组合根（[RealAdapters]）把 `RealSessionSource::chatSnapshot` / `::observeEvents` 传进来，
+     * 于是读侧是**委托**而不是适配：签名字面上就是
+     * [ChatTranscriptSource.ofSnapshot] 的 `snapshot` / `events`。
      */
     private val transcriptSource: ChatTranscriptSource? = null,
     /**

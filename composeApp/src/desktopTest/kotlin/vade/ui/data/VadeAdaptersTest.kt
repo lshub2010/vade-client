@@ -393,9 +393,13 @@ class VadeAdaptersTest {
         val src = File("src/commonMain/kotlin/vade/ui/data/RealSessionSource.kt")
         assertTrue(src.isFile, "找不到 ${src.absolutePath}")
         val text = src.readText()
-        val at = text.indexOf("ChatTranscriptSource.of")
-        assertTrue(at > 0, "RealSessionSource 里应有一段 ChatTranscriptSource.of 装配")
+        val at = text.indexOf("ChatTranscriptSource.ofSnapshot")
+        assertTrue(at > 0, "RealSessionSource 里应有一段 ChatTranscriptSource.ofSnapshot 装配")
         val slice = text.substring(at, minOf(text.length, at + 400))
+        assertTrue(
+            Regex("""snapshot\s*=\s*\{\s*sessionId\s*->\s*chatSnapshot\(sessionId\)\s*\}""").containsMatchIn(slice),
+            "snapshot 必须走一次 ui/attach 的 chatSnapshot（消息 + pending_inputs 同一份快照），实际块：\n$slice",
+        )
         assertTrue(
             Regex("""events\s*=\s*\{\s*created\.events\s*\}""").containsMatchIn(slice),
             "events 必须接 created.events（原始协议流），实际块：\n$slice",
@@ -403,6 +407,21 @@ class VadeAdaptersTest {
         assertFalse(
             slice.contains("observeEvents"),
             "不得把 observeEvents() 接给聊天读通道——它是 mapEvent 的有损投影，会丢掉 message.* 事件",
+        )
+    }
+
+    /**
+     * 装配守卫：聊天快照必须把 `snapshot.pending_inputs` 一起带出来。
+     *
+     * RFC-0008 §8.2 要求未作答的问答从快照重建；字段被解析（`VadeSnapshot.pendingInputs`）
+     * 但没人消费，正是 F8 的 P1-1（重进 / 重连后卡永久消失）。这条钉住消费点本身。
+     */
+    @Test
+    fun chatSnapshotCarriesThePendingInputsSoTheDialogCanRebuild() {
+        val text = File("src/commonMain/kotlin/vade/ui/data/RealSessionSource.kt").readText()
+        assertTrue(
+            Regex("""pendingInputs\s*=\s*result\.snapshot\?\.pendingInputs\.orEmpty\(\)""").containsMatchIn(text),
+            "chatSnapshot 必须把 snapshot.pending_inputs 带进 ChatHistory（否则重进会话卡不会回来）",
         )
     }
 

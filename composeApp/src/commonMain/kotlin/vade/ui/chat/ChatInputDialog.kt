@@ -76,8 +76,16 @@ import vade.ui.skin.LocalSkin
  * 标题是 heading，选项行是 `selectable`（RadioButton / Checkbox 角色 + selected 态），
  * 输入框有自己的名字 —— 读屏不会只念一个「编辑框」。
  *
- * 倒计时只认 `expires_at`：到点本地摘卡并给状态行；**默认值不会变成答案**（timeout =
- * cancel，core 的 `turn.input_resolved(status=timeout)` 才是最终事实）。
+ * Esc 有**两条**路，最终都落到同一张卡上：
+ *  1. 卡自己的 `onPreviewKeyEvent`（焦点在卡内时最快）；
+ *  2. [ChatThread] 末尾登记的 [vade.ui.shell.BackLayer]（`enabled = 有卡 && 详情没被抽屉盖住`）
+ *     —— 真实外壳里 `AppShell` 根部的 preview 会**先**把 Esc 交给返回栈，没有这一层，
+ *     Esc 就是「退出会话」而不是「取消问答」（问题随之从屏幕上消失）。
+ *
+ * 倒计时只认 [PendingInput.expiresAtMs]（= `expires_at`，缺失时 `created_at + timeout_s`；
+ * 时钟偏差走相对预算）：到点本地摘卡、给状态行，并补发一次幂等的
+ * `turn/input.cancel(reason = "timeout")` 让 core 提前收尾。**默认值不会变成答案**
+ * （timeout = cancel；core 的 `turn.input_resolved(status=timeout)` 才是最终事实）。
  */
 internal const val AskUserDialogTag = "vade.chat.input.dialog"
 
@@ -150,11 +158,13 @@ private fun AskUserInputDialog(state: ChatState, input: PendingInput) {
     var now by remember(input.inputId) { mutableStateOf(state.nowMs()) }
 
     // 倒计时：每次 tick 重新读时钟再判定（不把「剩余 N 秒」当状态推进，时钟才是真值）。
+    // 期限在卡出现时就算定了（[PendingInput.expiresAtMs]：expires_at，缺失时 created_at +
+    // timeout_s，时钟偏差走相对预算）—— 这里不再读 core 的墙钟字段。
     LaunchedEffect(input.inputId) {
-        val expiresAt = input.request.expiresAt ?: return@LaunchedEffect
+        val deadline = input.expiresAtMs ?: return@LaunchedEffect
         now = state.nowMs()
         while (true) {
-            if (state.nowMs() >= expiresAt) {
+            if (state.nowMs() >= deadline) {
                 state.timeoutInput(input.inputId)
                 break
             }

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
@@ -289,19 +290,24 @@ internal fun SessionsDrawerHost(
 
     Box(Modifier.fillMaxSize().clipToBounds()) {
         // --- 常驻底层：详情。抽屉开合全程保持组合（数据层/聊天滚动不重建）。 ---
-        Box(
-            Modifier
-                .fillMaxSize()
-                .focusRequester(baseFocus)
-                .focusable(),
-        ) {
-            base?.invoke() ?: DrawerDetailBase(
-                state = state,
-                adapters = adapters,
-                animate = animate,
-                bottomInset = detailBottomInset,
-                onOverlayChange = onDetailOverlayChange,
-            )
+        //
+        // `LocalDetailCovered`：抽屉展开时详情还在这棵树里，但屏上是列表 —— 详情内部的
+        // 模态（问答卡）据此让出 Esc（见 `BackDispatch.kt` 的 KDoc）。
+        CompositionLocalProvider(LocalDetailCovered provides expanded) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .focusRequester(baseFocus)
+                    .focusable(),
+            ) {
+                base?.invoke() ?: DrawerDetailBase(
+                    state = state,
+                    adapters = adapters,
+                    animate = animate,
+                    bottomInset = detailBottomInset,
+                    onOverlayChange = onDetailOverlayChange,
+                )
+            }
         }
 
         // --- 遮罩：常驻但收起后 alpha=0 且不可点；点它 = 收抽屉。 ---

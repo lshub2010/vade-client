@@ -2,6 +2,7 @@ package vade.ui.shell
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
@@ -97,6 +98,21 @@ class BackDispatcher {
  * 系统返回，生产树必须由组合根 provide。
  */
 val LocalBackDispatcher = staticCompositionLocalOf<BackDispatcher?> { null }
+
+/**
+ * 详情**是否被更上面的表面盖住**（手机单栏的列表抽屉）：默认 false。
+ *
+ * 为什么需要它：页面内的模态（RFC-0008 的问答卡）要在「自己真的在屏上」时接管 Esc。
+ * `BackLayer` 的栈序只看组合序，看不到「抽屉拉开、详情还在组合里」这件事 —— 没有这个
+ * 信号，抽屉开着按 Esc 会把抽屉背后那个会话里的问题取消掉，而读者看的是列表。
+ *
+ * 由 `SessionsDrawerHost` 在抽屉宿主这一层 provide（`true` = 抽屉展开）；双栏 / rail
+ * 没有抽屉，永远是默认值。它只描述**盖住**这件事，不参与返回栈本身。
+ *
+ * 用**动态** local 而不是 `staticCompositionLocalOf`：它随抽屉开合变化，静态 local 一变
+ * 会让整棵子树（含聊天内容）重组；动态 local 只让真正读它的那几个作用域失效。
+ */
+val LocalDetailCovered = compositionLocalOf { false }
 
 /**
  * 把一段组合注册成返回栈的一层。
