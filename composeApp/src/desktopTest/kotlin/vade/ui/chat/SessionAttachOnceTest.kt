@@ -78,8 +78,10 @@ class SessionAttachOnceTest {
             clientMsgId: String,
         ): SubmitReceipt = SubmitReceipt("t-1", 0)
 
-        override fun transcript(): ChatTranscriptSource =
-            ChatTranscriptSource.of({ source.messages(it) }, { source.observeEvents() })
+        override fun transcript(): ChatTranscriptSource = object : ChatTranscriptSource {
+            override suspend fun history(sessionId: String) = source.messages(sessionId)
+            override fun events() = emptyFlow<vade.ui.protocol.VadeEvent>()
+        }
     }
 
     /** `resolveChatState` 只查 `uploader()` 与 `turns()`；其余查找在本用例里不参与。 */
