@@ -355,7 +355,7 @@ class PairingTlsUiTest {
         waitForIdle()
 
         // 关掉 HTTPS：警告针对的协议已经不存在。
-        onNodeWithTag(PAIRING_TLS_SWITCH_TAG).performScrollTo().performClick()
+        onNodeWithTag(PAIRING_TLS_SWITCH_TAG).performClick()
         waitUntil(timeoutMillis = 5_000) { dialogs() == 0 }
         waitForIdle()
 
@@ -444,7 +444,7 @@ class PairingTlsUiTest {
         // 面板里也是那一个开关（不是第二套）。
         onNodeWithTag(PAIRING_TLS_SWITCH_TAG).assertExists()
 
-        onNodeWithTag(PAIRING_TLS_SWITCH_TAG).performScrollTo().performClick()
+        onNodeWithTag(PAIRING_TLS_SWITCH_TAG).performClick()
         onNode(codeField()).performTextInput("青松-PANEL1")
         onNodeWithText(SWITCH_BUTTON_LABEL).performClick()
         waitUntil(timeoutMillis = 5_000) { dialogs() == 1 }

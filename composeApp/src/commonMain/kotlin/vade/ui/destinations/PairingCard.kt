@@ -498,7 +498,9 @@ internal fun PairingForm(
     if (submitting) {
         UiText(submittingLabel, size = 11, color = skin.colors.onSurfaceVariant)
     }
-    tlsWarning?.let { pending ->
+    // The warning is about HTTPS; turning TLS off makes it moot even if the
+    // form's invalidation callback is missed.
+    if (tls) tlsWarning?.let { pending ->
         // 唯一以 InsecureConfirmed 重试的入口。取消 = 什么都不发、码不动（码没被烧）。
         // P1-4 · 确认重试的是**快照**（弹层显示的那一个 host/port/协议/码），不是实时表单。
         TlsWarningDialog(
