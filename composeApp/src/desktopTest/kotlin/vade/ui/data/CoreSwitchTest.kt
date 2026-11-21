@@ -400,6 +400,7 @@ class CoreSwitchTest {
             wire.statesAtConnect.single(),
             "新 core 收到 POST 时旧凭据必须还在（这就是失败可回退的原因）",
         )
+        Unit
     }
 
     @Test
