@@ -538,7 +538,14 @@ class VadeClient(
      * contract's create form; core `manager.attach()` reads null and mints a session).
      */
     suspend fun attach(params: AttachParams): AttachResult {
-        val effective = if (params.lastSeq == null && params.sessionId != null && attachedSessionId != null) {
+        val effective = if (params.lastSeq == null &&
+            params.sessionId != null &&
+            attachedSessionId != null &&
+            params.sessionId == attachedSessionId
+        ) {
+            // ONLY a same-session re-attach resumes from the tracked cursor.
+            // A switch to another session (A -> B) must ask for B's full
+            // snapshot; inheriting A's seq made B's thread empty.
             params.copy(lastSeq = lastSeq)
         } else {
             params

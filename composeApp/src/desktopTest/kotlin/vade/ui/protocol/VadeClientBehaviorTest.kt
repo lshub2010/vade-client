@@ -373,6 +373,33 @@ class VadeClientBehaviorTest {
     }
 
     @Test
+    fun switchingToAnotherSessionDoesNotInheritTheTrackedLastSeq() {
+        val factory = FakeTransportFactory()
+        val client = testClient(factory)
+        val transport = connectAndAwait(client, factory)
+
+        runBlocking {
+            // Attach A and adopt from_seq=7 as A's cursor.
+            val first = async { client.attach(AttachParams("s1", null)) }
+            val firstFrame = transport.awaitSent()
+            transport.push(responseFrame(idOf(firstFrame), """{"session_id":"s1","from_seq":7,"snapshot":null}"""))
+            withTimeout(5000) { first.await() }
+            waitUntil { client.lastSeqFor("s1") >= 7 }
+
+            // Switching to B must be a fresh attach: no last_seq from A.
+            val second = async { client.attach(AttachParams("s2", null)) }
+            val secondFrame = transport.awaitSent()
+            val (method, params) = requestOf(secondFrame)
+            assertEquals("ui/attach", method)
+            assertEquals("""{"session_id":"s2"}""", params,
+                "a foreign session must not inherit s1's replay cursor")
+            transport.push(responseFrame(idOf(secondFrame), """{"session_id":"s2","from_seq":0,"snapshot":null}"""))
+            withTimeout(5000) { second.await() }
+            client.close()
+        }
+    }
+
+    @Test
     fun reconnectBackoffIsExponentialAndCappedAt30s() {
         // Pure function: attempt 1 = base, then doubling, hard cap 30s (task book).
         assertEquals(500, backoffDelayMs(1, 500, 30_000))
