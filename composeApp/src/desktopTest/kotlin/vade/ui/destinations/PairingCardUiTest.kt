@@ -216,17 +216,25 @@ class PairingCardUiTest {
         // 每加一种失败分类，标题与下一步都必须**成对**出现、且互不可替换 ——
         // 漏一条 when 分支会在这里立刻红（不是编译错误，是文案缺失）。
         val kinds = PairingFailureKind.entries
-        assertEquals(5, kinds.size, "失败分类数量变了：新分类必须同时补 headline / nextStep 文案")
+        assertEquals(
+            6,
+            kinds.size,
+            "失败分类数量变了：新分类（P0-6 的 CertificateUntrusted）必须同时补 headline / nextStep 文案",
+        )
         val headlines = kinds.map { pairingHeadline(it, raw) }
         assertEquals(headlines.size, headlines.toSet().size, "每种失败的标题必须互不相同：$headlines")
         val steps = kinds.map { pairingNextStep(it, raw) }
         assertEquals(steps.size, steps.toSet().size, "每种失败的下一步必须互不相同：$steps")
 
-        // 每条下一步都有可执行动作：取码 / 启动命令 / 重试 / 改端口 / 换设备配对。
+        // 每条下一步都有可执行动作：取码 / 启动命令 / 重试 / 改端口 / 换设备配对 / 确认自签证书。
         assertTrue(pairingNextStep(PairingFailureKind.BadCode, raw).contains("重新取一个新码"))
         assertTrue(pairingNextStep(PairingFailureKind.ServerDown, raw).contains("PYTHONPATH"))
         assertTrue(pairingNextStep(PairingFailureKind.Network, raw).contains("重试"))
         assertTrue(pairingNextStep(PairingFailureKind.BadConfig, raw).contains("端口填 1..65535"))
         assertTrue(pairingNextStep(PairingFailureKind.NotAvailableHere, raw).contains("桌面应用或手机 App"))
+        // 证书不被信任 = 唯一会要求「确认自签」的一类：下一步必须说清确认之后才重试。
+        val certificateStep = pairingNextStep(PairingFailureKind.CertificateUntrusted, raw)
+        assertTrue(certificateStep.contains("自签证书"), "证书类失败要点名自签：$certificateStep")
+        assertTrue(certificateStep.contains("仍然连接"), "确认动作必须照抄按钮文案：$certificateStep")
     }
 }

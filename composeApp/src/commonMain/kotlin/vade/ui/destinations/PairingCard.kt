@@ -563,7 +563,7 @@ internal fun TlsWarningDialog(
  * 与重新打开的面板才看得见「旧凭证吊销失败 / 切换没有完成：… / 已切换到 …」。
  *
  * ## R3 · 提交中不许被「返回」取消
- * 换 core 是三段式（吊销旧 → 清本地 → 连新）。旧实现把 `submitting` 关在 [PairingForm]
+ * 换 core 是三段式（连新 core → 成功后才吊销旧 → 切换并落盘）。旧实现把 `submitting` 关在 [PairingForm]
  * 里、把提交跑在 `rememberCoroutineScope()` 上，于是面板一离开组合（成功的重建、或用户按
  * 返回）协程就被取消 —— 用户停在「旧已吊销、新未装、零提示」。现在三处一起改：
  *  1. [submittingState] 提升到本面板：顶栏返回在提交中**不挂 clickable**（不是
@@ -765,7 +765,7 @@ internal fun CoreSwitchPanel(
         GroupCard {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 UiText(
-                    text = "填入另一台 core 的地址与配对码。旧 core 上的本机凭证会先被吊销，再连新的。",
+                    text = "填入另一台 core 的地址与配对码。先连上新 core（成功才拿到新凭证），之后才吊销旧 core 上的本机凭证；新 core 连不上时旧连接原样保留。",
                     size = 11,
                     color = skin.colors.onSurfaceVariant,
                 )
@@ -832,7 +832,7 @@ internal fun CoreSwitchPanel(
  * 「换 core / 断开」的提交作用域：**不挂在组合上**。
  *
  * `rememberCoroutineScope()` 会随面板离开组合被取消，而换 core 是三段式
- * （吊销旧 → 清本地 → 连新）。面板先走一步（成功会重建 `UiState`；用户也可能按了返回），
+ * （连新 core → 成功后才吊销旧 → 切换并落盘）。面板先走一步（成功会重建 `UiState`；用户也可能按了返回），
  * 协程就停在「旧已吊销、新未装」的中间态，回执一句都写不出来 —— 用户什么都看不到。
  * 这个作用域活到进程结束；结果一律写进 [CoreSwitchNotice]，设置页入口那一行读得到。
  *
@@ -972,14 +972,14 @@ internal const val CORE_SWITCH_PANEL_TAG = "core-switch-panel"
 internal const val SWITCH_BUTTON_LABEL = "配对并切换"
 
 /** 换 core 进行中的提示（吊销 + 配对两段都在里面）。 */
-internal const val SWITCH_SUBMITTING = "正在吊销旧凭证并连接新 core…"
+internal const val SWITCH_SUBMITTING = "正在连接新 core（成功后吊销旧凭证）…"
 
 /** 「吊销失败」提示的前缀 —— UI 契约：失败必须说这几个字。 */
 internal const val REVOKE_FAILED_NOTICE = "旧凭证吊销失败"
 
 /** 当前连接卡的说明：把顺序说清，用户才知道旧 core 会发生什么。 */
 internal const val CORE_SWITCH_HOW =
-    "换 core 时先向旧 core 发 DELETE /ui/session 吊销本机的 UI 凭证，再清掉本地配置，最后才连新的。"
+    "换 core 时先用新地址与配对码连上新 core；拿到新凭证之后，才向旧 core 发 DELETE /ui/session 吊销本机的 UI 凭证。新 core 连不上时旧连接原样保留。"
 
 /** 断开按钮。 */
 internal const val CORE_SWITCH_DISCONNECT = "断开当前 core（吊销本机凭证）"

@@ -1076,7 +1076,10 @@ object PairingRuntime {
      *  4. 一次性切换桥到新 core 并落盘；旧 factory [VadeTransportFactory.dispose]（
      *     `isUsable` 从此为 false —— 任何迟到的重连都不会把它复活，P0-4）。
      *
-     * 一次性码只在「真的要换」的时候才烧：本地配置错误与取消都不会走到第 2 步之后。
+     * 取消（[CancellationException]）永远是「旧连接不动」：第 2 步取消 → 桥与本地配置一个
+     * 字节都不变；第 3 步取消 → 桥仍是旧 core，但刚到手的新 factory 会被
+     * [VadeTransportFactory.dispose]（既不进桥就没人会用它，留着只是泄漏）。一次性码在
+     * 第 2 步就已被 core 消费，取消不会「退回」它 —— 本地配置错误仍然一个请求都不发。
      */
     suspend fun switchCore(
         raw: RawSourceStrings,
@@ -1126,7 +1129,17 @@ object PairingRuntime {
         }
         // 3) 新凭据到手，才吊销旧 core 的 UI 会话（best-effort：超时 / 失败不阻塞切换）。
         val previous = state as? PairingRuntimeState.Paired
-        val revocation = revokeBestEffort(previous?.factory, revokeTimeoutMs)
+        val revocation = try {
+            revokeBestEffort(previous?.factory, revokeTimeoutMs)
+        } catch (ce: CancellationException) {
+            // 取消发生在这一步：桥还没切，旧连接原样保留（正确），但刚换到的新 factory
+            // 既不进桥、也没有任何调用方持有 —— 必须放掉它的 HttpClient / cookie，
+            // 否则每取消一次就漏一个连接池 + 一份仍然有效的服务端会话。
+            if (previous?.factory !== attempt.factory) {
+                runCatching { attempt.factory.dispose() }
+            }
+            throw ce
+        }
         // 4) 一次性切换 + 新凭据落盘；旧 factory 退休。`dispose()` 之后
         //    `isUsable == false`，runner 见它直接终止 —— 旧 core 不会被重连复活。
         install(

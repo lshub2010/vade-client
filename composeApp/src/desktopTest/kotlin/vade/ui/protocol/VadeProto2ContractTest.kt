@@ -753,12 +753,18 @@ class VadeProto2ContractTest {
         runBlocking {
             val events = mutableListOf<VadeEvent>()
             val job = collectEvents(client) { events.add(it) }
-            transport.push(eventFrame("session.cluster_rebalanced", 1, """{"whatever":true}"""))
+            // P0-3 · 水位是**按会话**记的：先 attach 到 s1，事件帧再各带自己的 session_id，
+            // 「未知事件也推进水位」才是对 s1 这个会话说的（而不是靠无会话兜底槽位碰巧相等）。
+            val attach = async { client.attach(AttachParams(null, null)) }
+            transport.push(responseFrame(idOf(transport.awaitSent()), """{"session_id":"s1","from_seq":0,"snapshot":null}"""))
+            withTimeout(5000) { attach.await() }
+            transport.push(eventFrame("session.cluster_rebalanced", 1, """{"session_id":"s1","whatever":true}"""))
             transport.push(eventFrame("session.updated", 2, """{"session_id":"s1","by":"dev1"}"""))
             waitUntil { client.lastSeq >= 2 }
             waitUntil { events.isNotEmpty() }
             assertEquals(1, events.size, "the unknown topic emitted nothing")
             assertEquals(2, client.lastSeq, "unknown events still advance last_seq (events.json rule 6)")
+            assertEquals(2L, client.lastSeqFor("s1"), "the watermark belongs to the frame's own session")
             assertIs<SessionUpdated>(events[0])
             job.cancel()
             client.close()

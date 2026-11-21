@@ -354,11 +354,14 @@ class VadeClientBehaviorTest {
             val attach = async { client.attach(AttachParams(null, null)) }
             val frame = first.awaitSent()
             first.push(responseFrame(idOf(frame), """{"session_id":"s1","from_seq":0,"snapshot":null}"""))
-            first.push(eventFrame("turn.delta", 1, """{"turn_id":"t1","text":"a"}"""))
-            first.push(eventFrame("turn.delta", 2, """{"turn_id":"t1","text":"b"}"""))
-            first.push(eventFrame("turn.delta", 3, """{"turn_id":"t1","text":"c"}"""))
+            // 事件帧带上 session_id：水位是**按会话**记的（P0-3），归属不许靠
+            // 「attach 的响应协程是否已经跑过」这种竞态来定。
+            first.push(eventFrame("turn.delta", 1, """{"session_id":"s1","turn_id":"t1","text":"a"}"""))
+            first.push(eventFrame("turn.delta", 2, """{"session_id":"s1","turn_id":"t1","text":"b"}"""))
+            first.push(eventFrame("turn.delta", 3, """{"session_id":"s1","turn_id":"t1","text":"c"}"""))
             withTimeout(5000) { attach.await() }
-            waitUntil { client.lastSeq >= 3 }
+            waitUntil { client.lastSeqFor("s1") >= 3 }
+            assertEquals(3L, client.lastSeq, "tracked session 的水位 = 重连要带的 last_seq")
 
             // Drop the socket — the runner reconnects and re-attaches with last_seq=3:
             first.close()
@@ -428,9 +431,10 @@ class VadeClientBehaviorTest {
             val attach = async { client.attach(AttachParams(null, null)) }
             val attachFrame = transport.awaitSent()
             transport.push(responseFrame(idOf(attachFrame), """{"session_id":"s1","from_seq":0,"snapshot":null}"""))
-            transport.push(eventFrame("turn.delta", 5, """{"turn_id":"t1","text":"a"}"""))
+            transport.push(eventFrame("turn.delta", 5, """{"session_id":"s1","turn_id":"t1","text":"a"}"""))
             withTimeout(5000) { attach.await() }
-            waitUntil { client.lastSeq >= 5 }
+            waitUntil { client.lastSeqFor("s1") >= 5 }
+            assertEquals(5L, client.lastSeq, "tracked session 的水位先到 5，detach 才能证明它被清掉")
 
             val detach = async { client.detach(DetachParams("s1")) }
             val detachFrame = transport.awaitSent()
@@ -440,6 +444,7 @@ class VadeClientBehaviorTest {
             withTimeout(5000) { detach.await() }
             waitUntil { client.attachedSession == null }
             assertEquals(0, client.lastSeq)
+            assertEquals(0L, client.lastSeqFor("s1"), "detach 丢掉的是这个会话自己的水位（P0-3 的另一半）")
             client.close()
         }
     }
