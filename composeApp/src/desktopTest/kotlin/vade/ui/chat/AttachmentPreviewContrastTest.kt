@@ -260,13 +260,19 @@ class AttachmentPreviewContrastTest {
         return hi - lo
     }
 
-    /** 一行的 luma (min, max)，/255 域，步进 8px 扫过 [x1, x2]。 */
+    /** 一行（或一个 y 采样点）的 luma (min, max)，/255 域，步进 8px 扫过夹到帧内的 [x1, x2]。 */
     private fun PixelMap.rowStats(y: Int, x1: Int, x2: Int): Pair<Float, Float> {
+        // 采样框可能落在帧外：暗色下预览卡几乎占满视口，`cardTop − 120` 会变成负 y
+        // （真 bug：裸 `this[x, y]` 直接 ArrayIndexOutOfBounds）。夹到像素范围内，
+        // 并保证 x 区间非空 —— 调用方量到的始终是帧内真实像素。
+        val yy = y.coerceIn(0, height - 1)
+        val xa = x1.coerceIn(0, width - 1)
+        val xb = x2.coerceIn(xa, width - 1)
         var lo = 999f
         var hi = -999f
-        var x = x1
-        while (x <= x2) {
-            val p = this[x, y]
+        var x = xa
+        while (x <= xb) {
+            val p = this[x, yy]
             val luma = (0.2126f * p.red + 0.7152f * p.green + 0.0722f * p.blue) * 255f
             if (luma < lo) lo = luma
             if (luma > hi) hi = luma
@@ -287,11 +293,14 @@ class AttachmentPreviewContrastTest {
         x1: Int,
         x2: Int,
     ): Triple<Int, Float, Float> {
-        var bestY = yFrom
+        // 同上：先把候选行夹进帧内（暗色视口里 cardTop − 120 可能是负的）。
+        val y0 = yFrom.coerceIn(0, height - 1)
+        val y1 = yTo.coerceIn(y0, height - 1)
+        var bestY = y0
         var bestMean = 0f
         var bestSpread = Float.MAX_VALUE
-        var y = yFrom
-        while (y <= yTo) {
+        var y = y0
+        while (y <= y1) {
             val (lo, hi) = rowStats(y, x1, x2)
             val spread = hi - lo
             if (spread < bestSpread) {
@@ -305,6 +314,37 @@ class AttachmentPreviewContrastTest {
     }
 
     private fun rgb(c: Color) = Triple(c.red * 255f, c.green * 255f, c.blue * 255f)
+
+    /** source-over：[fg]（按自身 alpha）压在不透明 [bg] 上的 0..255 通道值。 */
+    private fun over(fg: Color, bg: Triple<Float, Float, Float>): Triple<Float, Float, Float> {
+        val a = fg.alpha
+        return Triple(
+            fg.red * 255f * a + bg.first * (1f - a),
+            fg.green * 255f * a + bg.second * (1f - a),
+            fg.blue * 255f * a + bg.third * (1f - a),
+        )
+    }
+
+    private fun luma(c: Triple<Float, Float, Float>): Float =
+        0.2126f * c.first + 0.7152f * c.second + 0.0722f * c.third
+
+    /**
+     * 亮色预览卡在**没有 backdrop**（单测 / 预览 / 页面未接 GlassScope）时的解析复合栈：
+     *
+     * ```text
+     * canvas → glass tint → previewScrim → glass tint → previewCardBase
+     * ```
+     *
+     * 两层 tint 分别是遮罩 GlassSurface 与卡片 GlassSurface 的退化底（§5「采不到背景 =
+     * 染色 + 描边 + 高光」），卡片内容再压 previewCardBase@88%。本批把「恒建 haze 节点」
+     * 换成真正的 TintStroke 退化后，这条栈比旧像素多了一层卡片 tint —— 这是**刻意的**
+     * 新基线，所以测试从 token 逐层算出期望（而不是继续写死某一个实测数）。
+     */
+    private fun lightCardComposite(colors: SkinColors, tint: Color): Triple<Float, Float, Float> {
+        val canvas = rgb(colors.canvas)
+        val scrim = over(colors.previewScrim, over(tint, canvas))
+        return over(colors.previewCardBase, over(tint, scrim))
+    }
 
     // ---- 1 · dark：卡底不透明（缺陷方向） ------------------------------------------
 
@@ -419,14 +459,16 @@ class AttachmentPreviewContrastTest {
     fun lightMaterialCardBaseStaysOnTheShippedComposite() = runComposeUiTest {
         val colors = MaterialTokens.lightColors
         assertLightTokensUnchanged(colors)
-        val g = shot(MaterialSkin())
+        val skin = MaterialSkin()
+        val g = shot(skin)
         val geo = g.geometry(wideImage.width, wideImage.height)
         val xs = (geo.mockLeft - 14..geo.mockLeft - 8).toList()
         val ys = (geo.mockTop + 10..geo.mockBottom - 10 step 2).toList()
-        // 亮色回归钉：这个值是** shipped 亮色实现**（token 逐字节等于修复前表达式，见
-        // assertLightTokensUnchanged）在同 harness 下的实测 ring 均值 —— 复合栈含卡阴影
-        // 透过 88% 白底的部分，不随本批改动（暗色 token 分支）变化。改前/改后同名帧的
-        // 设备像素对比（shots/g-preview-dark RESULT）是第一证据，这里是同路径的常驻探针。
+        // 亮色回归钉（2026-11-21 口径）：期望值不再写死某一版实测数，而是从 token 逐层
+        // over 出「canvas → tint → scrim → tint → previewCardBase」的解析值。退化档从
+        // 「恒建 haze 节点」换成 TintStroke 后，卡片多了一层 glass tint —— light 像素
+        // 因此上移约 +4/255，这是设计审查 P0 要的形态，不是漂移。
+        val expected = luma(lightCardComposite(colors, skin.glass.tintLight))
         var sum = 0f
         var worstSpread = 0f
         var n = 0
@@ -442,10 +484,11 @@ class AttachmentPreviewContrastTest {
             val luma = (0.2126f * p.red + 0.7152f * p.green + 0.0722f * p.blue) * 255f
             if (abs(luma - mean) > worstSpread) worstSpread = abs(luma - mean)
         }
+        println("中栏附件亮色(material): mean=$mean spread=$worstSpread expected=$expected")
         assertTrue(
-            abs(mean - 245.2f) <= 3f && worstSpread <= 3f,
-            "亮色卡底旁带 mean=$mean spread=$worstSpread —— 偏离 shipped 实测 245.2±3/255，" +
-                "亮色像素回归超出 3/255（亮色 token 未变时该值不该动）",
+            abs(mean - expected) <= 3f && worstSpread <= 3f,
+            "亮色卡底旁带 mean=$mean spread=$worstSpread —— 偏离 token 合成栈解析值 " +
+                "$expected±3/255（canvas→tint→scrim→tint→previewCardBase）",
         )
     }
 
@@ -453,11 +496,13 @@ class AttachmentPreviewContrastTest {
     fun lightMiuixCardBaseStaysOnTheShippedComposite() = runComposeUiTest {
         val colors = MiuixTokens.lightColors
         assertLightTokensUnchanged(colors)
-        val g = shot(MiuixSkin(false))
+        val skin = MiuixSkin(false)
+        val g = shot(skin)
         val geo = g.geometry(wideImage.width, wideImage.height)
         val xs = (geo.mockLeft - 14..geo.mockLeft - 8).toList()
         val ys = (geo.mockTop + 10..geo.mockBottom - 10 step 2).toList()
-        // 同亮色回归钉（miuix 亮色实测值，见 material 版注释）。
+        // 同 material：期望值 = token 合成栈的解析值（miuix 的画布更暖，见 lightCardComposite）。
+        val expected = luma(lightCardComposite(colors, skin.glass.tintLight))
         var sum = 0f
         var n = 0
         for (yy in ys) for (x in xs) {
@@ -466,9 +511,10 @@ class AttachmentPreviewContrastTest {
             n++
         }
         val mean = sum / n
+        println("中栏附件亮色(miuix): mean=$mean expected=$expected")
         assertTrue(
-            abs(mean - 243.9f) <= 3f,
-            "miuix 亮色卡底旁带 mean=$mean —— 偏离 shipped 实测 243.9±3/255",
+            abs(mean - expected) <= 3f,
+            "miuix 亮色卡底旁带 mean=$mean —— 偏离 token 合成栈解析值 $expected±3/255",
         )
     }
 

@@ -401,20 +401,42 @@ class ComposerShadowShapeTest {
 
     @Test
     fun glassSurfaceMainPathKeepsItsBlurTintAndShadow() {
-        val text = source("composeApp/src/commonMain/kotlin/vade/ui/skin/glass/GlassSurface.kt")
-        // The haze-probe constraints that file documents — losing any of them is a
-        // regression of the *blurred* path, which this task must not touch.
+        val surface = source("composeApp/src/commonMain/kotlin/vade/ui/skin/glass/GlassSurface.kt")
+        val paint = source("composeApp/src/commonMain/kotlin/vade/ui/skin/glass/GlassPaint.kt")
+        // 2026-11-21 口径：haze 参数从 GlassSurface 手里收回成**一个**构造点
+        // （GlassPaint.glassHaze），GlassSurface 必须委托给它，不能再自己拼一份
+        // HazeBlurStyle —— 两份参数的漂移正是审查 P1-5 的「三套互不相认」。
+        listOf(
+            "glassHaze(",
+            "state = ambient",
+            "shape = shape",
+            "tint = tint",
+            "blurRadiusDp = skin.glass.blurRadiusDp",
+            // 阴影几何：composer 现在把浮层阴影委托给这一行（P0-1），所以它必须还在。
+            "downwardShelf(",
+            "shadow = shadow",
+            "color = skin.colors.shadowFloat",
+            "dark = skin.colors.isDark",
+        ).forEach { needle ->
+            assertTrue(surface.contains(needle), "GlassSurface.kt lost `$needle` — the glass path changed")
+        }
+        assertTrue(
+            !surface.contains("HazeBlurStyle"),
+            "GlassSurface.kt assembles its own HazeBlurStyle — the haze probe parameters must " +
+                "exist once, in GlassPaint.glassHaze, or the two paths drift apart",
+        )
+        // The haze-probe constraints themselves (tmp/haze-probe RESULT.md) — losing any of
+        // them turns the glass layer into a flat tint plate. They now live in the shared
+        // builder; this test follows them there instead of deleting the guard.
         listOf(
             "hazeBlur(",
             "HazeInput.Sources(state = state)",
             "blurEnabled(true)",
             "colorEffects(listOf(HazeColorEffect.tint(tint)))",
             "BlurredEdgeTreatment(shape)",
-            "shadowFloat",
-            // 阴影几何：composer 现在把浮层阴影委托给这一行（P0-1），所以它必须还在。
-            "downwardShelf(",
+            "noiseFactor(0f)",
         ).forEach { needle ->
-            assertTrue(text.contains(needle), "GlassSurface.kt lost `$needle` — the glass path changed")
+            assertTrue(paint.contains(needle), "GlassPaint.kt lost `$needle` — the haze probe contract changed")
         }
     }
 

@@ -267,15 +267,20 @@ class TopBarBandTest {
                 "缝里的 alpha 没到 1，或两条缝的模糊半径/染色已经漂了。" + numbers,
         )
         // 方向（2026-11-18 口径 + P0-5 合并）：顶部最强，带子底部归零。合并之后满强度平台段
-        // 覆盖到**胶囊底沿（64dp）**，所以「下空隙」整体是过渡段；方向仍然可测，量它的**最外沿**
-        // （最后 4dp，ramp 上 alpha ≤ 0.2 的那一段）必须明显比上空隙锐。
+        // 覆盖到**胶囊底沿（64dp）**，所以「下空隙」整体是过渡段；方向仍然可测：量整条下空隙
+        // 与最外沿（最后 4dp，ramp 上 alpha ≤ 0.2 的那一段）。
         val tailT = (bandBottom - (4 * d).toInt()).coerceAtLeast(botT)
         val afterBleedTail = after.px.energy(left, tailT, right, botB)
         val beforeBleedTail = before.px.energy(left, tailT, right, botB)
         assertTrue(
+            afterTopGap * 2f <= afterBottomGap,
+            "渐变方向不对：上空隙 ${afterTopGap} 必须明显比下空隙 ${afterBottomGap} 更糊" +
+                "（顶部最强、向下递减到 0）—— 两者反过来就是用户看到的「模糊方向反了」。",
+        )
+        assertTrue(
             afterTopGap * 2f <= afterBleedTail,
             "渐变方向不对：上空隙 ${afterTopGap} 必须明显比带子底沿 ${afterBleedTail} 更糊" +
-                "（顶部最强、向下递减到 0）—— 两者反过来就是用户看到的「模糊方向反了」。",
+                "（顶部最强、向下递减到 0）。",
         )
         // 归零点真的归零：最外沿要回到接近修前的锐利（允许一半的残余染色/抗锯齿余量）。
         assertTrue(
@@ -283,22 +288,41 @@ class TopBarBandTest {
             "带子底沿 ${afterBleedTail} 仍被糊住了（修前 ${beforeBleedTail}）—— 渐变没有在带子底部归零。",
         )
 
-        // 卡内：合并之后胶囊自己的模糊由**这条带子**提供（`blurBackdrop = false`），所以不再
-        // 要求「逐字节不变」（带子的 veil 会透进卡内），而是要求两件本质的事：
-        //  ① 卡内仍然没有锐利字形 —— 能量与缝内同量级；
-        //  ② 合并没有把卡内变锐 —— 与修前同量级（≤1.5× + 1）。
-        val dx = (8 * d).toInt()
+        // 卡内：合并之后胶囊自己的模糊由**这条带子**提供（`blurBackdrop = false`）。但卡片
+        // 的标题/副标题是**内容** —— haze 从不过滤内容，它们必须保持锐利。所以「卡内背景还
+        // 在糊里」只能在没有文字的右半区量；拿整张卡量会把标题字形的锐边当成漏光（旧断言
+        // 就是这么红的：标题越清晰，能量越高）。
         val dy = (14 * d).toInt()
-        val afterBody = after.px.energy(left + dx, top + dy, right - dx, bottom - dy)
-        val beforeBody = before.px.energy(left + dx, top + dy, right - dx, bottom - dy)
+        val bodyRefL = (right - 80 * d).toInt()
+        val bodyRefR = (right - 10 * d).toInt()
+        val afterBody = after.px.energy(bodyRefL, top + dy, bodyRefR, bottom - dy)
+        val beforeBody = before.px.energy(bodyRefL, top + dy, bodyRefR, bottom - dy)
         assertTrue(
             afterBody <= afterTopGap * 3f + 1f,
-            "卡片本体能量 ${afterBody} 与缝内 ${afterTopGap} 不同量级 —— 卡内出现锐利字形，" +
-                "说明胶囊退成了透明层（它的模糊必须由带子提供）",
+            "卡内无文字区能量 ${afterBody} 与缝内 ${afterTopGap} 不同量级 —— 卡内背景出现锐利" +
+                "字形，说明胶囊退成了透明层（它的模糊必须由带子提供）",
         )
         assertTrue(
             afterBody <= beforeBody * 1.5f + 1f,
-            "卡片本体在合并后变锐了（修前 ${beforeBody} → 修后 ${afterBody}）—— 带子没有覆盖到卡内",
+            "卡内无文字区在合并后变锐了（修前 ${beforeBody} → 修后 ${afterBody}）—— 带子没有覆盖到卡内",
+        )
+        // 内容不糊：标题仍是实心深字（haze 只过滤 backdrop）。min/max 双断言防止「卡内变成
+        // 一块没有文字的玻璃」这种假绿。
+        var titleMin = 255f
+        var titleMax = 0f
+        val titleL = left + (16 * d).toInt()
+        val titleR = left + (96 * d).toInt()
+        val titleT = top + (14 * d).toInt()
+        val titleB = top + (34 * d).toInt()
+        for (y in titleT..titleB) for (x in titleL..titleR) {
+            val l = after.px.luma(x, y)
+            if (l < titleMin) titleMin = l
+            if (l > titleMax) titleMax = l
+        }
+        assertTrue(
+            titleMin <= 120f && titleMax - titleMin >= 80f,
+            "卡片标题不再是实心深字（min=$titleMin max=$titleMax）—— 内容被玻璃糊掉了，" +
+                "或卡片变成了空白玻璃板",
         )
     }
 
@@ -360,13 +384,36 @@ class TopBarBandTest {
             "带子在纯画布上要么全透明（差 ${abs(inBand - canvas)}/255 < 5），要么成了一块色板（> 40）—— " +
                 "带内 $inBand vs 带外 $canvas",
         )
-        // energy() 是全区域方差，10% 的渐变摊在 84dp 上只有零点几；直接比上下两点的明度差。
-        val topL = px.luma(px.width / 2, (10 * d).toInt())
-        val lowL = px.luma(px.width / 2, (60 * d).toInt())
+        // energy() 是全区域方差，10% 的渐变摊在 84dp 上只有零点几；直接比采样点的明度差。
+        // 2026-11-21 几何：满强度平台段从窗口顶一直到**胶囊底沿**（8+56=64dp），之后
+        // 20dp 才线性归零（带子 84dp）。所以 60dp 仍在平台段里 —— 旧的「10 vs 60 要有差」
+        // 是在旧的 8dp 平台几何下写的，改版后必然平。这里改成量三段真实几何：
+        //   ① 平台段内（10dp vs 56dp）平；
+        //   ② 平台末尾 vs 渐变尾部（56dp vs 80dp）必须有可见差；
+        //   ③ 带子底部（82dp）回到接近带外画布 —— 归零真的归零。
+        val plateauTop = px.luma(px.width / 2, (10 * d).toInt())
+        val plateauMid = px.luma(px.width / 2, (56 * d).toInt())
+        val rampLow = px.luma(px.width / 2, (80 * d).toInt())
+        val edge = px.luma(px.width / 2, (82 * d).toInt())
+        println(
+            "g-topbar-band 纯画布: 带内=$inBand 带外=$canvas | 平台 10dp=$plateauTop 56dp=$plateauMid " +
+                "尾部 80dp=$rampLow 82dp=$edge 带内梯度=$band",
+        )
         assertTrue(
-            abs(topL - lowL) >= 3f,
-            "带子自身必须仍有渐变（上 $topL / 下 $lowL，差 ${abs(topL - lowL)}）；" +
-                "平掉就说明 veil 把 ramp 盖死了（energy=$band）",
+            abs(plateauTop - plateauMid) <= 1.5f,
+            "带子的满强度平台段不平（10dp=$plateauTop / 56dp=$plateauMid）—— rampHoldDp 应覆盖" +
+                " [0, TopBarTopGap+TopBarHeight]；平台段一旦被 ramp 切出坡度，胶囊上下的缝就会" +
+                " 比卡内清楚",
+        )
+        assertTrue(
+            abs(plateauMid - rampLow) >= 3f,
+            "带子从平台段到尾部没有可见的渐变（56dp=$plateauMid / 80dp=$rampLow）—— " +
+                "ramp 没有在胶囊底沿之后开始递减，或 veil 把 ramp 盖死了",
+        )
+        assertTrue(
+            abs(edge - canvas) <= 8f,
+            "带子底沿（82dp=$edge）没有回到带外画布（$canvas）附近 —— 渐变没有归零，" +
+                "等于把一条有色带子硬截在栏区底",
         )
     }
 

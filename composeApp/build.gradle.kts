@@ -27,6 +27,14 @@ tasks.withType<Test>().configureEach {
     if (providers.gradleProperty("vade.excludeModulePageE2E").orNull == "true") {
         filter { excludeTestsMatching("*RealCoreModulePageE2ETest*") }
     }
+    // 像素测试的断言消息里带着实测值（均值/能量/坐标）。默认 console=plain 只留
+    // "AssertionError at …"，CI 上无法判断是几何漂了还是容差问题；把失败用例的
+    // 完整异常和 stdout 打进日志，失败一次就能读到全部数字。
+    testLogging {
+        events("failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        showStandardStreams = true
+    }
 }
 
 
