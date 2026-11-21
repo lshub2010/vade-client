@@ -55,6 +55,8 @@ import kotlinx.coroutines.delay
 import vade.ui.UiText
 import vade.ui.component.liquid.VadeShadows
 import vade.ui.component.liquid.layeredShadow
+import vade.ui.icon.VadeIcon
+import vade.ui.icon.VadeIcons
 import vade.ui.protocol.InputKind
 import vade.ui.protocol.InputOption
 import vade.ui.skin.BtnStyle
@@ -382,7 +384,12 @@ private fun OptionRow(state: ChatState, input: PendingInput, option: InputOption
             contentAlignment = Alignment.Center,
         ) {
             if (selected) {
-                UiText(text = "✓", size = 11, weight = FontWeight.SemiBold, color = skin.colors.onPrimary)
+                VadeIcon(
+                    vector = VadeIcons.Check,
+                    contentDescription = null,
+                    size = 12.dp,
+                    tint = skin.colors.onPrimary,
+                )
             }
         }
         Spacer(Modifier.width(10.dp))

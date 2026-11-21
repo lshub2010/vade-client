@@ -255,6 +255,7 @@ class AskUserFlowTest {
         chat.applyLiveEvent(required())
         waitForIdle()
         onNodeWithTag(AskUserInputFieldTag).performTextInput("航海日志")
+        waitForIdle()
         onNodeWithText("提交").performClick()
         waitForIdle()
 
@@ -328,6 +329,7 @@ class AskUserFlowTest {
 
         onNodeWithTag(askUserOptionTag("c")).performClick()
         onNodeWithTag(askUserOptionTag("a")).performClick()
+        waitForIdle()
         onNodeWithText("提交").performClick()
         waitForIdle()
 
