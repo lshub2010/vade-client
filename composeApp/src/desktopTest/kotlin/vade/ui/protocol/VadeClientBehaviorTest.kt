@@ -384,7 +384,7 @@ class VadeClientBehaviorTest {
             val firstFrame = transport.awaitSent()
             transport.push(responseFrame(idOf(firstFrame), """{"session_id":"s1","from_seq":7,"snapshot":null}"""))
             withTimeout(5000) { first.await() }
-            waitUntil { client.lastSeqFor("s1") >= 7 }
+            waitUntil { client.lastSeq >= 7 }
 
             // Switching to B must be a fresh attach: no last_seq from A.
             val second = async { client.attach(AttachParams("s2", null)) }
