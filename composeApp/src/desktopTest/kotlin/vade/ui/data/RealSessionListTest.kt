@@ -188,10 +188,9 @@ class RealSessionListTest {
             assertEquals("ui/attach", requestOf(transport.record[0]).first)
             val params = json(requestOf(transport.record[0]).second)
             assertEquals("s-1", (params["session_id"] as JsonPrimitive).content)
-            // `last_seq = 0` = full snapshot. A null here would be rewritten by
-            // VadeClient into the tracked cursor on re-entry, yielding an empty
-            // thread (events after the cursor only, no snapshot).
-            assertEquals(0L, (params["last_seq"] as JsonPrimitive).content.toLong())
+            // A fresh history read omits last_seq entirely: core answers with a
+            // snapshot. (last_seq=0 is a replay request and can return null.)
+            assertFalse(params.containsKey("last_seq"))
             transport.push(
                 responseFrame(
                     idOf(transport.record[0]),
