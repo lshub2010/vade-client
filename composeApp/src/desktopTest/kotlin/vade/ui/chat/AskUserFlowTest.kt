@@ -215,7 +215,16 @@ class AskUserFlowTest {
         transcript: ChatTranscriptSource = FakeTranscript(),
     ): Pair<ChatState, InputGateway> {
         val gateway = InputGateway(transcript)
-        return ChatState(SESSION, turns = gateway, clock = clock) to gateway
+        // Unconfined：作答 / 取消都跑在 wireScope 上（生产是 Dispatchers.Default），
+        // 注入 Unconfined 让 `turns.answerInput` / `cancelInput` 在 `submitInput()` /
+        // `timeoutInput()` 返回前落地 —— 否则紧接着的 `gateway.answers` 断言是在跟
+        // 后台协程赛跑（f8 返工新增的纯状态用例就是这样红的）。
+        return ChatState(
+            SESSION,
+            turns = gateway,
+            clock = clock,
+            wireDispatcher = Dispatchers.Unconfined,
+        ) to gateway
     }
 
     /** 真外壳 + 手机断点 + 生产同款返回栈（`App.kt` 组合根就是这么 provide 的）。 */
@@ -756,7 +765,12 @@ class AskUserFlowTest {
         val pending = required(inputId = "in-snap", prompt = "断线前问的问题").payload
         val transcript = FakeTranscript(snapshotPending = listOf(pending))
         val gateway = InputGateway(transcript)
-        val chat = ChatState(SESSION, turns = gateway, clock = { NOW })
+        val chat = ChatState(
+            SESSION,
+            turns = gateway,
+            clock = { NOW },
+            wireDispatcher = Dispatchers.Unconfined,
+        )
 
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
@@ -776,7 +790,12 @@ class AskUserFlowTest {
         val pending = required(inputId = "in-snap").payload
         val transcript = FakeTranscript(snapshotPending = listOf(pending))
         val gateway = InputGateway(transcript)
-        val chat = ChatState(SESSION, turns = gateway, clock = { NOW })
+        val chat = ChatState(
+            SESSION,
+            turns = gateway,
+            clock = { NOW },
+            wireDispatcher = Dispatchers.Unconfined,
+        )
 
         runBlocking {
             chat.loadHistory()
@@ -794,7 +813,12 @@ class AskUserFlowTest {
         val pending = required(inputId = "in-1").payload
         val transcript = FakeTranscript(snapshotPending = listOf(pending))
         val gateway = InputGateway(transcript)
-        val chat = ChatState(SESSION, turns = gateway, clock = { NOW })
+        val chat = ChatState(
+            SESSION,
+            turns = gateway,
+            clock = { NOW },
+            wireDispatcher = Dispatchers.Unconfined,
+        )
 
         chat.applyLiveEvent(required(inputId = "in-1"))
         chat.applyLiveEvent(resolved(inputId = "in-1"))
@@ -815,7 +839,12 @@ class AskUserFlowTest {
         val pending = required(expiresAt = NOW - 1_000).payload
         val transcript = FakeTranscript(snapshotPending = listOf(pending))
         val gateway = InputGateway(transcript)
-        val chat = ChatState(SESSION, turns = gateway, clock = { NOW })
+        val chat = ChatState(
+            SESSION,
+            turns = gateway,
+            clock = { NOW },
+            wireDispatcher = Dispatchers.Unconfined,
+        )
 
         runBlocking { chat.loadHistory() }
 
