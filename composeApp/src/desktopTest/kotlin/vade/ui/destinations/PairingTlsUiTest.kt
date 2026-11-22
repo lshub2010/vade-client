@@ -1,9 +1,12 @@
 package vade.ui.destinations
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
@@ -144,45 +147,47 @@ class PairingTlsUiTest {
 
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
-                PairingForm(
-                    initialHost = "core.local",
-                    initialPort = "8443",
-                    submitLabel = PAIRING_BUTTON_LABEL,
-                    submittingLabel = PAIRING_SUBMITTING,
-                    submitScope = submitScope,
-                    initialTls = true,
-                    onSubmit = { _, _, _, tls, insecure ->
-                        // P0-6 · 普通提交 = SystemChain：`tls` 只是协议，「接受任意证书」是另一件事。
-                        systemChainSeen += tls to insecure
-                        // 自签证书：TLS 握手就失败 —— 请求根本没发出去（一次性码没被烧）。
-                        PairingAttempt.Rejected(
-                            PairingFailureKind.CertificateUntrusted,
-                            VadeException(
-                                VadeErrorCodes.AUTH_FAILED,
-                                "SSLHandshakeException: PKIX path building failed",
-                            ),
-                        )
-                    },
-                    onSubmitSelfSigned = { host, port, code, tls ->
-                        selfSignedAttempts.incrementAndGet()
-                        // 真连接链（MockEngine），只为把「一次 POST」变成可数的事实。
-                        firstRunPairingAttempt(
-                            raw = RawSourceStrings(
-                                source = SourceConfig.REAL,
-                                host = host,
-                                port = port,
-                                pairCode = null,
-                                tls = tls,
-                            ),
-                            enteredCode = code,
-                            allowInsecureTls = true,
-                            transportFactory = { config ->
-                                seen += config
-                                KtorTransportFactory(config, wire.client())
-                            },
-                        )
-                    },
-                )
+                PairingFormHost {
+                    PairingForm(
+                        initialHost = "core.local",
+                        initialPort = "8443",
+                        submitLabel = PAIRING_BUTTON_LABEL,
+                        submittingLabel = PAIRING_SUBMITTING,
+                        submitScope = submitScope,
+                        initialTls = true,
+                        onSubmit = { _, _, _, tls, insecure ->
+                            // P0-6 · 普通提交 = SystemChain：`tls` 只是协议，「接受任意证书」是另一件事。
+                            systemChainSeen += tls to insecure
+                            // 自签证书：TLS 握手就失败 —— 请求根本没发出去（一次性码没被烧）。
+                            PairingAttempt.Rejected(
+                                PairingFailureKind.CertificateUntrusted,
+                                VadeException(
+                                    VadeErrorCodes.AUTH_FAILED,
+                                    "SSLHandshakeException: PKIX path building failed",
+                                ),
+                            )
+                        },
+                        onSubmitSelfSigned = { host, port, code, tls ->
+                            selfSignedAttempts.incrementAndGet()
+                            // 真连接链（MockEngine），只为把「一次 POST」变成可数的事实。
+                            firstRunPairingAttempt(
+                                raw = RawSourceStrings(
+                                    source = SourceConfig.REAL,
+                                    host = host,
+                                    port = port,
+                                    pairCode = null,
+                                    tls = tls,
+                                ),
+                                enteredCode = code,
+                                allowInsecureTls = true,
+                                transportFactory = { config ->
+                                    seen += config
+                                    KtorTransportFactory(config, wire.client())
+                                },
+                            )
+                        },
+                    )
+                }
             }
         }
         waitForIdle()
@@ -251,31 +256,33 @@ class PairingTlsUiTest {
 
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
-                PairingForm(
-                    initialHost = "a.local",
-                    initialPort = "8443",
-                    submitLabel = PAIRING_BUTTON_LABEL,
-                    submittingLabel = PAIRING_SUBMITTING,
-                    submitScope = submitScope,
-                    initialTls = true,
-                    onSubmit = { host, _, _, _, _ ->
-                        systemChainHosts += host
-                        PairingAttempt.Rejected(
-                            PairingFailureKind.CertificateUntrusted,
-                            VadeException(
-                                VadeErrorCodes.AUTH_FAILED,
-                                "SSLHandshakeException: PKIX path building failed",
-                            ),
-                        )
-                    },
-                    onSubmitSelfSigned = { host, _, _, _ ->
-                        selfSignedHosts += host
-                        PairingAttempt.Rejected(
-                            PairingFailureKind.Network,
-                            VadeException(VadeErrorCodes.UNAVAILABLE, "自签重试在用例里不建连接"),
-                        )
-                    },
-                )
+                PairingFormHost {
+                    PairingForm(
+                        initialHost = "a.local",
+                        initialPort = "8443",
+                        submitLabel = PAIRING_BUTTON_LABEL,
+                        submittingLabel = PAIRING_SUBMITTING,
+                        submitScope = submitScope,
+                        initialTls = true,
+                        onSubmit = { host, _, _, _, _ ->
+                            systemChainHosts += host
+                            PairingAttempt.Rejected(
+                                PairingFailureKind.CertificateUntrusted,
+                                VadeException(
+                                    VadeErrorCodes.AUTH_FAILED,
+                                    "SSLHandshakeException: PKIX path building failed",
+                                ),
+                            )
+                        },
+                        onSubmitSelfSigned = { host, _, _, _ ->
+                            selfSignedHosts += host
+                            PairingAttempt.Rejected(
+                                PairingFailureKind.Network,
+                                VadeException(VadeErrorCodes.UNAVAILABLE, "自签重试在用例里不建连接"),
+                            )
+                        },
+                    )
+                }
             }
         }
         waitForIdle()
@@ -323,28 +330,30 @@ class PairingTlsUiTest {
 
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
-                PairingForm(
-                    initialHost = "a.local",
-                    initialPort = "8443",
-                    submitLabel = PAIRING_BUTTON_LABEL,
-                    submittingLabel = PAIRING_SUBMITTING,
-                    submitScope = submitScope,
-                    initialTls = true,
-                    onSubmit = { _, _, _, _, insecure ->
-                        if (insecure) selfSignedAttempts.incrementAndGet() else plainAttempts.incrementAndGet()
-                        PairingAttempt.Rejected(
-                            PairingFailureKind.CertificateUntrusted,
-                            VadeException(VadeErrorCodes.AUTH_FAILED, "SSLHandshakeException: PKIX path building failed"),
-                        )
-                    },
-                    onSubmitSelfSigned = { _, _, _, _ ->
-                        selfSignedAttempts.incrementAndGet()
-                        PairingAttempt.Rejected(
-                            PairingFailureKind.Network,
-                            VadeException(VadeErrorCodes.UNAVAILABLE, "自签重试在用例里不建连接"),
-                        )
-                    },
-                )
+                PairingFormHost {
+                    PairingForm(
+                        initialHost = "a.local",
+                        initialPort = "8443",
+                        submitLabel = PAIRING_BUTTON_LABEL,
+                        submittingLabel = PAIRING_SUBMITTING,
+                        submitScope = submitScope,
+                        initialTls = true,
+                        onSubmit = { _, _, _, _, insecure ->
+                            if (insecure) selfSignedAttempts.incrementAndGet() else plainAttempts.incrementAndGet()
+                            PairingAttempt.Rejected(
+                                PairingFailureKind.CertificateUntrusted,
+                                VadeException(VadeErrorCodes.AUTH_FAILED, "SSLHandshakeException: PKIX path building failed"),
+                            )
+                        },
+                        onSubmitSelfSigned = { _, _, _, _ ->
+                            selfSignedAttempts.incrementAndGet()
+                            PairingAttempt.Rejected(
+                                PairingFailureKind.Network,
+                                VadeException(VadeErrorCodes.UNAVAILABLE, "自签重试在用例里不建连接"),
+                            )
+                        },
+                    )
+                }
             }
         }
         waitForIdle()
@@ -359,6 +368,8 @@ class PairingTlsUiTest {
         waitUntil(timeoutMillis = 5_000) { dialogs() == 0 }
         waitForIdle()
 
+        // 断言点击真的落在开关上：不是「弹层自己消失」，而是开关确实关掉了。
+        onNodeWithTag(PAIRING_TLS_SWITCH_TAG).assertIsOff()
         onNodeWithText(PAIRING_TLS_CONFIRM_LABEL).assertDoesNotExist()
         assertEquals(0, selfSignedAttempts.get(), "关掉 HTTPS 之后不许再走 trust-all")
         assertEquals(1, plainAttempts.get(), "只许有最初那一次系统信任链尝试：不作废就等于静默明文提交")
@@ -372,17 +383,19 @@ class PairingTlsUiTest {
 
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
-                PairingForm(
-                    initialHost = "core.local",
-                    initialPort = "8443",
-                    submitLabel = PAIRING_BUTTON_LABEL,
-                    submittingLabel = PAIRING_SUBMITTING,
-                    submitScope = submitScope,
-                    onSubmit = { host, _, _, tls, _ ->
-                        calls += tls
-                        PairingAttempt.Connected(MarkerFactory(), host, 8443)
-                    },
-                )
+                PairingFormHost {
+                    PairingForm(
+                        initialHost = "core.local",
+                        initialPort = "8443",
+                        submitLabel = PAIRING_BUTTON_LABEL,
+                        submittingLabel = PAIRING_SUBMITTING,
+                        submitScope = submitScope,
+                        onSubmit = { host, _, _, tls, _ ->
+                            calls += tls
+                            PairingAttempt.Connected(MarkerFactory(), host, 8443)
+                        },
+                    )
+                }
             }
         }
         waitForIdle()
@@ -463,4 +476,17 @@ class PairingTlsUiTest {
         assertTrue(selfSigned.single().tls, "确认后的切换仍然带 tls = true")
         assertEquals(1, systemChain.size, "确认之后不许再走一次系统信任链")
     }
+}
+
+/**
+ * 真机里 [PairingForm] 永远嵌在宿主页的 [Column] 里（首配卡与「更换 core」面板都是）。
+ *
+ * `runComposeUiTest` 的根布局会把多个顶层子节点全部摆在 (0,0)：不包 Column 时，表单的
+ * host/port 行、HTTPS 开关行、提交行与警告弹层会互相重叠；而 desktop 的 `performClick`
+ * 是**鼠标点击**（不是语义 OnClick），只命中 z 序最高的那一层 —— 警告弹出后再点开关，
+ * 点到的是弹层，`tls` 从未切换（f4 CI 红的真因）。这里按真机结构包一层 Column。
+ */
+@Composable
+private fun PairingFormHost(content: @Composable () -> Unit) {
+    Column { content() }
 }
