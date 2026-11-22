@@ -53,6 +53,9 @@ import vade.ui.protocol.VadeErrorCodes
 import vade.ui.protocol.VadeException
 import vade.ui.protocol.VadeTransport
 import vade.ui.protocol.VadeTransportFactory
+import vade.ui.shell.BackDispatcher
+import vade.ui.shell.BackLayer
+import vade.ui.shell.LocalBackDispatcher
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.material.MaterialSkin
 
@@ -475,6 +478,79 @@ class PairingTlsUiTest {
         assertEquals(1, selfSigned.size, "确认后恰好一次 trust-all 切换")
         assertTrue(selfSigned.single().tls, "确认后的切换仍然带 tls = true")
         assertEquals(1, systemChain.size, "确认之后不许再走一次系统信任链")
+    }
+
+    // ------------------------------------- f9-audit P1-3 · 返回栈顶是警告层
+
+    /**
+     * 警告是内联卡片（视觉形态），但**返回语义必须是栈顶一层**。
+     *
+     * 事故形态：`TlsWarningDialog` 直接组合在表单的 `Column` 里，没有登记 [BackLayer]。
+     * 警告在屏上时按返回（桌面 Esc / 系统返回）会落到下面那一层：设置 → 更换 core 子页
+     * 被整个关掉，用户填的 host/port/码随 `remember` 一起消失；首次运行卡上更糟 ——
+     * 栈里 0 层，返回交还系统，**应用直接退出**，屏上还挂着一张「正在确认信任自签证书」。
+     *
+     * 这条用例用真的 [BackDispatcher] + 与 `ProfileScreen` 同形状的宿主层：
+     *  ① 警告在屏上时栈深 = 2（宿主 + 警告），第一次返回只取消警告 —— 宿主没关、码还在；
+     *  ② 警告出栈后第二次返回才落到宿主层（topmost wins）。
+     */
+    @Test
+    fun systemBackCancelsTheSelfSignedWarningInsteadOfClosingTheHostPage() = runComposeUiTest {
+        val dispatcher = BackDispatcher()
+        var hostClosed = false
+
+        setContent {
+            CompositionLocalProvider(
+                LocalSkin provides MaterialSkin(),
+                LocalBackDispatcher provides dispatcher,
+            ) {
+                // 与 ProfileScreen 的「更换 core」子页同一形状：宿主先登记自己那一层，
+                // 表单/警告后组成 ⇒ 栈序 = 组合序，警告必须压在宿主之上。
+                BackLayer(enabled = true, onBack = { hostClosed = true }) {
+                    PairingFormHost {
+                        PairingForm(
+                            initialHost = "core.local",
+                            initialPort = "8443",
+                            submitLabel = PAIRING_BUTTON_LABEL,
+                            submittingLabel = PAIRING_SUBMITTING,
+                            submitScope = submitScope,
+                            initialTls = true,
+                            onSubmit = { _, _, _, _, _ ->
+                                PairingAttempt.Rejected(
+                                    PairingFailureKind.CertificateUntrusted,
+                                    VadeException(
+                                        VadeErrorCodes.AUTH_FAILED,
+                                        "SSLHandshakeException: PKIX path building failed",
+                                    ),
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        waitForIdle()
+
+        onNode(codeField()).performTextInput("青松-BACK01")
+        onNodeWithText(PAIRING_BUTTON_LABEL).performClick()
+        waitUntil(timeoutMillis = 5_000) { dialogs() == 1 }
+        waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 2 }
+        waitForIdle()
+
+        // ① 第一次返回 = 只取消警告。宿主页、表单、已输入的码都必须原样还在。
+        assertTrue(dispatcher.dispatch(), "警告在屏上时返回必须被它消费（栈顶一层）")
+        waitUntil(timeoutMillis = 5_000) { dialogs() == 0 }
+        waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 1 }
+        waitForIdle()
+
+        assertFalse(hostClosed, "返回不许把宿主（更换 core 子页）一起关掉")
+        onNode(codeField()).assertTextContains("青松-BACK01")
+        onNodeWithText(PAIRING_BUTTON_LABEL).assertExists()
+
+        // ② 警告出栈之后，返回才落到宿主那一层 —— 证明刚才消费它的确实是警告，不是宿主。
+        assertTrue(dispatcher.dispatch(), "宿主那一层还在，返回仍被消费")
+        waitForIdle()
+        assertTrue(hostClosed, "第二次返回才是关宿主页")
     }
 }
 

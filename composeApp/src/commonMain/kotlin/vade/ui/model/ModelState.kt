@@ -40,6 +40,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
@@ -136,6 +137,9 @@ class ModelState private constructor(
     var loadFailure: ModelFailure? by mutableStateOf(null)
         private set
 
+    /** Set once by [dispose]; keeps the cancel idempotent and documents the dead state. */
+    private var disposed = false
+
     companion object {
         /**
          * Wires the picker to a seam object (fixture, preview, test double) — or to the
@@ -180,17 +184,23 @@ class ModelState private constructor(
          * The one place that decides seam-vs-real for a handed-in [actions]: a
          * `ModelActionsReal` gets the [RealWiring] (and, unless suppressed, its first pull),
          * anything else gets `null` — i.e. exactly the pre-wiring state object.
+         *
+         * [ownsScope] says the scope was created by this factory (not handed in by a caller):
+         * only then does [dispose] cancel it. `coroutineScope == null` always means "create and
+         * own one here".
          */
         private fun wired(
             actions: ModelActions,
             scope: ModelScope,
             coroutineScope: CoroutineScope?,
             autoRefresh: Boolean,
+            ownsScope: Boolean = false,
         ): ModelState {
             val wiring = (actions as? ModelActionsReal)?.let { adapter ->
                 RealWiring(
                     adapter = adapter,
                     scope = coroutineScope ?: CoroutineScope(SupervisorJob() + Dispatchers.Default),
+                    ownsScope = ownsScope || coroutineScope == null,
                 )
             }
             val state = ModelState(actions, scope, wiring)
@@ -204,35 +214,72 @@ class ModelState private constructor(
          * carries the writes). Pass `autoRefresh = false` when the caller wants to drive
          * [refresh] itself (tests do).
          *
+         * [scope] `null` = this state creates a scope and **owns** it: it is cancelled by
+         * [dispose], which is what a screen's `DisposableEffect` calls. A caller-supplied scope
+         * is never cancelled here — the caller owns its lifetime.
+         *
          * The client must already be `connect()`ed — the same instance the session screen uses.
          */
         fun forRealSession(
             client: VadeClient,
             sessionId: String,
-            scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            scope: CoroutineScope? = null,
             autoRefresh: Boolean = true,
-        ): ModelState = wired(
-            actions = ModelActionsReal(client, scope),
-            scope = ModelScope.Session(sessionId),
-            coroutineScope = scope,
-            autoRefresh = autoRefresh,
-        )
+        ): ModelState {
+            val resolved = scope ?: CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            return wired(
+                actions = ModelActionsReal(client, resolved),
+                scope = ModelScope.Session(sessionId),
+                coroutineScope = resolved,
+                autoRefresh = autoRefresh,
+                ownsScope = scope == null,
+            )
+        }
 
         /**
          * One-line wiring for the 设置页 default picker. Refreshes `model/list` (which also
          * carries `default.model_id`). Writes are refused with UNSUPPORTED — contract 1.5.0
          * has no global-default write method — so the card renders the rows as read-only.
+         *
+         * Scope ownership is the same rule as [forRealSession]: `null` = created here and
+         * cancelled by [dispose]; a caller-supplied scope is left alone.
          */
         fun forRealDefault(
             client: VadeClient,
-            scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            scope: CoroutineScope? = null,
             autoRefresh: Boolean = true,
-        ): ModelState = wired(
-            actions = ModelActionsReal(client, scope),
-            scope = ModelScope.Default,
-            coroutineScope = scope,
-            autoRefresh = autoRefresh,
-        )
+        ): ModelState {
+            val resolved = scope ?: CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            return wired(
+                actions = ModelActionsReal(client, resolved),
+                scope = ModelScope.Default,
+                coroutineScope = resolved,
+                autoRefresh = autoRefresh,
+                ownsScope = scope == null,
+            )
+        }
+    }
+
+    /**
+     * 页面离开组合时调用：取消**这个状态自己创建**的拉取/写入作用域。
+     *
+     * 为什么需要（f9-audit P1-1）：real 路径的 `forSession` / `forDefault` 会自建一个
+     * `CoroutineScope(SupervisorJob() + Dispatchers.Default)` 并立刻 `launch { refresh() }`，
+     * 而这个作用域没有任何外部句柄。状态对象被 `remember` 丢掉之后，在途的 `model/list` /
+     * `session/model.get`（以及回包对 `models` / `selectedId` 的写入）还能活到 RPC 自己超时：
+     * 频繁进出会话 = 反复发同一对请求，旧状态的对象图也不可回收。本仓的约定是
+     * `DisposableEffect(loader) { onDispose { loader.dispose() } }`（`UsageCard` /
+     * `ActivityScreen` / `SubagentCard` / `App`），`ChatState.dispose()` 同一口径 ——
+     * `SessionDetailScreen` / `ProfileScreen` 已按这个形状接线。
+     *
+     * **只取消自己建的那个作用域**：调用方传进来的 scope 归调用方（测试要自己控制生命周期，
+     * `rememberCoroutineScope` 也由组合负责取消），这里不许越权取消。幂等；内存 seam
+     * （`real == null`）与调用方自持 scope 的两种情况下都是 no-op。
+     */
+    fun dispose() {
+        if (disposed) return
+        disposed = true
+        real?.takeIf { it.ownsScope }?.scope?.cancel()
     }
 
     // --- degrade / refusal copy -------------------------------------------------------
@@ -584,4 +631,6 @@ private const val CLEAR_NOTICE = "已清除会话覆盖，跟随全局默认"
 private class RealWiring(
     val adapter: ModelActionsReal,
     val scope: CoroutineScope,
+    /** True when [scope] was created by this factory — the only case [ModelState.dispose] cancels. */
+    val ownsScope: Boolean = false,
 )

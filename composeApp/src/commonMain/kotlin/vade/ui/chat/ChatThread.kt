@@ -269,7 +269,13 @@ fun ChatThread(
             }
     }
 
-    LaunchedEffect(animate, viewport) {
+    // P1-2 · 这一条的 key **必须带上 `state`**：闭包捕获的是 `state.items`，而 `state` 可以
+    // 在 sessionId 不变的情况下被换成新实例（`SessionDetailScreen` 的 remember key 是
+    // `(session.id, preset, adapters)`，`adapters` 由 null 变真/真变 null 就会重建 ChatState）。
+    // 那时 `viewport` 的键没变、本 effect 不重启，`snapshotFlow` 会一直读**旧**列表 ——
+    // 旧列表此后不再变化，`onContentChanged` 基线永久停住：上滚时「新内容」胶囊再也不出来，
+    // 只有再切一次会话自愈。另两个只读 `viewport` 的收集器不需要这个键。
+    LaunchedEffect(animate, viewport, state) {
         if (!animate) return@LaunchedEffect
         snapshotFlow {
             state.items.size to state.lastMessageBodyLength

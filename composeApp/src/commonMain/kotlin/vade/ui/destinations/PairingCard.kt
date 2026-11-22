@@ -38,8 +38,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -575,6 +573,15 @@ internal data class PairingTarget(
  * 在表单任何变更时都会把它撤掉（`invalidateTlsWarning`）。「仍然连接」
  * ([PAIRING_TLS_CONFIRM_LABEL]) 重试的也是同一个快照目标。
  *
+ * ## 返回栈（f9-audit P1-3）
+ * 「内联」是**视觉**形态，不是返回语义：警告在屏上时，Esc / 系统返回必须先取消**这一层**，
+ * 而不是关掉宿主页。没有 [BackLayer] 时，返回会落到下面那一层 —— 设置 → 更换 core 子页
+ * （`ProfileScreen` 的 `showCoreSwitch`）被整个关掉、用户填的地址/码随 `remember` 一起消失；
+ * 首次运行卡上更糟：栈里 0 层，返回交还系统，**应用直接退出**，而屏上还挂着一张
+ * 「正在确认信任自签证书」。所以这里在组合内部登记一层（组合序 = 栈序：本层在宿主层与
+ * 面板的 busy 层之后组成 ⇒ 栈顶，topmost wins），`onCancel` 是唯一动作 —— 取消 = 零请求、
+ * 码不动，与取消按钮逐字节同义。警告撤掉（取消 / 表单变更 / tls 关掉）即随组合离开出栈。
+ *
  * 文案只说事实：自签证书无法验证 core 的身份、可能被中间人、仅在你信任此主机时继续。
  */
 @Composable
@@ -584,6 +591,8 @@ internal fun TlsWarningDialog(
     onCancel: () -> Unit,
     onConfirm: () -> Unit,
 ) {
+    // 栈顶的一层：Esc / 系统返回只取消这张警告（见上面的「返回栈」一节）。
+    BackLayer(enabled = true, onBack = onCancel)
     val skin = LocalSkin.current
     val shape = RoundedCornerShape(skin.shapes.sheet)
     Column(
