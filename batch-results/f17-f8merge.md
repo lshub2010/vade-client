@@ -124,13 +124,14 @@ suspend fun chatSnapshot(sessionId: String): ChatHistory {
 
 | 项 | 结果 |
 |---|---|
-| run | `45027704080`（headSha `41ce4668c5ccfb5c9242564f72f23522d0532d91`） |
+| run | `45027704080`（headSha `41ce4668c5ccfb5c9242564f72f23522d0532d91`，代码提交） |
 | job `client` · `:composeApp:desktopTest --rerun` | **BUILD SUCCESSFUL in 2m 37s**，报告行 `files=207 tests=1841 failures=0 errors=0 skipped=1` |
 | job `client` · `:composeApp:compileKotlinWasmJs` | **BUILD SUCCESSFUL in 35s** |
 | job `android` · `assembleDebug` + 上传 APK | **success** |
+| 复跑 | `45028312252`（headSha `96200ba`，即含本报告的提交）：client / android 均 **success**，`files=207 tests=1841 failures=0 errors=0 skipped=1` |
 
 第一跑 `45026867013` 为红（仅上面那三条 ask-user 用例，1841 tests / 3 failures），
-修复后第二跑全绿；两跑都是同一份代码合并结果 + 一条测试调度器注入的差别。
+修复后两跑全绿；差别只有一条测试调度器注入。本报告之后的提交（如有）均属 docs-only。
 
 ## 风险与未验证
 
