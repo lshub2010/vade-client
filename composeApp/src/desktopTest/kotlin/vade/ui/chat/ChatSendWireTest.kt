@@ -221,7 +221,7 @@ class ChatSendWireTest {
             "s-real",
             turns = probe,
             drafts = DraftStore(),
-            nowMs = { 1_700_000_000_000L },
+            clock = { 1_700_000_000_000L },
             wireDispatcher = Dispatchers.Unconfined,
         )
         chat.loadHistory()

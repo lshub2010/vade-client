@@ -217,7 +217,11 @@ class VadeContractFramesTest {
         )
         assertEquals("glm-5", snapshot.session?.model?.modelId)
         assertEquals(ModelSource.GLOBAL, snapshot.session?.model?.sourceEnum)
-        assertEquals(1, snapshot.pendingInputs.size, "RFC-0008 §8.2: unanswered dialogs rebuild from the snapshot")
+        assertEquals(
+            1,
+            snapshot.pendingInputs.size,
+            "RFC-0008 §8.2: the snapshot CARRIES unanswered dialogs (重建路径在 AskUserFlowTest 钉住：loadHistory → 卡出现)",
+        )
         assertEquals(InputKind.CONFIRM, snapshot.pendingInputs[0].kindEnum)
     }
 

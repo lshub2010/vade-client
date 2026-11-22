@@ -99,6 +99,7 @@ import kotlinx.coroutines.launch
 import vade.ui.chat.ApprovalOutcome
 import vade.ui.icon.VadeIcons
 import vade.ui.shell.BackLayer
+import vade.ui.shell.LocalDetailCovered
 import vade.ui.skin.AttachmentState
 import vade.ui.skin.LocalReduceMotion
 import vade.ui.skin.LocalSkin
@@ -442,7 +443,39 @@ fun ChatThread(
             BackLayer(enabled = true, onBack = state::closePreview)
             ImagePreviewSheet(image, onClose = state::closePreview)
         }
+
+        // RFC-0008 · ask-user 模态问答卡是**本页层叠的最后一层**（预览之上）：它只覆盖
+        // 聊天内容链，表头 / 玻璃顶栏是它的兄弟且画在它之后 —— 问答不遮挡顶栏。
+        //
+        // Esc / 系统返回：必须**先**落到卡上。真实外壳里 `AppShell` 根部的
+        // `onPreviewKeyEvent` 早于任何子节点，它会把 Esc 直接交给 `BackDispatcher` ——
+        // 只靠卡自己的 preview，手机单栏就会「按 Esc = 退出会话」（问题随之丢失）。
+        // 这一层是本节最后组成的，所以是栈顶（栈序 = 组合序，topmost wins），
+        // 页面层（抽屉 / 详情）在它之前入栈。
+        AskUserBackLayer(state)
+        AskUserInputDialogHost(state)
     }
+}
+
+// --- RFC-0008 · 问答卡的返回层 ------------------------------------------------
+
+/**
+ * 卡在返回栈里的那一层：**栈顶**（本节最后组成），Esc / 系统返回先落到它。
+ *
+ * 两个条件都必须成立：
+ *  - `currentInput != null` —— 只有真正在屏上的那张卡（队列的第一张）接管 Esc；
+ *  - `!LocalDetailCovered.current` —— 手机单栏拉开列表抽屉时详情被盖住，那一记 Esc
+ *    属于抽屉 / 系统，不属于抽屉背后那个会话里的问题。
+ *
+ * 单独成一个 composable 而不是内联在 [ChatThread] 里：`LocalDetailCovered` 是动态
+ * local，抽屉开合只会让这一个读点（以及 `currentInput` 的读点）失效，不牵动整棵消息列。
+ */
+@Composable
+private fun AskUserBackLayer(state: ChatState) {
+    BackLayer(
+        enabled = state.currentInput != null && !LocalDetailCovered.current,
+        onBack = { state.currentInput?.let { input -> state.cancelInput(input.inputId) } },
+    )
 }
 
 // --- H2 · ticker 叶子（只含 effect，没有 UI 子节点） ---------------------------
