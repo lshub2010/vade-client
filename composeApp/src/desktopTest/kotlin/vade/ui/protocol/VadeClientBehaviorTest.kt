@@ -354,11 +354,11 @@ class VadeClientBehaviorTest {
             val attach = async { client.attach(AttachParams(null, null)) }
             val frame = first.awaitSent()
             first.push(responseFrame(idOf(frame), """{"session_id":"s1","from_seq":0,"snapshot":null}"""))
-            // 事件帧带上 session_id：水位是**按会话**记的（P0-3），归属不许靠
+            // 事件帧带上信封 session_id：水位是**按会话**记的（C-06），归属不许靠
             // 「attach 的响应协程是否已经跑过」这种竞态来定。
-            first.push(eventFrame("turn.delta", 1, """{"session_id":"s1","turn_id":"t1","text":"a"}"""))
-            first.push(eventFrame("turn.delta", 2, """{"session_id":"s1","turn_id":"t1","text":"b"}"""))
-            first.push(eventFrame("turn.delta", 3, """{"session_id":"s1","turn_id":"t1","text":"c"}"""))
+            first.push(eventFrame("turn.delta", 1, """{"turn_id":"t1","text":"a"}""", sessionId = "s1"))
+            first.push(eventFrame("turn.delta", 2, """{"turn_id":"t1","text":"b"}""", sessionId = "s1"))
+            first.push(eventFrame("turn.delta", 3, """{"turn_id":"t1","text":"c"}""", sessionId = "s1"))
             withTimeout(5000) { attach.await() }
             waitUntil { client.lastSeqFor("s1") >= 3 }
             assertEquals(3L, client.lastSeq, "tracked session 的水位 = 重连要带的 last_seq")
@@ -386,7 +386,7 @@ class VadeClientBehaviorTest {
             val first = async { client.attach(AttachParams("s1", null)) }
             val firstFrame = transport.awaitSent()
             transport.push(responseFrame(idOf(firstFrame), """{"session_id":"s1","from_seq":7,"snapshot":null}"""))
-            transport.push(eventFrame("turn.delta", 7, """{"turn_id":"t1","text":"x","session_id":"s1"}"""))
+            transport.push(eventFrame("turn.delta", 7, """{"turn_id":"t1","text":"x"}""", sessionId = "s1"))
             withTimeout(5000) { first.await() }
             waitUntil { client.lastSeq >= 7 }
 
@@ -400,6 +400,197 @@ class VadeClientBehaviorTest {
             transport.push(responseFrame(idOf(secondFrame), """{"session_id":"s2","from_seq":0,"snapshot":null}"""))
             withTimeout(5000) { second.await() }
             client.close()
+        }
+    }
+
+    /**
+     * C-06 2.0.0 · 一条 socket 可以同时挂着多个会话的 sink；信封的 `session_id` 是唯一
+     * 归属。看 B 的时候 A 的帧既不能进 UI，也不能把 B 的水位推走 —— 但 A 自己的水位必须
+     * 继续前进，否则切回 A 时 core 的 replay 会被当成「重放重叠」整段丢掉。
+     */
+    @Test
+    fun eventsOfTheUnseenSessionAreNotProjectedButKeepTheirOwnWatermark() {
+        val factory = FakeTransportFactory()
+        val client = testClient(factory)
+        val transport = connectAndAwait(client, factory)
+
+        runBlocking {
+            val seen = mutableListOf<VadeEvent>()
+            val collector = collectEvents(client) { seen.add(it) }
+            try {
+                // A：from_seq=10 接上，先收一帧（11）。
+                val attachA = async { client.attach(AttachParams("s-A", null)) }
+                val attachAFrame = transport.awaitSent()
+                assertEquals("""{"session_id":"s-A"}""", requestOf(attachAFrame).second)
+                transport.push(responseFrame(idOf(attachAFrame), """{"session_id":"s-A","from_seq":10,"snapshot":null}"""))
+                withTimeout(5000) { attachA.await() }
+                waitUntil { client.attachedSession == "s-A" }
+                transport.push(eventFrame("turn.delta", 11, """{"turn_id":"ta","text":"a-11"}""", sessionId = "s-A"))
+                waitUntil { seen.size == 1 }
+
+                // 切到 B：fresh attach（不带 A 的 last_seq），并且客户端对 A 发 ui/detach。
+                val attachB = async { client.attach(AttachParams("s-B", null)) }
+                val attachBFrame = transport.awaitSent()
+                assertEquals("""{"session_id":"s-B"}""", requestOf(attachBFrame).second)
+                transport.push(responseFrame(idOf(attachBFrame), """{"session_id":"s-B","from_seq":0,"snapshot":null}"""))
+                withTimeout(5000) { attachB.await() }
+                val detachA = transport.awaitSent()
+                assertEquals("ui/detach", requestOf(detachA).first, "切换会话必须摘掉旧会话的 sink")
+                assertEquals("""{"session_id":"s-A"}""", requestOf(detachA).second)
+                waitUntil { client.attachedSession == "s-B" }
+
+                // A、B 的 seq 空间交错到达：A 12/13 只推进 A，B 1 才进 UI。
+                transport.push(eventFrame("turn.delta", 12, """{"turn_id":"ta","text":"a-12"}""", sessionId = "s-A"))
+                transport.push(eventFrame("turn.delta", 1, """{"turn_id":"tb","text":"b-1"}""", sessionId = "s-B"))
+                transport.push(eventFrame("turn.delta", 13, """{"turn_id":"ta","text":"a-13"}""", sessionId = "s-A"))
+                waitUntil { client.lastSeqFor("s-A") >= 13L && client.lastSeqFor("s-B") >= 1L }
+                assertEquals(2, seen.size, "看 B 时 A 的两帧一帧都不许投影")
+                assertEquals(1L, client.lastSeq, "跟踪中的会话（B）的水位就是 B 自己的")
+                assertEquals(13L, client.lastSeqFor("s-A"), "A 的水位在后台照常前进")
+
+                // 切回 A：水位仍在 13，下一帧 14 直接续上（不是从 0 重放，也没被 B 推走）。
+                val backToA = async { client.attach(AttachParams("s-A", null)) }
+                val backFrame = transport.awaitSent()
+                assertEquals("""{"session_id":"s-A"}""", requestOf(backFrame).second)
+                transport.push(responseFrame(idOf(backFrame), """{"session_id":"s-A","from_seq":13,"snapshot":null}"""))
+                withTimeout(5000) { backToA.await() }
+                val detachB = transport.awaitSent()
+                assertEquals("ui/detach", requestOf(detachB).first)
+                assertEquals("""{"session_id":"s-B"}""", requestOf(detachB).second)
+                waitUntil { client.attachedSession == "s-A" }
+                transport.push(eventFrame("turn.delta", 14, """{"turn_id":"ta","text":"a-14"}""", sessionId = "s-A"))
+                waitUntil { seen.size == 3 }
+                assertEquals(14L, client.lastSeqFor("s-A"), "切回 A 后续上了 13 → 14")
+                assertEquals(14L, client.lastSeq)
+            } finally {
+                collector.cancel()
+                client.close()
+            }
+        }
+    }
+
+    /**
+     * core `manager.attach` 先把 sink 注册好、把 `session.attached`（以及 replay）
+     * 推进 socket，**然后**才让 `ui/attach` 的回包回到客户端。事件因此在
+     * `attachedSessionId` 提交之前就到达 —— 在途窗口里它们属于这次 attach 的目标，
+     * 不能按「当前跟踪的会话」判成别人的帧丢掉（否则每个会话第一次 attach 都是空流）。
+     */
+    @Test
+    fun eventsThatBeatTheAttachReplyStillReachTheUi() {
+        val factory = FakeTransportFactory()
+        val client = testClient(factory)
+        val transport = connectAndAwait(client, factory)
+
+        runBlocking {
+            val seen = mutableListOf<VadeEvent>()
+            val collector = collectEvents(client) { seen.add(it) }
+            try {
+                val attach = async { client.attach(AttachParams("s-1", null)) }
+                val frame = transport.awaitSent()
+                transport.push(
+                    eventFrame(
+                        "session.attached",
+                        1,
+                        """{"session_id":"s-1","from_seq":1,"state":"open","snapshot":true,"replay_count":0}""",
+                        sessionId = "s-1",
+                    ),
+                )
+                transport.push(responseFrame(idOf(frame), """{"session_id":"s-1","from_seq":1,"snapshot":null}"""))
+                withTimeout(5000) { attach.await() }
+                waitUntil { seen.isNotEmpty() }
+                assertIs<SessionAttached>(seen[0], "the in-flight attach's own event must reach the UI")
+                assertEquals(1L, client.lastSeqFor("s-1"))
+
+                // 提交之后，别的会话的帧不再交付 —— 但水位照常推进。
+                transport.push(eventFrame("turn.delta", 9, """{"turn_id":"tz","text":"z"}""", sessionId = "s-z"))
+                waitUntil { client.lastSeqFor("s-z") >= 9L }
+                assertEquals(1, seen.size, "a session that was never (visibly) attached is not projected")
+            } finally {
+                collector.cancel()
+                client.close()
+            }
+        }
+    }
+
+    /** 信封是权威：payload 里出现别的 `session_id` 时，归属仍按 `params.session_id`。 */
+    @Test
+    fun envelopeSessionIdWinsOverAPayloadSessionId() {
+        val factory = FakeTransportFactory()
+        val client = testClient(factory)
+        val transport = connectAndAwait(client, factory)
+
+        runBlocking {
+            val seen = mutableListOf<VadeEvent>()
+            val collector = collectEvents(client) { seen.add(it) }
+            try {
+                val attach = async { client.attach(AttachParams("s-1", null)) }
+                val frame = transport.awaitSent()
+                transport.push(responseFrame(idOf(frame), """{"session_id":"s-1","from_seq":0,"snapshot":null}"""))
+                withTimeout(5000) { attach.await() }
+                waitUntil { client.attachedSession == "s-1" }
+                transport.push(
+                    eventFrame(
+                        "turn.delta", 2,
+                        """{"session_id":"s-2","turn_id":"t1","text":"x"}""",
+                        sessionId = "s-1",
+                    ),
+                )
+                waitUntil { client.lastSeqFor("s-1") >= 2L }
+                waitUntil { seen.size == 1 }
+                assertEquals(0L, client.lastSeqFor("s-2"), "payload must not re-attribute the frame")
+            } finally {
+                collector.cancel()
+                client.close()
+            }
+        }
+    }
+
+    /** 老 core 兼容：信封没有 `session_id` 时仍按「这条连接就是当前会话」交付。 */
+    @Test
+    fun legacyFramesWithoutAnEnvelopeSessionIdAreStillDelivered() {
+        val factory = FakeTransportFactory()
+        val client = testClient(factory)
+        val transport = connectAndAwait(client, factory)
+
+        runBlocking {
+            val seen = mutableListOf<VadeEvent>()
+            val collector = collectEvents(client) { seen.add(it) }
+            try {
+                val attach = async { client.attach(AttachParams("s-1", null)) }
+                val frame = transport.awaitSent()
+                transport.push(responseFrame(idOf(frame), """{"session_id":"s-1","from_seq":0,"snapshot":null}"""))
+                withTimeout(5000) { attach.await() }
+                waitUntil { client.attachedSession == "s-1" }
+                // 无信封 session_id，payload 也没有：归当前跟踪的会话，照旧交付。
+                transport.push(eventFrame("turn.delta", 1, """{"turn_id":"t1","text":"x"}"""))
+                waitUntil { seen.size == 1 }
+                assertEquals(1L, client.lastSeqFor("s-1"))
+            } finally {
+                collector.cancel()
+                client.close()
+            }
+        }
+    }
+
+    /** 关闭连接前对跟踪中的会话发一条单向 `ui/detach`；失败不阻塞关闭。 */
+    @Test
+    fun closeDetachesTheTrackedSessionBestEffort() {
+        val factory = FakeTransportFactory()
+        val client = testClient(factory)
+        val transport = connectAndAwait(client, factory)
+
+        runBlocking {
+            val attach = async { client.attach(AttachParams("s-1", null)) }
+            val frame = transport.awaitSent()
+            transport.push(responseFrame(idOf(frame), """{"session_id":"s-1","from_seq":0,"snapshot":null}"""))
+            withTimeout(5000) { attach.await() }
+            waitUntil { client.attachedSession == "s-1" }
+
+            client.close()
+            assertEquals(VadeConnectionState.Closed, client.state.value)
+            val detach = transport.record.lastOrNull { requestOf(it).first == "ui/detach" }
+            assertTrue(detach != null, "close must try to retire the tracked sink")
+            assertEquals("""{"session_id":"s-1"}""", requestOf(detach!!).second)
         }
     }
 

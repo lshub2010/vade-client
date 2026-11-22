@@ -14,6 +14,7 @@ import vade.ui.protocol.FakeTransport
 import vade.ui.protocol.FakeTransportFactory
 import vade.ui.protocol.eventFrame
 import vade.ui.protocol.idOf
+import vade.ui.protocol.requestOf
 import vade.ui.protocol.responseFrame
 import vade.ui.protocol.waitUntil
 import kotlin.test.Test
@@ -57,11 +58,21 @@ class RealSessionEventsTest {
             val (source, transport) = connectedSource(factory)
             val received = Channel<VadeEvent>(Channel.UNLIMITED)
             val collector = collectEvents(source, received)
+            // C-06 路由的前提：这条连接先 attach 到 s-1 —— 别的会话的帧不交付。
+            val attach = async { source.attach("s-1") }
+            transport.push(
+                responseFrame(
+                    idOf(transport.awaitSent()),
+                    """{"session_id":"s-1","from_seq":0,"snapshot":null}""",
+                ),
+            )
+            withTimeout(5_000) { attach.await() }
             transport.push(
                 eventFrame(
                     "session.attached",
                     1,
                     """{"session_id":"s-1","from_seq":1,"state":"open","snapshot":true,"replay_count":0}""",
+                    sessionId = "s-1",
                 ),
             )
             waitUntil { !received.isEmpty }
@@ -245,6 +256,57 @@ class RealSessionEventsTest {
             assertEquals(2L, source.client!!.lastSeq)
             source.disconnect()
             collector.cancel()
+        }
+    }
+
+    /**
+     * C-06 · 切换会话后，旧会话的帧不得从 UI 缝（`observeEvents`）漏出来 —— ChatState
+     * 对收到的一切做投影，所以「不串台」必须在这里成立，而不是靠消费方自己过滤。
+     * 旧会话自己的水位仍照常前进（切回去才接得上）。
+     */
+    @Test
+    fun switchingSessionsStopsProjectingThePreviousSessionsFrames() {
+        val factory = FakeTransportFactory()
+        runBlocking {
+            val (source, transport) = connectedSource(factory)
+            val received = Channel<VadeEvent>(Channel.UNLIMITED)
+            val collector = collectEvents(source, received)
+            try {
+                var attach = async { source.attach("s-A") }
+                transport.push(
+                    responseFrame(
+                        idOf(transport.awaitSent()),
+                        """{"session_id":"s-A","from_seq":0,"snapshot":null}""",
+                    ),
+                )
+                withTimeout(5_000) { attach.await() }
+
+                attach = async { source.attach("s-B") }
+                val bFrame = transport.awaitSent()
+                assertEquals("ui/attach", requestOf(bFrame).first)
+                transport.push(
+                    responseFrame(
+                        idOf(bFrame),
+                        """{"session_id":"s-B","from_seq":0,"snapshot":null}""",
+                    ),
+                )
+                withTimeout(5_000) { attach.await() }
+                // 切走 = 摘旧 sink：单向 ui/detach，不等回包。
+                val detach = transport.awaitSent()
+                assertEquals("ui/detach", requestOf(detach).first)
+                assertEquals("""{"session_id":"s-A"}""", requestOf(detach).second)
+
+                transport.push(eventFrame("turn.started", 1, """{"turn_id":"tA","state":"running"}""", sessionId = "s-A"))
+                transport.push(eventFrame("turn.started", 1, """{"turn_id":"tB","state":"running"}""", sessionId = "s-B"))
+                waitUntil { source.client!!.lastSeqFor("s-A") == 1L && source.client!!.lastSeqFor("s-B") == 1L }
+                val only = withTimeout(5_000) { received.receive() }
+                assertEquals("tB", (only as TurnStartedEvent).turnId, "A 的帧不许进 B 的界面")
+                assertTrue(received.isEmpty, "exactly one event reached the UI seam")
+                assertEquals(1L, source.client!!.lastSeqFor("s-A"), "A 的水位仍然前进")
+            } finally {
+                collector.cancel()
+                source.disconnect()
+            }
         }
     }
 
