@@ -4,6 +4,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -444,7 +445,11 @@ class VadeClientBehaviorTest {
                 transport.push(eventFrame("turn.delta", 1, """{"turn_id":"tb","text":"b-1"}""", sessionId = "s-B"))
                 transport.push(eventFrame("turn.delta", 13, """{"turn_id":"ta","text":"a-13"}""", sessionId = "s-A"))
                 waitUntil { client.lastSeqFor("s-A") >= 13L && client.lastSeqFor("s-B") >= 1L }
-                assertEquals(2, seen.size, "看 B 时 A 的两帧一帧都不许投影")
+                // 水位是读线程写的、`seen` 是测试调度器上的 collector 写的：先等交付，再断言，
+                // 否则断言会跑在 collector 之前（这是本用例第一版红在 size=1 的原因）。
+                waitUntil { seen.size >= 2 }
+                delay(100) // 负例要等一等：若 A 的帧被误投，它一定在这段时间里到达
+                assertEquals(listOf("a-11", "b-1"), seen.map { (it as TurnDeltaEvent).text }, "看 B 时 A 的两帧一帧都不许投影")
                 assertEquals(1L, client.lastSeq, "跟踪中的会话（B）的水位就是 B 自己的")
                 assertEquals(13L, client.lastSeqFor("s-A"), "A 的水位在后台照常前进")
 
@@ -462,6 +467,54 @@ class VadeClientBehaviorTest {
                 waitUntil { seen.size == 3 }
                 assertEquals(14L, client.lastSeqFor("s-A"), "切回 A 后续上了 13 → 14")
                 assertEquals(14L, client.lastSeq)
+            } finally {
+                collector.cancel()
+                client.close()
+            }
+        }
+    }
+
+    /**
+     * 切换窗口（A 仍是跟踪会话、B 的 attach 还没回包）：A 的帧不许投影，B 的 replay 帧
+     * 必须照常交付。UI 的 `ChatState` 槽位是同一个 —— 这段时间里到达的 A 增量会直接落进
+     * B 的线程，而 B 自己的 replay 若被当成「别人的」丢掉，水位前进、界面却永远空白。
+     */
+    @Test
+    fun duringASwitchTheOldSessionsFramesStopButTheNewOnesReplay() {
+        val factory = FakeTransportFactory()
+        val client = testClient(factory)
+        val transport = connectAndAwait(client, factory)
+
+        runBlocking {
+            val seen = mutableListOf<VadeEvent>()
+            val collector = collectEvents(client) { seen.add(it) }
+            try {
+                val attachA = async { client.attach(AttachParams("s-A", null)) }
+                val attachAFrame = transport.awaitSent()
+                transport.push(responseFrame(idOf(attachAFrame), """{"session_id":"s-A","from_seq":0,"snapshot":null}"""))
+                withTimeout(5000) { attachA.await() }
+                waitUntil { client.attachedSession == "s-A" }
+
+                // 开始切 B，但先不回包 —— 此时 attachedSession 仍是 A。
+                val attachB = async { client.attach(AttachParams("s-B", null)) }
+                val attachBFrame = transport.awaitSent()
+                assertEquals("ui/attach", requestOf(attachBFrame).first)
+
+                // 旧会话的帧：只推进 A 的水位，不进 UI。
+                transport.push(eventFrame("turn.delta", 5, """{"turn_id":"ta","text":"a-5"}""", sessionId = "s-A"))
+                waitUntil { client.lastSeqFor("s-A") >= 5L }
+                // 新会话的 replay 帧（core 先推事件再回 RPC）：必须交付。
+                transport.push(eventFrame("turn.delta", 3, """{"turn_id":"tb","text":"b-3"}""", sessionId = "s-B"))
+                waitUntil { seen.size >= 1 }
+                delay(100)
+                assertEquals(listOf("b-3"), seen.map { (it as TurnDeltaEvent).text }, "切换窗口里只交付目标会话的帧")
+
+                transport.push(responseFrame(idOf(attachBFrame), """{"session_id":"s-B","from_seq":3,"snapshot":null}"""))
+                withTimeout(5000) { attachB.await() }
+                waitUntil { client.attachedSession == "s-B" }
+                assertEquals(5L, client.lastSeqFor("s-A"), "旧会话的水位照常前进")
+                assertEquals(3L, client.lastSeqFor("s-B"))
+                assertEquals(3L, client.lastSeq)
             } finally {
                 collector.cancel()
                 client.close()
@@ -504,6 +557,7 @@ class VadeClientBehaviorTest {
                 // 提交之后，别的会话的帧不再交付 —— 但水位照常推进。
                 transport.push(eventFrame("turn.delta", 9, """{"turn_id":"tz","text":"z"}""", sessionId = "s-z"))
                 waitUntil { client.lastSeqFor("s-z") >= 9L }
+                delay(100) // 负例：假若被误投，这 100ms 足够它到达
                 assertEquals(1, seen.size, "a session that was never (visibly) attached is not projected")
             } finally {
                 collector.cancel()

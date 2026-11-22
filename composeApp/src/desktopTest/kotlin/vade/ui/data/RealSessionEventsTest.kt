@@ -5,6 +5,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -301,6 +302,7 @@ class RealSessionEventsTest {
                 waitUntil { source.client!!.lastSeqFor("s-A") == 1L && source.client!!.lastSeqFor("s-B") == 1L }
                 val only = withTimeout(5_000) { received.receive() }
                 assertEquals("tB", (only as TurnStartedEvent).turnId, "A 的帧不许进 B 的界面")
+                delay(100) // 负例：A 的帧若漏出来，会在这段时间里进 channel
                 assertTrue(received.isEmpty, "exactly one event reached the UI seam")
                 assertEquals(1L, source.client!!.lastSeqFor("s-A"), "A 的水位仍然前进")
             } finally {

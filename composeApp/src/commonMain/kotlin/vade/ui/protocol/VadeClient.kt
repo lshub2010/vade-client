@@ -535,12 +535,20 @@ class VadeClient(
      *   会话，沿用旧行为直接交付。
      * - 有归属：只有**当前跟踪**的会话，或正在 attach 路上的会话（core 先推
      *   `session.attached` 再回 RPC，见 [attachInFlight]）才交付。
+     * - 切换会话的窗口（A 仍是跟踪会话、B 的 attach 在途）：A 的帧**不再**投影。UI 的
+     *   `ChatState` 槽位是同一个，切换期间到达的 A 增量会直接落进 B 的线程。同会话的
+     *   re-attach（重连）不算换走 —— 它自己的 replay 必须照常交付，否则水位前进而 UI 空白。
      */
     private fun deliverableLocked(owner: String, explicitOwner: Boolean): Boolean {
         if (!explicitOwner) return true
-        if (owner == attachedSessionId) return true
         if (owner == UNTRACKED_SESSION) return false
-        return (attachInFlight[owner] ?: 0) > 0 || createAttachInFlight > 0
+        // 「换走」判据：有**别的**会话的 attach 在途。
+        if (owner == attachedSessionId && attachInFlight.keys.any { it != owner }) return false
+        // 本次 attach 的目标会话：replay 帧先于回包到达。
+        if ((attachInFlight[owner] ?: 0) > 0) return true
+        // 新建会话的目标 id 还不知道，窗口内「非当前会话」的帧只能当作刚建出来的那个。
+        if (createAttachInFlight > 0 && owner != attachedSessionId) return true
+        return owner == attachedSessionId
     }
 
     private suspend fun handleResponse(msg: JsonObject) {
