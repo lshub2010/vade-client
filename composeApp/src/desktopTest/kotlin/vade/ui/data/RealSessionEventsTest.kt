@@ -334,4 +334,75 @@ class RealSessionEventsTest {
             collector.cancel()
         }
     }
+
+    /**
+     * P1-3 · 列表刷新缝**不按可见会话门控**：列表根（没有任何 attach）时，
+     * `session.attached` / `turn.completed` 这类 session.* 帧也必须到达，否则列表的
+     * 排序 / 预览 / 「刚刚」只能等手动刷新（f13 引入的饿死）。
+     *
+     * 同时钉住两条流的分工：聊天投影缝（[RealSessionSource.observeEvents]）在列表根
+     * 依旧什么都不交付。
+     */
+    @Test
+    fun listRefreshSeamReceivesSessionEventsEvenWithNoAttachedSession() {
+        val factory = FakeTransportFactory()
+        runBlocking {
+            val (source, transport) = connectedSource(factory)
+            val listEvents = Channel<VadeEvent>(Channel.UNLIMITED)
+            val projectionEvents = Channel<VadeEvent>(Channel.UNLIMITED)
+            val listReady = CompletableDeferred<Unit>()
+            val projectionReady = CompletableDeferred<Unit>()
+            val listJob = launch {
+                source.observeListEvents()
+                    .onSubscription { listReady.complete(Unit) }
+                    .collect { listEvents.trySend(it) }
+            }
+            val projectionJob = launch {
+                source.observeEvents()
+                    .onSubscription { projectionReady.complete(Unit) }
+                    .collect { projectionEvents.trySend(it) }
+            }
+            listReady.await()
+            projectionReady.await()
+            try {
+                // 列表根：一次 attach 都没有。
+                transport.push(
+                    eventFrame(
+                        "session.attached", 1,
+                        """{"session_id":"s-X","from_seq":1,"state":"open","snapshot":true,"replay_count":0}""",
+                        sessionId = "s-X",
+                    ),
+                )
+                transport.push(
+                    eventFrame(
+                        "turn.completed", 2,
+                        """{"session_id":"s-X","turn_id":"tX","state":"completed","usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2},"stopped_reason":"stop"}""",
+                        sessionId = "s-X",
+                    ),
+                )
+                transport.push(
+                    eventFrame(
+                        "session.list_changed", 3,
+                        """{"session_id":"s-X","change":"added","by":"device"}""",
+                        sessionId = "s-X",
+                    ),
+                )
+                waitUntil { listEvents.isEmpty.not() }
+                waitUntil { source.client!!.lastSeqFor("s-X") >= 3L }
+                val first = listEvents.receive()
+                assertEquals("s-X", (first as SessionAttachedEvent).sessionId)
+                waitUntil { listEvents.isEmpty.not() }
+                assertTrue(listEvents.receive() is TurnCompletedEvent)
+                waitUntil { listEvents.isEmpty.not() }
+                val listChanged = listEvents.receive()
+                assertEquals("s-X", (listChanged as SessionListChangedEvent).changedSessionId)
+                delay(100) // 聊天投影在列表根不收任何一帧
+                assertTrue(projectionEvents.isEmpty, "投影缝在列表根仍然不交付")
+            } finally {
+                listJob.cancel()
+                projectionJob.cancel()
+                source.disconnect()
+            }
+        }
+    }
 }

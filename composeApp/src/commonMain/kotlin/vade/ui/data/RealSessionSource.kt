@@ -224,6 +224,17 @@ class RealSessionSource(
      */
     override fun observeEvents(): SharedFlow<VadeEvent> = _events
 
+    private val _listEvents = MutableSharedFlow<VadeEvent>(
+        extraBufferCapacity = 256,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+
+    /**
+     * P1-3 · 列表刷新专用缝：协议层的**全量**事件（不按可见会话门控），只做
+     * `mapEvent` 投影。`SessionsLoader` 收这条；聊天仍收 [observeEvents]。
+     */
+    override fun observeListEvents(): SharedFlow<VadeEvent> = _listEvents
+
     // ------------------------------------------------------------------ lifecycle
 
     /**
@@ -271,6 +282,7 @@ class RealSessionSource(
             // (replay frames arrive right after Connected).
             val stateReady = CompletableDeferred<Unit>()
             val eventsReady = CompletableDeferred<Unit>()
+            val listEventsReady = CompletableDeferred<Unit>()
             collectorJobs = listOf(
                 s.launch {
                     stateReady.complete(Unit)
@@ -286,9 +298,16 @@ class RealSessionSource(
                     eventsReady.complete(Unit)
                     created.events.collect { event -> mapEvent(event)?.let { _events.emit(it) } }
                 },
+                s.launch {
+                    // P1-3 · 列表刷新走全量缝：列表根没有 attach 会话时，session.* 帧
+                    // 也照样到 —— 不能跟聊天投影共用一条按可见会话门控的流。
+                    listEventsReady.complete(Unit)
+                    created.allEvents.collect { event -> mapEvent(event)?.let { _listEvents.emit(it) } }
+                },
             )
             stateReady.await()
             eventsReady.await()
+            listEventsReady.await()
         }
         _client!!.connect()
     }
@@ -586,6 +605,14 @@ class RealSessionSource(
             instanceId = event.payload.instanceId,
             online = event.payload.online,
             version = event.payload.version,
+        )
+        // P1-3 · 列表刷新的契约指定失效边（不只是 turn.* 的副作用）：
+        // 「别的会话被建/被删」必须让列表重拉。
+        is vade.ui.protocol.SessionListChanged -> SessionListChangedEvent(
+            seq = event.seq,
+            changedSessionId = event.payload.sessionId,
+            change = event.payload.change,
+            by = event.payload.by,
         )
         else -> null
     }

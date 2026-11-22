@@ -236,14 +236,19 @@ internal const val BLOB_TOKEN_DEFAULT_TTL_S: Int = 600
  *
  * The client tracks ONE *visible* session ([attachedSession]): `ui/attach` replaces it
  * and the previous sink is detached best-effort (one-way `ui/detach`, failure never
- * blocks the switch). On reconnect with [VadeClientConfig.autoReattach], it re-attaches
- * carrying the tracked [lastSeq] so core replays the missed window; if the window is
- * gone, the attach result carries the snapshot instead and [VadeSnapshot.hasTasks] tells
- * the UI whether task progress may be rendered at all.
+ * blocks the switch). P0-1 · the projection gate follows the session the UI ASKED for:
+ * it flips when the attach STARTS (old frames stop at once) and rolls back to the
+ * previous session when the attach fails — a failed target is never treated as
+ * tracked, and its core sink is detached best-effort. [events] carries only that
+ * session; [allEvents] carries every parsed frame (list refresh). On reconnect with
+ * [VadeClientConfig.autoReattach], it re-attaches carrying the tracked [lastSeq] so core
+ * replays the missed window, but a user-initiated attach always wins (latest-wins
+ * tickets); if the window is gone, the attach result carries the snapshot instead and
+ * [VadeSnapshot.hasTasks] tells the UI whether task progress may be rendered at all.
  *
  * ## Subscribe FIRST
- * [events] is a hot [SharedFlow] with no replay: subscribe before calling [attach], or
- * early events (including replay) are not delivered.
+ * [events] and [allEvents] are hot [SharedFlow]s with no replay: subscribe before calling
+ * [attach], or early events (including replay) are not delivered.
  */
 class VadeClient(
     val config: VadeClientConfig,
@@ -254,7 +259,23 @@ class VadeClient(
     private val json: Json = config.json
 
     private val _events = MutableSharedFlow<VadeEvent>(extraBufferCapacity = 256)
+
+    /**
+     * 投影缝：只交付**当前可见会话**的帧（见 [deliverableLocked]）。聊天只该读这条。
+     */
     val events: SharedFlow<VadeEvent> = _events
+
+    private val _allEvents = MutableSharedFlow<VadeEvent>(extraBufferCapacity = 256)
+
+    /**
+     * P1-3 · 全量事件缝：**每一帧**可解码事件都发，不按「当前可见会话」门控。
+     *
+     * 会话列表的实时刷新（`SessionsLoader` → `session/list` 重拉）与聊天投影是两个
+     * 可见性规则不同的消费者：列表根没有 attached 会话时也必须收到 `session.attached`
+     * / `turn.*`，否则列表的排序 / 预览 / 「刚刚」只能等手动刷新。聊天投影继续走
+     * [events]；本流只给不关心「屏上是谁」的消费者。
+     */
+    val allEvents: SharedFlow<VadeEvent> = _allEvents
 
     private val _state = MutableStateFlow<VadeConnectionState>(VadeConnectionState.Idle)
     val state: StateFlow<VadeConnectionState> = _state
@@ -290,23 +311,42 @@ class VadeClient(
     private var attachedSessionId: String? = null
 
     /**
-     * C-06 路由 · `ui/attach` 的**在途**目标。
+     * P0-1 · **UI 想看的会话**（投影门控的唯一判据）。
      *
-     * core 的 `manager.attach` 先注册 sink、把 `session.attached`（以及其他 replay 帧）
-     * 推进 socket，**然后**才让 `ui/attach` 的回包回到这里（`manager.py` 的
-     * `emit(session.attached)` → `rpc.py` 的 `return`）。也就是说事件**先于**
-     * `attachedSessionId = result.sessionId` 到达。若只按「已提交的跟踪会话」过滤，
-     * 每个会话的第一次 attach 都会把 `session.attached` 和整段 replay 当成「别的会话」
-     * 丢掉 —— 水位前进了、UI 却永远空白。
+     * 与 [attachedSessionId] 分开：后者是「最近一次**成功** attach 的会话」，重连要带它
+     * 的 `last_seq`；前者是「屏上现在是谁」。attach 一开始就切到这里 —— 切换窗口里旧
+     * 会话的帧必须立刻停止投影（旧实现等成功提交才换，失败时旧会话继续往失败的新会话
+     * 线程里灌帧）。attach 失败/取消时回退到当时的 [attachedSessionId]（previous），
+     * 失败目标绝不留在门上；UI 侧 `ChatState` 再按 `VadeEvent.sessionId` 过滤一道。
      *
-     * 在途窗口内，这些目标会话的事件照常交付（也照常推进它们各自的水位）。
-     * `session_id = null` 的创建请求目标 id 未知，窗口内不按会话过滤（它只会收到刚
-     * 建出来的那个会话的帧）。计数而非布尔：并发 attach 各自进出，互不吞掉对方。
+     * `session_id = null`（新建）不改门：创建期间屏上没有新会话，旧会话照常可见；
+     * 成功提交后门跟到 core 铸出来的新 id。guarded by [sessionMutex]。
+     */
+    @Volatile
+    private var visibleSessionId: String? = null
+
+    /**
+     * P1-1/P1-4 · `ui/attach` 的**在途**目标计数。
+     *
+     * 两件事：（1）判断「某个会话的 sink 现在有没有别的 attach 在管」—— 摘旧 sink /
+     * 清理失败 sink 时不许误杀在途的新 attach；（2）重连 re-attach 只在没有用户 attach
+     * 在飞时才发起。
+     *
+     * 投影门控**不再**看它：在途目标的 replay 帧由 `visibleSessionId` 授权（begin 时就
+     * 已切换），并发 attach 里被淘汰的那个不能再往 UI 灌帧（旧实现 `attachInFlight[owner]
+     * > 0 ⇒ deliver` 会让它漏出来）。
+     *
+     * `session_id = null` 的创建请求目标 id 未知，单独计数；创建窗口**不再**放行「所有
+     * 非当前会话」的帧（P1-4 的注入路径）。
      *
      * guarded by [sessionMutex]。
      */
     private val attachInFlight = mutableMapOf<String, Int>()
     private var createAttachInFlight = 0
+
+    /** P1-1 · 单调 attach 序号：只有**最新**一次 attach 允许提交。 */
+    private var attachTicket = 0L
+    private var latestAttachTicket = 0L
 
     /**
      * P0-3 · 每个会话**各自**的水位：`sessionId -> 已应用的最后一个 seq`。
@@ -432,10 +472,12 @@ class VadeClient(
             val keepalive = config.keepaliveIntervalMs?.let { intervalMs ->
                 scope.launch { keepaliveLoop(newTransport, intervalMs) }
             }
-            if (config.autoReattach && attachedSessionId != null) {
+            if (config.autoReattach) {
                 // Reader first (it must see the attach response), then re-attach with
-                // the tracked last_seq; failure just means the next drop retries.
-                runCatching { attachInternal(AttachParams(sessionId = attachedSessionId, lastSeq = lastSeq)) }
+                // the tracked last_seq. P1-2 · 目标和 last_seq 在同一临界区里取，且只在
+                // 没有用户 attach 在飞时发起 —— 用户切会话永远赢，重连不许把旧会话重新
+                // 钉成可见。失败只是等下一次掉线再试。
+                runCatching { attachInternal(AttachParams(), reconnect = true) }
             }
             reader.join()
             keepalive?.cancel()
@@ -509,7 +551,9 @@ class VadeClient(
         val envelopeOwner = (params["session_id"] as? JsonPrimitive)?.contentOrNull
         val payloadOwner = (payload?.get("session_id") as? JsonPrimitive)?.contentOrNull
         val explicitOwner = envelopeOwner != null || payloadOwner != null
-        val owner = envelopeOwner ?: payloadOwner ?: attachedSessionId ?: UNTRACKED_SESSION
+        // 显式归属才写进事件：老 core 的帧（无信封）`sessionId = null`，消费方按旧行为接收。
+        val claimedOwner = envelopeOwner ?: payloadOwner
+        val owner = claimedOwner ?: attachedSessionId ?: UNTRACKED_SESSION
         val (applied, deliverable) = sessionMutex.withLock {
             (seqBySession[owner] ?: 0L) to deliverableLocked(owner, explicitOwner)
         }
@@ -519,36 +563,43 @@ class VadeClient(
         }
         val coalesceFlag = (params["x-vade"] as? JsonObject)?.get("coalesce")
         val coalesced = coalesceFlag is JsonPrimitive && coalesceFlag.booleanOrNull == true
-        val event = VadeEventParser.parse(type, seq, coalesced, params["payload"], config.onMalformed)
+        val event = VadeEventParser.parse(
+            type,
+            seq,
+            coalesced,
+            params["payload"],
+            sessionId = if (explicitOwner) owner else null,
+            onMalformed = config.onMalformed,
+        )
         // Advance that session's last_seq regardless of the parse outcome: an undecodable
         // event still counts as applied, or a reconnect would replay it into the same dead end.
         // A frame from a session the UI is not showing STILL advances that session's own
         // watermark — switching back must resume, not replay from a stale point or drop.
         sessionMutex.withLock { seqBySession = seqBySession + (owner to seq) }
-        if (event != null && deliverable) _events.emit(event)
+        if (event != null) {
+            // P1-3 · 列表刷新等消费者收全量；聊天投影只收可见会话。
+            _allEvents.emit(event)
+            if (deliverable) _events.emit(event)
+        }
     }
 
     /**
-     * C-06 · 这一帧能不能交给 UI。调用方持有 [sessionMutex]。
+     * C-06 · 这一帧能不能交给**聊天投影**（[events]）。调用方持有 [sessionMutex]。
      *
      * - 老 core 的信封没有 `session_id`（`explicitOwner == false`）：整条连接就是那个
      *   会话，沿用旧行为直接交付。
-     * - 有归属：只有**当前跟踪**的会话，或正在 attach 路上的会话（core 先推
-     *   `session.attached` 再回 RPC，见 [attachInFlight]）才交付。
-     * - 切换会话的窗口（A 仍是跟踪会话、B 的 attach 在途）：A 的帧**不再**投影。UI 的
-     *   `ChatState` 槽位是同一个，切换期间到达的 A 增量会直接落进 B 的线程。同会话的
-     *   re-attach（重连）不算换走 —— 它自己的 replay 必须照常交付，否则水位前进而 UI 空白。
+     * - 有归属：只有 [visibleSessionId]（UI 想看的会话）的帧才交付。attach **一开始**就
+     *   切门，所以在途目标的 replay（core 先推事件再回 RPC）照常到达，而同一时刻被换下
+     *   的旧会话、以及并发 attach 里被淘汰的目标，都进不了 UI。
+     *
+     * 失败路径由 [failAttachLocked] 把门回退到 previous —— 那时 A 的帧会从 [events]
+     * 发出（重连 / 水位继续），但屏上是失败的 B：B 的 `ChatState` 必须按
+     * `VadeEvent.sessionId` 再挡一道，这是「B 的线程永远不吃 A 的帧」的硬保证。
      */
     private fun deliverableLocked(owner: String, explicitOwner: Boolean): Boolean {
         if (!explicitOwner) return true
         if (owner == UNTRACKED_SESSION) return false
-        // 「换走」判据：有**别的**会话的 attach 在途。
-        if (owner == attachedSessionId && attachInFlight.keys.any { it != owner }) return false
-        // 本次 attach 的目标会话：replay 帧先于回包到达。
-        if ((attachInFlight[owner] ?: 0) > 0) return true
-        // 新建会话的目标 id 还不知道，窗口内「非当前会话」的帧只能当作刚建出来的那个。
-        if (createAttachInFlight > 0 && owner != attachedSessionId) return true
-        return owner == attachedSessionId
+        return owner == visibleSessionId
     }
 
     private suspend fun handleResponse(msg: JsonObject) {
@@ -665,8 +716,7 @@ class VadeClient(
 
     /**
      * `ui/attach`. When [AttachParams.lastSeq] is `null` **and the params name the tracked
-     * session** and the call is a resume, the tracked per-session [lastSeq] is substituted
-     * (the reconnect path); pass `lastSeq` explicitly to override.
+     * session** and the call is a resume, the tracked per-session [lastSeq] is substituted.
      *
      * P0-3 · 替换是**严格同会话**的重连语义：`params.sessionId == attachedSessionId`。
      * 以前只要求「两边都非 null」，于是切到 B 时会把 A 的水位（比如 500）塞进 B 的
@@ -677,38 +727,79 @@ class VadeClient(
      * core 于是照约定回快照。[AttachParams.resume]（f5）是同一件事的反向写法：
      * `false` 同样禁止替换。两者只要有一个说「不续订」，就不替换。
      *
+     * P1-2 · 同会话判断与水位读取在 [attachInternal] 的同一个临界区里完成 —— 两次
+     * `@Volatile` 读之间用户切走，不会再发出「sessionId=A, last_seq=B 的水位」的帧。
+     *
      * On a snapshot attach the client adopts the snapshot's `from_seq` as that session's new
      * watermark; on a replay attach it keeps tracking.
      */
-    suspend fun attach(params: AttachParams): AttachResult {
-        val tracked = attachedSessionId
-        val sameSession = params.sessionId != null && params.sessionId == tracked
-        val effective = if (params.lastSeq == null && !params.forceSnapshot && params.resume && sameSession) {
-            params.copy(lastSeq = lastSeqFor(params.sessionId!!))
-        } else {
-            params
-        }
-        return attachInternal(effective)
-    }
+    suspend fun attach(params: AttachParams): AttachResult =
+        requireNotNull(attachInternal(params, resolveResume = true)) { "attach always begins" }
 
-    private suspend fun attachInternal(params: AttachParams): AttachResult {
-        val previous = sessionMutex.withLock {
-            beginAttachLocked(params.sessionId)
-            attachedSessionId
+    /**
+     * 一次 attach 的完整状态机。返回 `null` 只有一种情况：重连 re-attach 发现已有用户
+     * attach 在飞（P1-2，用户操作永远优先，这次重连直接放弃）。
+     *
+     * @param reconnect `true` = 重连路径：目标和 lastSeq 在临界区内原子读取，且只在没有
+     *   在途 attach 时发起。
+     * @param resolveResume `true` = 公开 [attach] 的「同会话才补 lastSeq」替换。
+     */
+    private suspend fun attachInternal(
+        params: AttachParams,
+        reconnect: Boolean = false,
+        resolveResume: Boolean = false,
+    ): AttachResult? {
+        val begun: Pair<Long, AttachParams> = sessionMutex.withLock {
+            if (reconnect) {
+                // 用户已经发起 attach 时，重连不许插队 —— 否则它拿到更大的 ticket 会把
+                // 用户刚切过去的会话重新钉回旧的（P1-2）。
+                if (attachInFlight.isNotEmpty() || createAttachInFlight > 0) return null
+                val tracked = attachedSessionId ?: return null
+                val effective = AttachParams(sessionId = tracked, lastSeq = lastSeqFor(tracked))
+                beginAttachLocked(tracked) to effective
+            } else {
+                val effective = if (resolveResume) resolveResumeLocked(params) else params
+                beginAttachLocked(effective.sessionId) to effective
+            }
         }
+        val ticket = begun.first
+        val effective = begun.second
         val result = try {
-            call(VadeMethod.UI_ATTACH, params.toJson()) { AttachResult.fromJson(it) }
+            call(VadeMethod.UI_ATTACH, effective.toJson()) { AttachResult.fromJson(it) }
         } catch (t: Throwable) {
-            // NonCancellable: a cancelled/failed attach must not leave its session in the
-            // "in flight" set (that set authorises delivery to the UI).
-            withContext(NonCancellable) { sessionMutex.withLock { endAttachLocked(params.sessionId) } }
+            // NonCancellable: 取消/失败也要把在途记账、可见门、core sink 收拾干净 ——
+            // 页面销毁会取消 loadHistory，帧却已经发到 core，不摘就是整条连接寿命的孤儿。
+            withContext(NonCancellable) { failAttachLocked(ticket, effective) }
             throw t
         }
+        withContext(NonCancellable) { commitAttachLocked(ticket, effective, result) }
+        return result
+    }
+
+    /**
+     * P1-1 · 只有最新 ticket 的 attach 能提交。
+     *
+     * `previous` 在**提交时**按当前 attached 重算（不是发起时的快照），并且正被在途
+     * attach 目标/新当前会话的旧会话绝不摘：旧实现「发起时取 previous + 无条件发
+     * detach(previous)」会在 A→B→A 的并发里误杀 A 刚发出的新 sink。
+     */
+    private suspend fun commitAttachLocked(ticket: Long, params: AttachParams, result: AttachResult) =
         sessionMutex.withLock {
-            // 提交与「离开在途集合」必须在同一个临界区里、且**先提交**：两者之间任何
-            // 一个空档，core 已经推到 socket 上的 replay 帧都会落在「没有跟踪会话、
-            // 也不在途」的缝里被当成别人的帧丢掉。
+            if (ticket != latestAttachTicket) {
+                endAttachLocked(params.sessionId)
+                // 被淘汰的 attach 已经在 core 注册了 sink（replay 甚至已经发来）。补一条
+                // detach 收拾它；但它若正被更新的 attach 接管、或就是当前会话，不许碰。
+                val staleTarget = params.sessionId ?: result.sessionId
+                if (staleTarget != attachedSessionId && (attachInFlight[staleTarget] ?: 0) == 0) {
+                    sendDetachQuietly(staleTarget)
+                }
+                return@withLock
+            }
+            val previous = attachedSessionId
+            // 提交与「离开在途集合」必须在同一个临界区里：任何空档都会让 core 已经推到
+            // socket 上的 replay 帧落在「没有可见会话」的缝里。
             attachedSessionId = result.sessionId
+            visibleSessionId = result.sessionId
             // 每个会话只接受自己的水位：快照是那一会话的**权威**起点（core 重启后计数可能
             // 比本地旧值低，所以按快照逐字覆盖，不是 max）。replay 分支一个字节都不动 ——
             // 旧水位继续有效，重放的事件按 seq 顺序接上。
@@ -717,25 +808,66 @@ class VadeClient(
                 seqBySession = seqBySession + (result.sessionId to snapshot.fromSeq)
             }
             endAttachLocked(params.sessionId)
+            // C-06 · 切换会话 = 换一个可见会话，不是「再挂一个」：core 的 `_retire_sink` 只
+            // 摘同一 `(connection, session)`，不摘上一个会话，于是 A、B 的 per-session seq
+            // 会同时写进这条 socket（A 的帧串进 B 的界面，还把 B 的低 seq 当重放丢掉）。
+            // 单向发送、不等回包。Detach 在锁内发出：与 beginAttachLocked 的先后顺序因此
+            // 确定 —— 要么新 attach 已在途（上面跳过），要么 detach 先于它的帧到 core。
+            if (previous != null && previous != result.sessionId && (attachInFlight[previous] ?: 0) == 0) {
+                sendDetachQuietly(previous)
+            }
         }
-        // C-06 · 切换会话 = 换一个可见会话，不是「再挂一个」：core 的 `_retire_sink` 只
-        // 摘同一 `(connection, session)`，不摘上一个会话，于是 A、B 的 per-session seq
-        // 会同时写进这条 socket（A 的帧串进 B 的界面，还把 B 的低 seq 当重放丢掉）。
-        // 单向发送、不等回包：清理失败绝不能挡住 attach 的返回。发送本身保持同步，
-        // 否则「切回 A」的新 attach 可能先到 core，被随后到达的 detach(A) 摘掉。
-        if (previous != null && previous != result.sessionId) {
-            runCatching { sendDetachQuietly(previous) }
+
+    /**
+     * P0-1/P1-4 · attach 失败/取消的收尾。
+     *
+     * - 退出在途记账（失败目标不再被当成「正在 attach 的会话」）；
+     * - 只有最新一次失败才把可见门**回退到 previous**：并发 attach 里被淘汰的那次失败
+     *   不许改门（新 attach 已经在等自己的回包）；
+     * - 失败目标的 core sink 必须 best-effort 摘掉：请求帧已经发出，core 可能已经注册
+     *   了 sink（事件先于回包，取消也可能发生在 core 处理之后）。但目标若是当前会话、
+     *   或还有别的 attach 在管它，就不许摘。
+     */
+    private suspend fun failAttachLocked(ticket: Long, params: AttachParams) =
+        sessionMutex.withLock {
+            if (ticket == latestAttachTicket) {
+                // 恢复 previous：A 仍是 attached/可见的兜底会话。屏上是失败的 B ——
+                // ChatState(B) 按 sessionId 把 A 的帧挡掉（协议门此时允许 A 是为了重连
+                // 与水位，不是为了给 B 看）。
+                visibleSessionId = attachedSessionId
+            }
+            endAttachLocked(params.sessionId)
+            val target = params.sessionId
+            if (target != null && target != attachedSessionId && (attachInFlight[target] ?: 0) == 0) {
+                sendDetachQuietly(target)
+            }
         }
-        return result
+
+    /** 同会话才补水位（调用方持有 [sessionMutex]）。 */
+    private fun resolveResumeLocked(params: AttachParams): AttachParams {
+        val sessionId = params.sessionId ?: return params
+        val sameSession = sessionId == attachedSessionId
+        return if (params.lastSeq == null && !params.forceSnapshot && params.resume && sameSession) {
+            params.copy(lastSeq = lastSeqFor(sessionId))
+        } else {
+            params
+        }
     }
 
-    /** `ui/attach` 在途记账（调用方持有 [sessionMutex]）。 */
-    private fun beginAttachLocked(sessionId: String?) {
+    /** `ui/attach` 在途记账（调用方持有 [sessionMutex]）。返回本次的单调 ticket。 */
+    private fun beginAttachLocked(sessionId: String?): Long {
+        val ticket = ++attachTicket
+        latestAttachTicket = ticket
         if (sessionId == null) {
+            // 创建请求：目标 id 还不知道，门留在原处（屏上还是旧会话）。窗口内**不再**
+            // 放行「其它会话」的帧（旧启发式是一条注入路径）。
             createAttachInFlight += 1
         } else {
             attachInFlight[sessionId] = (attachInFlight[sessionId] ?: 0) + 1
+            // 换会话从「发起」就开始，而不是等回包：这段窗口里旧会话的帧不许再投影。
+            visibleSessionId = sessionId
         }
+        return ticket
     }
 
     private fun endAttachLocked(sessionId: String?) {
@@ -781,6 +913,8 @@ class VadeClient(
                 // 只丢这一个会话的水位：别的会话各自的水位继续有效（P0-3 的另一半）。
                 seqBySession = seqBySession - params.sessionId
             }
+            // 摘掉的正是屏上那个会话：门也一起清掉，否则它的帧还会往 UI 走。
+            if (params.sessionId == visibleSessionId) visibleSessionId = null
         }
         return result
     }
@@ -798,7 +932,9 @@ class VadeClient(
      * last_seq is the only wire form that always asks for a snapshot.
      */
     suspend fun uiAttachFresh(sessionId: String): AttachResult =
-        attachInternal(AttachParams(sessionId = sessionId, lastSeq = null))
+        requireNotNull(attachInternal(AttachParams(sessionId = sessionId, lastSeq = null))) {
+            "uiAttachFresh always begins"
+        }
 
     /** `ui/detach`. */
     suspend fun uiDetach(params: DetachParams): OkResult = detach(params)

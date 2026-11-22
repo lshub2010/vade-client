@@ -52,6 +52,16 @@ interface SessionSource {
     fun observeEvents(): Flow<VadeEvent>
 
     /**
+     * P1-3 · 列表级失效边：**不按「当前可见会话」门控**的协议事件流。
+     *
+     * 会话列表的实时刷新与聊天投影是两个可见性规则不同的消费者：列表根
+     * （`attachedSessionId == null`）也必须收到 `session.attached` / `turn.*`，否则
+     * 排序 / 预览 / 「刚刚」只能等手动刷新。默认实现退回 [observeEvents]（夹具与旧源
+     * 语义不变）；真源把协议层的全量事件缝接到这里。
+     */
+    fun observeListEvents(): Flow<VadeEvent> = observeEvents()
+
+    /**
      * B6 · `approval/decide`（rpc.json 1.7.0，params 逐字：`request_id` /
      * `decision` = `approve|deny` / `scope` = `once|session`；errors
      * `APPROVER_INVALID | READ_ONLY_SESSION | NOT_FOUND`）。

@@ -626,6 +626,12 @@ class ChatState(
      * 收集事件流直到协程被取消（页面在 `LaunchedEffect` 里调它）。读通道缺失时立即返回。
      * 真源模式下事件与历史**并行**接：先开收集、再拉历史，加载期间到达的 delta 不会丢
      * （[loadHistory] 重建时会把 live 行带上）。
+     *
+     * P0-1 · 只投影**本会话**的帧：`VadeEvent.sessionId` 是协议层的信封归属（老 core
+     * 没有信封时为 `null`，按旧行为接收）。attach B 失败后协议层会把可见门回退到旧会话
+     * A 以维持重连/水位，A 的帧因此仍会出现在共享事件流上 —— 屏上是失败的 B，这一道
+     * 过滤保证 B 的线程**永远**不吃 A 的帧（也不会被 A 的 seq 毒化 [LiveTranscript] 的
+     * bootstrap 起点）。`null` 的帧不按会话判断。
      */
     suspend fun collectLiveEvents() {
         if (disposed) return
@@ -633,6 +639,7 @@ class ChatState(
         try {
             channel.events().collect { event ->
                 if (disposed) return@collect
+                if (event.sessionId != null && event.sessionId != sessionId) return@collect
                 // P1-2 · 事件投影与 RPC 回包的写回共用一把锁：投影器内部是普通
                 // LinkedHashMap，`items`/`queue` 也是「读在 Main、写在 Default」。
                 stateMutex.withLock { applyLiveEvent(event) }
