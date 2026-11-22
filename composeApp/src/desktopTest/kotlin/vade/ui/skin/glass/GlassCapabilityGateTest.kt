@@ -7,18 +7,18 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * 审查 P1-1（Android 谎报模糊）与 P1-5（用假的 `hasBackdrop` 保像素）的回归闸门。
+ * 审查 P1-1（Android 谎报模糊）与 P0-1（`HazeAlwaysCompat` 短路能力阶梯）的回归闸门。
  *
  * 两条缺陷的共同点：**没有一行代码是"错误"的，但代码在说谎**。
  *
- *  - `GlassCapability.android.kt` 无条件返回 `Blur` —— minSdk 是 24，Android 7–11 上
+ *  - `GlassCapability.android.kt` 曾无条件返回 `Blur` —— minSdk 是 24，Android 7–11 上
  *    `Modifier.blur` / `RenderEffect` 根本不存在，玻璃层声称有模糊、实际什么都没有。
- *    这里用**可注入 SDK 的纯函数**把 21…35 全走一遍，不需要一台 Android 11 设备；
- *    再加一条源码守卫钉住 actual 必须走这个函数，而不是又写成一行常量。
- *  - `GlassSurface` 曾经给 `glassCapability` 传 `hasBackdrop = ambient != null ||
- *    !degradeWithoutBackdrop` —— 共享调用点为了保住像素，往"有没有背景"这个事实上塞了一个
- *    `true`。现在能力只看真实背景，绘制策略由 [GlassBackdropPolicy] 显式声明；
- *    源码守卫保证共享调用点**没有**任何人为自己选策略（它们靠默认值拿兼容像素）。
+ *    这里用**可注入 SDK 的纯函数**把 21…35 全走一遍，不需要一台 Android 11 设备。
+ *  - `GlassSurface` 曾有一个 `GlassBackdropPolicy.HazeAlwaysCompat` 覆盖入口：平台能力是
+ *    `TintStroke` 时它仍把结论拉回"建 haze 节点"。haze 在没有 `RenderEffect` 的平台上只画
+ *    一层 tint ⇒ 真机上的顶栏 / 搜索浮层 / 模型卡 / 图片预览全变成灰罩，`TintStroke` 那一档
+ *    （染色 + 描边 + 高光）一次都没执行过。现在**没有覆盖入口**：`drawsHazeLayer` 只认
+ *    `capability.blurs`，源码守卫保证这两个词都不会再出现在调用点。
  */
 class GlassCapabilityGateTest {
 
@@ -73,10 +73,8 @@ class GlassCapabilityGateTest {
     }
 
     /**
-     * actual 必须把 `Build.VERSION.SDK_INT` 递给 [androidGlassCapability]。
-     *
-     * 守卫的是回退形态：`actual fun platformGlassCapability() = GlassCapability.Blur` 这行
-     * 代码能编译、能过所有桌面测试，却在所有 Android 版本上撒谎 —— 这正是审查抓到的东西。
+     * actual 必须把 `Build.VERSION.SDK_INT` 递给 [androidGlassCapability]，并且平台的
+     * 降级日志指纹里必须有那个 SDK 号（审查 P1-10：真机上"变成灰罩"必须能在 logcat 里看到）。
      */
     @Test
     fun androidActualGoesThroughTheSharedSdkLadder() {
@@ -92,36 +90,31 @@ class GlassCapabilityGateTest {
             count(android, """=\s*GlassCapability\.(Blur|Refraction)\s*$"""),
             "actual 不许再写成一行常量 —— 那就是审查 P1-1 的原文",
         )
+        assertTrue(
+            android.contains("glassPlatformDiagnostic") && android.contains("SDK_INT"),
+            "降级日志必须带 SDK 号：一台 Android 11 的 logcat 要能区分「能力不足」与「背景没接上」",
+        )
     }
 
-    // --- 2 · 策略与能力正交 ----------------------------------------------------------
+    // --- 2 · 能力是唯一门禁 ----------------------------------------------------------
 
     /**
-     * 「建不建 haze 节点」由策略决定，而不是靠谎报能力。
+     * 「建不建 haze 节点」**只**由能力决定。
      *
-     * - 共享调用点（兼容策略）：**永远**建节点 —— 它们的历史像素就是这么来的，哪怕能力是
-     *   `TintStroke`（没有背景可采）；
-     * - glass 组件（诚实策略）：能力说不模糊就不建节点，直接染色 + 描边 + 高光。
+     * 旧契约是 `drawsHazeLayer(capability, policy)`，其中 `HazeAlwaysCompat` 在
+     * `TintStroke` 下也返回 true —— 真机上的灰罩就是这么来的。现在函数只收一个参数：
+     * 想覆盖它就必须改签名，而签名被这条测试（与调用点源码守卫）同时钉住。
      */
     @Test
-    fun hazeIsDrawnByPolicyNotByFakedBackdrop() {
-        assertTrue(
-            drawsHazeLayer(GlassCapability.TintStroke, GlassBackdropPolicy.HazeAlwaysCompat),
-            "兼容策略必须保留 haze 节点 —— 共享调用点的像素钉钉的就是它",
-        )
+    fun hazeIsDrawnOnlyWhenThePlatformReallyBlurs() {
         assertFalse(
-            drawsHazeLayer(GlassCapability.TintStroke, GlassBackdropPolicy.DegradeWithoutBackdrop),
-            "诚实策略在 TintStroke 下不许建 haze 节点（采不到背景的 haze 链什么都不画）",
+            drawsHazeLayer(GlassCapability.TintStroke),
+            "TintStroke ⇒ 不建 haze 节点（采不到背景的 haze 链什么都不画，只剩一层灰罩）",
         )
         for (capability in listOf(GlassCapability.Blur, GlassCapability.Refraction)) {
-            for (policy in GlassBackdropPolicy.entries) {
-                assertTrue(
-                    drawsHazeLayer(capability, policy),
-                    "$capability 真的能模糊，$policy 下也必须照常建节点",
-                )
-            }
+            assertTrue(drawsHazeLayer(capability), "$capability 真的能模糊，必须照常建节点")
         }
-        // 能力本身仍然只看真实背景 —— 这条是 P1-5 的核心，不能被策略绕过。
+        // 能力本身仍然只看真实背景 —— 这条是 P1-5 的核心。
         assertEquals(
             GlassCapability.TintStroke,
             glassCapability(hasBackdrop = false),
@@ -130,62 +123,58 @@ class GlassCapabilityGateTest {
     }
 
     /**
-     * 共享调用点必须**显式**声明兼容模式，且不许重新出现 `degradeWithoutBackdrop` 那个假旗标。
+     * 全仓扫描：`GlassBackdropPolicy` / `backdropPolicy` **一个字都不许剩**。
      *
-     * 「显式」是这条 P1 的另一半：默认值只是兜底，不能让读 TopBar 的人以为这里"真的能模糊"。
-     * 全仓扫描（不是列举文件）：新加一个 `GlassSurface(` 调用点就会自动被这条守住 ——
-     * 它必须自己表态是兼容像素，还是诚实降级。
+     * 这条替代了上一版的"每个调用点必须显式声明兼容策略"。旧守卫把缺陷制度化了：
+     * 它要求 12 处调用点写 `HazeAlwaysCompat`，于是"API<31 仍建节点"变成**不可修** ——
+     * 任何修复都会让守卫变红。现在守卫守的是反面：没有覆盖入口，也没有人参保。
      */
     @Test
-    fun sharedCallSitesDeclareTheCompatPolicyExplicitly() {
+    fun noCallSiteCanOverrideTheCapability() {
         val root = src("commonMain/kotlin")
-        val glassDir = File(root, "vade/ui/skin/glass").invariantSeparatorsPath
+        val definition = src("commonMain/kotlin/vade/ui/skin/glass/GlassSurface.kt").invariantSeparatorsPath
         val offenders = mutableListOf<String>()
-        var declared = 0
+        var callSites = 0
         root.walkTopDown().filter { it.isFile && it.extension == "kt" }.forEach { file ->
-            if (file.invariantSeparatorsPath.startsWith(glassDir)) return@forEach
             val code = codeOf(file)
-            val calls = count(code, """GlassSurface\(""")
-            val compat = count(code, """backdropPolicy = GlassBackdropPolicy\.HazeAlwaysCompat""")
-            val honest = count(code, """backdropPolicy = GlassBackdropPolicy\.DegradeWithoutBackdrop""")
-            declared += compat
-            if (calls != compat + honest) {
-                offenders += "${file.path}: $calls 处 GlassSurface，但只有 $compat 处声明兼容模式" +
-                    "/$honest 处声明诚实降级 —— 共享调用点必须显式声明 HazeAlwaysCompat"
+            if (count(code, """GlassBackdropPolicy|backdropPolicy""") > 0) {
+                offenders += "${file.path}: 能力覆盖入口又回来了（HazeAlwaysCompat 就是 P0-1 的灰罩）"
             }
-            if (count(code, """degradeWithoutBackdrop""") > 0) {
-                offenders += "${file.path}: 旧的假旗标 degradeWithoutBackdrop 又回来了"
+            // 定义点不算调用点（`fun GlassSurface(`）。
+            if (file.invariantSeparatorsPath != definition) {
+                callSites += count(code, """GlassSurface\(""")
             }
         }
+        assertTrue(offenders.isEmpty(), offenders.joinToString("\n"))
         assertTrue(
-            offenders.isEmpty(),
-            "共享调用点的像素链被改动了 —— 它们必须显式声明 HazeAlwaysCompat：\n" +
-                offenders.joinToString("\n"),
+            callSites >= 18,
+            "全仓 GlassSurface 调用点应当 ≥18（shell 6 + glass 皮肤 11 + material/miuix 3），" +
+                "实际 $callSites —— 扫描路径或调用点被改坏了",
         )
-        assertTrue(
-            declared >= 8,
-            "共享调用点至少 8 处（MaterialSkin 底栏 / TopBar / GlassNavBar / SearchOverlay ×2 / " +
-                "ModelPickerSheet ×2 / ChatThread ×2），实际只找到 $declared 处声明 —— " +
-                "扫描或接线漏了",
+        // `drawsHazeLayer` 只能有一个参数（调用点无法再塞策略）。
+        val gate = codeOf(src("commonMain/kotlin/vade/ui/skin/glass/GlassCapability.kt"))
+        assertEquals(
+            1,
+            count(gate, """fun drawsHazeLayer\(capability: GlassCapability\): Boolean"""),
+            "drawsHazeLayer 必须只吃能力：多一个参数就是 P0-1 的覆盖入口回来了",
         )
     }
 
     /**
-     * glass 皮肤**全部 11 个**玻璃组件必须显式声明诚实策略，承载文字/图标的层必须真的垫内容底。
+     * glass 皮肤**全部 11 个**玻璃组件必须走同一条门禁，承载文字/图标的层必须真的垫内容底。
      *
      * 52-U3 · T2 起组件的画法搬到 `GlassParts.kt`（7 个）与 `GlassSkin.kt`（4 个）两个文件，
      * 所以这里按**两个文件合起来**数，而不是数某一个文件的 4 处：
      *
-     *  - 11 处 `GlassSurface(` ↔ 11 处 `DegradeWithoutBackdrop`：少一处就退回「玻璃层采不到
-     *    背景时什么都不画」；
-     *  - 12 个 C-09 组件里 `TextField` 仍转发 material（玻璃版留给下一批），所以是 11 而不是 12；
+     *  - 11 处 `GlassSurface(`：12 个 C-09 组件里 `TextField` 仍转发 material（玻璃版留给下一批），
+     *    所以是 11 而不是 12；
      *  - 8 处 `GlassContentBase(`：Card / InputBar / 用户气泡 / 行 / 底栏 / 弹层 / 芯片 / 工具卡
      *    共用同一个内容底（审查 P1-4 的口径）。`SendOrb` 不在此列 —— 48dp 的球上放不下第二层
      *    1dp inset 的底，它的**染色本身**就是内容底，对比度由 `GlassComponentContrastTest`
      *    按 `contentBaseContrast` 单独钉住。
      */
     @Test
-    fun glassComponentsUseTheHonestPolicyAndABase() {
+    fun glassComponentsUseTheSharedGateAndABase() {
         val root = src("commonMain/kotlin/vade/ui/skin/glass")
         val code = listOf("GlassSkin.kt", "GlassParts.kt")
             .joinToString("\n") { codeOf(File(root, it)) }
@@ -195,11 +184,6 @@ class GlassCapabilityGateTest {
             count(code, """GlassSurface\("""),
             "玻璃皮肤的 11 个组件 = 12 个 C-09 组件 − 仍转发 material 的 TextField；" +
                 "数字对不上说明有人新增/删掉了组件，或把某个组件退回给 material",
-        )
-        assertEquals(
-            11,
-            count(code, """backdropPolicy = GlassBackdropPolicy\.DegradeWithoutBackdrop"""),
-            "每一处 GlassSurface 都要显式声明诚实降级 —— 少一处就退回「采不到背景时什么都不画」",
         )
         assertEquals(
             8,

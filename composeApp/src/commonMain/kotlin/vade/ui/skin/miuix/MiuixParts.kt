@@ -72,7 +72,6 @@ import vade.ui.skin.SkinTypography
 import vade.ui.skin.ToolCallView
 import vade.ui.skin.ToolCardState
 import vade.ui.skin.cardAccentBar
-import vade.ui.skin.glass.GlassBackdropPolicy
 import vade.ui.skin.glass.GlassSurface
 
 /**
@@ -713,6 +712,9 @@ private fun MiuixCodeBlock(
  * blur when the page provides a `GlassScope`, and — when it does not (tests, previews, a page
  * that never wired the source) — `degradeColor = colors.surfaceGlass`, i.e. **exactly** the
  * `surfaceGlass` + hairline + `shadowFloat` panel this component drew before, pixel for pixel.
+ * That fallback is keyed on the **absence of a backdrop**, not on the platform: a device that
+ * has a backdrop but no `RenderEffect` (API 24–30 ⇒ `TintStroke`) gets §5's tint + hairline +
+ * highlight instead of the 78 % slab (F6-P0-1).
  * The tint of the blurred path is the §5 `SkinGlass` token the bottom bar reads, and it only
  * travels through `colorEffects(listOf(HazeColorEffect.tint(tint)))`.
  *
@@ -759,6 +761,10 @@ internal fun MiuixInputBar(
                 //
                 // 没有 backdrop（单测 / 预览 / 页面没接 `GlassScope`）时 `degradeColor =
                 // colors.surfaceGlass` 让面板逐像素退回原来那块实色：采不到背景就不建 haze 节点。
+                //
+                // 平台只到 `TintStroke`（API 24–30）**不**走这条：背景在、只是糊不了，那一档
+                // 画 tint + hairline + 高光（`TintStrokeComposerTest` 钉像素），否则就是一块
+                // 78 % 的实色板（审查 F6-P0-1）。
                 GlassSurface(
                     modifier = Modifier.weight(1f),
                     shape = fieldShape,
@@ -770,7 +776,6 @@ internal fun MiuixInputBar(
                     // §8.2 shadow2 档位显式写出来（默认值就是它）：这一层是**浮层**。
                     shadow = VadeShadows.float,
                     degradeColor = colors.surfaceGlass,
-                    backdropPolicy = GlassBackdropPolicy.DegradeWithoutBackdrop,
                 ) {
                     // g-inline-second-row / P1-2（审查 r1-client-chat）：面板高度动画必须挂在
                     // **面板内容这一层**，与 material `MaterialParts` / glass `GlassSkin` 同一个位置、

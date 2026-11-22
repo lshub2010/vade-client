@@ -30,7 +30,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
-import vade.ui.component.liquid.rememberGlassBackdrop
 import vade.ui.destinations.Destination
 import vade.ui.icon.ShellGlyphs
 import vade.ui.icon.VadeIcons
@@ -197,14 +196,12 @@ class NavSelectionGuardTest {
     fun fixedBarDrawsFour32dpBlocks() = runComposeUiTest {
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
-                val backdrop = rememberGlassBackdrop()
                 Box(Modifier) {
                     VadeBottomBar(
                         items = barItems(),
                         selected = 1,
                         onSelect = {},
                         style = BottomBarStyle.Fixed,
-                        backdrop = backdrop,
                     )
                 }
             }
@@ -222,14 +219,12 @@ class NavSelectionGuardTest {
     fun floatingBarDrawsFour32dpBlocksAndKeepsItsPill() = runComposeUiTest {
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
-                val backdrop = rememberGlassBackdrop()
                 Box(Modifier) {
                     VadeBottomBar(
                         items = barItems(),
                         selected = 2,
                         onSelect = {},
                         style = BottomBarStyle.Floating,
-                        backdrop = backdrop,
                     )
                 }
             }
@@ -251,14 +246,12 @@ class NavSelectionGuardTest {
     fun floatingIconSitsInsideItsSelectionBlock() = runComposeUiTest {
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
-                val backdrop = rememberGlassBackdrop()
                 Box(Modifier) {
                     VadeBottomBar(
                         items = barItems(),
                         selected = 0,
                         onSelect = {},
                         style = BottomBarStyle.Floating,
-                        backdrop = backdrop,
                     )
                 }
             }
@@ -479,14 +472,12 @@ class NavSelectionGuardTest {
     private fun ComposeUiTest.setFixedBar(selected: Int) {
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
-                val backdrop = rememberGlassBackdrop()
                 Box(Modifier) {
                     VadeBottomBar(
                         items = barItems(),
                         selected = selected,
                         onSelect = {},
                         style = BottomBarStyle.Fixed,
-                        backdrop = backdrop,
                     )
                 }
             }
@@ -505,14 +496,12 @@ class NavSelectionGuardTest {
     fun floatingBarSelectedTabShowsBlockFilledIconAndAccentLabel() = runComposeUiTest {
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
-                val backdrop = rememberGlassBackdrop()
                 Box(Modifier) {
                     VadeBottomBar(
                         items = barItems(),
                         selected = 0,
                         onSelect = {},
                         style = BottomBarStyle.Floating,
-                        backdrop = backdrop,
                     )
                 }
             }
@@ -583,7 +572,6 @@ class NavSelectionGuardTest {
     fun oneScreenNeverMixesFilledAndOutlineNavIconsForTheSameSelectionState() = runComposeUiTest {
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
-                val backdrop = rememberGlassBackdrop()
                 // NavRail 自身是 fillMaxHeight()：必须给它一个有界容器，否则它会吃光整列，
                 // 下面的 fixed bar 被挤成零高、图标 bounds 全塌（第一次跑就是红在这）。
                 androidx.compose.foundation.layout.Column(Modifier) {
@@ -595,7 +583,6 @@ class NavSelectionGuardTest {
                         selected = 1,
                         onSelect = {},
                         style = BottomBarStyle.Fixed,
-                        backdrop = backdrop,
                     )
                 }
             }

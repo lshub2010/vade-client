@@ -15,7 +15,6 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import vade.ui.component.liquid.rememberGlassBackdrop
 import vade.ui.demo.MotionProbe
 import vade.ui.demo.ProbeContent
 import vade.ui.destinations.Destination
@@ -162,8 +161,7 @@ class VectorIconSwapTest : IsolatedPreferencesTest() {
         )
         setContent {
             CompositionLocalProvider(LocalSkin provides MaterialSkin()) {
-                val backdrop = rememberGlassBackdrop()
-                VadeBottomBar(items = items, selected = 0, onSelect = {}, style = BottomBarStyle.Fixed, backdrop = backdrop)
+                VadeBottomBar(items = items, selected = 0, onSelect = {}, style = BottomBarStyle.Fixed)
             }
         }
         onNodeWithText("会话").assertExists()

@@ -15,3 +15,9 @@ package vade.ui.skin.glass
  * 所以窗口缩放 / HiDPI 不会让半径漂移（任务书 §T3「Desktop」那一条）。
  */
 actual fun platformGlassCapability(): GlassCapability = GlassCapability.Blur
+
+/**
+ * 降级日志的平台指纹。Desktop 恒为 `Blur`（探针验过真出高斯模糊），所以这条日志在本目标
+ * 上只会因为"没有背景"（`GlassScope` 未提供）而出现 —— 那正是单测 / 孤立预览的场景。
+ */
+actual fun glassPlatformDiagnostic(): String = "desktop jvm candidates=Blur,TintStroke"

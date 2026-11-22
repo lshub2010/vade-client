@@ -41,3 +41,12 @@ import android.os.Build
  */
 actual fun platformGlassCapability(): GlassCapability =
     androidGlassCapability(Build.VERSION.SDK_INT)
+
+/**
+ * 降级日志的平台指纹：SDK 号 + 模糊门槛 + 这条阶梯的候选档位。
+ *
+ * 真机上"只剩灰罩"最常见的原因是 API 24–30（没有 `RenderEffect`）。日志里必须有 SDK 号，
+ * 否则拿到一台 Android 11 的 logcat 也判断不了是"能力不足"还是"背景没接上"。
+ */
+actual fun glassPlatformDiagnostic(): String =
+    "android sdk=${Build.VERSION.SDK_INT} blurMinSdk=$ANDROID_GLASS_BLUR_MIN_SDK"

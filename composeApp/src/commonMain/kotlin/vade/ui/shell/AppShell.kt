@@ -80,8 +80,6 @@ import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.NavItem
 import vade.ui.skin.glass.LocalGlassHazeState
-import vade.ui.component.liquid.captureGlassBackdrop
-import vade.ui.component.liquid.rememberGlassBackdrop
 
 /**
  * The whole shell: four destinations, four breakpoints, a glass top bar and (on phones) a
@@ -345,11 +343,6 @@ internal fun adaptersOf(state: UiState): AdapterProvider? = (state.source as? Ad
 private fun ShellBody(state: UiState) {
     val skin = LocalSkin.current
     val glass = LocalGlassHazeState.current
-    // w2-bottombar: the app-content capture the floating pill blurs/refracts (miuix-blur).
-    // Two pipelines coexist on purpose: haze drives the glass top bar + search overlay,
-    // miuix-blur drives the KSU-style pill (it has lens/refraction/highlight that haze
-    // lacks). The content area is the single capture surface for the pill.
-    val contentBackdrop = rememberGlassBackdrop()
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val metrics = metricsFor(maxWidth)
         val session = state.selectedSession
@@ -405,23 +398,27 @@ private fun ShellBody(state: UiState) {
         val detailOverlayOpen = remember { mutableStateOf(false) }
         val contentZIndex = if (detailOverlayOpen.value) 1f else 0f
 
-        // --- backdrop (g-haze-structure): miuix-blur capture only. The HAZE source used
-        // to sit HERE — on the whole ShellBody — which made every page-level glass layer
-        // (the composer panel, the model picker, the image preview: all composed INSIDE
-        // the pages) a DESCENDANT of the source. Haze 2.1.0 does not blur for an effect
-        // under its own source subtree, so those layers silently degraded to near-solid.
-        // The source now lives on each page's own content layer (ChatThread's scroll
-        // column, the per-page scroll containers in `destinations/`, the rail and the
-        // right panel below) — every floating glass layer is a SIBLING of what it blurs.
-        // Only the miuix capture stays on the Row: the KSU pill samples the whole content
-        // area through its own layerBackdrop pipeline, no haze node involved.
+        // --- backdrop (g-haze-structure): 这里只有**页面自己的** content layer 是 haze
+        // source。Row 上曾经还挂着 miuix-blur 的 `captureGlassBackdrop`（为浮动胶囊服务），
+        // 那个节点**每帧**把整块内容区重录一次（`LayerBackdropNode.draw` 无条件
+        // `DrawScope.record`）—— 空转帧、滚动帧、IME 帧全都付一次全屏 render-to-texture，
+        // 而它对"这一屏到底有没有玻璃"一无所知。整条管线已删除：胶囊 / 底栏与顶栏、composer
+        // 走同一条 haze（`glassPaint`），能力不足时自动降级成 tint + hairline。
+        //
+        // The HAZE source used to sit HERE — on the whole ShellBody — which made every
+        // page-level glass layer (the composer panel, the model picker, the image preview:
+        // all composed INSIDE the pages) a DESCENDANT of the source. Haze 2.1.0 does not
+        // blur for an effect under its own source subtree, so those layers silently
+        // degraded to near-solid. The source now lives on each page's own content layer
+        // (ChatThread's scroll column, the per-page scroll containers in `destinations/`,
+        // the rail and the right panel below) — every floating glass layer is a SIBLING of
+        // what it blurs.
         Row(
             Modifier
                 .fillMaxSize()
                 .background(skin.colors.canvas)
                 // 模态浮层开着 ⇒ 整条内容链压到底栏之上（见 [detailOverlayOpen] 的注释）。
-                .zIndex(contentZIndex)
-                .captureGlassBackdrop(contentBackdrop),
+                .zIndex(contentZIndex),
         ) {
             if (metrics.useRail) {
                 // The rail is backdrop content for the search overlay / ⌘K palette, so it
@@ -710,7 +707,10 @@ private fun ShellBody(state: UiState) {
                         )
                     },
                     style = state.barStyle,
-                    backdrop = contentBackdrop,
+                    // §5 层数上限：会话详情的底栏带（`ComposerBottomBlur`）最强端就在屏幕底，
+                    // 已经把这整条栏区糊过了 —— 底栏不再建自己的 haze 节点，只补染色 + hairline。
+                    // 判据与 `detailBarInset` 同一条（详情可见 ⇒ 带子组合出来了）。
+                    barZoneBlurred = detailOpen && !state.sessionsDrawerOpen,
                 )
             }
         }

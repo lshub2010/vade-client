@@ -108,7 +108,6 @@ import vade.ui.component.insets.composerNavClearance
 import vade.ui.component.liquid.VadeShadows
 import vade.ui.component.liquid.layeredShadow
 import vade.ui.skin.cardAccentBar
-import vade.ui.skin.glass.GlassBackdropPolicy
 import vade.ui.skin.glass.GlassSurface
 import vade.ui.skin.glass.LocalGlassHazeState
 import vade.ui.glass.asGlassSource
@@ -1739,10 +1738,11 @@ private fun NewContentCapsule(
 
 /**
  * 附件预览 = §9 悬浮卡片，不是贴边全屏：遮罩取 [SkinColors.previewScrim]（亮色 24% 黑，
- * 暗色 ≥48% —— G5：24% 黑在暗画布上不可感知），卡片四周 12dp 空隙、`sheet` 32dp 同圆角、
- * 玻璃底（退化时垫 [SkinColors.previewCardBase]，暗色为全实底）+ 浮层阴影 + 发丝线，
- * 顶部中央 36×4dp 白条手柄（亮色 黑 24% / 暗色 白 70%），关闭是 ✕ 图标。
- * 同一时刻只有这一个弹层。
+ * 暗色 ≥48% —— G5：24% 黑在暗画布上不可感知）**纯色**压暗（不是玻璃层：全屏玻璃在降级档
+ * 会被补一条 34 % 顶部高光，遮罩就变成「先提亮再压暗」—— 审查 F6-P1-1），卡片四周 12dp
+ * 空隙、`sheet` 32dp 同圆角、玻璃底（退化时垫 [SkinColors.previewCardBase]，暗色为全实底）
+ * + 浮层阴影 + 发丝线，顶部中央 36×4dp 白条手柄（亮色 黑 24% / 暗色 白 70%），关闭是 ✕
+ * 图标。同一时刻只有这一个弹层。
  */
 @Composable
 private fun ImagePreviewSheet(image: ContentPart.Image, onClose: () -> Unit) {
@@ -1751,24 +1751,26 @@ private fun ImagePreviewSheet(image: ContentPart.Image, onClose: () -> Unit) {
     val grabber = if (skin.colors.isDark) Color.White.copy(alpha = 0.70f) else Color.Black.copy(alpha = 0.24f)
 
     Box(Modifier.fillMaxSize()) {
-        // 遮罩：玻璃层（矩形）叠黑 — 点遮罩关闭；透明度取 [SkinColors.previewScrim]
-        // （G5：亮色 24% 维持现状，暗色 ≥48% 否则在暗画布上不可感知）。不用纯黑 60%（§9）。
-        GlassSurface(
-            modifier = Modifier
+        // 遮罩：**纯色**压暗层（`previewScrim`：亮 24% 黑，暗 ≥48%），点它关闭。
+        //
+        // 它曾经是一整块 `GlassSurface(fillMaxSize)`：全屏尺寸下那一层在降级档会补一条
+        // 34 % 的顶部高光 —— 遮罩变成「先提亮再压暗」（暗色模式屏幕顶比画布还亮，审查
+        // F6-P1-1），而且它永远占一层 §5 的模糊预算。遮罩自己不需要模糊：背后就是被它
+        // 压暗的页面。所以这里只画一个不透明度的纯色矩形。
+        Box(
+            Modifier
                 .fillMaxSize()
+                .background(skin.colors.previewScrim)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     onClick = onClose,
                 ),
-            shape = RoundedCornerShape(0.dp),
-            skin = skin,
-            // 共享调用点：恒建 haze 节点（U3 之前的像素）。
-            backdropPolicy = GlassBackdropPolicy.HazeAlwaysCompat,
-        ) {
-            Box(Modifier.fillMaxSize().background(skin.colors.previewScrim))
-        }
+        )
 
+        // 卡片：`blurBackdrop = false` —— 遮罩已把整屏压暗，卡内又垫了 `glassFallback`
+        // 的近实心 content base（暗色全实底），再采一次背景看不出来，却让「预览打开态」
+        // 多一层模糊（审查 F6-P1-2）。省掉它，打开态仍然是 3 层。
         GlassSurface(
             modifier = Modifier
                 .align(Alignment.Center)
@@ -1777,8 +1779,8 @@ private fun ImagePreviewSheet(image: ContentPart.Image, onClose: () -> Unit) {
                 .padding(12.dp),
             shape = sheetShape,
             skin = skin,
-            // 共享调用点：恒建 haze 节点（U3 之前的像素）。
-            backdropPolicy = GlassBackdropPolicy.HazeAlwaysCompat,
+            blurBackdrop = false,
+            // 能力门禁只看真实背景 + 平台阶梯（API<31 没有 RenderEffect ⇒ tint+hairstroke+高光）。
         ) {
             Column(
                 modifier = Modifier

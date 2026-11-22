@@ -26,7 +26,6 @@ import vade.ui.icon.VadeIcons
 import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.NavItem
-import vade.ui.skin.glass.GlassBackdropPolicy
 import vade.ui.skin.glass.GlassSurface
 
 /**
@@ -65,8 +64,7 @@ fun GlassNavBar(
         modifier = Modifier.fillMaxWidth().height(64.dp),
         shape = shape,
         skin = skin,
-        // 共享调用点：恒建 haze 节点（U3 之前的像素），显式声明兼容模式。
-        backdropPolicy = GlassBackdropPolicy.HazeAlwaysCompat,
+        // 能力门禁只看真实背景 + 平台阶梯；`HazeAlwaysCompat` 已删（审查 P0-1）。
     ) {
         Row(
             modifier = Modifier.fillMaxSize(),

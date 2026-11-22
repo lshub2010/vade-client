@@ -6,8 +6,13 @@
 // transcript down; that placement is gone. This sheet:
 //
 //  - floats OVER the whole screen (bottom-anchored): 12dp left/right, 12dp bottom, all four
-//    corners 28dp (`skin.shapes.xl` — §334 「四角 28dp」), glass base (GlassSurface: blur +
-//    tint + hairline + float shadow), never edge-to-edge, never full-width;
+//    corners 28dp (`skin.shapes.xl` — §334 「四角 28dp」), glass base (GlassSurface: tint +
+//    hairline + float shadow), never edge-to-edge, never full-width. The scrim under it is a
+//    **flat** dim (`previewScrim`), not a glass layer: a full-bleed glass would add a 34 %
+//    top highlight (brightening the top of the screen above the canvas) and spend one of the
+//    ≤3 same-screen blur layers (F6-P1-1 / F6-P1-2). For the same budget the card itself does
+//    not sample a backdrop (`blurBackdrop = false`) — it already carries an 88 %-solid
+//    content wash, so the sheet costs **one** glass layer, not two;
 //  - carries the 36×4dp grabber 8dp under the card top — the only job is "this can be
 //    dragged/closed";
 //  - closes on mask tap, ✕, `Esc`, and the **system back** — g-nav-stack: the sheet itself
@@ -50,7 +55,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -65,7 +69,6 @@ import vade.ui.component.insets.bottomSafeClearance
 import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
 import vade.ui.skin.LocalSkin
-import vade.ui.skin.glass.GlassBackdropPolicy
 import vade.ui.skin.glass.GlassSurface
 
 /** Esc policy of the sheet, pure so the UI test can drive the real predicate. */
@@ -76,18 +79,10 @@ internal fun isSheetEscape(
 /**
  * Readability backing for the sheet card (§5 blur-less degrade shape).
  *
- * The sheet's glass *reads* the shell's shared haze state, but haze 2.1.0 forbids a glass
- * layer that is a DESCENDANT of the `Modifier.hazeSource` node (GlassBridge.kt structure
- * rule, verbatim: 「hazeEffect nodes cannot draw an ancestor hazeSource」). The shell
- * registers the whole body as the one backdrop source, so EVERY page-level glass — this
- * sheet, the composer, the image preview — is a descendant and the blur is structurally
- * unavailable in-app (sibling layers like the top bar blur fine). Restructuring that is
- * shell-side work (AppShell.kt is another bat's file).
- *
- * Until then the card carries interactive text rows that MUST be readable, so the content
- * is padded with the same near-solid wash the composer's `glassFallback` uses (§5 fallback:
- * tint + near-solid backing). Applied unconditionally — when the shell is restructured and
- * the blur starts applying, dropping this wash is a one-line shell-side change.
+ * The card sits on a full-bleed [skin.colors.previewScrim]-strength dim: everything under it
+ * is already muted, so the card's own content gets one near-solid wash (§5 fallback:
+ * tint + near-solid backing) instead of sampling a second time. That is also what keeps the
+ * sheet at **one** glass layer — see `ModelPickerSheet`'s KDoc for the §5 ≤3 budget.
  */
 @Composable
 private fun Modifier.sheetReadabilityBacking(skin: vade.ui.skin.Skin, shape: Shape): Modifier =
@@ -132,28 +127,33 @@ fun ModelPickerSheet(
                 }
             },
     ) {
-        // 遮罩：玻璃（矩形）+ 24% 黑，不是纯黑 60%（§9）—— 背后内容仍隐约可见；点它关闭。
-        GlassSurface(
-            modifier = Modifier
+        // 遮罩：**纯色**压暗层，不是玻璃层（审查 F6-P1-2）。
+        //
+        // 它曾经是一整块 `GlassSurface(fillMaxSize)`：在全屏尺寸的降级档上，那一层会补一条
+        // 34 % 的顶部高光 —— 遮罩于是「先提亮再压暗」，暗色模式下屏幕顶 34 % 反而比画布亮。
+        // 它也不需要模糊（背后就是被它压暗的页面），所以这里只画 `previewScrim`：一个像素
+        // 都不可能亮于画布，也不占 §5 的「同屏 ≤3 个模糊层」预算。
+        Box(
+            Modifier
                 .fillMaxSize()
+                .background(skin.colors.previewScrim)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     onClick = onClose,
                 )
                 .semantics { contentDescription = "模型选择遮罩" },
-            shape = RectangleShape,
-            skin = skin,
-            // 共享调用点：恒建 haze 节点（U3 之前的像素）。
-            backdropPolicy = GlassBackdropPolicy.HazeAlwaysCompat,
-        ) {
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.24f)))
-        }
+        )
 
         // 卡片：BottomCenter、左右 12dp、底部 12dp + 导航条余量、四角 28dp —— 永不贴边、
         // 不满宽。c6-insets · L4：固定 12dp 时三键导航条 / 手势胶囊压在卡片最后一行上
-        // （真机截图），现在读 `WindowInsets.navigationBars` 的余量（键盘弹起时为 0，
-        // 由根的 imePadding 抬升，不与 IME 相加）。
+        // （真机截图），现在读 `WindowInsets.navigationBars` 的余量（键盘弹起时为 0，由根的
+        // imePadding 抬升，不与 IME 相加）。
+        //
+        // `blurBackdrop = false`：遮罩已经把整屏压暗，卡内又垫了 88 % 的近实心内容底
+        // （[sheetReadabilityBacking]），再采一次背景在视觉上看不出来，却会让「模型面板
+        // 打开态」变成 4 个模糊层（审查 F6-P1-2 实测 5 层）。省掉这一次采样，打开态与
+        // 静止态一样是 3 层。
         GlassSurface(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -161,8 +161,8 @@ fun ModelPickerSheet(
                 .padding(start = 12.dp, end = 12.dp, bottom = 12.dp + bottomSafeClearance()),
             shape = shape,
             skin = skin,
-            // 共享调用点：恒建 haze 节点（U3 之前的像素）。
-            backdropPolicy = GlassBackdropPolicy.HazeAlwaysCompat,
+            blurBackdrop = false,
+            // 能力门禁只看真实背景 + 平台阶梯（API<31 没有 RenderEffect ⇒ tint+hairstroke+高光）。
         ) {
             Column(
                 Modifier

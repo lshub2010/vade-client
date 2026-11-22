@@ -8,19 +8,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.rememberHazeState
-import dev.chrisbanes.haze.blur.HazeBlurStyle
-import dev.chrisbanes.haze.blur.HazeColorEffect
-import dev.chrisbanes.haze.blur.hazeBlur
 import vade.ui.component.liquid.LayeredShadow
 import vade.ui.component.liquid.VadeShadows
 import vade.ui.component.liquid.downwardShelf
@@ -38,7 +32,7 @@ import vade.ui.skin.Skin
  *
  * A screen that never provides this local (tests, isolated previews) still gets a
  * correct — if blur-less — surface: [GlassSurface] then skips the haze node entirely and
- * degrades to tint + hairline + shadow (the §5 Android ≤30 scrim shape).
+ * degrades to tint + hairline + highlight (the §5 Android ≤30 shape).
  */
 val LocalGlassHazeState = staticCompositionLocalOf<HazeState?> { null }
 
@@ -53,14 +47,14 @@ val LocalGlassHazeState = staticCompositionLocalOf<HazeState?> { null }
  *    backdrop, so it is a visual no-op — with it the glass renders as the raw un-tinted
  *    blur mean and washes out text contrast (2.15:1 measured on the probe). The tint
  *    itself comes from [Skin.glass] (`tintLight`/`tintDark` per [SkinColors.isDark]).
- *  - **`blurredEdgeTreatment` takes a `BlurredEdgeTreatment`, not a `Shape`** — passing
- *    the shape directly does not compile.
+ *    The one place that builds it is [glassHaze] — this file, [glassPaint] and the bands
+ *    all go through it so the parameters cannot drift apart.
  *  - **Content is never blurred by the glass.** `hazeBlur` only filters the backdrop;
  *    this node's own content draws unfiltered on top. Do not split glass and content
  *    into separate layers to "fix" sharpness — the probe proved that changes nothing
  *    (PNG md5 identical).
  *  - The backdrop must be registered on the *same* state this surface reads
- *    ([LocalGlassHazeState]) — otherwise the layer degrades to tint + hairline + shadow.
+ *    ([LocalGlassHazeState]) — otherwise the layer degrades to tint + hairline + highlight.
  *
  * Shadow (§8 row 2): float layers carry a real shadow, drawn by the shared
  * [vade.ui.component.liquid.downwardShelf] stack — the §8.2 `shadow2` layers as a
@@ -77,46 +71,46 @@ val LocalGlassHazeState = staticCompositionLocalOf<HazeState?> { null }
  *
  * ### What the `glass` skin added (52-U3 §T1) — all of it opt-in
  *
- * The parameters below default to **today's behaviour exactly**, so every shipped
- * call site (material's `FloatingBlur` bar, `TopBar`, `GlassNavBar`, `SearchOverlay`,
- * `ChatThread`, the model picker) keeps its pixels. The glass skin turns them on; nobody
- * else has to.
- *
  *  - [tintOverride] — a per-call tint. Used by the glass `Button`: 危险操作用红主导的
- *    tint，`SkinGlass.tintLight`（白 42%）会把 `colors.error` 冲成粉色。名字里带
- *    `Override` 是因为局部变量 `tint` 已被 hover/haze 的取色占用，而
- *    `HazeColorEffect.tint(tint)` 这一行被 `ComposerShadowShapeTest` 的源码守卫钉着。
- *  - [degradeColor] — 采不到背景时那块**实色**（默认 `null` = 用 tint）。material / miuix
- *    的 composer 靠它把「没有 backdrop」退化回原来的 `surfaceGlass`，像素与接入玻璃前
- *    逐点一致；有 backdrop 时它不参与绘制。
+ *    tint，`SkinGlass.tintLight`（白 42%）会把 `colors.error` 冲成粉色。
+ *  - [degradeColor] — **采不到背景**时那块**实色**（默认 `null` = 用 tint）。material / miuix
+ *    的 composer 靠它把「页面没接 `GlassScope`」退化回原来的 `surfaceGlass`，像素与接入玻璃前
+ *    逐点一致。判据是 `LocalGlassHazeState == null` —— "有背景、平台糊不了"（API 24–30 的
+ *    `TintStroke`）**不算**采不到背景：那一档必须画 §5 的 tint + 描边 + 高光，否则 composer
+ *    在真机上就是一块 84 %/78 % 的实色板（审查 F6-P0-1 的「灰罩换成了白板」）。
  *  - [stroke] / [strokeWidth] — 描边色与宽度。输入框聚焦时描边加亮（2dp accent）；
  *    默认仍是**内侧 1dp**、`SkinGlass.hairlineOnGlass`。
  *  - [highlight] — 顶部高光（[GlassTokens.highlight]）。画在染色之上、内容之下：它只
- *    抬边缘的亮度，正文照样压在最上层（对比度算法见 `GlassTokens`）。
+ *    抬边缘的亮度，正文照样压在最上层（对比度算法见 `GlassTokens`）。**降级档默认就画它**
+ *    （`null` + 不模糊 ⇒ 用 [GlassTokens.highlight]），因为 §5 要求降级层是
+ *    「染色 + 描边 + 高光」的完整形态，而不是一块平色板。
  *  - [contentAlignment] — 玻璃容器是个 `Box`，但按钮这类内容必须在玻璃里居中；默认
  *    `TopStart` 保持既有调用的布局不变。
  *  - [shadow] — 浮层阴影的档位。默认 §8.2 `shadow2`（浮层）；静态卡（玻璃 `Card`）传
  *    `VadeShadows.card`，因为 §8 的静态卡是 hairline-first、阴影只允许极浅。空层
  *    （`LayeredShadow(emptyList())`）表示「这一层不投阴影」—— 开关轨道、贴底底栏用得上。
- *  - [blurBackdrop] — 是否真的采样背景。默认 `true` 保住所有既有调用点的像素；玻璃皮肤的
- *    `BottomBar` 用它表达 §9.3 的 `floating`（悬浮但**不**采样）与 `floating+blur` 两态，
- *    `Switch` 的开态（实心 accent 染色）也直接关掉 —— 不透明的染色后面再去模糊一次，
- *    只是白花 GPU。
+ *  - [blurBackdrop] — 是否**自己**采样背景（默认 `true`）。`false` 时**根本不建 haze 节点**，
+ *    但仍画染色 + 描边 + 高光 + 阴影。三种用途：① §9.3 的 `floating`（悬浮但**不**采样）
+ *    与 `floating+blur` 两态；② `Switch` 的开态（实心 accent 染色，再去模糊一次只是白花
+ *    GPU）；③ **同一块背景已经有别的玻璃层在糊**（顶栏带 + 胶囊、底栏带 + 底栏/浮胶囊）——
+ *    这是 §5「同屏模糊层数 ≤3」的落地方式：一块背景只买一次采样，其余层只做染色 + 描边。
  *
  * ### Degradation (D22 / FR-8.23) — 不崩、不白屏
  *
- * 两个**正交**的输入决定这条链上画什么，绝不互相冒充：
+ * 决定这条链上画什么的输入**只有一个**：[glassCapability] —— 它看真实的背景
+ * （`LocalGlassHazeState` 是否由页面提供）与平台阶梯，[drawsHazeLayer] 只认
+ * `capability.blurs`。
  *
- *  - [glassCapability] 只看真实的背景（`LocalGlassHazeState` 是否由页面提供）：给了就是
- *    平台档位（[GlassCapability.blurs]），没给就是 [GlassCapability.TintStroke]；
- *  - [backdropPolicy] 决定「没有背景时还建不建 haze 节点」：默认
- *    [GlassBackdropPolicy.HazeAlwaysCompat] 保留 U3 之前共享调用点的像素，
- *    [GlassBackdropPolicy.DegradeWithoutBackdrop] 是 glass 皮肤组件用的诚实降级。
+ * 这里曾经有一个 `backdropPolicy = HazeAlwaysCompat` 的覆盖入口（"保住 U3 之前的像素"），
+ * 它让 API<31 的共享调用点仍然建 haze 节点 —— 而 haze 在没有 `RenderEffect` 的平台上只画
+ * tint，于是顶栏 / 搜索浮层 / 模型卡 / 图片预览在真机上变成一块**灰罩**，`TintStroke` 那一档
+ * 一次都没执行过。现在没有覆盖入口：降级到 `TintStroke` 时**根本不建 haze 节点**，直接
+ * `background(tint, shape)` + 1dp hairline + 顶部高光（[GlassTokens.highlight] 默认补齐）。
  *
- * 降级到 `TintStroke` 时**根本不建 haze 节点**，直接 `background(tint, shape)` + 描边 +
- * 高光。旧实现会拿一个空的 `HazeState` 硬跑 `hazeBlur`，采不到背景时整层什么都不画 ——
- * 一个"看不见的玻璃"比没有玻璃更糟，而且与本文档写的"degrade to tint + hairline + shadow"
- * 不符。（共享调用点仍然走那条老路，但它们是有意保留的兼容像素，见 [backdropPolicy]。）
+ * 「糊不了」与「没有背景」是两件事，画法也不同（审查 F6-P0-1）：
+ * `LocalGlassHazeState == null` 时才允许 [degradeColor] 那块历史实色；有背景但平台只到
+ * `TintStroke` 时只画 tint —— 否则 API 24–30 的 composer 会退成 84 %/78 % 的实色板，
+ * 看起来还是一块白板/黑板。
  *
  * 折射（Android 13+ AGSL）**不在本文件**：它要求背景单独成层，属任务书 §五 T3，且本批
  * 无法上机验证。阶梯已经能表达 `Refraction`（见 [GlassCapability]），但没有平台返回它，
@@ -140,7 +134,12 @@ fun GlassSurface(
      * 存在的理由只有一条：`surfaceGlass` 与 §5 的玻璃 tint 不是一个数（material 84 % vs
      * 26 %）。面板在没有 backdrop 的环境（单测、预览、页面还没接 `GlassScope`）必须**逐
      * 像素**退回它原来那块实色，否则每一条 composer 像素钉都会红；而有 backdrop 时它完全
-     * 不参与绘制（模糊层自己带 tint）。所以它是「退化底」而不是第二个 tint。
+     * 不参与绘制（模糊层自己带 tint）。
+     *
+     * 判据是**背景是否真的存在**（`LocalGlassHazeState == null`），不是「这一层糊不糊得
+     * 成」：平台只有 `TintStroke`（API 24–30）时背景是在的，那一档走 §5 的 tint + 描边 +
+     * 高光，绝不能退回这块实色 —— 否则真机上的 composer 是一块 84 %/78 % 的白板/黑板
+     * （审查 F6-P0-1）。所以它是「没有背景的退化底」而不是第二个 tint。
      */
     degradeColor: Color? = null,
     stroke: Color? = null,
@@ -149,19 +148,9 @@ fun GlassSurface(
     contentAlignment: Alignment = Alignment.TopStart,
     shadow: LayeredShadow = VadeShadows.float,
     /**
-     * 没有真实背景可采时怎么办 —— 一个**语义诚实**的策略，而不是给 `hasBackdrop` 传假值。
-     *
-     * 默认 [GlassBackdropPolicy.HazeAlwaysCompat]：共享调用点（material 的 FloatingBlur 底栏、
-     * TopBar、GlassNavBar、SearchOverlay、ChatThread、模型选择卡）在 U3 之前一直是用
-     * 「私有空 state + 无条件 haze 节点」绘制的，CI 的像素钉钉的就是这套像素，本批不能动。
-     * glass 皮肤自己的组件显式传 [GlassBackdropPolicy.DegradeWithoutBackdrop]：采不到背景时
-     * 不建 haze 节点，直接染色 + 描边 + 高光。
-     */
-    backdropPolicy: GlassBackdropPolicy = GlassBackdropPolicy.HazeAlwaysCompat,
-    /**
      * 是否采样背景（默认 `true`）。`false` 时**根本不建 haze 节点**，但仍画染色 + 描边 +
-     * 高光 + 阴影 —— 这就是 §9.3 里 `floating`（悬浮、不采样）与 `floating+blur` 的区别，
-     * 也是「染色已经不透明了就别再模糊一次」的开关。
+     * 高光 + 阴影 —— 见类 KDoc 的 [blurBackdrop] 三条用途。共享调用点里，顶栏胶囊与
+     * 会话页底栏用它把"同一块背景只糊一次"写成结构（§5 层数上限）。
      */
     blurBackdrop: Boolean = true,
     /**
@@ -172,11 +161,9 @@ fun GlassSurface(
     content: @Composable BoxScope.() -> Unit,
 ) {
     val ambient = LocalGlassHazeState.current
-    val state = ambient ?: rememberHazeState()
-    // 能力只看**真实**背景：`ambient != null`。共享调用点靠上面的策略保住历史像素，
-    // 不再靠往这里塞一个 `true`（审查 P1-5）。
+    // 能力只看**真实**背景（`ambient != null`）与平台阶梯；没有任何调用点能覆盖它。
     val capability = glassCapability(hasBackdrop = ambient != null)
-    val drawsHaze = drawsHazeLayer(capability, backdropPolicy) && blurBackdrop
+    val drawsHaze = drawsHazeLayer(capability) && blurBackdrop
     val tint = tintOverride ?: if (skin.colors.isDark) skin.glass.tintDark else skin.glass.tintLight
     val strokeColor = stroke ?: skin.glass.hairlineOnGlass
 
@@ -200,27 +187,32 @@ fun GlassSurface(
         dark = skin.colors.isDark,
     )
 
-    val backdrop = if (drawsHaze) {
-        Modifier.hazeBlur(
-            input = HazeInput.Sources(state = state),
-            style = HazeBlurStyle {
-                blurEnabled(true)
-                blurRadius(skin.glass.blurRadiusDp.dp)
-                // 染色只能走 colorEffects —— backgroundColor 画在不透明模糊层之后，
-                // 完全无效（haze 探针 RESULT.md §坑1）。
-                colorEffects(listOf(HazeColorEffect.tint(tint)))
-                noiseFactor(0f)
-                blurredEdgeTreatment(BlurredEdgeTreatment(shape))
-            },
+    val backdrop = if (drawsHaze && ambient != null) {
+        rememberGlassBlurNode()
+        Modifier.glassHaze(
+            state = ambient,
+            shape = shape,
+            tint = tint,
+            blurRadiusDp = skin.glass.blurRadiusDp,
         )
     } else {
-        // 降级档（没有背景可采）：不建 haze 节点，直接染色。整层仍然是一个完整的、
-        // 有描边和高光的层 —— 这就是"不白屏"那条要求的落地方式。
+        // 降级档（没有背景可采 / 这一层不采样 / 平台糊不了）：不建 haze 节点，直接染色。
+        // 整层仍然是一个完整的、有描边和高光的层 —— 这就是"不白屏"那条要求的落地方式。
         //
-        // [degradeColor] 是**逐像素退化**的出口：给了它就画它，而不是 tint。composer 用它
-        // 保住「没接 GlassScope 时那块 84 % surfaceGlass」的历史像素。
-        Modifier.background(degradeColor ?: tint, shape)
+        // **两种"不模糊"必须分开画**（审查 F6-P0-1）：
+        //
+        //  - `ambient == null`：页面根本没有背景可采（单测 / 预览 / 还没接 `GlassScope`）。
+        //    [degradeColor] 是这条路径的**逐像素退化**出口 —— 给了它就画它，composer 因此
+        //    保住「没接 GlassScope 时那块 84 % surfaceGlass」的历史像素。
+        //  - `ambient != null` 但能力只有 `TintStroke`（API 24–30 的真机形态）：背景是有的，
+        //    只是这台设备糊不了。这一档画 [degradeColor] 就是审查里的 P0 —— 输入条退成
+        //    84 %/78 % 的近实心白/黑板，用户看到的仍然「一块板」，只是灰罩换成了白板。
+        //    所以这里只画染色：§5 的 tint + 1dp hairline + 顶部高光。
+        Modifier.background(if (ambient == null) degradeColor ?: tint else tint, shape)
     }
+
+    // 降级层必须自带高光（§5：染色 + 描边 + 高光 的完整形态）；调用点显式传的优先。
+    val resolvedHighlight = highlight ?: if (drawsHaze) null else GlassTokens.highlight
 
     Box(
         modifier = floatShell
@@ -235,8 +227,8 @@ fun GlassSurface(
     ) {
         // 顶部高光：染色之上、内容之下。`matchParentSize` 让它跟着玻璃的最终尺寸走，
         // 不需要每个组件各算一遍宽高。
-        if (highlight != null) {
-            Box(Modifier.matchParentSize().background(highlight, shape))
+        if (resolvedHighlight != null) {
+            Box(Modifier.matchParentSize().background(resolvedHighlight, shape))
         }
         content()
     }

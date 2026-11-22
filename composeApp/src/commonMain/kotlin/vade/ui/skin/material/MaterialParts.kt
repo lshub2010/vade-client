@@ -77,7 +77,6 @@ import vade.ui.skin.SkinTypography
 import vade.ui.skin.ToolCallView
 import vade.ui.skin.ToolCardState
 import vade.ui.skin.cardAccentBar
-import vade.ui.skin.glass.GlassBackdropPolicy
 import vade.ui.skin.glass.GlassSurface
 
 /**
@@ -645,10 +644,14 @@ internal fun MaterialInputBar(
     // .tint(tint)))` 那一行（`SkinGlass` 的 26 %/34 %，底栏读的就是同一份 token）。
     //
     // 没有 backdrop（单测/预览/页面还没接 `GlassScope`）时必须**逐像素**退回原来那块实色：
-    // [GlassSurface] 的 `degradeColor = colors.surfaceGlass` + `DegradeWithoutBackdrop`
-    // 就是这条退化 —— 采不到背景就根本不建 haze 节点，直接画同一个 surfaceGlass，描边
-    // (1dp hairline / 聚焦 2dp accent) 与下行阴影（同一个 `downwardShelf`，`outsideOnly`
-    // 语义）都还是原来的那一份，所以所有 composer 像素钉不动。
+    // [GlassSurface] 的 `degradeColor = colors.surfaceGlass` 就是这条退化 —— 采不到背景就
+    // 根本不建 haze 节点，直接画同一个 surfaceGlass，描边 (1dp hairline / 聚焦 2dp accent)
+    // 与下行阴影（同一个 `downwardShelf`，`outsideOnly` 语义）都还是原来的那一份，所以所有
+    // composer 像素钉不动。
+    //
+    // **API 24–30 不是这一档**：那里的背景是在的，只是平台糊不了（`TintStroke`）。GlassSurface
+    // 在那种情况下只画 tint + hairline + 高光，`degradeColor` 不参与 —— 否则输入条会退成一块
+    // 84 % 的近实心白板（审查 F6-P0-1）。这条分叉由 `TintStrokeComposerTest` 逐像素钉住。
     //
     // RFC-0011：面板**不再自带 16dp 浮层外边距** —— 页面把 [＋] [InputBar] [12dp] [SendOrb]
     // 拼进同一行时，组件内边距会叠加成 32dp、框球间距变成 28dp，§1/§2 的数字全部失真
@@ -674,7 +677,6 @@ internal fun MaterialInputBar(
         // 与圆角都跟面板走，且不挖矩形空。
         shadow = VadeShadows.float,
         degradeColor = colors.surfaceGlass,
-        backdropPolicy = GlassBackdropPolicy.DegradeWithoutBackdrop,
     ) {
         Column(
             modifier = Modifier

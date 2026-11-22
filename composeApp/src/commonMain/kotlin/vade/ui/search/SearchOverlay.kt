@@ -60,7 +60,6 @@ import vade.ui.shell.BackLayer
 import vade.ui.shell.TopBarButton
 import vade.ui.shell.UiState
 import vade.ui.skin.LocalSkin
-import vade.ui.skin.glass.GlassBackdropPolicy
 import vade.ui.skin.glass.GlassSurface
 
 /**
@@ -166,8 +165,7 @@ private fun CompactSearchOverlay(state: UiState, onPick: (SearchHit) -> Unit) {
                 modifier = Modifier.fillMaxWidth().fillMaxHeight(),
                 shape = RoundedCornerShape(skin.shapes.xl),
                 skin = skin,
-                // 共享调用点：恒建 haze 节点（U3 之前的像素）。
-                backdropPolicy = GlassBackdropPolicy.HazeAlwaysCompat,
+                // 能力门禁只看真实背景 + 平台阶梯（API<31 没有 RenderEffect ⇒ tint+hairstroke+高光）。
             ) {
                 Column(Modifier.fillMaxSize().swallowTaps()) {
                     Row(
@@ -221,8 +219,7 @@ private fun CommandPalette(state: UiState, onPick: (SearchHit) -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(skin.shapes.xl),
                 skin = skin,
-                // 共享调用点：恒建 haze 节点（U3 之前的像素）。
-                backdropPolicy = GlassBackdropPolicy.HazeAlwaysCompat,
+                // 能力门禁只看真实背景 + 平台阶梯（API<31 没有 RenderEffect ⇒ tint+hairstroke+高光）。
             ) {
                 Column(Modifier.fillMaxWidth()) {
                     Row(

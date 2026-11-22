@@ -179,7 +179,6 @@ class GlassSkin(
             ) { label() }
         } else {
             GlassSurface(
-                backdropPolicy = GlassBackdropPolicy.DegradeWithoutBackdrop,
                 modifier = frame,
                 shape = pill,
                 skin = this@GlassSkin,
@@ -214,7 +213,6 @@ class GlassSkin(
         val outer = RoundedCornerShape(shapes.md)
         val inner = RoundedCornerShape(shapes.sm)
         GlassSurface(
-            backdropPolicy = GlassBackdropPolicy.DegradeWithoutBackdrop,
             modifier = modifier,
             shape = outer,
             skin = this@GlassSkin,
@@ -264,7 +262,6 @@ class GlassSkin(
         val focused by interaction.collectIsFocusedAsState()
         val panelShape = RoundedCornerShape(shapes.xl)
         GlassSurface(
-            backdropPolicy = GlassBackdropPolicy.DegradeWithoutBackdrop,
             modifier = Modifier.fillMaxWidth(),
             shape = panelShape,
             skin = this@GlassSkin,
@@ -418,7 +415,6 @@ class GlassSkin(
                     }
 
                     else -> GlassSurface(
-                        backdropPolicy = GlassBackdropPolicy.DegradeWithoutBackdrop,
                         modifier = Modifier.widthIn(max = minOf(container * 0.78f, maxWidth)),
                         shape = bubbleShape,
                         skin = this@GlassSkin,
