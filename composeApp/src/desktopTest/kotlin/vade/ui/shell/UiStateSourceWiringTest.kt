@@ -31,6 +31,7 @@ import vade.ui.protocol.VadeException
 import vade.ui.skin.BottomBarStyle
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -403,6 +404,72 @@ class UiStateSourceWiringTest {
             settle()
             assertEquals("s-deep", ui.selectedSessionId)
             assertEquals(emptyList<String>(), src.messagesCalls)
+        } finally {
+            ui.dispose()
+        }
+    }
+
+    // ------------------------------------------------- 归档 / 删除后的选中对账（P1-4）
+
+    @Test
+    fun archivingTheSelectedSessionClearsTheDanglingSelectionAndReturnsToList() = runTest {
+        val src = ScriptedSource()
+        src.rows(row("a"), row("b"))
+        src.rows(row("b")) // 归档 a 之后的权威列表（会话元数据写成功后 retrySessions）
+        val ui = newUi(source = src, scope = newScope())
+        try {
+            settle()
+            ui.selectSession("a")
+            assertFalse(ui.sessionsDrawerOpen, "前置：进入详情，抽屉收着")
+            assertEquals("a", ui.selectedSession?.id)
+
+            ui.retrySessions()
+            settle()
+
+            val id = ui.selectedSessionId
+            assertNull(id, "归档掉当前会话后选中必须被对账清掉：实测仍为 $id")
+            assertNull(ui.selectedSession, "groups() 里已经没有这一行，详情必须是空态而不是幽灵详情")
+            assertEquals(listOf("b"), ids(ui))
+            assertTrue(ui.sessionsDrawerOpen, "手机抽屉模型：清选中后屏上必须回到列表")
+        } finally {
+            ui.dispose()
+        }
+    }
+
+    @Test
+    fun aFailedListRefreshNeverTreatsTheSelectionAsArchived() = runTest {
+        val src = ScriptedSource()
+        src.rows(row("a"), row("b"))
+        src.sessionsFail(VadeException(VadeErrorCodes.UNAVAILABLE, "core 断开"))
+        val ui = newUi(source = src, scope = newScope())
+        try {
+            settle()
+            ui.selectSession("a")
+            ui.retrySessions()
+            settle()
+
+            assertEquals(LoadPhase.Failed, ui.sessionsPhase)
+            assertEquals("a", ui.selectedSessionId, "读失败不是「会话没了」：选中必须保留（旧行仍在屏上）")
+            assertEquals(listOf("a", "b"), ui.sessionRows.map { it.id })
+        } finally {
+            ui.dispose()
+        }
+    }
+
+    @Test
+    fun anEmptyListThatNoLongerContainsTheSelectionStillClearsIt() = runTest {
+        // 「删除最后一个会话」的形态：rows 变空也是权威答案，选中不能悬挂。
+        val src = ScriptedSource()
+        src.rows(row("only"))
+        src.rows()
+        val ui = newUi(source = src, scope = newScope())
+        try {
+            settle()
+            ui.selectSession("only")
+            ui.retrySessions()
+            settle()
+            assertNull(ui.selectedSessionId)
+            assertTrue(ui.groups().isEmpty())
         } finally {
             ui.dispose()
         }

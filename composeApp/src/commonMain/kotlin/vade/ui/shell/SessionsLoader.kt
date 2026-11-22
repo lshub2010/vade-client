@@ -66,7 +66,7 @@ internal fun loadErrorOf(t: Throwable): LoadError =
  *
  * `SessionSource.messages(id)` 在真源上是 `ui/attach` —— **一次 attach 就是一次订阅**
  * （core 为同一会话再注册一个 sink ⇒ 同连接双 sink、事件双投递）。选会话时读线程的
- * 职责因此只有一个主人：[ChatState.loadHistory]（由 `ChatThread` 的
+ * 职责因此只有一个主人：[vade.ui.chat.ChatState.loadHistory]（由 `ChatThread` 的
  * `LaunchedEffect(state)` 驱动），它的读通道与事件流是同一次 attach 的两面。
  *
  * 旧实现让 loader 也拉一遍 `messages(id)`，于是每选一次会话 attach 两次，并多出一条
@@ -79,6 +79,10 @@ internal fun loadErrorOf(t: Throwable): LoadError =
  * swapped atomically) or Failed (previous rows KEPT, error classified via
  * `loadErrorCategoryOf`, retry entry = [refreshSessions]). `Failed` is a distinct
  * observable state; it is never laundered into an empty `Ready`.
+ *
+ * ## 对账回调
+ * [onRowsLoaded] 在每次成功刷新、行已换上新值之后调用（同一线程）。`UiState` 用它做
+ * 选中对账：归档 / 删除当前会话后，权威列表不再包含它 ⇒ 清选中回列表（审查 P1-4）。
  *
  * ## Events
  * `observeEvents()` is collected once; handled events trigger a coalesced list refresh
@@ -94,6 +98,11 @@ internal fun loadErrorOf(t: Throwable): LoadError =
 class SessionsLoader(
     private val source: SessionSource,
     private val scope: CoroutineScope,
+    /**
+     * 列表刷新成功后的对账钩子（行已换成 [List] 的新值）。只在成功路径调用；失败时
+     * 旧行保留、不触发对账 —— 一次读失败不能把用户的选中当成「会话没了」。
+     */
+    private val onRowsLoaded: (List<SessionSummary>) -> Unit = {},
 ) {
     /** Phase of the latest `sessions()` attempt (see [LoadPhase] for the exact meaning). */
     var sessionsPhase: LoadPhase by mutableStateOf(LoadPhase.Ready)
@@ -166,6 +175,9 @@ class SessionsLoader(
                 if (disposed) return@launchJob
                 rows = fetched
                 sessionsPhase = LoadPhase.Ready
+                // 对账（审查 P1-4）：行已是权威列表，选中若已不在其中（归档 / 删除 /
+                // 不存在的深链 id）就清掉回列表 —— 屏上不能留一个空详情配「有详情」的 chrome。
+                onRowsLoaded(fetched)
             } catch (e: CancellationException) {
                 return@launchJob // disposed/cancelled — no state write, never a fake failure
             } catch (t: Throwable) {

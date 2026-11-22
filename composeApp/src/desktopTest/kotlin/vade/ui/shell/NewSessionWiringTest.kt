@@ -210,6 +210,47 @@ class NewSessionWiringTest {
         }
     }
 
+    /**
+     * 审查 P1-4 的对账豁免：`ui/attach(null)` 回来后，下一次 `sessions()` 可能**先于**
+     * core 把新会话索引进列表。此时 rows 里暂时没有它，但选中必须保留 —— 否则刚建好的
+     * 会话会被「归档对账」当成悬挂 id 立刻清掉，点 ✎ 后界面闪回列表。
+     * 它一旦露面，豁免销账；之后从权威列表消失（归档 / 删除）就照常清选中。
+     */
+    @Test
+    fun aListRefreshThatHasNotIndexedTheNewSessionYetKeepsItSelected() = runTest {
+        val src = ScriptedCreateSource()
+        src.rows(row("s-a"))
+        src.createReturns("srv-1")
+        src.rows(row("s-a")) // 第一次刷新：新会话还没被索引
+        src.rows(row("s-a"), row("srv-1")) // 第二次刷新：它出现了
+        src.rows(row("s-a")) // 第三次刷新：又被归档 / 删除
+        val ui = newUi(source = src, scope = newScope())
+        try {
+            settle()
+            ui.newSession()
+            settle()
+            assertEquals("srv-1", ui.selectedSessionId)
+
+            ui.retrySessions()
+            settle()
+            assertEquals(
+                "srv-1",
+                ui.selectedSessionId,
+                "列表还没索引到刚建的会话，不许当成悬挂清掉",
+            )
+
+            ui.retrySessions()
+            settle()
+            assertEquals("srv-1", ui.selectedSessionId, "行已在列表里，选中保留")
+
+            ui.retrySessions()
+            settle()
+            assertNull(ui.selectedSessionId, "豁免销账后，行再次消失 = 归档/删除 ⇒ 清选中")
+        } finally {
+            ui.dispose()
+        }
+    }
+
     @Test
     fun realPathPhaseIsLoadingWhileCreateIsInFlight() = runTest {
         val src = ScriptedCreateSource()

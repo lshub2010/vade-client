@@ -880,35 +880,14 @@ private fun DestinationHost(
         sessionId = state.selectedSessionId.orEmpty(),
         onRefreshList = state::retrySessions,
     )
-    // g-error-retry: one slot per READ (list vs thread), each with its own retry entry.
-    // The list slot only exists while that read is not Ready — otherwise the 假数据 note in
-    // SessionsScreen (fixture-path copy) would be hidden for no reason.
-    // A4-1：新建会话的失败横幅折进同一个列表槽（夹具路径四个条件全 Ready/null ⇒ 槽仍为
-    // null，行为逐字节不变；真源路径失败时两条横幅各自渲染、各自有重试钮）。
-    val sessionListBanner: (@Composable () -> Unit)? =
-        if (state.sessionsPhase == LoadPhase.Ready && state.sessionsError == null &&
-            state.newSessionPhase == LoadPhase.Ready && state.newSessionError == null
-        ) {
-            null
-        } else {
-            {
-                SessionListLoadBanner(
-                    phase = state.sessionsPhase,
-                    error = state.sessionsError,
-                    onRetry = state::retrySessions,
-                )
-                NewSessionLoadBanner(
-                    phase = state.newSessionPhase,
-                    error = state.newSessionError,
-                    onRetry = { state.newSession() },
-                )
-            }
-        }
-    // The thread's load state (Loading / empty / Failed + retry) is **ChatState's** single
-    // job: the chat page renders its own three-state row from `ChatState.phase` /
-    // `loadError`. There is deliberately no second, loader-owned banner for the thread —
-    // the loader no longer reads `messages()` at all (one attach per selection belongs to
-    // ChatState), so a banner here would advertise a read that does not exist.
+    // g-error-retry: one slot per **action** (list read vs new-session create), each with
+    // its own retry entry. The slot only exists while one of them is not Ready — otherwise
+    // the 假数据 note in SessionsScreen (fixture-path copy) would be hidden for no reason.
+    // 两个宿主（抽屉 / DestinationHost）共用同一个构造函数（审查 P1-2）：抽屉那份曾漏掉
+    // NewSessionLoadBanner，手机 <600dp 上「新建会话」失败完全静默。
+    val sessionListBanner: (@Composable () -> Unit)? = sessionListBannersOf(state)
+    // 消息线程没有第二条横幅：loader 不再读 `messages()`（一次 attach 属于 ChatState），
+    // 线程的 Loading / 空 / 失败三态由 `ChatThread` 从 `ChatState.phase` / `loadError` 渲染。
 
     when (state.dest) {
         Destination.Sessions -> {
