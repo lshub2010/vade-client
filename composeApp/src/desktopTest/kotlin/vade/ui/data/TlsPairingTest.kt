@@ -224,6 +224,10 @@ class TlsPairingTest {
             revocation is SessionRevocation.Revoked || revocation is SessionRevocation.NotNeeded,
             "没有 UI 会话可吊销时「无事可做」也是成功：$revocation",
         )
-        assertEquals(PairingRuntimeState.Unpaired(), PairingRuntime.state, "unpair 的语义没变：退回未配对")
+        val unpaired = assertIs<PairingRuntimeState.Unpaired>(
+            PairingRuntime.state,
+            "unpair 的语义没变：退回未配对",
+        )
+        assertTrue(unpaired.disconnected, "主动断开 = disconnected（P1-6：列表不再回落到夹具）")
     }
 }

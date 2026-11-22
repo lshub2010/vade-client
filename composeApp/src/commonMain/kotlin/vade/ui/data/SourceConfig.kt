@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -285,6 +286,59 @@ fun sessionSourceFrom(raw: RawSourceStrings): SessionSource =
         }
     }
 
+/**
+ * P1-6 · 桥从 `Paired` 退回 `Unpaired`（凭据被拒 / 用户断开 / 磁盘凭据这次连不上）之后，
+ * 列表**不许**再拿启动时的夹具源兜底。
+ *
+ * 这一棒之前在那种状态下 `App` 的 `effectiveSource` 会退回 `source` —— 默认启动时它就是
+ * [FakeSessionSource]，于是 core 重启一次（运行期 401 → 桥 `credentialRejected`）屏幕上
+ * 立刻出现「会话还在」（其实是夹具）：用户可以点进假会话、发假消息。横幅确实画了
+ * `FIXTURE_NOTE`，但那是脚手架期的说明，对用户没有解释力，也违反本仓「真模式不许假数据」
+ * 的 A1 口径。
+ *
+ * 空源 = 列表真的空（不是「0 个会话」，也不是「还没读到」）+ `ListStatus.Unpaired` 那条
+ * 分类横幅解释「未连接 core」。`sessions()` 不抛错是刻意的：抛错会变成一条
+ * `LoadError` + 重试按钮，而重试对「没有凭据」没有任何意义 —— 可操作的出口是上方的配对卡。
+ *
+ * 读/写入口（`messages` / `createSession` / `decideApproval`）都在这里**明确失败**：
+ * 一个假装成功的空源会让「新建/审批」看起来生效，然后再也没有下文。
+ */
+class UnpairedSessionSource : SessionSource {
+
+    override suspend fun sessions(includeArchived: Boolean): List<SessionSummary> = emptyList()
+
+    override suspend fun messages(sessionId: String): List<ChatMessage> = emptyList()
+
+    /** 没有连接，就没有事件流。 */
+    override fun observeEvents(): Flow<VadeEvent> = emptyFlow()
+
+    override suspend fun createSession(): String = throw VadeException(
+        VadeErrorCodes.UNAVAILABLE,
+        "未连接 core：现在还不能新建会话 —— 请先用列表顶部的配对卡重新配对",
+    )
+
+    override suspend fun decideApproval(
+        requestId: String,
+        decision: ApprovalDecision,
+        scope: ApprovalScope,
+    ): Unit = throw VadeException(
+        VadeErrorCodes.UNAVAILABLE,
+        "未连接 core：不能审批 —— 请先重新配对",
+    )
+}
+
+/**
+ * P1-6 · 这次启动是不是**显式**选了夹具（`source=fixtures` / 任何非空且不是 `real` 的
+ * `source` 值）。显式夹具是开发者/旧路径的逃生口：桥就算退回 `Unpaired` 也不该被换成空源。
+ *
+ * 与 [needsFirstRunPairing] 里那条 `SourceSpec.Fake -> raw.source.isNullOrBlank()` 同一条
+ * 判定，只是抽出来给 `App` 用（列表换源的判定必须与「出不出配对卡」一致，否则会出现
+ * 「有卡、但列表把夹具换掉了」或反过来）。
+ */
+fun isExplicitFixtureChannel(raw: RawSourceStrings): Boolean =
+    (runCatching { SourceConfig.parse(raw) }.getOrNull() is SourceSpec.Fake) &&
+        !raw.source.isNullOrBlank()
+
 /** Budget for the runtime auto-connect wait (the loader's Failed banner shows past it). */
 internal const val AUTO_CONNECT_TIMEOUT_MS = 15_000L
 
@@ -548,9 +602,13 @@ fun needsFirstRunPairing(raw: RawSourceStrings): Boolean {
         is PairingRuntimeState.Paired -> return false
         is PairingRuntimeState.NotBooted -> return false
         is PairingRuntimeState.Unpaired ->
-            // 码被拒过 / 上次持久化的凭据被 core 拒了 / 凭据留着但 core 暂时不可达 ——
-            // 三种都要出卡（第三种还要带「用已保存的配对重连」，见 PairingCard）。
-            if (runtime.codeRejected || runtime.credentialRejected || runtime.storedCredentialKept) return true
+            // 码被拒过 / 上次持久化的凭据被 core 拒了 / 凭据留着但 core 暂时不可达 /
+            // 用户自己断开过 —— 四种都要出卡（后两种还要带「用已保存的配对重连」，见 PairingCard）。
+            if (runtime.codeRejected || runtime.credentialRejected || runtime.storedCredentialKept ||
+                runtime.disconnected
+            ) {
+                return true
+            }
     }
     val spec = runCatching { SourceConfig.parse(raw) }.getOrNull() ?: return false
     return when (spec) {
@@ -743,12 +801,32 @@ sealed interface PairingRuntimeState {
      * [storedCredentialKept] = 凭据还在，但这次没能连上（core 没起来 / 网络不通 / 证书
      * 变了）。卡片除了输入新码，还要给「用已保存的配对重连」—— 否则一次 core 晚启动就
      * 逼用户去终端再捞一个码。
+     *
+     * [disconnected] = 用户**主动**断开了上一次配对（`unpair`）。它与 [credentialRejected]
+     * 的区别只在文案（不是「失效了」，是「你自己断的」），但两者都必须让列表停止显示
+     * 假数据（P1-6）。
      */
     data class Unpaired(
         val codeRejected: Boolean = false,
         val credentialRejected: Boolean = false,
         val storedCredentialKept: Boolean = false,
-    ) : PairingRuntimeState
+        val disconnected: Boolean = false,
+    ) : PairingRuntimeState {
+
+        /**
+         * P1-6 · 这次启动**曾经**有真数据 / 有凭据，现在没有了（凭据被拒、用户断开、
+         * 或磁盘上还有凭据但这次连不上）。
+         *
+         * 三种都必须让列表走空源 + 分类横幅：回落到启动时那个夹具源会把「凭据失效」
+         * 变成「会话还在」（假数据），用户能点进假会话、发假消息。
+         *
+         * 首次运行（裸 `Unpaired()`：没配过、也没拒绝过什么）不算 —— 那时夹具就是
+         * 脚手架的本意，配对卡在上方说明「假数据 · 未连接 core」。
+         */
+        val lostRealData: Boolean
+            get() = credentialRejected || storedCredentialKept || disconnected
+    }
+
 
     /**
      * 已配对：factory 里已有 `__Host-ac_ui` cookie，真源按 [host]:[port] 建。
@@ -929,11 +1007,13 @@ object PairingRuntime {
      *
      * 三种结局（[PairingRestoreOutcome]）：
      *  - [PairingRestoreOutcome.Restored]：桥进 Paired，App 据此重建真源；
-     *  - [PairingRestoreOutcome.Rejected]：401 / 握手失败 → **删凭据** + 桥退回
+     *  - [PairingRestoreOutcome.Rejected]：**只有**明确的拒绝（401 / 403 / 握手失败 /
+     *    升级成功但 core 一个字节都不回）→ **删凭据** + 桥退回
      *    `Unpaired(credentialRejected)`，引导卡出现（不再僵尸重连）；
-     *  - [PairingRestoreOutcome.Unreachable]：core 没起来 / 网络不通 / 证书变了 → 凭据
-     *    **原样留着**（一张好 cookie 不该因为 core 晚启动而被删），桥退回
-     *    `Unpaired(storedCredentialKept)`，卡片出现并带「用已保存的配对重连」。
+     *  - [PairingRestoreOutcome.Unreachable]：core 没起来 / 网络不通 / **升级超时** /
+     *    DNS 失败 / 证书问题 → 凭据**原样留着**（一张好 cookie 不该因为 core 晚启动或被
+     *    防火墙吞掉而被删），桥退回 `Unpaired(storedCredentialKept)`，卡片出现并带
+     *    「用已保存的配对重连」。
      *
      * [raw] 的优先级：显式通道（`source=fixtures`，或带了 `pair_code` 的 real）优先，
      * 恢复不插手 —— 那是开发者/旧路径明确选择的连接方式。
@@ -1003,39 +1083,113 @@ object PairingRuntime {
         } catch (t: Throwable) {
             return restoreFailure(t)
         }
-        val probe = try {
-            withTimeoutOrNull(probeTimeoutMs) { factory.connect() }
+        // P1-2 · 探针段的**任何**异常（含流在回包前正常结束 → `first{}` 抛
+        // NoSuchElementException）都不许穿出本函数：那会让 dispose 不执行、桥停在裸
+        // `Unpaired()`（既没有 credentialRejected 也没有 storedCredentialKept，卡片上
+        // 连「用已保存的配对重连」都不出现），而磁盘上的凭据明明还在。
+        val probed = try {
+            probeStoredWith(factory, probeTimeoutMs)
         } catch (ce: CancellationException) {
+            // 外层取消：factory 靠 `finally` 式的这两行放掉，再把取消原样抛给调用方。
+            runCatching { factory.dispose() }
             throw ce
         } catch (t: Throwable) {
             runCatching { factory.dispose() }
             return restoreFailure(t)
         }
-        if (probe == null) {
-            runCatching { factory.dispose() }
-            return credentialRejected("websocket upgrade did not answer within ${probeTimeoutMs}ms")
+        return when (probed) {
+            ProbeOutcome.Alive -> {
+                install(factory, stored.host, stored.port, stored.tls, stored.trustMode, persist = true)
+                PairingRestoreOutcome.Restored(stored.host, stored.port, stored.tls, stored.trustMode)
+            }
+            ProbeOutcome.NoAnswer -> {
+                runCatching { factory.dispose() }
+                credentialRejected(
+                    "core accepted the socket but never answered within ${probeTimeoutMs}ms",
+                )
+            }
+            is ProbeOutcome.Failed -> {
+                runCatching { factory.dispose() }
+                restoreFailure(probed.cause)
+            }
         }
-        // 活性探针：core 若把这张 cookie 当「设备 peer」并在等 Noise 握手，升级会成功但
-        // 一个字节都不回 —— 与 401 同义（凭据已死），而且正是僵尸重连的起点（P0-2）。
-        val answered = withTimeoutOrNull(probeTimeoutMs) {
-            runCatching { probe.send(PAIRING_PROBE_FRAME) }
-            probe.incoming.first { frame -> frame.contains("\"jsonrpc\"") }
-        }
-        runCatching { probe.close() }
-        if (answered == null) {
-            runCatching { factory.dispose() }
-            return credentialRejected("core accepted the socket but never answered within ${probeTimeoutMs}ms")
-        }
-        install(factory, stored.host, stored.port, stored.tls, stored.trustMode, persist = true)
-        return PairingRestoreOutcome.Restored(stored.host, stored.port, stored.tls, stored.trustMode)
     }
 
-    /** 非「凭据已死」的失败：凭据留着，桥退到「凭据还在但连不上」。 */
+    /** 一次探针的三种结局（[probeStoredWith] 把异常都收敛到这里）。 */
+    private sealed interface ProbeOutcome {
+        /** 升级成功，并且 core 回了一帧 JSON-RPC。 */
+        data object Alive : ProbeOutcome
+
+        /** 升级成功，但预算内一个字节都没回：与 401 同义（凭据已死，僵尸重连的起点）。 */
+        data object NoAnswer : ProbeOutcome
+
+        /** 连不上 / 流提前结束 / 传输层错误：证明不了凭据已死，交给 [restoreFailure] 分类。 */
+        data class Failed(val cause: Throwable) : ProbeOutcome
+    }
+
+    /**
+     * 一次「升级 + 一帧请求」的活性探针。**除了外层取消，不抛任何异常**。
+     *
+     * P1-1 · 升级超时收敛成 `Failed(VadeException(TIMEOUT))`：防火墙 DROP / VPN 断 /
+     * 错误网段 / NAT 黑洞时 TCP 连不上也不报错，预算先到 —— 只能证明「不可达」，绝不能
+     * 当成「凭据已死」去删磁盘上的唯一凭据。
+     */
+    private suspend fun probeStoredWith(
+        factory: VadeTransportFactory,
+        probeTimeoutMs: Long,
+    ): ProbeOutcome {
+        val probe = try {
+            withTimeoutOrNull(probeTimeoutMs) { factory.connect() }
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (t: Throwable) {
+            // 连接被立刻拒绝（DNS / ECONNREFUSED / TLS）：restoreFailure 只把明确的
+            // 401/403 / 握手拒绝判死，其余（含端口 4013 这类数字巧合）都是 Unreachable。
+            return ProbeOutcome.Failed(t)
+        }
+        if (probe == null) {
+            return ProbeOutcome.Failed(
+                VadeException(
+                    VadeErrorCodes.TIMEOUT,
+                    "websocket upgrade did not answer within ${probeTimeoutMs}ms; the stored " +
+                        "__Host-ac_ui cookie was kept (an unreachable core is not a dead credential)",
+                ),
+            )
+        }
+        return try {
+            val answered = withTimeoutOrNull(probeTimeoutMs) {
+                probe.send(PAIRING_PROBE_FRAME)
+                probe.incoming.first { frame -> frame.contains("\"jsonrpc\"") }
+            }
+            if (answered == null) ProbeOutcome.NoAnswer else ProbeOutcome.Alive
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (t: Throwable) {
+            // 流在回包前结束（core 升级后立刻关连接）/ 传输层错误：证明不了凭据已死，
+            // 按不可达处理（凭据留着），而不是删掉。
+            ProbeOutcome.Failed(t)
+        } finally {
+            // 探针的传输永远关闭 —— 成功路径上 cookie 已缓存在 factory 里。
+            runCatching { probe.close() }
+        }
+    }
+
+    /**
+     * 非「凭据已死」的失败：凭据留着，桥退到「凭据还在但连不上」。
+     *
+     * 只有 `AUTH_FAILED`（factory 的握手拒绝分支）与明确的 401/403 才判死；超时 / DNS /
+     * 连接失败 / 证书问题 / 流提前结束一律走 [restoreUnreachable]。
+     */
     private fun restoreFailure(t: Throwable): PairingRestoreOutcome {
         val dead = (t as? VadeException)?.code == VadeErrorCodes.AUTH_FAILED || isCredentialHandshakeFailure(t)
         if (dead) return credentialRejected(t.message ?: "the stored session cookie was rejected")
+        return restoreUnreachable(t)
+    }
+
+    /** 不可达：**不删磁盘凭据**，桥退到「凭据还在但这次连不上」（卡片带重连按钮）。 */
+    private fun restoreUnreachable(cause: Throwable): PairingRestoreOutcome {
         state = PairingRuntimeState.Unpaired(storedCredentialKept = true)
-        return PairingRestoreOutcome.Unreachable(t)
+        return PairingRestoreOutcome.Unreachable(cause)
     }
 
     /** 凭据已死：删磁盘 + 桥退回「已拒绝」，引导卡出现。 */
@@ -1192,7 +1346,9 @@ object PairingRuntime {
      * dispose 失败不影响清配置。
      */
     private suspend fun clearPaired(previous: PairingRuntimeState.Paired?) {
-        state = PairingRuntimeState.Unpaired()
+        // P1-6 · `disconnected = true`：列表必须停止显示启动时的夹具源 —— 用户亲手断开了
+        // core，屏幕上却还挂着假会话，是最容易被当成「数据还在」的那类谎。
+        state = PairingRuntimeState.Unpaired(disconnected = true)
         PairingStores.clear()
         previous?.let { runCatching { it.factory.dispose() } }
     }

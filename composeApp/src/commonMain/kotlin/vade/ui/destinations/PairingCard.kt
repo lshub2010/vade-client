@@ -226,6 +226,11 @@ internal fun FirstRunPairingCard(
  * （码原样留在输入框里，第一次尝试在 TLS 握手就失败了，请求根本没发出去）。
  * 首配卡与「更换 core」共用本表单，所以两条路自动遵守同一条闸门 —— 没有第二份确认逻辑。
  *
+ * **P1-4 · 确认绑定到 endpoint**：证书失败那一刻把 `(host, port, tls, code)` 快照进弹层，
+ * 「仍然连接」重试的是这份快照；弹层显示期间表单的**任何**变更（地址 / 端口 / 码 / HTTPS
+ * 开关）都会把弹层撤掉。否则「对 A 的证书失败 → 把地址改成 B → 点确认」会把 trust-all
+ * 打到 B，或者关掉 HTTPS 后静默退回明文提交。
+ *
  * ## 提交态与作用域都**可从宿主注入**（R3）
  * 「换 core」的宿主要拿两样东西，所以它们从表单内部提升成形参、默认值保持旧行为：
  *  - [submittingState] —— 宿主据它禁用顶栏返回与系统返回（提交中离开 = 停在「旧已吊销、
@@ -275,7 +280,28 @@ internal fun PairingForm(
     // r5-tls · HTTPS 开关（默认关）与「自签证书警告弹层是否挂着」。两者都只活在组合内存，
     // 不进任何持久化字段 —— 每次打开面板都从「明文」开始，用户必须重新做一次决定。
     var tls by remember { mutableStateOf(initialTls) }
-    var tlsWarning by remember { mutableStateOf(false) }
+    /**
+     * P1-4 · 非 null = 正在为**这一个**目标显示自签确认。
+     *
+     * 以前这里只是一个 Boolean，点「仍然连接」时才去读实时表单 —— 用户可以对着 A 的证书
+     * 失败、把地址改成 B、再确认，于是 trust-all 打到 B；或者关掉 HTTPS 开关再确认，
+     * `allowInsecureTls && submittedTls` 为假，一次性码静默走**明文**。现在确认绑定到
+     * 失败那一刻的 `(host, port, tls, code)` 快照，并且表单一旦变更就作废（见
+     * [invalidateTlsWarning]）。
+     */
+    var tlsWarning by remember { mutableStateOf<PairingTarget?>(null) }
+    /** 上一次提交的目标：失败文案指向它，而不是用户之后改成的新地址。 */
+    var lastTarget by remember { mutableStateOf<PairingTarget?>(null) }
+
+    /**
+     * 表单被编辑 → 警告所针对的那个目标已经不存在了，确认必须作废。
+     *
+     * 这是「确认的是 A、trust-all 给了 B」的唯一防线：弹层不是真模态（同包其它弹层都是
+     * in-tree 的 `Column`），底下的 host / port / 码 / HTTPS 开关仍然可编辑。
+     */
+    fun invalidateTlsWarning() {
+        if (tlsWarning != null) tlsWarning = null
+    }
 
     if (!canBootstrapPairing()) {
         // H4 · 浏览器：不发请求、不给输入框，只给可执行的下一步。
@@ -293,46 +319,50 @@ internal fun PairingForm(
      * [allowInsecureTls] 是**唯一的** trust-all 入口：只有证书失败的确认弹层会以 `true`
      * 调它（并因此走 [onSubmitSelfSigned]）。提交按钮永远传 `false` —— 普通 HTTPS 先按
      * 系统信任链试一次，合法 CA 直接就成功了（P0-6）。
+     *
+     * [retryOf] 非 null = 这是对某个**快照目标**的确认重试：地址 / 协议 / 码一律用快照，
+     * 不再读实时表单（P1-4）。普通提交传 `null`，由当前表单做一次快照。
      */
-    fun submitNow(allowInsecureTls: Boolean) {
+    fun submitNow(allowInsecureTls: Boolean, retryOf: PairingTarget? = null) {
         if (submitting) return
-        submitting = true
+        val target = retryOf ?: PairingTarget(
+            host = host.trim().ifEmpty { SourceConfig.DEFAULT_HOST },
+            port = port.trim(),
+            code = code,
+            tls = tls,
+        )
         failure = null
         failureDetail = null
-        // 快照本次的协议：提交期间开关是禁用的，但快照让「读的是点击那一刻的值」成为显然。
-        val submittedTls = tls
-        val enteredCode = code
+        lastTarget = target
+        // 端口先本地校验：越界/非数字不发网络请求，直接在卡里说清楚
+        // （P1-4 的同一条口径：配置错误不许把应用掀掉）。
+        val portOk = target.port.isEmpty() ||
+            target.port.toIntOrNull()?.let { it in 1..65535 } == true
+        if (!portOk) {
+            failure = PairingFailureKind.BadConfig
+            failureDetail = PAIRING_PORT_INVALID
+            return
+        }
+        submitting = true
         submitScope.launch {
-            // 端口先本地校验：越界/非数字不发网络请求，直接在卡里说清楚
-            // （P1-4 的同一条口径：配置错误不许把应用掀掉）。
-            val enteredHost = host.trim().ifEmpty { SourceConfig.DEFAULT_HOST }
-            val enteredPort = port.trim()
-            val portOk = enteredPort.isEmpty() ||
-                enteredPort.toIntOrNull()?.let { it in 1..65535 } == true
-            if (!portOk) {
-                failure = PairingFailureKind.BadConfig
-                failureDetail = PAIRING_PORT_INVALID
-                submitting = false
-                return@launch
-            }
             try {
-                val attempt = if (allowInsecureTls && submittedTls) {
-                    onSubmitSelfSigned?.invoke(enteredHost, enteredPort, enteredCode, submittedTls)
-                        ?: onSubmit(enteredHost, enteredPort, enteredCode, submittedTls, true)
+                val attempt = if (allowInsecureTls && target.tls) {
+                    onSubmitSelfSigned?.invoke(target.host, target.port, target.code, target.tls)
+                        ?: onSubmit(target.host, target.port, target.code, target.tls, true)
                 } else {
-                    onSubmit(enteredHost, enteredPort, enteredCode, submittedTls, false)
+                    onSubmit(target.host, target.port, target.code, target.tls, false)
                 }
                 when (attempt) {
                     is PairingAttempt.Connected -> onConnected(attempt)
                     is PairingAttempt.Rejected -> {
                         if (attempt.kind == PairingFailureKind.CertificateUntrusted &&
-                            submittedTls &&
+                            target.tls &&
                             !allowInsecureTls
                         ) {
                             // P0-6 · 证书不被系统信任。这一次**一个字节的请求都还没发出去**
                             // （TLS 在 HTTP 之前失败，一次性码没被烧）→ 把「是否信任这张
-                            // 证书」交给用户；确认后以 InsecureConfirmed 重试一次。
-                            tlsWarning = true
+                            // 证书」交给用户；确认后以 InsecureConfirmed 重试**同一个目标**。
+                            tlsWarning = target
                         } else {
                             failure = attempt.kind
                             // 码被拒过（错码/过期码）→ 桥记住，卡不会因为别处的状态刷新而
@@ -358,26 +388,29 @@ internal fun PairingForm(
         // skin.TextField 是 C-09 冻结组件，没有 modifier 形参 —— 由外层 Box 吃 weight。
         // r3-a11y · host / port 的值永远非空（初值就是默认地址），占位永不显示 —— 这两个框
         // 此前在语义树上只是「可输入文本」，没有任何名字。label 给它们可视小字 + 可访问名。
-        Box(modifier = Modifier.weight(2f)) {
+        Box(modifier = Modifier.weight(2f).testTag(PAIRING_HOST_FIELD_TAG)) {
             skin.TextField(
                 value = host,
                 onValueChange = {
                     host = it
                     failure = null
                     failureDetail = null
+                    // P1-4 · 地址变了，正在显示的自签确认所针对的目标就不存在了。
+                    invalidateTlsWarning()
                 },
                 placeholder = PAIRING_HOST_PLACEHOLDER,
                 enabled = !submitting,
                 label = PAIRING_HOST_LABEL,
             )
         }
-        Box(modifier = Modifier.weight(1f)) {
+        Box(modifier = Modifier.weight(1f).testTag(PAIRING_PORT_FIELD_TAG)) {
             skin.TextField(
                 value = port,
                 onValueChange = {
                     port = it
                     failure = null
                     failureDetail = null
+                    invalidateTlsWarning()
                 },
                 placeholder = PAIRING_PORT_PLACEHOLDER,
                 enabled = !submitting,
@@ -395,7 +428,13 @@ internal fun PairingForm(
                 value = tls,
                 enabled = !submitting,
                 role = Role.Switch,
-                onValueChange = { tls = it },
+                onValueChange = {
+                    if (tls != it) {
+                        tls = it
+                        // P1-4 · 协议变了：A 的自签确认不许静默变成一次明文提交（或反之）。
+                        invalidateTlsWarning()
+                    }
+                },
             )
             .testTag(PAIRING_TLS_SWITCH_TAG),
         verticalAlignment = Alignment.CenterVertically,
@@ -409,7 +448,12 @@ internal fun PairingForm(
         )
         skin.Switch(
             checked = tls,
-            onCheckedChange = { tls = it },
+            onCheckedChange = {
+                if (tls != it) {
+                    tls = it
+                    invalidateTlsWarning()
+                }
+            },
             enabled = !submitting,
         )
     }
@@ -432,6 +476,8 @@ internal fun PairingForm(
                     code = it
                     failure = null
                     failureDetail = null
+                    // P1-4 · 换了一个码 = 另一次尝试；上一张证书的确认不沿用。
+                    invalidateTlsWarning()
                 },
                 placeholder = PAIRING_PLACEHOLDER,
                 enabled = !submitting,
@@ -452,20 +498,27 @@ internal fun PairingForm(
     if (submitting) {
         UiText(submittingLabel, size = 11, color = skin.colors.onSurfaceVariant)
     }
-    if (tlsWarning) {
+    // The warning is about HTTPS; turning TLS off makes it moot even if the
+    // form's invalidation callback is missed.
+    if (tls) tlsWarning?.let { pending ->
         // 唯一以 InsecureConfirmed 重试的入口。取消 = 什么都不发、码不动（码没被烧）。
+        // P1-4 · 确认重试的是**快照**（弹层显示的那一个 host/port/协议/码），不是实时表单。
         TlsWarningDialog(
-            onCancel = { tlsWarning = false },
+            endpoint = pending.endpoint,
+            onCancel = { tlsWarning = null },
             onConfirm = {
-                tlsWarning = false
-                submitNow(allowInsecureTls = true)
+                tlsWarning = null
+                submitNow(allowInsecureTls = true, retryOf = pending)
             },
         )
     }
     failure?.let { kind ->
+        // 失败文案必须指向**提交过**的地址：用户之后改了表单也不该让「core 没有在 X 上运行」
+        // 指到一个从未被尝试过的 X。
+        val shown = lastTarget ?: PairingTarget(host, port, code, tls)
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             UiText(
-                text = pairingHeadline(kind, submittedEndpoint(host, port)),
+                text = pairingHeadline(kind, submittedEndpoint(shown.host, shown.port)),
                 size = 12,
                 weight = FontWeight.SemiBold,
                 color = skin.colors.error,
@@ -480,7 +533,7 @@ internal fun PairingForm(
                 )
             }
             UiText(
-                text = pairingNextStep(kind, submittedEndpoint(host, port)),
+                text = pairingNextStep(kind, submittedEndpoint(shown.host, shown.port)),
                 size = 11,
                 color = skin.colors.onSurfaceVariant,
             )
@@ -489,23 +542,45 @@ internal fun PairingForm(
 }
 
 /**
- * r5-tls · 自签证书的**风险确认弹层** —— 提交前唯一的闸门（[PairingForm] 在 HTTPS 开关
- * 打开时先挂它，未确认不调用 `onSubmit`，因此一个请求都不发）。
+ * P1-4 · 一次提交的不可变目标。
+ *
+ * 自签证书的确认必须绑定到「哪台 core、哪个端口、什么协议、哪个一次性码」：弹层不是真
+ * 模态，它显示期间表单仍可编辑。`submitNow` 在**点击提交那一刻**做快照，确认重试只读
+ * 这份快照；表单任何变更都会作废弹层（`invalidateTlsWarning`）。
+ */
+internal data class PairingTarget(
+    val host: String,
+    val port: String,
+    val code: String,
+    val tls: Boolean,
+) {
+    /** 展示用 endpoint：端口为空 = 默认端口（与 [SourceConfig.parse] 同一条规则）。 */
+    val endpoint: String
+        get() = "$host:${port.ifBlank { SourceConfig.DEFAULT_PORT.toString() }}"
+}
+
+/**
+ * r5-tls · 自签证书的**风险确认弹层** —— 提交前唯一的闸门（[PairingForm] 在系统信任链
+ * 拒绝之后才挂它，未确认不调用 `onSubmitSelfSigned`，因此一个请求都不发）。
  *
  * ## 为什么不是 `material3.AlertDialog`
  *  1. C-09 禁止 `destinations/` / `shell/` import material3（`MaterialImportGuardTest`
  *     逐文件扫描），业务页只能走 `Skin`；
  *  2. material3 的 AlertDialog 在 desktop 是**独立 AWT 窗口**，`runComposeUiTest` 的语义树
- *     看不见它 —— 「弹窗出现前零请求 / 取消零请求 / 确认后恰好一次」这三条就没法测。
+ *     看不见它 —— 「确认前零请求 / 取消零请求 / 确认后恰好一次」这三条就没法测。
  *
- * 所以这里用设置页弹层同一套 §9 形态（`focusable` Popup + 悬浮卡：圆角 `sheet`、发丝线、
- * 标题 + 正文 + 两个按钮），模态语义一样：点遮罩/Esc = 取消（[onCancel]），只有
- * 「仍然连接」([PAIRING_TLS_CONFIRM_LABEL]) 才走 [onConfirm]。
+ * 所以这里是设置页弹层同一套 §9 形态的**内联卡片**（圆角 `sheet`、发丝线、标题 + 正文 +
+ * 两个按钮）。它**不是**模态：底下的表单仍然可编辑、可再次提交 —— 因此它的含义必须
+ * 精确到**这一个 endpoint**（[endpoint] 由调用方在证书失败那一刻快照传入），而调用方
+ * 在表单任何变更时都会把它撤掉（`invalidateTlsWarning`）。「仍然连接」
+ * ([PAIRING_TLS_CONFIRM_LABEL]) 重试的也是同一个快照目标。
  *
  * 文案只说事实：自签证书无法验证 core 的身份、可能被中间人、仅在你信任此主机时继续。
  */
 @Composable
 internal fun TlsWarningDialog(
+    /** 证书失败那一刻的 `host:port`（快照，不是实时表单）。 */
+    endpoint: String,
     onCancel: () -> Unit,
     onConfirm: () -> Unit,
 ) {
@@ -526,6 +601,14 @@ internal fun TlsWarningDialog(
                 size = 15,
                 weight = FontWeight.SemiBold,
                 color = skin.colors.error,
+            )
+            // P1-4 · 确认对象写出来：用户看到的必须是「要信任哪台主机」，而不是一张空白授权。
+            UiText(
+                text = tlsWarningTargetLine(endpoint),
+                size = 12,
+                weight = FontWeight.Medium,
+                color = skin.colors.onSurface,
+                modifier = Modifier.testTag(PAIRING_TLS_TARGET_TAG),
             )
             UiText(
                 text = PAIRING_TLS_WARNING_BODY,
@@ -1020,6 +1103,11 @@ internal const val PAIRING_PLACEHOLDER = "一次性配对码"
 /** 配对码输入框的测试 tag（三个输入框里唯一可区分的一个；见组合处的注释）。 */
 internal const val PAIRING_CODE_FIELD_TAG = "pairing-code-field"
 
+/** P1-4 · 地址 / 端口输入框的 tag：组合测试要能改地址，验证「警告随表单变更作废」。 */
+internal const val PAIRING_HOST_FIELD_TAG = "pairing-host-field"
+internal const val PAIRING_PORT_FIELD_TAG = "pairing-port-field"
+
+
 // ---------------------------------------------------------------- r5-tls · HTTPS
 
 /**
@@ -1034,8 +1122,16 @@ internal const val PAIRING_TLS_SWITCH_TAG = "pairing-tls-switch"
 /** 警告弹层的测试 tag（断言「弹层出现前零请求 / 取消后零请求」）。 */
 internal const val PAIRING_TLS_DIALOG_TAG = "pairing-tls-dialog"
 
+/** 弹层里那句「确认对象」的原文（P1-4：快照 endpoint 必须写出来）。 */
+internal fun tlsWarningTargetLine(endpoint: String): String =
+    "即将连接 $endpoint · HTTPS（证书未通过系统校验）"
+
+/** 确认对象那一行的测试 tag。 */
+internal const val PAIRING_TLS_TARGET_TAG = "pairing-tls-target"
+
 /** 弹层标题：一句话说清危险在哪。 */
 internal const val PAIRING_TLS_WARNING_TITLE = "自签证书无法验证 core 的身份"
+
 
 /**
  * 弹层正文：三件事一字不能少 —— 无法验证身份、可能被中间人、只在你信任此主机时继续。

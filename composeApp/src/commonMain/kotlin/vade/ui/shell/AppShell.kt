@@ -53,6 +53,7 @@ import vade.ui.data.ModuleCatalogProvider
 import vade.ui.data.RawSourceStrings
 import vade.ui.data.SourceConfig
 import vade.ui.data.SourceKeys
+import vade.ui.data.UnpairedSessionSource
 import vade.ui.data.VadeErrorCategory
 import vade.ui.data.rawSourceStrings
 import vade.ui.destinations.ActivityScreen
@@ -756,8 +757,14 @@ internal fun listStatusOf(
     phase: LoadPhase,
     error: LoadError?,
     hasRows: Boolean,
+    /**
+     * P1-6 · 源是 [UnpairedSessionSource]（桥退回 Unpaired：凭据被拒 / 用户断开 / 这次连不上）。
+     * 它比 [fixture] 优先级更高：那种状态下列表**没有**数据源，既不是夹具也不是「0 个会话」。
+     */
+    unpaired: Boolean = false,
     raw: () -> RawSourceStrings = ::rawSourceStrings,
 ): ListStatus {
+    if (unpaired) return ListStatus.Unpaired
     if (fixture) return ListStatus.Fixtures
 
     if (phase == LoadPhase.Failed || error != null) {
@@ -920,6 +927,7 @@ private fun DestinationHost(
                     phase = state.sessionsPhase,
                     error = state.sessionsError,
                     hasRows = state.sessionRows.isNotEmpty(),
+                    unpaired = state.source is UnpairedSessionSource,
                 )
             }
             // B2（s-meta-host）：权威分组 + 元数据投影 —— 状态机的乐观值（标题/置顶/归档/

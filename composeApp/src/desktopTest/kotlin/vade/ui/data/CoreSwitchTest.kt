@@ -244,18 +244,36 @@ class CoreSwitchTest {
     }
 
     @Test
-    fun deleteFailureStillClearsTheOldCookieLocally() = runBlocking {
-        // 旧 core 拒绝吊销，但本地也不许继续攥着那张 cookie（换 core 之后它只会冒充登录态）。
+    fun aFailedRevocationKeepsTheLocalCookieSoACancelledSwitchDoesNotLoseIt() = runBlocking {
+        // P1-3 · 旧实现 `finally { cookieHeader = null }`：DELETE 回 401 / 超时 / 被取消时
+        // 本地也照样忘掉这张 cookie。取消换 core 之后桥仍是 `Paired(old)`，下一次重连却
+        // 不带 cookie → core 按 device peer 走 Noise → 升级"成功"但一个字节都不回。
+        // 只有 core 确认（2xx）才算吊销；失败时这张凭证可能仍然有效，留着才是对的。
         val wire = Wire()
         val old = oldCoreFactory(wire, deleteStatus = HttpStatusCode.Unauthorized)
         assertNotNull(old.ensureSessionCookie())
         PairingRuntime.install(old, "old.local", 8443)
 
         assertIs<SessionRevocation.Failed>(PairingRuntime.unpair(), "401 = 吊销失败")
-        wire.log.clear()
-        // cookie 已清：再吊销一次连请求都不发（没有可吊销的会话了）。
-        old.revokeSession()
-        assertTrue(wire.log.isEmpty(), "cookie 清掉之后 revokeSession 是 no-op：${wire.log}")
+        assertEquals(
+            "tok-old",
+            old.sessionCookie,
+            "core 没有确认吊销：本地 cookie 不许丢（否则取消换 core 会把旧连接悄悄弄坏）",
+        )
+        assertNull(PairingRuntime.pairedFactory, "unpair 仍然清掉桥（factory 已 dispose，cookie 不再有意义）")
+        assertNull(PairingStores.load(), "unpair 仍然清掉磁盘凭据")
+    }
+
+    @Test
+    fun aConfirmedRevocationForgetsTheLocalCookie() = runBlocking {
+        // 2xx = core 确认吊销：本地也不许再留着这张凭证冒充登录态。
+        val wire = Wire()
+        val old = oldCoreFactory(wire)
+        assertNotNull(old.ensureSessionCookie())
+        PairingRuntime.install(old, "old.local", 8443)
+
+        assertEquals(SessionRevocation.Revoked, PairingRuntime.unpair())
+        assertNull(old.sessionCookie, "204 = core 确认吊销，本地 cookie 必须清掉")
     }
 
     // -------------------------------------------------------- 取消 / 本地错误：不动旧配置
@@ -312,29 +330,56 @@ class CoreSwitchTest {
     }
 
     @Test
-    fun cancellingDuringTheOldRevocationKeepsTheOldCoreAndRetiresTheNewFactory() = runBlocking {
-        // 取消落在**第三步**（新 cookie 已到手，正在吊销旧会话）：桥还没切，旧连接必须留着；
-        // 而刚拿到的新 factory 既不进桥也没人再引用 —— 必须放掉，否则每取消一次漏一个 HttpClient。
-        val revoking = CompletableDeferred<Unit>()
-        val old = object : VadeTransportFactory {
-            override suspend fun connect(): VadeTransport = throw IllegalStateException("old must not connect")
-            override suspend fun revokeSession() {
-                revoking.complete(Unit)
-                delay(60_000)
+    fun cancellingDuringTheOldRevocationKeepsTheOldCookieAndRetiresTheNewFactory() = runBlocking {
+        // 取消落在**第三步**（新 cookie 已到手，正在吊销旧会话）：桥还没切，旧连接必须留着，
+        // **旧 factory 的 cookie 也必须还在**（P1-3：旧实现 `finally` 无条件清，取消一次就
+        // 把旧连接悄悄弄坏）；而刚拿到的新 factory 既不进桥也没人再引用 —— 必须放掉。
+        //
+        // 用真 KtorTransportFactory + MockEngine：只有真的走 HTTP 层，`revokeSession` 里
+        // 「DELETE 被取消」这条路径才是生产里那一条（StubFactory 没有 cookie，测不出来）。
+        val deleteStarted = CompletableDeferred<Unit>()
+        val engine = MockEngine { request ->
+            val path = request.url.encodedPath
+            when {
+                request.method == HttpMethod.Post && path == "/ui/session" -> respond(
+                    content = """{"device_id":"dev-old"}""",
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.SetCookie, "__Host-ac_ui=tok-old"),
+                )
+                request.method == HttpMethod.Delete && path == "/ui/session" -> {
+                    deleteStarted.complete(Unit)
+                    delay(60_000) // 吊销在途：取消就发生在这一刻
+                    respond(content = "", status = HttpStatusCode.NoContent)
+                }
+                else -> respond(content = "", status = HttpStatusCode.NotFound)
             }
         }
+        val old = KtorTransportFactory(
+            config = VadeClientConfig(
+                host = "old.local",
+                port = 8443,
+                browserSession = BrowserPairing("code-old"),
+            ),
+            client = HttpClient(engine),
+        )
+        assertNotNull(old.ensureSessionCookie())
         PairingRuntime.install(old, "10.0.0.9", 19999)
         val newFactory = TrackedFactory()
 
         val job = launch(Dispatchers.Default) {
             runCatching { PairingRuntime.switchCore(newRaw, "青松-NEW123", revokeTimeoutMs = 60_000) { newFactory } }
         }
-        withTimeout(5_000) { revoking.await() }
+        withTimeout(5_000) { deleteStarted.await() }
         job.cancel()
         job.join()
 
         assertEquals("10.0.0.9:19999", PairingRuntime.pairedEndpoint, "取消后旧连接原样保留（桥还没切）")
         assertSame(old, PairingRuntime.pairedFactory)
+        assertEquals(
+            "tok-old",
+            old.sessionCookie,
+            "吊销被取消 ≠ 吊销成功：旧 cookie 必须还在，否则下一次重连不带 cookie",
+        )
         assertFalse(newFactory.isUsable, "被取消的那次切换必须放掉刚建好的新 factory（资源不许泄漏）")
     }
 
@@ -423,6 +468,8 @@ class CoreSwitchTest {
 
         assertEquals(listOf("old DELETE /ui/session"), wire.log, "断开只吊销，不去配任何新 core")
         assertNull(PairingRuntime.pairedFactory, "断开后桥里没有 factory")
-        assertEquals(PairingRuntimeState.Unpaired(), PairingRuntime.state, "桥回到未配对（引导卡可重新出现）")
+        val unpaired = assertIs<PairingRuntimeState.Unpaired>(PairingRuntime.state, "桥回到未配对（引导卡可重新出现）")
+        assertTrue(unpaired.disconnected, "主动断开 = disconnected（列表不许再回落到夹具，P1-6）")
+
     }
 }

@@ -215,7 +215,12 @@ fun SessionsScreen(
         // J1 · 空态：一个会话都没有、且首读不在飞 —— 铺一张卡，给出唯一主行动。
         // 为什么不是「画一行灰字」：空白页面上用户既不知道发生了什么，也没有任何入口
         // （这正是审查里 J1 的原话）。加载中不画：那时说「还没有会话」是假的。
-        if (groups.isEmpty() && status !is ListStatus.Connecting) {
+        // P1-6 · 没有数据源（Unpaired）也不画：那张卡的唯一行动是「新建会话」，而空源
+        // 新建只会抛 UNAVAILABLE。此处的解释与下一步在 [UNPAIRED_NOTE] 与上方配对卡里。
+        if (groups.isEmpty() &&
+            status !is ListStatus.Connecting &&
+            status !is ListStatus.Unpaired
+        ) {
             item(key = "sessions-empty") {
                 EmptyStateCard(
                     title = SESSIONS_EMPTY_TITLE,
