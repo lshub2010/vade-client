@@ -46,8 +46,6 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestDispatcher
 import vade.ui.chat.ChatMessage
 import vade.ui.chat.ChatPreset
-import vade.ui.chat.ChatRole
-import vade.ui.chat.ContentPart
 import vade.ui.data.SessionSource
 import vade.ui.data.SessionSummary
 import vade.ui.data.TimeBucket
@@ -65,19 +63,21 @@ import vade.ui.skin.material.MaterialSkin
 /**
  * g-error-retry · the retry entry that makes a failed read recoverable.
  *
- * The gap this file pins: `UiState.sessionsError` / `messagesError` were published by the
- * loader and read by **nobody**, so "core 没起 / 端口不对" left the user with an error and no
- * way out but restarting the app. `UiState.retrySessions()` / `retryMessages()` existed and
- * were never called from the UI.
+ * The gap this file pins: `UiState.sessionsError` was published by the loader and read by
+ * **nobody**, so "core 没起 / 端口不对" left the user with an error and no way out but
+ * restarting the app. `UiState.retrySessions()` existed and was never called from the UI.
  *
- * Three layers, deliberately separate:
+ * Layers, deliberately separate:
  *  1. **pure model** — [loadBannerModel] gives the four transitions (failed → retrying →
  *     failed again / success) with no composition and no clock;
  *  2. **the widget** — a real button: clickable, `Role.Button`, non-empty accessible
  *     description, vector icon, keyboard-activatable, disabled while a retry is in flight;
  *  3. **the wiring** — `AppShell` + a real `UiState` + a recording `SessionSource`: the
- *     button must reach `SessionSource.sessions()` / `.messages()` exactly once per click,
- *     and the list retry must never touch the thread read (they are two banners).
+ *     button must reach `SessionSource.sessions()` exactly once per click.
+ *
+ * 消息线程没有横幅可测：`messages(id)` 是 `ui/attach`，唯一主人是 ChatState（`ChatThread`
+ * 的 `LaunchedEffect`），loader 的第二次读与第二条横幅已在 P0 修复中删除。本文件的
+ * `theShellNeverReadsTheMessageThreadItself` 钉住「shell 对 messages() 零调用」。
  *
  * The wiring tests run the loader on a `StandardTestDispatcher`, so "a read is in flight" is
  * a controlled state (`CompletableDeferred` gate + manual `advanceUntilIdle()`), never a
@@ -97,9 +97,6 @@ class LoadErrorBannerTest {
         updatedLabel = "刚刚",
     )
 
-    private fun message(id: String, text: String) =
-        ChatMessage(id = id, role = ChatRole.User, parts = listOf(ContentPart.Text(text)))
-
     private fun loadError(
         code: String = VadeErrorCodes.TIMEOUT,
         detail: String = "Read timed out after 12000 ms",
@@ -109,21 +106,21 @@ class LoadErrorBannerTest {
     /**
      * A controllable [SessionSource]: counts every fetch, can park a fetch on a gate (the
      * in-flight window the retry button must survive), and can fail on demand.
+     *
+     * `messages()` 被调用即失败：Thread 的读取（`ui/attach`）只属于 ChatState，loader 与
+     * shell 一次都不该碰。
      */
     private class RecordingSource(
         var rows: List<SessionSummary> = emptyList(),
-        var thread: List<ChatMessage> = emptyList(),
     ) : SessionSource {
         val sessionsCalls = AtomicInteger()
         val messagesCalls = AtomicInteger()
 
         /** Non-null → the fetch throws this (the "still broken" case). */
         var sessionsFailure: Throwable? = null
-        var messagesFailure: Throwable? = null
 
         /** Non-null → the fetch parks until completed, so "in flight" is observable. */
         var sessionsGate: CompletableDeferred<Unit>? = null
-        var messagesGate: CompletableDeferred<Unit>? = null
 
         // 契约在 g-archive-ui 之后带上了 includeArchived；默认值只写在接口上，
         // 所以每个实现都必须声明这个形参（否则「overrides nothing」编译不过）。
@@ -137,9 +134,7 @@ class LoadErrorBannerTest {
 
         override suspend fun messages(sessionId: String): List<ChatMessage> {
             messagesCalls.incrementAndGet()
-            messagesGate?.await()
-            messagesFailure?.let { throw it }
-            return thread
+            error("shell/loader must not read messages($sessionId) — ui/attach belongs to ChatState")
         }
 
         override fun observeEvents(): Flow<VadeEvent> = emptyFlow()
@@ -284,13 +279,13 @@ class LoadErrorBannerTest {
     }
 
     @Test
-    fun theTwoReadsNeverShareTagsOrDescriptions() {
+    fun theTwoActionBannersNeverShareTagsOrDescriptions() {
         val list = assertNotNull(loadBannerModel(LoadBannerKind.Sessions, LoadPhase.Failed, loadError(), null))
-        val thread = assertNotNull(loadBannerModel(LoadBannerKind.Messages, LoadPhase.Failed, loadError(), null))
-        assertTrue(list.tag != thread.tag)
-        assertTrue(list.retryTag != thread.retryTag, "两个重试按钮必须有各自的 tag（不许合并成一个按钮）")
-        assertTrue(list.retryDescription != thread.retryDescription)
-        assertTrue(thread.title.contains("消息"), "会话详情横幅必须说清是消息读取失败：${thread.title}")
+        val newSession = assertNotNull(loadBannerModel(LoadBannerKind.NewSession, LoadPhase.Failed, loadError(), null))
+        assertTrue(list.tag != newSession.tag)
+        assertTrue(list.retryTag != newSession.retryTag, "两个重试按钮必须有各自的 tag（不许合并成一个按钮）")
+        assertTrue(list.retryDescription != newSession.retryDescription)
+        assertTrue(newSession.title.contains("新建会话"), "新建失败横幅必须说清是什么动作：${newSession.title}")
         assertTrue(list.title.contains("会话列表"))
     }
 
@@ -473,78 +468,15 @@ class LoadErrorBannerTest {
     }
 
     @Test
-    fun threadFailureRetriesTheThreadAndLeavesTheListAlone() {
+    fun theShellNeverReadsTheMessageThreadItself() {
+        // 唯一一次 ui/attach 属于 ChatState（进入详情后）。loader / AppShell 一次都不许读：
+        // 旧实现的第二条读与第二条失败横幅正是本批删掉的东西。
         val dispatcher = StandardTestDispatcher()
-        val src = RecordingSource(
-            rows = listOf(row("s1")),
-            thread = listOf(message("m1", "你好")),
-        ).apply {
-            messagesFailure = VadeException(VadeErrorCodes.TIMEOUT, "ui/attach 超时")
-        }
+        val src = RecordingSource(rows = listOf(row("s1")))
         val state = newState(src, dispatcher, initialSessionId = "s1")
         shellTest(state, dispatcher) {
             assertEquals(1, src.sessionsCalls.get())
-            assertEquals(1, src.messagesCalls.get())
-            assertEquals(0, nodeCount(LoadBannerKind.Sessions.tag), "列表读成功就不该有列表横幅")
-            assertEquals(1, nodeCount(LoadBannerKind.Messages.tag), "消息读失败必须有自己的横幅")
-
-            src.messagesFailure = null
-            onNodeWithTag(LoadBannerKind.Messages.retryTag).performClick()
-            dispatcher.scheduler.advanceUntilIdle()
-            waitForIdle()
-
-            assertEquals(2, src.messagesCalls.get(), "详情横幅的重试必须调 SessionSource.messages()")
-            assertEquals(1, src.sessionsCalls.get(), "详情重试不许连带重读会话列表")
-            assertEquals(0, nodeCount(LoadBannerKind.Messages.tag))
-            assertEquals(0, nodeCount(LoadBannerKind.Sessions.tag))
-        }
-    }
-
-    @Test
-    fun theTwoRetriesAreIndependent() {
-        val dispatcher = StandardTestDispatcher()
-        val src = RecordingSource(
-            rows = listOf(row("s1")),
-            thread = listOf(message("m1", "你好")),
-        ).apply {
-            messagesFailure = VadeException(VadeErrorCodes.TIMEOUT, "ui/attach 超时")
-        }
-        val state = newState(src, dispatcher, initialSessionId = "s1")
-        shellTest(state, dispatcher) {
-            // 1 · list OK, thread failed → only the thread banner is up.
-            assertEquals(1, src.sessionsCalls.get())
-            assertEquals(1, src.messagesCalls.get())
-            assertEquals(0, nodeCount(LoadBannerKind.Sessions.tag), "列表读成功就不该有列表横幅")
-            assertEquals(1, nodeCount(LoadBannerKind.Messages.tag))
-
-            // 2 · the list read breaks *after* it had rows (core dies mid-session): the rows
-            //     stay, the list banner appears — both banners are now on screen at once.
-            src.sessionsFailure = VadeException(VadeErrorCodes.UNAVAILABLE, "core 未启动")
-            state.retrySessions()
-            dispatcher.scheduler.advanceUntilIdle()
-            waitForIdle()
-            assertEquals(2, src.sessionsCalls.get())
-            assertEquals(1, nodeCount(LoadBannerKind.Sessions.tag))
-            assertEquals(1, nodeCount(LoadBannerKind.Messages.tag), "两个横幅必须同时在场、互不吞并")
-
-            // 3 · the list retry must not touch the thread banner nor its read.
-            src.sessionsFailure = null
-            onNodeWithTag(LoadBannerKind.Sessions.retryTag).performClick()
-            dispatcher.scheduler.advanceUntilIdle()
-            waitForIdle()
-            assertEquals(3, src.sessionsCalls.get())
-            assertEquals(1, src.messagesCalls.get(), "列表重试不许触发消息读取")
-            assertEquals(0, nodeCount(LoadBannerKind.Sessions.tag))
-            assertEquals(1, nodeCount(LoadBannerKind.Messages.tag), "列表重试成功后，消息横幅必须原地不动")
-
-            // 4 · …and the other direction: the thread retry issues no list fetch.
-            src.messagesFailure = null
-            onNodeWithTag(LoadBannerKind.Messages.retryTag).performClick()
-            dispatcher.scheduler.advanceUntilIdle()
-            waitForIdle()
-            assertEquals(2, src.messagesCalls.get())
-            assertEquals(3, src.sessionsCalls.get(), "消息重试不许触发会话列表读取")
-            assertEquals(0, nodeCount(LoadBannerKind.Messages.tag))
+            assertEquals(0, src.messagesCalls.get(), "shell 不许读 messages()")
         }
     }
 
@@ -568,7 +500,6 @@ class LoadErrorBannerTest {
         }
         waitForIdle()
         assertEquals(0, nodeCount(LoadBannerKind.Sessions.tag))
-        assertEquals(0, nodeCount(LoadBannerKind.Messages.tag))
         assertTrue(
             textCount("假数据 · 未连接 core（U1-a 只做骨架，U1-b 接线）") >= 1,
             "假数据路径的说明不能被吃掉",

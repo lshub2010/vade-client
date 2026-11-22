@@ -14,7 +14,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlin.concurrent.Volatile
-import vade.ui.chat.ChatMessage
 import vade.ui.chat.ChatPreset
 import vade.ui.data.DisconnectableSource
 import vade.ui.data.FakeSessionSource
@@ -36,12 +35,16 @@ import vade.ui.skin.BottomBarStyle
  * w-wire · the state-source seam is now LIVE on the async path: when [source] is
  * anything other than the default [FakeSessionSource] (e.g. `VADE_SOURCE=real` builds a
  * [vade.ui.data.RealSessionSource] in `Main.kt`), this class reads it through
- * [SessionsLoader] — the session list is pulled on start, the selected session's
- * messages on selection, handled events trigger refreshes — and exposes Loading /
- * Ready / Failed phases ([sessionsPhase] / [messagesPhase]) with classified errors
- * ([sessionsError] / [messagesError]) and retry entries ([retrySessions] /
- * [retryMessages]). Rows are grouped with the same FR-8.26 contract as the fixtures
- * ([sessionGroups]); `groups()` serves `loader.rows + drafts`.
+ * [SessionsLoader] — the session list is pulled on start, handled events trigger
+ * refreshes — and exposes Loading / Ready / Failed phases ([sessionsPhase]) with a
+ * classified error ([sessionsError]) and a retry entry ([retrySessions]). Rows are
+ * grouped with the same FR-8.26 contract as the fixtures ([sessionGroups]);
+ * `groups()` serves `loader.rows + drafts`.
+ *
+ * **消息线程不在这里读**：`SessionSource.messages(id)` 是 `ui/attach`，一次选择只许
+ * 一次（双读 = 双 sink）。历史 + 事件 + 加载三态的唯一主人是 `ChatState`
+ * （`SessionDetailScreen` 每选中一个会话建一个，`ChatThread` 的 `LaunchedEffect(state)`
+ * 驱动 `collectLiveEvents` / `loadHistory`）。
  *
  * With the default [FakeSessionSource] NOTHING changes: `loader` is `null`, fixtures
  * stay synchronous, and no coroutine, fetch or event subscription exists — byte for
@@ -157,10 +160,6 @@ class UiState(
 
     init {
         loader?.start()
-        // w-wire: a deep link (`--open=`, the screenshot loop) selects a session before
-        // any tap — on the async path that selection must also load its thread. The
-        // fixture path has no loader, so this is a no-op there (byte-identical).
-        if (initialSessionId != null) loader?.selectSession(initialSessionId)
     }
 
     /**
@@ -185,26 +184,9 @@ class UiState(
     /** Raw rows the source answered with (fixtures: empty — `groups()` serves fixtures). */
     val sessionRows: List<SessionSummary> get() = loader?.rows ?: emptyList()
 
-    /** Loading / Ready / Failed of the selected session's message-thread read. */
-    val messagesPhase: LoadPhase get() = loader?.messagesPhase ?: LoadPhase.Ready
-
-    /** Classified failure of the message-thread read. */
-    val messagesError: LoadError? get() = loader?.messagesError
-
-    /** Which session the [messages] list belongs to; `null` before the first selection. */
-    val messagesSessionId: String? get() = loader?.messagesSessionId
-
-    /** The selected session's thread, as answered by [source] (fixtures: empty). */
-    val messages: List<ChatMessage> get() = loader?.messages ?: emptyList()
-
     /** Retry entry for a Failed session-list read (no-op on the fixture path). */
     fun retrySessions() {
         loader?.refreshSessions()
-    }
-
-    /** Retry entry for a Failed message-thread read (no-op on the fixture path). */
-    fun retryMessages() {
-        loader?.retryMessages()
     }
 
     /**
@@ -263,13 +245,12 @@ class UiState(
      * **真源路径** —— 先在服务端真的建出会话（[SessionSource.createSession] =
      * `ui/attach(null)`），拿到 core 铸的 id 后**再**切过去。失败绝不伪造本地会话：
      * [newSessionError] 带四类分类文案、✎ 可以再按（重试真的重发 attach，1 → 2）。
-     * 成功后用 `isDraft = true` 的加载分支切会话：创建那次 attach 已经带回（空）快照并
-     * 建好 sink —— 再让 loader 拉一次线程 = 对同一会话的第二次 attach = 同连接双 sink
-     * （事件双投递），这正是本批不许引入的。
+     * 切过去只写选中：创建那次 attach 已经带回（空）快照并建好 sink，ChatState 进页面时
+     * 若再调 `messages(id)` 就是对同一会话的第二次 attach（同连接双 sink、事件双投递）。
+     * 本类因此没有任何 `loader.selectSession` —— 消息线程只有 ChatState 一个主人。
      */
     fun newSession() {
-        val ldr = loader
-        if (ldr == null) {
+        if (loader == null) {
             // Fixture path — byte-for-byte the pre-A4-1 behaviour: a purely local draft.
             val index = drafts.size + 1
             val draft = SessionSummary(
@@ -297,7 +278,6 @@ class UiState(
                 selectedSessionId = newId
                 sessionsDrawerOpen = false
                 dest = Destination.Sessions
-                ldr.selectSession(sessionId = newId, isDraft = true)
                 newSessionPhase = LoadPhase.Ready
             } catch (e: CancellationException) {
                 throw e // dispose / cancel —— 不写状态、更不伪造会话
@@ -398,16 +378,14 @@ class UiState(
     }
 
     /**
-     * w-wire: the canonical selection entry — sets the selection and, on the async
-     * path, loads that session's thread ([SessionsLoader.selectSession]). The fixture
-     * path only sets the selection, exactly as before.
+     * w-wire: the canonical selection entry — sets the selection only. **不在这里读消息**：
+     * `SessionSource.messages(id)` 是 `ui/attach`，每选中一次会话只许 attach 一次；历史与
+     * 事件由进入详情后创建的那个 `ChatState` 统一驱动。
      */
     fun selectSession(sessionId: String) {
         selectedSessionId = sessionId
         // g-route-transition：点行/搜索命中/新建草稿都会落到这里 ⇒ 抽屉收回，露出底层详情。
         sessionsDrawerOpen = false
-        val ldr = loader ?: return
-        ldr.selectSession(sessionId, isDraft = drafts.any { it.id == sessionId })
     }
 
     /**

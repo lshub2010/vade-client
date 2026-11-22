@@ -373,10 +373,18 @@ class RealSessionSource(
      * 线上有两种含义（同会话重连续订 vs 首次读历史），光靠「恰好没跟踪会话」来区分是偶然的。
      * 以前这里只是省略 last_seq，于是当客户端正跟踪同一个会话时，`VadeClient.attach` 会把
      * 该会话的水位补上 → core 回 replay（无 snapshot）→ 消息列表空、UI 显示「还没有消息」。
+     *
+     * f5 · `resume = false` 是同一契约的反向写法（P0-1），一起写上把意图钉在调用点：
+     * 这是历史读，core 必须回快照；切到别的会话也不会继承游标（替换严格同会话）。
      */
     override suspend fun messages(sessionId: String): List<ChatMessage> {
         val result = attachedClient().uiAttach(
-            AttachParams(sessionId = sessionId, lastSeq = null, forceSnapshot = true),
+            AttachParams(
+                sessionId = sessionId,
+                lastSeq = null,
+                forceSnapshot = true,
+                resume = false,
+            ),
         )
         return snapshotToMessages(result.snapshot?.messages)
     }

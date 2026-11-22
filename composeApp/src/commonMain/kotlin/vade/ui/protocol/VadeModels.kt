@@ -49,6 +49,14 @@ internal fun reqParam(value: String?, name: String): String =
  * `ui/attach`. `sessionId = null` attaches to a NEW session (core creates it and returns
  * the id). `lastSeq` is what this client already applied for that session — `null` on a
  * first-ever attach, the tracked value on every reconnect ([VadeClient.lastSeq]).
+ *
+ * Two client-side directives steer the seq substitution; neither is ever encoded on the
+ * wire:
+ *  - [forceSnapshot] = the explicit "I am reading history, answer with the snapshot"
+ *    request (main's f4 P0-3). It wins over [resume]: even while the same session is
+ *    tracked, nothing is substituted.
+ *  - [resume] = `false` is the same "do not resume" statement expressed the other way
+ *    round (f5's P0-1); `true` keeps the reconnect behaviour.
  */
 data class AttachParams(
     val sessionId: String? = null,
@@ -63,8 +71,16 @@ data class AttachParams(
      * [vade.ui.protocol.VadeClient.attach] 的 seq 替换只作用于前者，而「后者」需要一个
      * 明确的标记 —— 否则它只能靠「恰好没有跟踪会话」这种偶然条件成立。读历史的调用点
      * （`RealSessionSource.messages`）显式置真：即使当前正跟踪同一个会话，也要快照。
+     *
+     * f5 合并后与 [resume] 并存：两者都是「不要续订」的正/反向写法，[forceSnapshot]
+     * 优先级更高（为真时一律不替换）；调用点可以只写其中一个，也可以两个都写以表达意图。
      */
     val forceSnapshot: Boolean = false,
+    /**
+     * f5 · `true` = 允许把跟踪到的 seq 填进 null 的 [lastSeq]（重连形态）；
+     * `false` = 读者明确要求快照，绝不续订。客户侧指令，不上线。
+     */
+    val resume: Boolean = true,
 ) {
     fun toJson(): JsonObject = buildJsonObject {
         // A4-1 · `session_id` is `"string|null"` and the null form is MEANINGFUL: it is the
@@ -74,6 +90,7 @@ data class AttachParams(
         // ALWAYS present: a string for an existing session, an explicit JsonNull to create.
         // `last_seq` stays omission-encoded: its null really is "nothing to say" (a fresh
         // attach), and [VadeClient.attach] substitutes the tracked seq where it applies.
+        // `resume` is deliberately absent here: it steers the client, not core.
         put("session_id", sessionId?.let(::JsonPrimitive) ?: JsonNull)
         putLng("last_seq", lastSeq)
     }

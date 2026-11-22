@@ -596,8 +596,8 @@ class VadeClient(
 
     /**
      * `ui/attach`. When [AttachParams.lastSeq] is `null` **and the params name the tracked
-     * session**, the tracked [lastSeq] is substituted (the reconnect path); pass `lastSeq`
-     * explicitly to override.
+     * session** and the call is a resume, the tracked per-session [lastSeq] is substituted
+     * (the reconnect path); pass `lastSeq` explicitly to override.
      *
      * P0-3 · 替换是**严格同会话**的重连语义：`params.sessionId == attachedSessionId`。
      * 以前只要求「两边都非 null」，于是切到 B 时会把 A 的水位（比如 500）塞进 B 的
@@ -605,7 +605,8 @@ class VadeClient(
      * snapshot：历史为空、B 的 1..500 又全被 `seq <= lastSeq` 丢掉（整条流静默冻结）。
      *
      * [AttachParams.forceSnapshot] 是「读历史」的显式请求：即使正跟踪同一个会话也不替换，
-     * core 于是照约定回快照。
+     * core 于是照约定回快照。[AttachParams.resume]（f5）是同一件事的反向写法：
+     * `false` 同样禁止替换。两者只要有一个说「不续订」，就不替换。
      *
      * On a snapshot attach the client adopts the snapshot's `from_seq` as that session's new
      * watermark; on a replay attach it keeps tracking.
@@ -613,7 +614,7 @@ class VadeClient(
     suspend fun attach(params: AttachParams): AttachResult {
         val tracked = attachedSessionId
         val sameSession = params.sessionId != null && params.sessionId == tracked
-        val effective = if (params.lastSeq == null && !params.forceSnapshot && sameSession) {
+        val effective = if (params.lastSeq == null && !params.forceSnapshot && params.resume && sameSession) {
             params.copy(lastSeq = lastSeqFor(params.sessionId!!))
         } else {
             params

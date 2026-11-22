@@ -897,15 +897,11 @@ private fun DestinationHost(
                 )
             }
         }
-    // The thread banner is passed unconditionally: its in-flight state has to stay composed
-    // while a retry runs (it retains the failed classification) — see LoadErrorBanner.kt.
-    val messageThreadBanner: @Composable () -> Unit = {
-        MessageThreadLoadBanner(
-            phase = state.messagesPhase,
-            error = state.messagesError,
-            onRetry = state::retryMessages,
-        )
-    }
+    // The thread's load state (Loading / empty / Failed + retry) is **ChatState's** single
+    // job: the chat page renders its own three-state row from `ChatState.phase` /
+    // `loadError`. There is deliberately no second, loader-owned banner for the thread —
+    // the loader no longer reads `messages()` at all (one attach per selection belongs to
+    // ChatState), so a banner here would advertise a read that does not exist.
 
     when (state.dest) {
         Destination.Sessions -> {
@@ -968,7 +964,6 @@ private fun DestinationHost(
                             ),
                         adapters = adapters,
                         contentPadding = PaddingValues(top = TOP_BAR_ZONE),
-                        banner = messageThreadBanner,
                         // P1-11/`compactEmpty`：这一格**左边真有列表**，空态文案是
                         // 「在左侧选择一个会话」。也因此**不传** `onOpenList` —— 双栏没有
                         // 抽屉，给一个「打开会话列表」按钮只会点了没反应。
@@ -991,7 +986,6 @@ private fun DestinationHost(
                     // The pushed-detail top bar above already carries this title.
                     showTitle = false,
                     adapters = adapters,
-                    banner = messageThreadBanner,
                     // 600–719 的 rail 单栏：没有抽屉（`sessionsDrawerOpen` 在这个断点是
                     // 死状态，见 `UiState` 的 KDoc），列表是 rail 切换到的**根页** ——
                     // 所以这里不 provide/不传任何「打开列表」动作；空态（只可能出现在

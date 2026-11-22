@@ -76,6 +76,21 @@ interface ChatTurnGateway {
     )
 
     /**
+     * FR-8.36 · `ui/queue.cancel` — 取消**排队中**的回合（已在跑的用 [interrupt]）。
+     *
+     * [turnId] 必须来自创建这条排队条目的回包（`submit` / `edit_resubmit` /
+     * `regenerate` 的 `turn_id`），不是本地气泡 id。成功才允许把本地排队条目删掉：
+     * 出网失败时条目留在队列里，用户看到的是「还在排队 + 失败原因」，而不是一个
+     * 屏幕上消失、core 里仍在排队的幽灵回合。
+     *
+     * 默认实现是**故意的响亮失败**（同 [submit] / [interrupt] / [decideApproval]）。
+     */
+    suspend fun cancelQueued(sessionId: String, turnId: String): Unit = throw IllegalStateException(
+        "ChatTurnGateway.cancelQueued is not implemented: this gateway cannot cancel a queued turn " +
+            "(implement ui/queue.cancel or declare an explicit in-memory fake via synthetic = true)",
+    )
+
+    /**
      * B6 · `approval/decide`（rpc.json 1.7.0）— 对服务端的一次审批决定。[requestId] **必须**
      * 来自 `turn.approval_required` 事件的 `request_id` —— 本地工具卡的 callId 不是它。
      *
@@ -174,6 +189,15 @@ class InMemoryTurnGateway : ChatTurnGateway {
     /** 假源中断是本地 stop 语义（脚本收尾）：出网空操作。 */
     override suspend fun interrupt(sessionId: String, turnId: String) {
         // no-op — the fixture script owns the fake turn lifecycle.
+    }
+
+    /**
+     * 假源取消排队 = **只做本地投影**（`ChatState.cancelQueued` 负责删条目），出网空操作。
+     * 显式声明而不是吃接口的响亮默认：假源根本没有出网回合，`turn_id` 也不会存在；
+     * 这条路径在真源下才会被调用。
+     */
+    override suspend fun cancelQueued(sessionId: String, turnId: String) {
+        // no-op — the fixture queue is local-only.
     }
 
     /**

@@ -1,6 +1,7 @@
 package vade.ui.chat
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.runBlocking
@@ -161,7 +162,13 @@ class ApprovalWireTest {
         ),
     )
 
-    private fun realChat(probe: ApprovalProbe): ChatState = ChatState("s-real", turns = probe)
+    private fun realChat(probe: ApprovalProbe): ChatState = ChatState(
+        "s-real",
+        turns = probe,
+        drafts = DraftStore(),
+        // 假 gateway 的出网记录必须同步落地；生产默认是 Dispatchers.Default。
+        wireDispatcher = Dispatchers.Unconfined,
+    )
 
     private fun approvalCard(chat: ChatState): ChatItem.Tool =
         chat.items.filterIsInstance<ChatItem.Tool>()
