@@ -1,7 +1,7 @@
 # f13-event · 多会话事件路由（client）
 
-分支 `tmp/f13-event`（基于 `main` 3eab07a），代码提交 `8bd4b63` 上 CI run `45029448209` 绿
-（本文件是它之后的纯报告提交，不参与构建）。本批只动客户端协议层与其测试；`main` 未改。
+分支 `tmp/f13-event`，**已 rebase 到 `main`（9809764）**，功能代码提交 `0cf31c3` 上 CI run
+`45030126534` 绿；本文件是它之后的纯报告提交，不参与构建。`main` 未改。
 
 ## 契约依据
 
@@ -64,14 +64,16 @@ core 的 `_retire_sink` 只摘同一 `(connection, session)`，不摘上一个�
 | `closeDetachesTheTrackedSessionBestEffort` | `close()` 先发 `ui/detach` 再关连接，帧逐字 `{"session_id":"s-1"}` |
 | `RealSessionEventsTest.switchingSessionsStopsProjectingThePreviousSessionsFrames` | UI 缝（`observeEvents`）上也不串台，且切走时真的发了 `ui/detach(s-A)` |
 | `RealSessionEventsTest.sessionAttachedMapsIntoSessionAttachedEvent` | 原用例补上「先 attach」的前置，否则路由生效后它测的是一个没会话的连接 |
+| `SessionSwitchHistoryTest.switchingSessionsNeverInheritsThePreviousSessionsCursor`（main 上 f5 既有） | rebase 后对齐：切到 B 之后多了一条 `ui/detach(s-A)`，原用例的下一个 `awaitSent()` 会读到它 —— 改成**显式断言**这条 detach（不是 drain 掉），因为它正是本批的新契约 |
 
 ## 验证（真实 CI，不是推断）
 
-- run `45029448209`（`workflow_dispatch`，代码提交 8bd4b63）：**success**
-  - `client`：`files=200 tests=1781 failures=0 errors=0 skipped=1`，`BUILD SUCCESSFUL in 2m 40s`
-  - `Wasm compile`：`BUILD SUCCESSFUL in 35s`
-  - `android`：`assembleDebug` `BUILD SUCCESSFUL in 58s`（APK 已上传）
-- 同代码前两跑 `45027794209` / `45028407464` 也是 `1781 tests / 0 failures`（数字一致，不是被过滤）
+- **rebase 到 main 后**：run `45030126534`（代码提交 0cf31c3）**success**
+  - `client`：`files=207 tests=1848 failures=0 errors=0 skipped=1`，`BUILD SUCCESSFUL in 2m 20s`
+  - `Wasm compile`：`BUILD SUCCESSFUL in 28s`
+  - `android`：`assembleDebug` `BUILD SUCCESSFUL in 1m 21s`（APK 已上传）
+- rebase 前（旧基线 d81d0ef）的跑：`45029448209` / `45027794209` 均 `files=200 tests=1781
+  failures=0`，与 rebase 后只差 main 新增的用例（1781 → 1848 是基数变大，不是被过滤）
 - 已知抖动（不是本批回归）：`45028407464` 的一跑红在
   `RealCoreE2ETest.requestBudgetExpiresWithTimeoutCodeWhenCoreNeverReplies`
   （`expected:<TIMEOUT> but was:<UNAVAILABLE>`）。该用例与本次改动无交集（自建静默 WS 服务端，
@@ -81,6 +83,12 @@ core 的 `_retire_sink` 只摘同一 `(connection, session)`，不摘上一个�
   测试调度器上的 collector 写，`waitUntil { lastSeqFor(...) }` 返回时 collector 还没跑。
   改为先 `waitUntil { seen.size >= 2 }`、再 `delay(100)` 后按**内容**断言（`["a-11","b-1"]`），
   负例也补了同样的等待窗口。
+
+### rebase 对齐（main 34 个提交）
+
+先 `git rebase main` 再验收，避免把期间新合的提交「回退」。除 `VadeClient.kt` 的一处新参数
+（`AttachParams.resume`，本批未触碰那条分支）外没有冲突；唯一需要跟着改的是 f5 的
+`SessionSwitchHistoryTest`（见上表）。
 
 ## 已知边界（未在 CI 覆盖）
 
