@@ -11,9 +11,13 @@ import vade.ui.protocol.ContentPart as WireContentPart
 import vade.ui.protocol.ApprovalDecision
 import vade.ui.protocol.ApprovalScope
 import vade.ui.protocol.EditResubmitParams
+import vade.ui.protocol.InputStatus
+import vade.ui.protocol.InputValue
 import vade.ui.protocol.InterruptParams
 import vade.ui.protocol.QueueCancelParams
 import vade.ui.protocol.SubmitParams
+import vade.ui.protocol.TurnInputCancelParams
+import vade.ui.protocol.TurnInputParams
 import vade.ui.protocol.TurnRegenerateParams
 import vade.ui.protocol.VadeClient
 import vade.ui.protocol.VadeErrorCodes
@@ -35,9 +39,9 @@ class TurnGatewayReal(
      * B2 · 读通道（历史快照 + 事件流）。`null` = 本实例只提供写能力 —— 那不是错误，
      * `ChatState` 会进失败态并明说「没有读历史的通道」，**绝不回退 fixtures**。
      *
-     * 组合根（[RealAdapters]）把 `RealSessionSource::messages` / `::observeEvents` 传进来，
-     * 于是读侧是**委托**而不是适配：两个方法引用的签名与
-     * [ChatTranscriptSource.of] 的 `history` / `events` 逐字相同。
+     * 组合根（[RealAdapters]）把 `RealSessionSource::chatSnapshot` / `::observeEvents` 传进来，
+     * 于是读侧是**委托**而不是适配：签名字面上就是
+     * [ChatTranscriptSource.ofSnapshot] 的 `snapshot` / `events`。
      */
     private val transcriptSource: ChatTranscriptSource? = null,
     /**
@@ -156,6 +160,44 @@ class TurnGatewayReal(
                     "supply an ApprovalDecideChannel (RealSessionSource.decideApproval) — see shots/b6-approval/RESULT.md",
             )
         channel(requestId, decision, scope)
+    }
+
+    /**
+     * RFC-0008 §7.1 · `turn/input` — 幂等键 [inputId] 原样上帧，[value] 的三态
+     * （string / string[] / bool）由 [InputValue] 自己的编码决定。`ok=false` 说明 core
+     * 已关掉这张卡（别处作答 / 超时 / 会话关闭），**不是**客户端的错：静默返回，
+     * `turn.input_resolved` 是收尾的唯一上屏者。
+     */
+    override suspend fun answerInput(sessionId: String, inputId: String, value: InputValue) {
+        requireNonBlank(sessionId, "session_id")
+        requireNonBlank(inputId, "input_id")
+        val result = client.turnInput(
+            TurnInputParams(sessionId = sessionId, inputId = inputId, value = value),
+        )
+        if (!result.ok && result.statusEnum == InputStatus.UNKNOWN) {
+            throw VadeException(
+                VadeErrorCodes.NOT_FOUND,
+                "turn/input was rejected for input_id=$inputId (status=${result.status})",
+            )
+        }
+    }
+
+    /**
+     * RFC-0008 §7.2 · `turn/input.cancel` — 只关这一张卡，回合继续。`ok=false` 同 [answerInput]：
+     * 卡已经被 core 关掉了（超时 / 别处作答），静默即可。
+     */
+    override suspend fun cancelInput(sessionId: String, inputId: String, reason: String) {
+        requireNonBlank(sessionId, "session_id")
+        requireNonBlank(inputId, "input_id")
+        val result = client.turnInputCancel(
+            TurnInputCancelParams(sessionId = sessionId, inputId = inputId, reason = reason),
+        )
+        if (!result.ok && result.statusEnum == InputStatus.UNKNOWN) {
+            throw VadeException(
+                VadeErrorCodes.NOT_FOUND,
+                "turn/input.cancel was rejected for input_id=$inputId (status=${result.status})",
+            )
+        }
     }
 
     /** Chat-layer part union → the wire part union (RFC-0004 §6.1), field-for-field. */

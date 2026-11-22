@@ -24,8 +24,9 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import kotlin.concurrent.Volatile
-import vade.ui.chat.ChatTranscriptSource
+import vade.ui.chat.ChatHistory
 import vade.ui.chat.ChatMessage
+import vade.ui.chat.ChatTranscriptSource
 import vade.ui.protocol.AttachParams
 import vade.ui.protocol.AttachResult
 import vade.ui.protocol.ApprovalDecideParams
@@ -251,8 +252,8 @@ class RealSessionSource(
                 // `mapEvent` 的有损投影（注释原话「六种核心事件 → UI 事件；其余全部丢弃」），
                 // message.appended / message.edited / turn.* 都在被丢的那部分。
                 // 一个“接上了但永远收不到消息事件”的流会编译通过、测试也绿，那正是要避免的假接线。
-                chatTranscript = ChatTranscriptSource.of(
-                    history = { sessionId -> messages(sessionId) },
+                chatTranscript = ChatTranscriptSource.ofSnapshot(
+                    snapshot = { sessionId -> chatSnapshot(sessionId) },
                     events = { created.events },
                 ),
                 // B6 · 审批出网通道：chat 的 turns 窄缝最终落回 SessionSource 口（本类）——
@@ -377,7 +378,25 @@ class RealSessionSource(
      * f5 · `resume = false` 是同一契约的反向写法（P0-1），一起写上把意图钉在调用点：
      * 这是历史读，core 必须回快照；切到别的会话也不会继承游标（替换严格同会话）。
      */
-    override suspend fun messages(sessionId: String): List<ChatMessage> {
+    override suspend fun messages(sessionId: String): List<ChatMessage> = chatSnapshot(sessionId).messages
+
+    /**
+     * B2 + RFC-0008 §8.2 · 一次 `ui/attach` 的**聊天快照**：消息 + 未作答的问答
+     * （`snapshot.pending_inputs`）。
+     *
+     * 为什么要一个方法而不是两个：同一个会话的两次 attach 会在同一条连接上装两个 sink
+     * （事件双投递，见 [createSession] 的 KDoc）。读侧要的两样东西来自同一份快照，就必须
+     * 一次拿到。`messages()` 是它的消息面（`SessionSource` 接口的既有形状）。
+     *
+     * P0-3 · `forceSnapshot = true` 是显式的「我读的是历史，给我快照」：`last_seq` 省略在
+     * 线上有两种含义（同会话重连续订 vs 首次读历史），光靠「恰好没跟踪会话」来区分是偶然的。
+     * 以前这里只是省略 last_seq，于是当客户端正跟踪同一个会话时，`VadeClient.attach` 会把
+     * 该会话的水位补上 → core 回 replay（无 snapshot）→ 消息列表空、UI 显示「还没有消息」。
+     *
+     * f5 · `resume = false` 是同一契约的反向写法（P0-1），一起写上把意图钉在调用点：
+     * 这是历史读，core 必须回快照；切到别的会话也不会继承游标（替换严格同会话）。
+     */
+    suspend fun chatSnapshot(sessionId: String): ChatHistory {
         val result = attachedClient().uiAttach(
             AttachParams(
                 sessionId = sessionId,
@@ -386,7 +405,10 @@ class RealSessionSource(
                 resume = false,
             ),
         )
-        return snapshotToMessages(result.snapshot?.messages)
+        return ChatHistory(
+            messages = snapshotToMessages(result.snapshot?.messages),
+            pendingInputs = result.snapshot?.pendingInputs.orEmpty(),
+        )
     }
 
     /**

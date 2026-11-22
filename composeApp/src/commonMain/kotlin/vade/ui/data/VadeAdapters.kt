@@ -140,8 +140,9 @@ internal class RealAdapters(
     private val moduleRegistry: ModuleRegistryView? = null,
     /**
      * B2 · 聊天的**读**通道（历史 + 事件）。`null` = 未接线 —— 聊天页会明说「拿不到历史」
-     * 并可重试，**不回退 fixtures**。组合根（[RealSessionSource]）传 `of(this::messages,
-     * this::observeEvents)`，两个方法引用的签名与 [ChatTranscriptSource.of] 逐字相同。
+     * 并可重试，**不回退 fixtures**。组合根（[RealSessionSource]）传
+     * `ofSnapshot(this::chatSnapshot, this::observeEvents)`：一次 `ui/attach` 同时给消息与
+     * `pending_inputs`（两次 attach = 同连接双 sink）。
      */
     private val chatTranscript: ChatTranscriptSource? = null,
     /**
