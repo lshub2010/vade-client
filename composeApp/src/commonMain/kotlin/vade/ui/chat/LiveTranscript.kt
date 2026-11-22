@@ -143,6 +143,29 @@ class LiveTranscript(
     }
 
     /**
+     * P0-2 · 把一行插到 [beforeId] 之前（[beforeId] 不在投影里就追加到末尾）。
+     *
+     * 本地回显的用户气泡可能**晚于**它自己的助手行进入投影器：直接 [seed] 会把它排在
+     * 回答后面，而 `ChatState.loadHistory` 在重试/重进时是按 [messages] 的顺序重建
+     * `items` 的 —— 顺序错了就是「回答在提问前面」。助手行的 id 是 [liveRowId]，插在它
+     * 之前即可；助手行还没到时就是普通的追加（之后它自然排在这条提问之后）。
+     */
+    fun insertBefore(row: ChatMessage, beforeId: String?) {
+        if (rows.containsKey(row.id)) return
+        if (beforeId == null || !rows.containsKey(beforeId)) {
+            rows[row.id] = row
+            return
+        }
+        val rebuilt = LinkedHashMap<String, ChatMessage>(rows.size + 1)
+        rows.forEach { (id, existing) ->
+            if (id == beforeId) rebuilt[row.id] = row
+            rebuilt[id] = existing
+        }
+        rows.clear()
+        rows.putAll(rebuilt)
+    }
+
+    /**
      * Projects one event and returns the full transcript after it. The return value is
      * always the current state — even when the event itself was dropped — so a caller
      * can blindly re-render.

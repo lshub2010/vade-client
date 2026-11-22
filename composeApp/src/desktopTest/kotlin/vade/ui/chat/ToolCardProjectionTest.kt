@@ -2,6 +2,7 @@ package vade.ui.chat
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import vade.ui.protocol.ApprovalDecision
 import vade.ui.protocol.ApprovalScope
@@ -317,7 +318,7 @@ class ToolCardProjectionTest {
         chat.applyLiveEvent(toolCall(seq = 4, callId = "call-2"))
 
         val keys = chat.items.map { it.key }
-        val msgIndex = keys.indexOfFirst { it.startsWith("m:live:") }
+        val msgIndex = keys.indexOfFirst { it.startsWith("m:") }
         assertTrue(msgIndex >= 0, "live 行在时间线上")
         assertTrue(msgIndex < cardIndex(chat, "call-1"), "第一张卡跟在它回合的行后（不堆尾也不越位）")
         assertTrue(cardIndex(chat, "call-1") < cardIndex(chat, "call-2"), "两张卡保持事件到达顺序")
@@ -329,7 +330,7 @@ class ToolCardProjectionTest {
     @Test
     fun approvalBindsToItsToolCardInPlace() = runBlocking {
         val probe = ToolCardProbe(EmptyTranscript())
-        val chat = ChatState("s-real", turns = probe)
+        val chat = ChatState("s-real", turns = probe, wireDispatcher = Dispatchers.Unconfined)
         chat.loadHistory()
         chat.applyLiveEvent(toolCall(seq = 1, callId = "call-1"))
         val cardIndexBefore = cardIndex(chat, "call-1")

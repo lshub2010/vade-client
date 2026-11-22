@@ -5,6 +5,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 /**
@@ -50,7 +51,8 @@ class RegenerateFlowTest {
         val call = gateway.regenerates.single()
         assertEquals("s-regen", call.sessionId)
         assertEquals(tailId, call.turnId, "the channel receives the turn being rerun")
-        assertTrue(call.clientMsgId.startsWith("c-r-"), "regenerate gets its own idempotency key")
+        assertTrue(call.clientMsgId.startsWith("ui-"), "regenerate mints a ui-<ms>-<seq> key")
+        assertNotEquals(tailId, call.clientMsgId, "the idempotency key is not the turn id")
     }
 
     // ⑥ — the old version stays in the thread, marked, and a fresh turn streams below it

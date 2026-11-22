@@ -7,7 +7,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import vade.ui.chat.ChatMessage
 import kotlin.concurrent.Volatile
 import vade.ui.data.SessionAttachedEvent
 import vade.ui.data.SessionSource
@@ -27,7 +26,8 @@ import vade.ui.data.loadErrorCodeOf
  * fetch is in flight; `Ready` = the latest finished attempt succeeded — possibly with
  * zero rows, because an empty list is a real answer and must never be confused with a
  * failure; `Failed` = the latest finished attempt threw and the classified error rides
- * in [SessionsLoader.sessionsError] / [SessionsLoader.messagesError]. A failure is
+ * in [SessionsLoader.sessionsError] (the message thread's three states live on
+ * `ChatState.phase` / `loadError`). A failure is
  * NEVER reported as a silent empty list.
  */
 enum class LoadPhase { Loading, Ready, Failed }
@@ -58,23 +58,27 @@ internal fun loadErrorOf(t: Throwable): LoadError =
 
 /**
  * w-wire · the last pipe segment: everything `UiState` needs to actually READ its
- * [SessionSource] — the initial `sessions()` pull, the per-selection `messages(id)`
- * pull with stale-request invalidation, the event-driven refresh, and the three-state
- * Loading / Ready / Failed bookkeeping with classified errors and retry entries.
+ * [SessionSource] — the initial `sessions()` pull, the event-driven list refresh, and
+ * the three-state Loading / Ready / Failed bookkeeping with classified errors and a
+ * retry entry.
+ *
+ * ## 为什么这里**不读消息**
+ *
+ * `SessionSource.messages(id)` 在真源上是 `ui/attach` —— **一次 attach 就是一次订阅**
+ * （core 为同一会话再注册一个 sink ⇒ 同连接双 sink、事件双投递）。选会话时读线程的
+ * 职责因此只有一个主人：[ChatState.loadHistory]（由 `ChatThread` 的
+ * `LaunchedEffect(state)` 驱动），它的读通道与事件流是同一次 attach 的两面。
+ *
+ * 旧实现让 loader 也拉一遍 `messages(id)`，于是每选一次会话 attach 两次，并多出一条
+ * 「该会话的消息加载失败」横幅 —— 与 `ChatState.phase` 的失败态重复。那条读和那条横幅
+ * 都已删除；消息的加载中 / 空 / 失败三态只由 ChatState 一处驱动。
  *
  * ## Three states
- * Both loads run the same loop: start (Loading unless data from a previous success is
- * already on screen — stale-while-revalidate for event refreshes), fetch, then either
- * Ready (rows swapped atomically) or Failed (previous rows KEPT, error classified via
- * `loadErrorCategoryOf`, retry entry = [refreshSessions] / [retryMessages]). `Failed`
- * is a distinct observable state; it is never laundered into an empty `Ready`.
- *
- * ## Stale request invalidation (messages)
- * Every `selectSession` bumps an [AtomicLong] generation and captures it; a response
- * (or failure) from an older generation is dropped before any state write, so switching
- * sessions fast can never let the OLD session's late answer overwrite the NEW one.
- * Re-selecting the session that is already loaded/loading is a no-op (no duplicate
- * fetch); re-selecting a Failed one refetches (that is the retry path).
+ * The list read: start (Loading unless data from a previous success is already on
+ * screen — stale-while-revalidate for event refreshes), fetch, then either Ready (rows
+ * swapped atomically) or Failed (previous rows KEPT, error classified via
+ * `loadErrorCategoryOf`, retry entry = [refreshSessions]). `Failed` is a distinct
+ * observable state; it is never laundered into an empty `Ready`.
  *
  * ## Events
  * `observeEvents()` is collected once; handled events trigger a coalesced list refresh
@@ -103,38 +107,8 @@ class SessionsLoader(
     var rows: List<SessionSummary> by mutableStateOf<List<SessionSummary>>(emptyList())
         private set
 
-    /**
-     * Phase of the latest `messages(sessionId)` attempt for [messagesSessionId]. With
-     * no session selected yet this is vacuously Ready with an empty thread — nothing
-     * was requested, so there is nothing loading and nothing failed.
-     */
-    var messagesPhase: LoadPhase by mutableStateOf(LoadPhase.Ready)
-        private set
-
-    /** Classified failure of the latest `messages()` attempt; `null` while Ready. */
-    var messagesError: LoadError? by mutableStateOf<LoadError?>(null)
-        private set
-
-    /** Which session the [messages] list belongs to (set BEFORE the fetch starts). */
-    var messagesSessionId: String? by mutableStateOf<String?>(null)
-        private set
-
-    /** The selected session's thread; swapped atomically on success, KEPT on failure. */
-    var messages: List<ChatMessage> by mutableStateOf<List<ChatMessage>>(emptyList())
-        private set
-
     @Volatile
     private var disposed = false
-
-    /**
-     * Generation counter for stale-request invalidation. Bumped and captured in the
-     * same thread that issues the fetch (the UI thread / the sequential test thread),
-     * read back on the loader thread only for the drop check — a plain `@Volatile`
-     * Long is sufficient; there is no cross-thread `++` (wasm has no JVM AtomicLong,
-     * and adding one would be ceremony around a single-threaded mutation).
-     */
-    @Volatile
-    private var messagesGen = 0L
 
     @Volatile
     private var sessionsFlight = false
@@ -206,52 +180,6 @@ class SessionsLoader(
                 }
             }
         }
-    }
-
-    // ------------------------------------------------------------------ messages
-
-    /**
-     * Selects [sessionId] and loads its thread. `isDraft` rows have no server thread —
-     * nothing to fetch, the phase is vacuously Ready with an empty thread. Already
-     * loaded / loading sessions are not refetched; a Failed one is (retry). Any result
-     * from an older generation is dropped before it can touch the state.
-     */
-    fun selectSession(sessionId: String, isDraft: Boolean = false) {
-        if (disposed) return
-        if (isDraft) {
-            messagesGen += 1 // invalidate anything still in flight
-            messagesSessionId = sessionId
-            messages = emptyList()
-            messagesPhase = LoadPhase.Ready
-            messagesError = null
-            return
-        }
-        if (sessionId == messagesSessionId && messagesPhase != LoadPhase.Failed) return
-        messagesGen += 1
-        val gen = messagesGen
-        messagesSessionId = sessionId
-        messagesPhase = LoadPhase.Loading
-        messagesError = null
-        launchJob {
-            try {
-                val fetched = source.messages(sessionId)
-                if (disposed || gen != messagesGen) return@launchJob // stale: drop silently
-                messages = fetched
-                messagesPhase = LoadPhase.Ready
-            } catch (e: CancellationException) {
-                return@launchJob
-            } catch (t: Throwable) {
-                if (disposed || gen != messagesGen) return@launchJob
-                messagesPhase = LoadPhase.Failed
-                messagesError = loadErrorOf(t)
-            }
-        }
-    }
-
-    /** Retry entry for a Failed message thread load (no-op when nothing failed). */
-    fun retryMessages() {
-        val id = messagesSessionId ?: return
-        selectSession(id)
     }
 
     // ------------------------------------------------------------------ events

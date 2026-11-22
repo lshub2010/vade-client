@@ -12,8 +12,6 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import vade.ui.chat.ChatMessage
-import vade.ui.chat.ChatRole
-import vade.ui.chat.ContentPart
 import vade.ui.data.DisconnectableSource
 import vade.ui.data.FakeSessionSource
 import vade.ui.data.FakeSessions
@@ -50,28 +48,19 @@ import kotlin.test.assertTrue
  * ## Why this file runs on a virtual clock (g-flake-gen)
  *
  * The harness used to run the loader on `Dispatchers.Default` and then *poll wall-clock
- * time* for a predicate (`waitUntil { … }`, `delay(150)`, 5 s timeout). Three separate
- * CI sightings of this file failed that way, all of them under load:
+ * time* for a predicate (`waitUntil { … }`, `delay(150)`, 5 s timeout). A CI sighting
+ * failed that way under load. So the loader now runs on the test dispatcher
+ * ([newScope] = `StandardTestDispatcher(testScheduler)`, a single-threaded FIFO scheduler
+ * with virtual time): `settle()` runs the loader to quiescence, and only then is state
+ * read, so no assertion can ever observe a half-published pair.
  *
- *  - `messagesFailureHitsOnlyThatSessionAndRetryMessagesWorks` — `expected:<Retryable>
- *    but was:<null>`: the poll only waited for `messagesPhase == Failed`, while
- *    `messagesError` is published by a **separate** state write (SessionsLoader
- *    `selectSession` catch-block writes phase, then error). A reader that wins that
- *    window sees a half-published pair — not a code bug, an observation point bug.
- *  - `staleMessageRequestNeverOverwritesNewSession` — `expected:<[a, b]> but
- *    was:<[b, a]>`: two `launch`es on a thread pool have **no** ordering guarantee, so
- *    the recorded call order was a fact about the pool, not about the request order.
+ * ## 消息线程不在这里（P0 修复）
  *
- * Both are (~a) test indeterminism, and neither is fixable by a longer timeout — a
- * timeout only widens the window in which the reader may lose the race. So the loader
- * now runs on the test dispatcher ([newScope] = `StandardTestDispatcher(testScheduler)`,
- * a single-threaded FIFO scheduler with virtual time): `settle()` runs the loader to
- * quiescence, and only
- * then is state read, so no assertion can ever observe a half-published pair and no
- * assertion depends on wall-clock duration. The order assertion
- * (`messagesCalls == [a, b]`) is kept: it is business-relevant (requests are issued in
- * selection order) and on a FIFO scheduler the observation of it is now determined by
- * the code, not by the pool.
+ * 本文件曾用半个文件测 `SessionsLoader.selectSession` 的 `messages()` 三态与代际失效。
+ * 那条读在真源上是 `ui/attach`，而 `ChatState.loadHistory` 也发同一个 attach —— 每选一次
+ * 会话 attach 两次、失败横幅两条。loader 的 messages 读已删除；`ScriptedSource.messages`
+ * 现在**一旦被调用就 error**，本文件的 `selectingSessionsNeverReadsMessages` 钉住这一点。
+ * 线程三态与「选会话只 attach 一次」的验收在 chat 层（`SessionAttachOnceTest`）。
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class UiStateSourceWiringTest {
@@ -82,21 +71,19 @@ class UiStateSourceWiringTest {
     private class ScriptedSource : SessionSource {
         val sessionsCallCount: Int get() = sessionsCalls.size
         val sessionsCalls = mutableListOf<Int>()
+
+        /**
+         * `messages()` 的调用记录。**这是本次修复的断言点**：选中会话不许出现在这里
+         * （`ui/attach` 每选中一次只由 ChatState 发一次）。源仍实现它 —— 接口使然 ——
+         * 但 loader 一次都不该调用。
+         */
         val messagesCalls = mutableListOf<String>()
 
-        /** ids of `messages()` calls whose scripted answer fully RETURNED to the loader. */
-        val messagesCompleted = mutableListOf<String>()
-
         private val sessionsScript = ArrayDeque<suspend () -> List<SessionSummary>>()
-        private val messagesScript = mutableMapOf<String, ArrayDeque<suspend () -> List<ChatMessage>>>()
         private val events = Channel<VadeEvent>(Channel.UNLIMITED)
 
         fun enqueueSessions(answer: suspend () -> List<SessionSummary>) {
             sessionsScript += answer
-        }
-
-        fun enqueueMessages(id: String, answer: suspend () -> List<ChatMessage>) {
-            messagesScript.getOrPut(id) { ArrayDeque() } += answer
         }
 
         fun rows(vararg rs: SessionSummary) = enqueueSessions { rs.toList() }
@@ -105,13 +92,6 @@ class UiStateSourceWiringTest {
 
         fun gatedSessions(gate: CompletableDeferred<Unit>, rs: List<SessionSummary>) =
             enqueueSessions { gate.await(); rs }
-
-        fun messagesRows(id: String, rs: List<ChatMessage>) = enqueueMessages(id) { rs }
-
-        fun messagesFail(id: String, error: Throwable) = enqueueMessages(id) { throw error }
-
-        fun gatedMessages(id: String, gate: CompletableDeferred<Unit>, rs: List<ChatMessage>) =
-            enqueueMessages(id) { gate.await(); rs }
 
         /** Buffered: safe to emit before the loader's collector has subscribed. */
         suspend fun emit(event: VadeEvent) {
@@ -132,9 +112,8 @@ class UiStateSourceWiringTest {
 
         override suspend fun messages(sessionId: String): List<ChatMessage> {
             messagesCalls += sessionId
-            val answer = messagesScript[sessionId]?.removeFirstOrNull()
-                ?: error("no scripted messages($sessionId) answer")
-            return answer().also { messagesCompleted += sessionId }
+            // 选中会话的唯一 attach 属于 ChatState；loader 走到这里就是回归，直接失败。
+            error("SessionsLoader must not read messages($sessionId) — ui/attach belongs to ChatState")
         }
 
         override fun observeEvents(): Flow<VadeEvent> = events.receiveAsFlow()
@@ -198,9 +177,6 @@ class UiStateSourceWiringTest {
         pinned = pinned,
     )
 
-    private fun msg(id: String, text: String) =
-        ChatMessage(id = id, role = ChatRole.User, parts = listOf(ContentPart.Text(text)))
-
     private fun ids(ui: UiState): List<String> =
         ui.groups().flatMap { it.sessions }.map { it.id }
 
@@ -215,7 +191,6 @@ class UiStateSourceWiringTest {
             // Fixtures are synchronous: no Loading state ever exists on this path.
             assertEquals(LoadPhase.Ready, ui.sessionsPhase)
             assertNull(ui.sessionsError)
-            assertNull(ui.messagesSessionId)
         } finally {
             ui.dispose()
         }
@@ -237,16 +212,14 @@ class UiStateSourceWiringTest {
     }
 
     @Test
-    fun fakePathMakesNoSourceCallsAndLoadsNoMessages() = runTest {
+    fun fakePathMakesNoSourceCallsAndNeverAttaches() = runTest {
         val ui = newUi(source = FakeSessionSource(), scope = newScope())
         try {
             ui.open("s-u1a") // the async path would fetch here; the fixture path must not
             settleAfter(150)
             assertEquals("s-u1a", ui.selectedSessionId)
-            assertNull(ui.messagesSessionId)
-            assertTrue(ui.messages.isEmpty())
             assertTrue(ui.sessionRows.isEmpty()) // fixtures are served by groups(), not the loader
-            assertEquals(LoadPhase.Ready, ui.messagesPhase)
+            assertEquals(LoadPhase.Ready, ui.sessionsPhase)
         } finally {
             ui.dispose()
         }
@@ -371,112 +344,25 @@ class UiStateSourceWiringTest {
         }
     }
 
-    // ------------------------------------------------- messages · three states + invalidation
+    // ------------------------------------------------- 选中只写选中，不 attach
 
     @Test
-    fun selectSessionTriggersMessagesLoad() = runTest {
+    fun selectingSessionsNeverReadsMessages() = runTest {
         val src = ScriptedSource()
-        src.rows(row("s1"))
-        src.messagesRows("s1", listOf(msg("m1", "你好"), msg("m2", "在吗")))
+        src.rows(row("s1"), row("s2"))
         val ui = newUi(source = src, scope = newScope())
         try {
             settle()
-            assertEquals(LoadPhase.Ready, ui.sessionsPhase)
-            ui.open("s1") // open() delegates to selectSession — the load must fire
-            assertEquals(LoadPhase.Loading, ui.messagesPhase)
-            assertEquals("s1", ui.messagesSessionId)
-            settle()
-            assertEquals(LoadPhase.Ready, ui.messagesPhase)
-            assertEquals(listOf("m1", "m2"), ui.messages.map { it.id })
-            assertEquals(listOf("s1"), src.messagesCalls)
-        } finally {
-            ui.dispose()
-        }
-    }
-
-    @Test
-    fun staleMessageRequestNeverOverwritesNewSession() = runTest {
-        val gateA = CompletableDeferred<Unit>()
-        val gateB = CompletableDeferred<Unit>()
-        val src = ScriptedSource()
-        src.rows(row("s0"))
-        src.gatedMessages("a", gateA, listOf(msg("a1", "旧会话的消息")))
-        src.gatedMessages("b", gateB, listOf(msg("b1", "新会话的消息")))
-        val ui = newUi(source = src, scope = newScope())
-        try {
-            settle()
-            assertEquals(LoadPhase.Ready, ui.sessionsPhase)
-            ui.selectSession("a")
-            ui.selectSession("b")
-            settle() // both loads reach the source and park on their gates
-            assertEquals(listOf("a", "b"), src.messagesCalls)
-            assertEquals(LoadPhase.Loading, ui.messagesPhase)
-            gateB.complete(Unit)
-            settle()
-            assertEquals(LoadPhase.Ready, ui.messagesPhase)
-            assertEquals(listOf("b1"), ui.messages.map { it.id })
-            gateA.complete(Unit) // the OLD session's answer arrives late…
-            settle() // …and is delivered to the loader: any illegal write happens here
-            assertEquals(2, src.messagesCompleted.size)
-            assertEquals("b", ui.messagesSessionId)
-            assertEquals(listOf("b1"), ui.messages.map { it.id })
-            assertEquals(LoadPhase.Ready, ui.messagesPhase)
-            // Both fetches happened; only the current generation's result was applied.
-            assertEquals(listOf("a", "b"), src.messagesCalls)
-        } finally {
-            ui.dispose()
-        }
-    }
-
-    @Test
-    fun messagesFailureHitsOnlyThatSessionAndRetryMessagesWorks() = runTest {
-        val src = ScriptedSource()
-        src.rows(row("s0"))
-        src.messagesFail("a", VadeException(VadeErrorCodes.TIMEOUT, "超时"))
-        src.messagesFail("a", VadeException(VadeErrorCodes.TIMEOUT, "还是超时"))
-        src.messagesRows("b", listOf(msg("b1", "B 的线程")))
-        val ui = newUi(source = src, scope = newScope())
-        try {
-            settle()
-            assertEquals(LoadPhase.Ready, ui.sessionsPhase)
-            ui.selectSession("a")
-            settle() // failure fully published: phase AND its classified error
-            assertEquals(LoadPhase.Failed, ui.messagesPhase)
-            assertEquals(VadeErrorCategory.Retryable, ui.messagesError?.category)
-            assertEquals(VadeErrorCodes.TIMEOUT, ui.messagesError?.code)
-            // Retry entry for the message thread:
-            ui.retryMessages()
-            settle()
-            assertEquals(2, src.messagesCalls.size)
-            assertEquals(LoadPhase.Failed, ui.messagesPhase)
-            // Another session is unaffected:
-            ui.selectSession("b")
-            settle()
-            assertEquals(LoadPhase.Ready, ui.messagesPhase)
-            assertEquals(listOf("b1"), ui.messages.map { it.id })
-            assertEquals(listOf("a", "a", "b"), src.messagesCalls)
-        } finally {
-            ui.dispose()
-        }
-    }
-
-    @Test
-    fun duplicateSelectOfSameSessionDoesNotRefetch() = runTest {
-        val src = ScriptedSource()
-        src.rows(row("s0"))
-        src.messagesRows("a", listOf(msg("a1", "A 的线程")))
-        val ui = newUi(source = src, scope = newScope())
-        try {
-            settle()
-            ui.selectSession("a")
-            settle()
-            assertEquals(LoadPhase.Ready, ui.messagesPhase)
-            ui.selectSession("a")
-            ui.selectSession("a")
+            ui.selectSession("s1")
+            ui.selectSession("s2")
+            ui.open("s1")
             settleAfter(150)
-            assertEquals(1, src.messagesCalls.size)
-            assertEquals(LoadPhase.Ready, ui.messagesPhase)
-            assertEquals(listOf("a1"), ui.messages.map { it.id })
+            assertEquals("s1", ui.selectedSessionId)
+            assertEquals(
+                emptyList<String>(),
+                src.messagesCalls,
+                "选中会话不许读 messages —— ui/attach 每选中一次只由 ChatState 发一次",
+            )
         } finally {
             ui.dispose()
         }
@@ -487,42 +373,36 @@ class UiStateSourceWiringTest {
         val gate = CompletableDeferred<Unit>()
         val src = ScriptedSource()
         src.rows(row("s0"))
-        src.gatedMessages("a", gate, listOf(msg("a1", "太晚了")))
+        src.gatedSessions(gate, listOf(row("s1")))
         val ui = newUi(source = src, scope = newScope())
         try {
             settle()
-            ui.selectSession("a")
-            assertEquals(LoadPhase.Loading, ui.messagesPhase)
-            settle() // the read is now in flight, parked on the gate
-            assertEquals(listOf("a"), src.messagesCalls)
+            assertEquals(listOf("s0"), ui.sessionRows.map { it.id })
+            ui.retrySessions() // 第二次拉取停在 gate 上
+            settle()
+            assertEquals(2, src.sessionsCallCount)
             ui.dispose()
-            gate.complete(Unit) // the answer arrives after disposal
+            gate.complete(Unit) // 回包晚于销毁
             settleAfter(200)
-            assertEquals(LoadPhase.Loading, ui.messagesPhase)
-            assertTrue(ui.messages.isEmpty())
+            assertEquals(listOf("s0"), ui.sessionRows.map { it.id }, "销毁后的回包一个字段都不写")
             // No further work is accepted after disposal:
-            ui.selectSession("b")
             ui.retrySessions()
             settleAfter(100)
-            assertEquals("a", ui.messagesSessionId)
-            assertEquals(1, src.sessionsCallCount)
-            assertEquals(listOf("a"), src.messagesCalls)
+            assertEquals(2, src.sessionsCallCount)
         } finally {
             ui.dispose()
         }
     }
 
     @Test
-    fun deepLinkInitialSessionLoadsItsMessages() = runTest {
+    fun deepLinkOnlySelectsTheSessionAndNeverAttaches() = runTest {
         val src = ScriptedSource()
         src.rows(row("s-deep"))
-        src.messagesRows("s-deep", listOf(msg("d1", "深链")))
         val ui = newUi(source = src, scope = newScope(), sessionId = "s-deep")
         try {
             settle()
             assertEquals("s-deep", ui.selectedSessionId)
-            assertEquals("s-deep", ui.messagesSessionId)
-            assertEquals(listOf("d1"), ui.messages.map { it.id })
+            assertEquals(emptyList<String>(), src.messagesCalls)
         } finally {
             ui.dispose()
         }

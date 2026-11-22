@@ -12,6 +12,7 @@ import vade.ui.protocol.ApprovalDecision
 import vade.ui.protocol.ApprovalScope
 import vade.ui.protocol.EditResubmitParams
 import vade.ui.protocol.InterruptParams
+import vade.ui.protocol.QueueCancelParams
 import vade.ui.protocol.SubmitParams
 import vade.ui.protocol.TurnRegenerateParams
 import vade.ui.protocol.VadeClient
@@ -127,6 +128,13 @@ class TurnGatewayReal(
         requireNonBlank(sessionId, "session_id")
         requireNonBlank(turnId, "turn_id")
         client.uiInterrupt(InterruptParams(sessionId = sessionId, turnId = turnId))
+    }
+
+    /** FR-8.36 · `ui/queue.cancel` — 取消排队中的回合；`turn_id` 逐字上帧。 */
+    override suspend fun cancelQueued(sessionId: String, turnId: String) {
+        requireNonBlank(sessionId, "session_id")
+        requireNonBlank(turnId, "turn_id")
+        client.uiQueueCancel(QueueCancelParams(sessionId = sessionId, turnId = turnId))
     }
 
     /**

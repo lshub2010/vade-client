@@ -33,18 +33,19 @@ import vade.ui.icon.VadeIcons
 import vade.ui.skin.LocalSkin
 
 /**
- * g-error-retry · the two **live read failures** get a banner that can actually be acted
- * on. Before this, `UiState.sessionsError` / `UiState.messagesError` were published by the
- * loader and read by nothing: with core not running (or the wrong port) the user was stuck
- * with no way out but restarting the app. `UiState.retrySessions()` / `retryMessages()`
- * already existed — this file only gives them a surface.
+ * g-error-retry · the **live list read failure** gets a banner that can actually be acted
+ * on. Before this, `UiState.sessionsError` was published by the loader and read by
+ * nothing: with core not running (or the wrong port) the user was stuck with no way out
+ * but restarting the app. `UiState.retrySessions()` already existed — this file only
+ * gives it a surface.
  *
- * ## Two banners, never one
- * The session list and the selected session's thread are **independent reads** with
- * independent retries (`SessionsLoader.refreshSessions` vs `retryMessages`). They therefore
- * render as two separate banners with two separate buttons, different copy and different
- * test tags: a failed list retry must never touch, disable or hide the thread banner, and
- * vice versa.
+ * ## 消息线程没有第二条横幅
+ *
+ * 旧实现还有一条 `Messages` 横幅，来自 `SessionsLoader` 的 `messages(id)` 读。那条读
+ * 与 `ChatState.loadHistory` 是**同一个** `ui/attach`，等于每次选会话 attach 两次；两条
+ * 失败横幅也跟着重复。现在线程的 Loading / 空 / 失败三态由 `ChatThread` 从
+ * `ChatState.phase` / `loadError` 一处渲染（重试 = `ChatState.retryHistory()`），
+ * 这里只保留会话列表（与新会话）两个**动作**横幅。
  *
  * ## In-flight state (why the button cannot be mashed)
  * Every read publishes `error = null` **synchronously** when it starts (`SessionsLoader`
@@ -55,7 +56,7 @@ import vade.ui.skin.LocalSkin
  *  - failure → retry enabled;
  *  - click → error cleared → model says `retrying = true`, button disabled, label 重试中…;
  *  - fail again → new error → enabled with the new category/text;
- *  - success → banner gone (rows/messages are on screen).
+ *  - success → banner gone (rows are on screen).
  * [loadBannerModel] is a pure function so all four transitions are testable without a
  * composition.
  *
@@ -65,7 +66,7 @@ import vade.ui.skin.LocalSkin
  * no character glyph anywhere: docs/visual-language.md §3).
  */
 internal enum class LoadBannerKind(
-    /** Banner container tag; also what distinguishes the two banners in tests. */
+    /** Banner container tag; also what distinguishes the banners in tests. */
     val tag: String,
     /** Retry button tag. */
     val retryTag: String,
@@ -82,13 +83,6 @@ internal enum class LoadBannerKind(
         subject = "会话列表",
         failTitle = "会话列表加载失败",
         retryDescription = "重试加载会话列表",
-    ),
-    Messages(
-        tag = "load-banner:messages",
-        retryTag = "load-banner:messages:retry",
-        subject = "该会话的消息",
-        failTitle = "该会话的消息加载失败",
-        retryDescription = "重试加载该会话的消息",
     ),
     NewSession(
         tag = "load-banner:new-session",
@@ -191,21 +185,9 @@ fun SessionListLoadBanner(
 ) = LoadBannerHost(LoadBannerKind.Sessions, phase, error, onRetry, modifier)
 
 /**
- * Message-thread failure banner (选中会话的消息). A **separate** banner with its own retry
- * (`UiState.retryMessages()`) — never merged with the list one (see the file doc).
- */
-@Composable
-fun MessageThreadLoadBanner(
-    phase: LoadPhase,
-    error: LoadError?,
-    onRetry: () -> Unit,
-    modifier: Modifier = Modifier,
-) = LoadBannerHost(LoadBannerKind.Messages, phase, error, onRetry, modifier)
-
-/**
  * A4-1 · 新建会话失败横幅（✎ 的动作失败，不是一次「读取」）。独立的 kind / 独立的重试
  * （重试入口 = `UiState.newSession()`，它会真的重发 `ui/attach(null)`，1 → 2）—— 与
- * 列表 / 消息横幅互不合并、互不遮挡。
+ * 列表横幅互不合并、互不遮挡。
  */
 @Composable
 fun NewSessionLoadBanner(
