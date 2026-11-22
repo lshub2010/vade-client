@@ -61,6 +61,14 @@ class SessionSwitchHistoryTest {
             )
             transport.push(responseFrame(idOf(frameB), snapshotReply("s-B", 9, "B 的唯一一条")))
             assertEquals(listOf("B 的唯一一条"), b.await().map { it.bodyText }, "B 的历史必须真的渲染出来")
+            // C-06 · 切走 = 摘旧 sink：客户端在提交 B 之后单向下发 ui/detach(s-A)。
+            // 不摘的话 A 的 per-session seq 会继续写进这条 socket（两个会话的 sink 并存）。
+            val detachA = transport.awaitSent()
+            assertEquals(
+                "ui/detach" to """{"session_id":"s-A"}""",
+                requestOf(detachA),
+                "切到 B 必须摘掉 A 的 sink（best-effort，等回包会挡住 attach 的返回）",
+            )
 
             // B → A：回到 A，同样必须是快照，而不是 B 的游标
             val backA = async { source.messages("s-A") }
