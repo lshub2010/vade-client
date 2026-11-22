@@ -1,7 +1,7 @@
 # f13-event · 多会话事件路由（client）
 
-分支 `tmp/f13-event`（基于 `main` 3eab07a），head `66bf724` 上 CI run `45028407464` 绿。
-本批只动客户端协议层与其测试；`main` 未改。
+分支 `tmp/f13-event`（基于 `main` 3eab07a），代码提交 `8bd4b63` 上 CI run `45029448209` 绿
+（本文件是它之后的纯报告提交，不参与构建）。本批只动客户端协议层与其测试；`main` 未改。
 
 ## 契约依据
 
@@ -67,13 +67,12 @@ core 的 `_retire_sink` 只摘同一 `(connection, session)`，不摘上一个�
 
 ## 验证（真实 CI，不是推断）
 
-- **head `66bf724`**，run `45028407464`（`workflow_dispatch`）：**success**
-  - `client`：`files=200 tests=1781 failures=0 errors=0 skipped=1`，`BUILD SUCCESSFUL in 2m 18s`
-  - `Wasm compile`：`BUILD SUCCESSFUL in 30s`
-  - `android`：`assembleDebug` success（APK 已上传）
-- 同代码前一跑 `45027794209`（`headSha` 8bd4b63，仅少本报告）：**success**
-  - `files=200 tests=1781 failures=0 errors=0 skipped=1`，`Wasm compile` 36s，`android` 1m 12s
-- 已知抖动（不是本批回归）：`45028407464` 第一跑红在
+- run `45029448209`（`workflow_dispatch`，代码提交 8bd4b63）：**success**
+  - `client`：`files=200 tests=1781 failures=0 errors=0 skipped=1`，`BUILD SUCCESSFUL in 2m 40s`
+  - `Wasm compile`：`BUILD SUCCESSFUL in 35s`
+  - `android`：`assembleDebug` `BUILD SUCCESSFUL in 58s`（APK 已上传）
+- 同代码前两跑 `45027794209` / `45028407464` 也是 `1781 tests / 0 failures`（数字一致，不是被过滤）
+- 已知抖动（不是本批回归）：`45028407464` 的一跑红在
   `RealCoreE2ETest.requestBudgetExpiresWithTimeoutCodeWhenCoreNeverReplies`
   （`expected:<TIMEOUT> but was:<UNAVAILABLE>`）。该用例与本次改动无交集（自建静默 WS 服务端，
   不 attach 任何会话）；**同一提交 rerun 即绿**，且同代码的上一跑也绿 —— 记为 flake，未改代码。
