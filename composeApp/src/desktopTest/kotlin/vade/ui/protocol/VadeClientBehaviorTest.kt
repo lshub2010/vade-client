@@ -449,7 +449,7 @@ class VadeClientBehaviorTest {
                 // 否则断言会跑在 collector 之前（这是本用例第一版红在 size=1 的原因）。
                 waitUntil { seen.size >= 2 }
                 delay(100) // 负例要等一等：若 A 的帧被误投，它一定在这段时间里到达
-                assertEquals(listOf("a-11", "b-1"), seen.map { (it as TurnDeltaEvent).text }, "看 B 时 A 的两帧一帧都不许投影")
+                assertEquals(listOf("a-11", "b-1"), seen.map { (it as TurnDelta).payload.text }, "看 B 时 A 的两帧一帧都不许投影")
                 assertEquals(1L, client.lastSeq, "跟踪中的会话（B）的水位就是 B 自己的")
                 assertEquals(13L, client.lastSeqFor("s-A"), "A 的水位在后台照常前进")
 
@@ -507,7 +507,7 @@ class VadeClientBehaviorTest {
                 transport.push(eventFrame("turn.delta", 3, """{"turn_id":"tb","text":"b-3"}""", sessionId = "s-B"))
                 waitUntil { seen.size >= 1 }
                 delay(100)
-                assertEquals(listOf("b-3"), seen.map { (it as TurnDeltaEvent).text }, "切换窗口里只交付目标会话的帧")
+                assertEquals(listOf("b-3"), seen.map { (it as TurnDelta).payload.text }, "切换窗口里只交付目标会话的帧")
 
                 transport.push(responseFrame(idOf(attachBFrame), """{"session_id":"s-B","from_seq":3,"snapshot":null}"""))
                 withTimeout(5000) { attachB.await() }
