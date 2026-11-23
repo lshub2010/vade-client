@@ -97,6 +97,33 @@ internal fun parsePairingErrorBody(body: String): Pair<String, String>? {
 }
 
 /**
+ * T5/D8 · `POST /ui/session` 的 body token，给读不到 `Set-Cookie` 的浏览器。
+ *
+ * core 只在客户端显式带 `x-vade-session-token: 1` **且** Origin 通过闸门时才回这个字段
+ * （`core/vade/transport/server.py`），值是 `__Host-ac_ui` 的同一份凭据。缺字段 / 类型不对
+ * 一律返回 `null` —— 调用方退回「浏览器托管 cookie」模式，绝不把解析失败当成配对失败。
+ *
+ * 这个值**只许留在进程内存**：它是 HttpOnly cookie 的拷贝，写进 localStorage/磁盘等于
+ * 把 30 天有效的 UI 凭据交给同源的任何脚本（XSS 直接变现）。
+ */
+internal fun parseSessionToken(body: String): String? {
+    if (body.isBlank()) return null
+    val obj = runCatching { VadeJson.default.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject }
+        .getOrNull() ?: return null
+    return runCatching { obj.strStrict("session_token") }.getOrNull()
+        ?.trim()?.takeIf { it.isNotEmpty() }
+}
+
+/**
+ * T5 · 码是有效的（`POST /ui/session` 已 200），但浏览器没把会话带上来：本运行时读不到
+ * `Set-Cookie`，响应里也没有 body token，`/ws` 升级仍被拒。
+ *
+ * 单独一个类型是为了让配对卡说「浏览器没保存会话」而不是「码错」—— 后者会让用户拿着
+ * 一个**已经被消费**的码反复重试。
+ */
+class BrowserCookieUnavailableException(message: String, cause: Throwable? = null) : Exception(message, cause)
+
+/**
  * Browser-session transport factory (RFC-0004 §8.2, the "pairing" path).
  *
  * 1. `POST /ui/session` with `{pair_code, client_name}` — mints the `__Host-ac_ui`
@@ -105,9 +132,22 @@ internal fun parsePairingErrorBody(body: String): Pair<String, String>? {
  *    single-use, so re-bootstrapping per attempt would burn one code per drop.
  * 2. `GET ws(s)://host:port/ws` upgrade with `Cookie: __Host-ac_ui=…`.
  *
- * On browser (wasm/JS) targets the fetch API cannot read `Set-Cookie`, and the browser
- * carries the cookie itself for same-origin sockets: pair through the page shell there
- * and leave [VadeClientConfig.browserSession] `null` — this factory is the JVM/Android path.
+ * ## Two credential channels, one session (T5/D8)
+ *
+ * A JVM/Android engine reads `Set-Cookie` and uses it directly. A browser (wasm)
+ * cannot: `Set-Cookie` is a forbidden response header. So the request opts in with
+ * `x-vade-session-token: 1` and the core — only for an allowlisted browser Origin —
+ * mirrors the same token in the JSON body. The value is the *same* session row, so
+ * `DELETE /ui/session` revokes it exactly like the cookie.
+ *
+ * If neither channel yields a value (an older core, or a response the browser was
+ * allowed to receive but could not read), this factory does **not** throw: the
+ * browser has already stored the cookie on its own (same-origin page), and the
+ * `/ws` upgrade is the real proof. That mode is memoised ([browserManagedCookie])
+ * so a reconnect never re-sends the consumed pair code. When the upgrade is then
+ * rejected the factory raises [BrowserCookieUnavailableException] instead of a
+ * generic `AUTH_FAILED`, because "your code was accepted but the browser did not
+ * keep the cookie" is a different next step from "that code is wrong".
  */
 class KtorTransportFactory(
     private val config: VadeClientConfig,
@@ -125,6 +165,15 @@ class KtorTransportFactory(
      */
     @Volatile
     private var cookieHeader: String? = config.sessionCookie?.let { "$COOKIE_NAME=${it.value}" }
+
+    /**
+     * T5 · 本 factory 已经把一次性码兑换成了一次会话，但这次会话的凭据**不在**
+     * `cookieHeader` 里：core 没回可读的 `Set-Cookie`，也没回 `session_token`
+     * （旧 core，或响应被浏览器/CORS 过滤）。凭据在浏览器的 cookie jar 里，由浏览器
+     * 自己带上 —— 这个 flag 只负责「别再 POST 一次，码已经被消费了」。
+     */
+    @Volatile
+    private var browserManagedCookie = false
 
     /** P0-4 · 被桥退休之后不再可用；`connect()` 直接抛而不是让调用方无限重试。 */
     @Volatile
@@ -162,6 +211,18 @@ class KtorTransportFactory(
             // 先本地作废再抛出：否则下一次重连还会带着同一张死 cookie，成了僵尸重连。
             if (isCredentialHandshakeFailure(t)) {
                 cookieHeader = null
+                if (browserManagedCookie) {
+                    // T5 · 码是有效的（POST 已 200），但浏览器没把会话带上来。这不是
+                    // 「码错」，也不能重试同一个码（已消费）—— 给可执行的下一步。
+                    throw BrowserCookieUnavailableException(
+                        "POST /ui/session accepted the pair code, but the /ws upgrade was rejected: " +
+                            "this runtime cannot read Set-Cookie and the response carried no session_token, " +
+                            "so the session cookie never reached this page. Serve the page from the core's " +
+                            "own origin (same scheme/host/port, e.g. a reverse proxy) or pair from the " +
+                            "desktop app / Android; the one-time code has been consumed — take a new one.",
+                        t,
+                    )
+                }
                 throw VadeException(
                     VadeErrorCodes.AUTH_FAILED,
                     "websocket upgrade rejected the stored __Host-ac_ui cookie: ${t.message}",
@@ -195,6 +256,11 @@ class KtorTransportFactory(
      * 只在**已经**拿到 cookie 时发：没 bootstrap 过就没有本进程的 UI 会话可吊销，再拿一次性
      * 配对码去 POST 只会白烧一个码（[ensureCookie] 的 memo 里没有码可用）。
      *
+     * T5 · 浏览器托管模式（[browserManagedCookie]）例外：本进程读不到 cookie 的值，但
+     * **浏览器**会把这张 cookie 带在同源请求上，所以照样发 DELETE（不带 `Cookie` 头），
+     * 让用户断开时旧 core 上的会话真的作废。那次请求若不是同源，core 回 401，由调用方
+     * 按 best-effort 处理。
+     *
      * P1-3 · **只有 core 确认（2xx）之后才忘掉本地 cookie**。旧实现用 `finally` 无条件清：
      * `switchCore` 在吊销这一步被取消（或旧 core 超时 / 拒绝）时，桥仍然是 `Paired(old)`、
      * factory 也还是那一个，但本地 cookie 已经没了 —— 下一次重连不带 cookie，core 按 device
@@ -205,7 +271,19 @@ class KtorTransportFactory(
      * 提示）。撤销成功后本地不再持有这张凭证；撤销失败时它可能仍然有效，留着才是对的。
      */
     override suspend fun revokeSession() {
-        val cookie = cookieHeader ?: return
+        val cookie = cookieHeader
+        if (cookie == null) {
+            if (!browserManagedCookie) return
+            val response = client.delete { url(httpUrl() + "/ui/session") }
+            if (response.status.value !in 200..299) {
+                throw VadeException(
+                    code = VadeErrorCodes.AUTH_FAILED,
+                    message = "DELETE /ui/session failed with HTTP ${response.status.value}: " +
+                        response.bodyAsText().take(200),
+                )
+            }
+            return
+        }
         val response = client.delete {
             url(httpUrl() + "/ui/session")
             header(HttpHeaders.Cookie, cookie)
@@ -221,11 +299,17 @@ class KtorTransportFactory(
         cookieHeader = null
     }
 
-    private suspend fun ensureCookie(): String = bootstrapMutex.withLock {
-        cookieHeader ?: run {
+    private suspend fun ensureCookie(): String? = bootstrapMutex.withLock {
+        cookieHeader ?: if (browserManagedCookie) {
+            // 码已经被消费过一次；凭据在浏览器 jar 里，别再 POST。
+            null
+        } else run {
             val response = client.post {
                 url(httpUrl() + "/ui/session")
                 contentType(ContentType.Application.Json)
+                // T5 · 显式声明「本运行时读不到 Set-Cookie」。core 只在 Origin 也通过
+                // 闸门时才把同一个 token 放进 body；原生客户端不带 Origin，永远走 cookie。
+                header(SESSION_TOKEN_HEADER, "1")
                 setBody(
                     """{"pair_code":${jsonString(config.browserSession!!.pairCode)},""" +
                         """"client_name":${jsonString(config.clientName)}}""",
@@ -244,13 +328,20 @@ class KtorTransportFactory(
                         (coreError?.second ?: body.take(200)),
                 )
             }
+            val body = response.bodyAsText()
+            // Cookie first: when the engine can read it, that is the credential the
+            // server itself set, and the response body is not consulted at all.
             val token = response.headers.getAll(HttpHeaders.SetCookie).orEmpty()
                 .firstNotNullOfOrNull { Regex("__Host-ac_ui=([^;]+)").find(it)?.groupValues?.get(1) }
-                ?: throw VadeException(
-                    code = VadeErrorCodes.AUTH_FAILED,
-                    message = "/ui/session response carried no __Host-ac_ui cookie " +
-                        "(browser targets cannot read Set-Cookie: pair through the page shell instead)",
-                )
+                ?: parseSessionToken(body)
+            if (token == null) {
+                // Neither channel: an older core (it ignores the opt-in header) or a
+                // response the browser was allowed to receive but not to read. The
+                // browser has already stored the cookie; `/ws` is the proof. Memoise
+                // it so the consumed pair code is never re-sent.
+                browserManagedCookie = true
+                return@run null
+            }
             val header = "$COOKIE_NAME=$token"
             cookieHeader = header
             header
@@ -269,6 +360,9 @@ class KtorTransportFactory(
     private companion object {
         /** `Set-Cookie` 里的头名（RFC-0004 §8.2）。 */
         const val COOKIE_NAME = "__Host-ac_ui"
+
+        /** T5 · 显式 opt-in：本运行时读不到 `Set-Cookie`，请把同一个 token 放进 body。 */
+        const val SESSION_TOKEN_HEADER = "x-vade-session-token"
 
         /** Minimal JSON string escaping for the two literals we send ourselves. */
         fun jsonString(raw: String): String = buildString {
