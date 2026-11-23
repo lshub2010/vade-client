@@ -418,8 +418,16 @@ class ChatState(
             throw error
         } catch (error: Exception) {
             if (disposed) return false
+            // P1-1 · 被更新的 attach 淘汰的成功回包会以 CANCELLED 抛上来：那次 attach 的
+            // core sink 已被摘掉、客户端也没有切过去。绝不能进 Ready（历史可能回得来，
+            // 但实时流永远没有帧）；落成 Failed + 重试，让用户把这一屏重新挂上。
+            val superseded = (error as? VadeException)?.code == VadeErrorCodes.CANCELLED
             phase = ChatPhase.Failed
-            loadError = error.message?.takeIf { it.isNotBlank() } ?: LOAD_FAILED_FALLBACK
+            loadError = if (superseded) {
+                SUPERSEDED_MESSAGE
+            } else {
+                error.message?.takeIf { it.isNotBlank() } ?: LOAD_FAILED_FALLBACK
+            }
             false
         }
     }
@@ -627,11 +635,15 @@ class ChatState(
      * 真源模式下事件与历史**并行**接：先开收集、再拉历史，加载期间到达的 delta 不会丢
      * （[loadHistory] 重建时会把 live 行带上）。
      *
-     * P0-1 · 只投影**本会话**的帧：`VadeEvent.sessionId` 是协议层的信封归属（老 core
-     * 没有信封时为 `null`，按旧行为接收）。attach B 失败后协议层会把可见门回退到旧会话
-     * A 以维持重连/水位，A 的帧因此仍会出现在共享事件流上 —— 屏上是失败的 B，这一道
-     * 过滤保证 B 的线程**永远**不吃 A 的帧（也不会被 A 的 seq 毒化 [LiveTranscript] 的
-     * bootstrap 起点）。`null` 的帧不按会话判断。
+     * P0-1 / f13-P1-2 · 只投影**本会话**的帧。`VadeEvent.sessionId` 是协议层的归属：
+     *  - C-06 core 的每一帧都带信封 `session_id`；
+     *  - 老 core（无信封）的帧由协议层在**稳定态**（attached == visible）归到当前
+     *    attached 会话，切换/失败窗口内的帧根本不进 `events`；
+     *  - 只有非协议源（测试夹具）才会给出 `sessionId == null`，按旧行为接收。
+     *
+     * attach B 失败后协议层会把可见门回退到旧会话 A 以维持重连/水位，A 的帧因此仍会
+     * 出现在共享事件流上 —— 屏上是失败的 B，这一道过滤保证 B 的线程**永远**不吃 A 的
+     * 帧（也不会被 A 的 seq 毒化 [LiveTranscript] 的 bootstrap 起点）。
      */
     suspend fun collectLiveEvents() {
         if (disposed) return
@@ -640,6 +652,10 @@ class ChatState(
             channel.events().collect { event ->
                 if (disposed) return@collect
                 if (event.sessionId != null && event.sessionId != sessionId) return@collect
+                // 无归属的帧（只有非协议源、或老 core 尚未 attach 的兜底槽位会给出）无法
+                // 证明属于本会话：加载完成前一律不投影 —— 否则一个刚挂上、还没 attach 成功
+                // 的 ChatState 会把别的会话的帧吃进自己的 transcript。
+                if (event.sessionId == null && phase != ChatPhase.Ready) return@collect
                 // P1-2 · 事件投影与 RPC 回包的写回共用一把锁：投影器内部是普通
                 // LinkedHashMap，`items`/`queue` 也是「读在 Main、写在 Default」。
                 stateMutex.withLock { applyLiveEvent(event) }
@@ -2198,6 +2214,13 @@ class ChatState(
 
         /** 异常没带 message 时的兜底原因。 */
         const val LOAD_FAILED_FALLBACK: String = "历史快照读取异常"
+
+        /**
+         * P1-1 · 本次 `ui/attach` 被更新的 attach 淘汰（协议层 CANCELLED）：历史可能拿到了，
+         * 但那次 attach 的 sink 已经被摘掉，屏上会是一个永远没有实时帧的 Ready。落成
+         * Failed + [RETRY_TEXT]，重试会重新 attach 并把这一屏接回来。
+         */
+        const val SUPERSEDED_MESSAGE: String = "会话切换已取代本次加载，请重试"
 
         // --- RFC-0008 · ask-user 问答 -------------------------------------------
 

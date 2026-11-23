@@ -546,14 +546,46 @@ class VadeClient(
         // C-06 2.0.0 · 事件归**哪个会话**：信封的 `params.session_id` 是权威字段
         // （core `Event.to_wire` 对每一帧都写它，包括 payload 里没有 session_id 的
         // `task.progress` / `queue.updated`）。`payload.session_id` 只作为老 core 的
-        // 兼容回退；两者都没有时归当前跟踪的会话，再否则落到兜底槽位（旧行为）。
+        // 兼容回退。
         val payload = params["payload"] as? JsonObject
         val envelopeOwner = (params["session_id"] as? JsonPrimitive)?.contentOrNull
         val payloadOwner = (payload?.get("session_id") as? JsonPrimitive)?.contentOrNull
         val explicitOwner = envelopeOwner != null || payloadOwner != null
-        // 显式归属才写进事件：老 core 的帧（无信封）`sessionId = null`，消费方按旧行为接收。
         val claimedOwner = envelopeOwner ?: payloadOwner
-        val owner = claimedOwner ?: attachedSessionId ?: UNTRACKED_SESSION
+        // P1-2 · 老 core（pre-C-06：信封与 payload 都没有 session_id）的归属**只在稳定态**
+        // 成立：`visibleSessionId == attachedSessionId` 且没有 create 在飞 —— 没有 attach
+        // 在飞、没有失败目标占着门，这条连接此刻确实只承载这一个会话（两者都为 null =
+        // 还没 attach，沿用旧行为落到「没有会话」的兜底槽位）。同会话 re-attach 仍算稳定
+        // 态：那些帧本来就属于 attached。
+        //
+        // 其余时刻（首次 attach 在飞 / 切会话在飞 / create 在飞 / attach 刚失败）归属不明：
+        // 既不能猜给 [attachedSessionId]（core 已经切到在途目标，它的 replay 会被记到旧会话
+        // 的水位上），也不能猜给在途/失败目标（旧会话的帧会被记到失败目标上，正是上一轮
+        // P0-1 的串台路径）。这类帧只进全量缝 [allEvents]（列表刷新不按会话门控），既不进
+        // 聊天投影、也不推进任何会话的水位。
+        val coalesceFlag = (params["x-vade"] as? JsonObject)?.get("coalesce")
+        val coalesced = coalesceFlag is JsonPrimitive && coalesceFlag.booleanOrNull == true
+        val legacySteady = !explicitOwner && sessionMutex.withLock {
+            // create 在飞时这条连接的目标是 core 即将铸出的**新**会话，不是 attached；
+            // 那些帧既不能记到 attached 的账上，也不该进屏上会话的投影。
+            visibleSessionId == attachedSessionId && createAttachInFlight == 0
+        }
+        val owner: String? = claimedOwner
+            ?: if (legacySteady) attachedSessionId ?: UNTRACKED_SESSION else null
+        if (owner == null) {
+            // 归属不明的老 core 帧：`sessionId = null`（消费方据此知道它不属于任何会话），
+            // 只送全量缝。绝不 emit 到 [events]，也绝不写 seqBySession。
+            val orphan = VadeEventParser.parse(
+                type,
+                seq,
+                coalesced,
+                params["payload"],
+                sessionId = null,
+                onMalformed = config.onMalformed,
+            )
+            if (orphan != null) _allEvents.emit(orphan)
+            return
+        }
         val (applied, deliverable) = sessionMutex.withLock {
             (seqBySession[owner] ?: 0L) to deliverableLocked(owner, explicitOwner)
         }
@@ -561,14 +593,15 @@ class VadeClient(
         if (applied > 0 && seq > applied + 1) {
             config.onGap?.invoke(applied, seq)
         }
-        val coalesceFlag = (params["x-vade"] as? JsonObject)?.get("coalesce")
-        val coalesced = coalesceFlag is JsonPrimitive && coalesceFlag.booleanOrNull == true
         val event = VadeEventParser.parse(
             type,
             seq,
             coalesced,
             params["payload"],
-            sessionId = if (explicitOwner) owner else null,
+            // 归属已确定（信封 / payload / 稳定的老 core 连接）——每一帧都带会话 id，
+            // 于是 ChatState 的 `event.sessionId != sessionId` 过滤对老 core 同样生效。
+            // 唯一例外是「还没有 attach 过」的兜底槽位：它不对应任何会话，按旧行为留空。
+            sessionId = if (owner == UNTRACKED_SESSION) null else owner,
             onMalformed = config.onMalformed,
         )
         // Advance that session's last_seq regardless of the parse outcome: an undecodable
@@ -586,20 +619,25 @@ class VadeClient(
     /**
      * C-06 · 这一帧能不能交给**聊天投影**（[events]）。调用方持有 [sessionMutex]。
      *
-     * - 老 core 的信封没有 `session_id`（`explicitOwner == false`）：整条连接就是那个
-     *   会话，沿用旧行为直接交付。
-     * - 有归属：只有 [visibleSessionId]（UI 想看的会话）的帧才交付。attach **一开始**就
-     *   切门，所以在途目标的 replay（core 先推事件再回 RPC）照常到达，而同一时刻被换下
-     *   的旧会话、以及并发 attach 里被淘汰的目标，都进不了 UI。
+     * - 有归属（信封 / payload）：只有 [visibleSessionId]（UI 想看的会话）的帧才交付。
+     *   attach **一开始**就切门，所以在途目标的 replay（core 先推事件再回 RPC）照常到达，
+     *   而同一时刻被换下的旧会话、以及并发 attach 里被淘汰的目标，都进不了 UI。
+     * - 老 core（`explicitOwner == false`）：调用方只在**稳定态**（`attached == visible`）
+     *   才给出归属，这里再钉一次 —— 只交付给当前 attached 会话，且它必须同时是可见会话。
+     *   切换窗口 / 失败目标一律 false（那些帧连归属都没有）；还没 attach 过时沿用旧行为，
+     *   帧落到「没有会话」的兜底槽位（ChatState 在加载完成前会把无归属帧挡掉）。
      *
      * 失败路径由 [failAttachLocked] 把门回退到 previous —— 那时 A 的帧会从 [events]
      * 发出（重连 / 水位继续），但屏上是失败的 B：B 的 `ChatState` 必须按
-     * `VadeEvent.sessionId` 再挡一道，这是「B 的线程永远不吃 A 的帧」的硬保证。
+     * `VadeEvent.sessionId` 再挡一道，这是「B 的线程永远不吃 A 的帧」的硬保证
+     * （老 core 的帧现在也带 A 的 id，所以同一道过滤对它生效）。
      */
     private fun deliverableLocked(owner: String, explicitOwner: Boolean): Boolean {
-        if (!explicitOwner) return true
-        if (owner == UNTRACKED_SESSION) return false
-        return owner == visibleSessionId
+        if (explicitOwner) return owner != UNTRACKED_SESSION && owner == visibleSessionId
+        // 老 core：归属由调用方保证是稳定态（`visible == attached`）；这里再钉一次。
+        // 还没有 attach 过（attached == null）时沿用旧行为：整条连接没有别的会话可串。
+        if (attachedSessionId == null) return true
+        return owner == attachedSessionId && owner == visibleSessionId
     }
 
     private suspend fun handleResponse(msg: JsonObject) {
@@ -732,6 +770,11 @@ class VadeClient(
      *
      * On a snapshot attach the client adopts the snapshot's `from_seq` as that session's new
      * watermark; on a replay attach it keeps tracking.
+     *
+     * P1-1 · 被更新的 attach 淘汰的**成功**回包会抛
+     * `VadeException(VadeErrorCodes.CANCELLED)`：那次 attach 的 core sink 已经被摘掉、
+     * 客户端也没有切过去，把它当成功返回会让调用方（`ChatState.loadHistory`）把屏置成
+     * Ready 却永远收不到后续帧。调用方应把这个码当成「本次加载作废，可重试」。
      */
     suspend fun attach(params: AttachParams): AttachResult =
         requireNotNull(attachInternal(params, resolveResume = true)) { "attach always begins" }
@@ -772,25 +815,38 @@ class VadeClient(
             withContext(NonCancellable) { failAttachLocked(ticket, effective) }
             throw t
         }
-        withContext(NonCancellable) { commitAttachLocked(ticket, effective, result) }
+        val committed = withContext(NonCancellable) { commitAttachLocked(ticket, effective, result) }
+        if (!committed) {
+            // P1-1 · 被淘汰的成功回包**不是**成功：core 那边这次 attach 的 sink 已经被
+            // [retireDiscardedAttachLocked] 摘掉，客户端也没把它记成 attached。把这个
+            // `AttachResult` 原样交给调用方，`ChatState.loadHistory` 会拿它把屏置成
+            // Ready（历史看着正常、live 流却永远没有帧）。改成调用方可见的「取消」：
+            // 结果是 Failed + 重试，而不是一个假的就绪态。
+            throw VadeException(
+                VadeErrorCodes.CANCELLED,
+                "attach superseded by a newer attach; this load was discarded",
+            )
+        }
         return result
     }
 
     /**
-     * P1-1 · 只有最新 ticket 的 attach 能提交。
+     * P1-1 · 只有最新 ticket 的 attach 能提交。返回 `true` = 本次提交落地；`false` =
+     * 被更新的 attach 淘汰（回包本身成功，但**不许**当成成功交给调用方 —— 见
+     * [attachInternal] 的 CANCELLED）。
      *
      * `previous` 在**提交时**按当前 attached 重算（不是发起时的快照），并且正被在途
      * attach 目标/新当前会话的旧会话绝不摘：旧实现「发起时取 previous + 无条件发
      * detach(previous)」会在 A→B→A 的并发里误杀 A 刚发出的新 sink。
      */
-    private suspend fun commitAttachLocked(ticket: Long, params: AttachParams, result: AttachResult) =
+    private suspend fun commitAttachLocked(ticket: Long, params: AttachParams, result: AttachResult): Boolean =
         sessionMutex.withLock {
             if (ticket != latestAttachTicket) {
                 endAttachLocked(params.sessionId)
                 // 被淘汰的 attach 已经在 core 注册了 sink（replay 甚至已经发来）。补一条
                 // detach 收拾它；但它若正被更新的 attach 接管、或就是当前会话，不许碰。
                 retireDiscardedAttachLocked(params.sessionId ?: result.sessionId)
-                return@withLock
+                return@withLock false
             }
             val previous = attachedSessionId
             // 提交与「离开在途集合」必须在同一个临界区里：任何空档都会让 core 已经推到
@@ -813,6 +869,7 @@ class VadeClient(
             if (previous != null && previous != result.sessionId && (attachInFlight[previous] ?: 0) == 0) {
                 sendDetachQuietly(previous)
             }
+            true
         }
 
     /**

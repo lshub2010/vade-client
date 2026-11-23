@@ -15,12 +15,16 @@ import kotlinx.coroutines.withTimeout
 import java.io.IOException
 import vade.ui.chat.ChatHistory
 import vade.ui.chat.ChatItem
+import vade.ui.chat.ChatPhase
 import vade.ui.chat.ChatState
 import vade.ui.chat.ChatTranscriptSource
 import vade.ui.chat.DraftStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -64,6 +68,36 @@ class SessionAttachFailureRoutingTest {
         ),
         drafts = DraftStore(),
     )
+
+    /**
+     * 生产形态的读通道：`snapshot` 就是 `RealSessionSource.chatSnapshot` 的三件事 ——
+     * `ui/attach` + forceSnapshot/resume=false + 从回包取历史。
+     */
+    private fun realChatFor(client: VadeClient, sessionId: String): ChatState = ChatState(
+        sessionId = sessionId,
+        transcript = ChatTranscriptSource.ofSnapshot(
+            snapshot = { id ->
+                client.uiAttach(
+                    AttachParams(sessionId = id, lastSeq = null, forceSnapshot = true, resume = false),
+                )
+                ChatHistory(messages = emptyList())
+            },
+            events = { client.events },
+        ),
+        drafts = DraftStore(),
+    )
+
+    /** 订阅全量缝（列表刷新）—— 用来证明「不投影」不等于「被丢掉」。 */
+    private suspend fun CoroutineScope.collectAllEvents(client: VadeClient, onEvent: (VadeEvent) -> Unit): Job {
+        val subscribed = CompletableDeferred<Unit>()
+        val job = launch {
+            client.allEvents
+                .onSubscription { subscribed.complete(Unit) }
+                .collect { onEvent(it) }
+        }
+        subscribed.await()
+        return job
+    }
 
     private fun ChatState.texts(): String = items.joinToString("\n") { item ->
         when (item) {
@@ -170,7 +204,11 @@ class SessionAttachFailureRoutingTest {
 
             // 先发起的 B 晚回包：只许收拾自己，绝不许把 attached 改回 B。
             transport.push(responseFrame(idOf(bFrame), """{"session_id":"s-B","from_seq":0,"snapshot":null}"""))
-            withTimeout(5_000) { attachB.await() }
+            // P1-1 · 被淘汰的成功回包**不是**成功：必须以 CANCELLED 回到调用方。
+            val superseded = assertFailsWith<VadeException>("被淘汰的成功回包不许当成功返回") {
+                withTimeout(5_000) { attachB.await() }
+            }
+            assertEquals(VadeErrorCodes.CANCELLED, superseded.code)
             assertEquals("s-C", client.attachedSession, "旧回包不得覆盖新会话（latest-wins）")
             val detachB = transport.awaitSent()
             assertEquals("ui/detach", requestOf(detachB).first)
@@ -427,9 +465,13 @@ class SessionAttachFailureRoutingTest {
             val create = async { client.attach(AttachParams(null, null)) }
             val createFrame = transport.awaitSent()
 
-            // B 成功，但最新的意图是 create：B 被淘汰 → 摘 sink、门回 A。
+            // B 成功，但最新的意图是 create：B 被淘汰 → 摘 sink、门回 A，且回包以
+            // CANCELLED 抛给调用方（P1-1：不许把这个快照当成「可以 Ready」）。
             transport.push(responseFrame(idOf(bFrame), """{"session_id":"s-B","from_seq":0,"snapshot":null}"""))
-            withTimeout(5_000) { attachB.await() }
+            val superseded = assertFailsWith<VadeException>("被淘汰的成功回包不许当成功返回") {
+                withTimeout(5_000) { attachB.await() }
+            }
+            assertEquals(VadeErrorCodes.CANCELLED, superseded.code)
             assertEquals("s-A", client.attachedSession, "被淘汰的成功 attach 不许改 attached")
 
             val detachB = transport.awaitSent()
@@ -491,6 +533,164 @@ class SessionAttachFailureRoutingTest {
             assertIs<VadeException>(withTimeout(5_000) { create.await() }.exceptionOrNull())
             assertEquals("s-A", client.attachedSession)
             collector.cancel()
+            client.close()
+        }
+    }
+
+    /**
+     * P1-1 · 复审里的完整序列：B 的 attach **成功但被 create 淘汰**，create 随后失败。
+     *
+     * 旧实现把 B 的 `AttachResult` 原样返回，`ChatState(B)` 因此进 Ready —— 可 core 那边
+     * B 的 sink 已经被摘掉，屏上是一个永远收不到帧的「就绪」会话，也没有重试入口。
+     * 现在被淘汰的回包以 CANCELLED 抛上来，屏落成 Failed + 重试；create 失败后重试
+     * B 仍能重新 attach 成功并进 Ready。
+     */
+    @Test
+    fun aSupersededAttachNeverMarksTheScreenReadyAndTheScreenStaysRetryable() = runBlocking {
+        val factory = FakeTransportFactory()
+        val client = testClient(factory)
+        val transport = connectAndAwait(client, factory)
+
+        runBlocking {
+            val attachA = async { client.attach(AttachParams("s-A", null)) }
+            transport.push(responseFrame(idOf(transport.awaitSent()), """{"session_id":"s-A","from_seq":0,"snapshot":null}"""))
+            withTimeout(5_000) { attachA.await() }
+
+            // 打开 B：ChatState(B) 读历史 = 一次 forceSnapshot 的 ui/attach。
+            val chatB = realChatFor(client, "s-B")
+            val load = async { chatB.loadHistory() }
+            val bFrame = transport.awaitSent()
+            assertEquals("ui/attach", requestOf(bFrame).first)
+            assertEquals("""{"session_id":"s-B"}""", requestOf(bFrame).second)
+
+            // 回包还没到，用户点了 ✎：create 的 ticket 更大，B 的成功回包会被淘汰。
+            val create = async { runCatching { client.attach(AttachParams(null, null)) } }
+            val createFrame = transport.awaitSent()
+            assertEquals("""{"session_id":null}""", requestOf(createFrame).second)
+
+            transport.push(responseFrame(idOf(bFrame), """{"session_id":"s-B","from_seq":0,"snapshot":null}"""))
+            assertFalse(withTimeout(5_000) { load.await() }, "被淘汰的 attach 不许把这一屏置成 Ready")
+            assertEquals(ChatPhase.Failed, chatB.phase)
+            assertEquals(ChatState.SUPERSEDED_MESSAGE, chatB.loadError, "要给出可理解、可重试的原因")
+
+            // 被淘汰目标的 core sink 照旧要摘。
+            val detachB = transport.awaitSent()
+            assertEquals("ui/detach", requestOf(detachB).first)
+            assertEquals("""{"session_id":"s-B"}""", requestOf(detachB).second)
+
+            // create 也失败：UiState.newSession 只写错误横幅，选中仍是 B —— 这一屏必须还能重试。
+            transport.push(errorFrame(idOf(createFrame), "UNAVAILABLE", "create failed"))
+            assertIs<VadeException>(withTimeout(5_000) { create.await() }.exceptionOrNull())
+            assertEquals("s-A", client.attachedSession)
+            assertEquals(ChatPhase.Failed, chatB.phase, "create 失败后这一屏仍是 Failed + 重试")
+
+            // 重试 = 重新 attach B（这一次是最新 ticket）→ 只有这时才 Ready。
+            val retry = async { chatB.retryHistory() }
+            val retryFrame = transport.awaitSent()
+            assertEquals("ui/attach", requestOf(retryFrame).first)
+            assertEquals("""{"session_id":"s-B"}""", requestOf(retryFrame).second)
+            transport.push(responseFrame(idOf(retryFrame), """{"session_id":"s-B","from_seq":0,"snapshot":null}"""))
+            assertTrue(withTimeout(5_000) { retry.await() }, "重试成功才允许就绪")
+            assertEquals(ChatPhase.Ready, chatB.phase)
+            assertEquals("s-B", client.attachedSession)
+            client.close()
+        }
+    }
+
+    /**
+     * f13-P1-2 · 老 core（信封与 payload 都没有 session_id）在 attach B 失败之后：
+     * A 的帧仍是可见会话的帧，但必须带 A 的归属 —— 以前 `sessionId = null` 让 ChatState
+     * 的会话过滤整段放行，B 的线程会吃进 A 的 delta 并被 A 的 seq 毒化 bootstrap 起点。
+     */
+    @Test
+    fun aLegacyFrameIsAttributedToTheAttachedSessionAndNeverEntersAFailedTargetThread() = runBlocking {
+        val factory = FakeTransportFactory()
+        val client = testClient(factory)
+        val transport = connectAndAwait(client, factory)
+        val chatB = chatFor(client, "s-B")
+        val pump = launch(start = CoroutineStart.UNDISPATCHED) { chatB.collectLiveEvents() }
+        val seen = mutableListOf<VadeEvent>()
+        val collector = collectEvents(client) { seen.add(it) }
+        try {
+            val attachA = async { client.attach(AttachParams("s-A", null)) }
+            transport.push(responseFrame(idOf(transport.awaitSent()), """{"session_id":"s-A","from_seq":0,"snapshot":null}"""))
+            withTimeout(5_000) { attachA.await() }
+
+            // attach B 失败 → 门回退到 A。
+            val attachB = async { runCatching { client.attach(AttachParams("s-B", null)) } }
+            transport.push(errorFrame(idOf(transport.awaitSent()), "NOT_FOUND", "no such session"))
+            assertIs<VadeException>(withTimeout(5_000) { attachB.await() }.exceptionOrNull())
+            transport.awaitSent() // ui/detach(s-B)
+
+            // 老 core 的帧：信封没有 session_id，payload 也没有。
+            transport.push(eventFrame("turn.delta", 5, """{"turn_id":"ta","text":"legacy-a"}"""))
+            withTimeout(5_000) { waitUntil { seen.size == 1 } }
+            assertEquals("s-A", seen.single().sessionId, "老 core 的帧必须归到当前 attached 会话")
+            waitUntil { client.lastSeqFor("s-A") >= 5L }
+            delay(150) // 负例窗口：泄漏的话足够到达 ChatState
+            assertTrue("legacy-a" !in chatB.texts(), "A 的老 core 帧绝不许进失败的 B 的线程")
+            assertEquals(0, chatB.liveDuplicates, "B 的投影器一帧都不该收（更不许被 A 的 seq 毒化）")
+        } finally {
+            collector.cancel()
+            pump.cancel()
+            client.close()
+        }
+    }
+
+    /**
+     * f13-P1-2 · 老 core 在切换窗口里（visible=B 在途、attached=A）的帧归属不明：
+     * 不许进聊天投影，也不许把它的 seq 记到任何会话账上（记给 A 会毒化 A 的水位，
+     * 记给 B 就是失败目标的污染）。全量缝仍收得到，供列表刷新。
+     */
+    @Test
+    fun aLegacyFrameDuringASwitchIsNeitherProjectedNorChargedToASession() = runBlocking {
+        val factory = FakeTransportFactory()
+        val client = testClient(factory)
+        val transport = connectAndAwait(client, factory)
+        val chatB = chatFor(client, "s-B")
+        val pump = launch(start = CoroutineStart.UNDISPATCHED) { chatB.collectLiveEvents() }
+        val chat = mutableListOf<VadeEvent>()
+        val all = mutableListOf<VadeEvent>()
+        val chatCollector = collectEvents(client) { chat.add(it) }
+        val allCollector = collectAllEvents(client) { all.add(it) }
+        try {
+            // 1) 还没有 attach：没有会话可归属 —— 全量缝照收，加载中的 ChatState 一帧不投影。
+            transport.push(eventFrame("turn.delta", 7, """{"turn_id":"tx","text":"no-attach"}"""))
+            waitUntil { all.size == 1 }
+            waitUntil { chat.size == 1 }
+            assertNull(chat.single().sessionId, "没有对应会话的帧按旧行为留空归属")
+            delay(150)
+            assertTrue("no-attach" !in chatB.texts(), "还没 attach 成功的 ChatState 不许吃无归属帧")
+            assertEquals(0, chatB.liveDuplicates)
+
+            val attachA = async { client.attach(AttachParams("s-A", null)) }
+            transport.push(responseFrame(idOf(transport.awaitSent()), """{"session_id":"s-A","from_seq":0,"snapshot":null}"""))
+            withTimeout(5_000) { attachA.await() }
+
+            // 2) 切 B 在飞：visible=s-B、attached=s-A —— 归属不明，两边都不许记账。
+            val attachB = async { runCatching { client.attach(AttachParams("s-B", null)) } }
+            val bFrame = transport.awaitSent()
+            transport.push(eventFrame("turn.delta", 9, """{"turn_id":"tx","text":"mid-switch"}"""))
+            waitUntil { all.size == 2 }
+            delay(200) // 负例窗口
+            assertEquals(1, chat.size, "切换窗口里的老 core 帧不许进聊天投影")
+            assertEquals(0L, client.lastSeqFor("s-A"), "不许把在途目标的帧记到 A 的账上")
+            assertEquals(0L, client.lastSeqFor("s-B"), "更不许记到在途/失败目标的账上")
+            assertNull(all.last().sessionId, "全量缝保留这帧，但明确标成无归属")
+
+            // 3) B 失败 → 门回 A；之后的老 core 帧恢复交付，并带上 A。
+            transport.push(errorFrame(idOf(bFrame), "NOT_FOUND", "no such session"))
+            assertIs<VadeException>(withTimeout(5_000) { attachB.await() }.exceptionOrNull())
+            transport.awaitSent() // ui/detach(s-B)
+            transport.push(eventFrame("turn.delta", 1, """{"turn_id":"ta","text":"after-fail"}"""))
+            waitUntil { chat.size == 2 }
+            assertEquals("s-A", chat.last().sessionId)
+            assertEquals(1L, client.lastSeqFor("s-A"))
+            assertEquals(0L, client.lastSeqFor("s-B"))
+        } finally {
+            chatCollector.cancel()
+            allCollector.cancel()
+            pump.cancel()
             client.close()
         }
     }

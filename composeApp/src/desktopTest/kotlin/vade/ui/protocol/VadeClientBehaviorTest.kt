@@ -599,7 +599,11 @@ class VadeClientBehaviorTest {
         }
     }
 
-    /** 老 core 兼容：信封没有 `session_id` 时仍按「这条连接就是当前会话」交付。 */
+    /**
+     * 老 core 兼容：信封没有 `session_id` 时仍按「这条连接就是当前会话」交付 —— 但帧必须
+     * 带上当前 attached 会话的归属（f13-P1-2）：ChatState 的会话过滤全靠这个 id，
+     * `null` 会让失败的会话线程整段放行旧会话的帧。
+     */
     @Test
     fun legacyFramesWithoutAnEnvelopeSessionIdAreStillDelivered() {
         val factory = FakeTransportFactory()
@@ -618,6 +622,7 @@ class VadeClientBehaviorTest {
                 // 无信封 session_id，payload 也没有：归当前跟踪的会话，照旧交付。
                 transport.push(eventFrame("turn.delta", 1, """{"turn_id":"t1","text":"x"}"""))
                 waitUntil { seen.size == 1 }
+                assertEquals("s-1", seen.single().sessionId, "老 core 的帧也要带归属（ChatState 才有得过滤）")
                 assertEquals(1L, client.lastSeqFor("s-1"))
             } finally {
                 collector.cancel()
