@@ -210,6 +210,13 @@ fun SessionDetailScreen(
     }
     val actions = modelSeam.value
     val modelState = remember(actions, session.id) { ModelState.forSession(actions, session.id) }
+    // f9-audit P1-1 · 生命周期同样归页面：real 路径的 ModelState 自建一个作用域并立刻
+    // `refresh()`（model/list + session/model.get）。不 dispose 的话，离开会话后那对 RPC
+    // 仍会跑到自己超时，每次进出会话都多一对请求、旧状态的对象图也不可回收。
+    // 与上面 ChatState 同一条口径：键用**实例** —— adapters 翻转导致重建时旧实例也被关掉。
+    DisposableEffect(modelState) {
+        onDispose { modelState.dispose() }
+    }
     var modelPickerOpen by remember(session.id) { mutableStateOf(false) }
     // g-composer-2row · 第二行（模型 chip）的展开态，**本页持有**：
     //  - 进会话默认收起（`remember(session.id)` 的初始值就是 false）；

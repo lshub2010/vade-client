@@ -213,7 +213,11 @@ fun ChatThread(
     // （会话 id 与 density 都没变）拿回同一实例，阅读位置原地保留。
     val density = LocalDensity.current
     val nearBottomPx = with(density) { FollowThreshold.roundToPx() }
-    val viewport = rememberChatViewport(state.sessionId, nearBottomPx)
+    // f18 复审 P1-2 · 键里还必须有 `state` 本身：ChatState 可以在 `sessionId` 不变时换实例
+    // （`SessionDetailScreen` 的 remember key 含 `adapters`）。换代时整份视图状态重建 ——
+    // 跟随基线（items 数 / 末条长度 / 两路实测高度）与 `unseenBelow` 都归零，否则第一次
+    // 发射会拿**新** state 的内容去比**旧** state 的基线，把一整段历史误判成「新内容」。
+    val viewport = rememberChatViewport(state.sessionId, nearBottomPx, state)
     val scroll = viewport.scroll
     val follower = viewport.follower
 
@@ -269,7 +273,13 @@ fun ChatThread(
             }
     }
 
-    LaunchedEffect(animate, viewport) {
+    // P1-2 · 这一条的 key **必须带上 `state`**：闭包捕获的是 `state.items`，而 `state` 可以
+    // 在 sessionId 不变的情况下被换成新实例（`SessionDetailScreen` 的 remember key 是
+    // `(session.id, preset, adapters)`，`adapters` 由 null 变真/真变 null 就会重建 ChatState）。
+    // 那时 `viewport` 的键没变、本 effect 不重启，`snapshotFlow` 会一直读**旧**列表 ——
+    // 旧列表此后不再变化，`onContentChanged` 基线永久停住：上滚时「新内容」胶囊再也不出来，
+    // 只有再切一次会话自愈。另两个只读 `viewport` 的收集器不需要这个键。
+    LaunchedEffect(animate, viewport, state) {
         if (!animate) return@LaunchedEffect
         snapshotFlow {
             state.items.size to state.lastMessageBodyLength
@@ -1629,20 +1639,34 @@ internal class ChatViewport(
 }
 
 /**
- * P2-2 · `ChatThread` 取视图状态的唯一入口。
+ * P2-2 / f18 复审 P1-2 · `ChatThread` 取视图状态的唯一入口。
  *
- * key 是**会话 id + 近底阈值**：切会话时整份重建（滚动回 0、基线清空、胶囊不举），
- * 同一会话重组时复用同一实例（阅读位置不被打断）。`ChatSessionScrollResetTest`
- * 在真实组合里驱动这个函数，而不是另抄一份判据。
+ * key 是**会话 id + 近底阈值 + `ChatState` 实例**：
+ *  - 切会话 → 整份重建（滚动回 0、基线清空、胶囊不举），同一会话重组时复用同一实例
+ *    （阅读位置不被打断）；
+ *  - `ChatState` 换代（同一 `sessionId` 下 `adapters` 翻转导致重建）→ 也必须重建：旧基线
+ *    属于旧列表，`snapshotFlow` 重启后的第一次发射会拿新列表比旧基线，把整段历史误判成
+ *    「内容增长」，在上滚时举起一枚假的「新内容」胶囊。`ChatState` 是普通 class（没有覆写
+ *    equals），这个 key 按实例身份比较 —— 普通重组不会误重启。
+ *
+ * `ChatSessionScrollResetTest` 在真实组合里驱动这个函数，而不是另抄一份判据。
  *
  * 滚动位置仍走 `rememberSaveable` 的 [ScrollState.Saver]（与 `rememberScrollState()`
  * 同一个 saver，旋转 / 进程重建不丢位置），只是把 `sessionId` 加进 inputs：**同一个
  * saver，换了会话就按初始值 0 重建** —— 这正是 P2-2 的修复点，恢复语义没有丢。
+ * `state` **不**进 saveable 的 inputs：换代时基线归零，但读者的像素位置保留（不因为
+ * 适配器翻转被弹走）。
+ *
+ * `state = null` 只留给「没有 ChatState 的纯视图状态用例」——那些调用点本来就不存在换代。
  */
 @Composable
-internal fun rememberChatViewport(sessionId: String, nearBottomPx: Int): ChatViewport {
+internal fun rememberChatViewport(
+    sessionId: String,
+    nearBottomPx: Int,
+    state: ChatState? = null,
+): ChatViewport {
     val scroll = rememberSaveable(sessionId, saver = ScrollState.Saver) { ScrollState(0) }
-    return remember(sessionId, nearBottomPx) { ChatViewport(sessionId, nearBottomPx, scroll) }
+    return remember(sessionId, nearBottomPx, state) { ChatViewport(sessionId, nearBottomPx, scroll) }
 }
 
 /**

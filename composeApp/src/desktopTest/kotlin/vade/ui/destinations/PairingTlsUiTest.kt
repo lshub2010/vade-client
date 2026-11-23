@@ -3,6 +3,13 @@ package vade.ui.destinations
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.InternalComposeUiApi
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsEnabled
@@ -53,6 +60,13 @@ import vade.ui.protocol.VadeErrorCodes
 import vade.ui.protocol.VadeException
 import vade.ui.protocol.VadeTransport
 import vade.ui.protocol.VadeTransportFactory
+import vade.ui.shell.BackDispatcher
+import vade.ui.shell.BackHost
+import vade.ui.shell.BackLayer
+import vade.ui.shell.LocalBackDispatcher
+import vade.ui.shell.UiState
+import vade.ui.shell.handleShellKeys
+import vade.ui.skin.BottomBarStyle
 import vade.ui.skin.LocalSkin
 import vade.ui.skin.material.MaterialSkin
 
@@ -476,6 +490,188 @@ class PairingTlsUiTest {
         assertTrue(selfSigned.single().tls, "确认后的切换仍然带 tls = true")
         assertEquals(1, systemChain.size, "确认之后不许再走一次系统信任链")
     }
+
+    // ------------------------------------- f9-audit P1-3 · 返回栈顶是警告层
+
+    /**
+     * 警告是内联卡片（视觉形态），但**返回语义必须是栈顶一层**。
+     *
+     * 事故形态：`TlsWarningDialog` 直接组合在表单的 `Column` 里，没有登记 [BackLayer]。
+     * 警告在屏上时按返回（桌面 Esc / 系统返回）会落到下面那一层：设置 → 更换 core 子页
+     * 被整个关掉，用户填的 host/port/码随 `remember` 一起消失；首次运行卡上更糟 ——
+     * 栈里 0 层，返回交还系统，**应用直接退出**，屏上还挂着一张「正在确认信任自签证书」。
+     *
+     * 这条用例用真的 [BackDispatcher] + 与 `ProfileScreen` 同形状的宿主层，**返回走真实
+     * 入口**：[BackHost]（组合里的系统返回挂点）+ `handleShellKeys` 的 Esc 分支（桌面形状），
+     * 不直接调 `dispatcher.dispatch()`。
+     *  ① 警告在屏上时栈深 = 2（宿主 + 警告），第一次 Esc 只取消警告 —— 宿主没关、码还在、
+     *    **没有第二次提交**（`onBack = onConfirm` 的 mutation 会让这里变红）；
+     *  ② 警告出栈后第二次 Esc 才落到宿主层（topmost wins）。
+     */
+    @Test
+    fun escCancelsTheSelfSignedWarningInsteadOfClosingTheHostPage() = runComposeUiTest {
+        val dispatcher = BackDispatcher()
+        var hostClosed = false
+        val submissions = AtomicInteger(0)
+
+        setContent {
+            CompositionLocalProvider(
+                LocalSkin provides MaterialSkin(),
+                LocalBackDispatcher provides dispatcher,
+            ) {
+                // 生产组合根同款：系统返回的挂点。桌面 actual 为空实现（Esc 才是返回），
+                // 但这一层必须真的在树上 —— 测的就是「系统返回/ Esc → dispatcher」这条链。
+                BackHost(dispatcher)
+                // 与 ProfileScreen 的「更换 core」子页同一形状：宿主先登记自己那一层，
+                // 表单/警告后组成 ⇒ 警告在宿主之上。
+                BackLayer(enabled = true, onBack = { hostClosed = true }) {
+                    PairingFormHost {
+                        PairingForm(
+                            initialHost = "core.local",
+                            initialPort = "8443",
+                            submitLabel = PAIRING_BUTTON_LABEL,
+                            submittingLabel = PAIRING_SUBMITTING,
+                            submitScope = submitScope,
+                            initialTls = true,
+                            onSubmit = { _, _, _, _, _ ->
+                                submissions.incrementAndGet()
+                                PairingAttempt.Rejected(
+                                    PairingFailureKind.CertificateUntrusted,
+                                    VadeException(
+                                        VadeErrorCodes.AUTH_FAILED,
+                                        "SSLHandshakeException: PKIX path building failed",
+                                    ),
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        waitForIdle()
+
+        onNode(codeField()).performTextInput("青松-BACK01")
+        onNodeWithText(PAIRING_BUTTON_LABEL).performClick()
+        waitUntil(timeoutMillis = 5_000) { dialogs() == 1 }
+        waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 2 }
+        waitForIdle()
+        assertEquals(1, submissions.get(), "前置条件：那一次系统信任链提交")
+
+        // ① 第一次返回（真 Esc）= 只取消警告。宿主页、表单、已输入的码都必须原样还在。
+        assertTrue(
+            escThroughTheShell(dispatcher),
+            "警告在屏上时 Esc 必须被它消费（栈顶一层）",
+        )
+        waitUntil(timeoutMillis = 5_000) { dialogs() == 0 }
+        waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 1 }
+        waitForIdle()
+
+        assertEquals(1, submissions.get(), "Esc = 取消，不是确认：不许再提交一次（onBack=onConfirm 会红）")
+        assertFalse(hostClosed, "返回不许把宿主（更换 core 子页）一起关掉")
+        onNode(codeField()).assertTextContains("青松-BACK01")
+        onNodeWithText(PAIRING_BUTTON_LABEL).assertExists()
+
+        // ② 警告出栈之后，返回才落到宿主那一层 —— 证明刚才消费它的确实是警告，不是宿主。
+        assertTrue(escThroughTheShell(dispatcher), "宿主那一层还在，返回仍被消费")
+        waitForIdle()
+        assertTrue(hostClosed, "第二次返回才是关宿主页")
+        assertEquals(1, submissions.get(), "关宿主页同样不许触发提交")
+    }
+
+    /**
+     * f18 复审 P1-3 · 栈序的反例：**busy 层在警告之后启用**。
+     *
+     * `CoreSwitchPanel` 的 busy 闸门（`BackLayer(enabled = busy, onBack = {})`）组合位置在
+     * 表单之前，但 `busy`（submitting / pending）可以在警告出现之后才变 true。`BackLayer`
+     * 按 `enabled` 的**变化时刻**入栈，于是它后压入、盖在警告之上 —— 没有优先级时 Esc 会
+     * 落到那个空回调：屏上还挂着「确认信任证书」，按返回什么都不发生。
+     *
+     * 判据：busy 层启用后按一次真 Esc —— 警告消失、**零新增提交**、busy 层一次都没被派发到、
+     * 宿主没关、码还在；再按一次才轮到 busy 层（它是 no-op，宿主仍不许关）。
+     */
+    @Test
+    fun escStillCancelsTheWarningWhenThePanelBusyLayerEnabledAfterIt() = runComposeUiTest {
+        val dispatcher = BackDispatcher()
+        var hostClosed = false
+        var busy by mutableStateOf(false)
+        var busySwallowed = 0
+        val submissions = AtomicInteger(0)
+
+        setContent {
+            CompositionLocalProvider(
+                LocalSkin provides MaterialSkin(),
+                LocalBackDispatcher provides dispatcher,
+            ) {
+                BackHost(dispatcher)
+                BackLayer(enabled = true, onBack = { hostClosed = true }) {
+                    PairingFormHost {
+                        // 与 CoreSwitchPanel 同形：先组合，busy 变 true 时才入栈（后压入）。
+                        BackLayer(enabled = busy, onBack = { busySwallowed++ })
+                        PairingForm(
+                            initialHost = "core.local",
+                            initialPort = "8443",
+                            submitLabel = PAIRING_BUTTON_LABEL,
+                            submittingLabel = PAIRING_SUBMITTING,
+                            submitScope = submitScope,
+                            initialTls = true,
+                            onSubmit = { _, _, _, _, _ ->
+                                submissions.incrementAndGet()
+                                PairingAttempt.Rejected(
+                                    PairingFailureKind.CertificateUntrusted,
+                                    VadeException(
+                                        VadeErrorCodes.AUTH_FAILED,
+                                        "SSLHandshakeException: PKIX path building failed",
+                                    ),
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        waitForIdle()
+
+        onNode(codeField()).performTextInput("青松-BUSY01")
+        onNodeWithText(PAIRING_BUTTON_LABEL).performClick()
+        waitUntil(timeoutMillis = 5_000) { dialogs() == 1 }
+        waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 2 }
+        waitForIdle()
+
+        // 警告已经在屏上之后，busy 才变 true ⇒ 它在警告之后入栈（原本会盖住警告）。
+        runOnIdle { busy = true }
+        waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 3 }
+        waitForIdle()
+
+        assertTrue(escThroughTheShell(dispatcher), "警告在栈里，Esc 必须被消费")
+        waitUntil(timeoutMillis = 5_000) { dialogs() == 0 }
+        waitUntil(timeoutMillis = 5_000) { dispatcher.depth == 2 }
+        waitForIdle()
+
+        assertEquals(0, busySwallowed, "警告优先于 busy 层：no-op 层不许吃掉这次返回")
+        assertEquals(1, submissions.get(), "Esc = 取消，不是确认：零新增提交")
+        assertFalse(hostClosed, "busy 层与宿主都不许被这次返回关掉")
+        onNode(codeField()).assertTextContains("青松-BUSY01")
+
+        // 再按一次：警告已出栈，轮到最后入栈的 busy 层（no-op）—— 宿主仍然不许关。
+        assertTrue(escThroughTheShell(dispatcher), "busy 层还在，返回仍被消费")
+        waitForIdle()
+        assertEquals(1, busySwallowed, "这次才是 busy 层接住返回")
+        assertFalse(hostClosed, "提交中的 busy 层语义是「返回不动页面」")
+        assertEquals(1, submissions.get())
+    }
+
+    /**
+     * 桌面 / 系统返回的真实入口：`handleShellKeys` 的 Esc 分支（与 `BackHost` 同一个
+     * `BackDispatcher`）。Android 上 `SystemBackHandler` 把系统返回接到同一个 `dispatch()`；
+     * 桌面没有系统返回，Esc 就是它的形状（`BackDispatch.desktop.kt` 的 actual 是空实现）。
+     */
+    @OptIn(InternalComposeUiApi::class)
+    private fun escThroughTheShell(dispatcher: BackDispatcher): Boolean =
+        handleShellKeys(
+            KeyEvent(key = Key.Escape, type = KeyEventType.KeyDown),
+            UiState(BottomBarStyle.Fixed, "material", Destination.Sessions),
+            backDispatcher = dispatcher,
+        )
 }
 
 /**

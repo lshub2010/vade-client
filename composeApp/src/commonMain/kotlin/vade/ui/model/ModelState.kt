@@ -40,9 +40,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import kotlin.concurrent.Volatile
 import vade.ui.data.ModelActionsReal
 import vade.ui.protocol.ModelEntry
 import vade.ui.protocol.VadeClient
@@ -136,6 +138,14 @@ class ModelState private constructor(
     var loadFailure: ModelFailure? by mutableStateOf(null)
         private set
 
+    /**
+     * Set once by [dispose]; keeps the cancel idempotent and turns every public entry point
+     * into a no-op. **Volatile** because `dispose()` runs on the UI thread while an
+     * in-flight [refresh] resumes on a coroutine dispatcher.
+     */
+    @Volatile
+    private var disposed = false
+
     companion object {
         /**
          * Wires the picker to a seam object (fixture, preview, test double) — or to the
@@ -180,17 +190,23 @@ class ModelState private constructor(
          * The one place that decides seam-vs-real for a handed-in [actions]: a
          * `ModelActionsReal` gets the [RealWiring] (and, unless suppressed, its first pull),
          * anything else gets `null` — i.e. exactly the pre-wiring state object.
+         *
+         * [ownsScope] says the scope was created by this factory (not handed in by a caller):
+         * only then does [dispose] cancel it. `coroutineScope == null` always means "create and
+         * own one here".
          */
         private fun wired(
             actions: ModelActions,
             scope: ModelScope,
             coroutineScope: CoroutineScope?,
             autoRefresh: Boolean,
+            ownsScope: Boolean = false,
         ): ModelState {
             val wiring = (actions as? ModelActionsReal)?.let { adapter ->
                 RealWiring(
                     adapter = adapter,
                     scope = coroutineScope ?: CoroutineScope(SupervisorJob() + Dispatchers.Default),
+                    ownsScope = ownsScope || coroutineScope == null,
                 )
             }
             val state = ModelState(actions, scope, wiring)
@@ -204,35 +220,82 @@ class ModelState private constructor(
          * carries the writes). Pass `autoRefresh = false` when the caller wants to drive
          * [refresh] itself (tests do).
          *
+         * [scope] `null` = this state creates a scope and **owns** it: it is cancelled by
+         * [dispose], which is what a screen's `DisposableEffect` calls. A caller-supplied scope
+         * is never cancelled here — the caller owns its lifetime.
+         *
          * The client must already be `connect()`ed — the same instance the session screen uses.
          */
         fun forRealSession(
             client: VadeClient,
             sessionId: String,
-            scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            scope: CoroutineScope? = null,
             autoRefresh: Boolean = true,
-        ): ModelState = wired(
-            actions = ModelActionsReal(client, scope),
-            scope = ModelScope.Session(sessionId),
-            coroutineScope = scope,
-            autoRefresh = autoRefresh,
-        )
+        ): ModelState {
+            val resolved = scope ?: CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            return wired(
+                actions = ModelActionsReal(client, resolved),
+                scope = ModelScope.Session(sessionId),
+                coroutineScope = resolved,
+                autoRefresh = autoRefresh,
+                ownsScope = scope == null,
+            )
+        }
 
         /**
          * One-line wiring for the 设置页 default picker. Refreshes `model/list` (which also
          * carries `default.model_id`). Writes are refused with UNSUPPORTED — contract 1.5.0
          * has no global-default write method — so the card renders the rows as read-only.
+         *
+         * Scope ownership is the same rule as [forRealSession]: `null` = created here and
+         * cancelled by [dispose]; a caller-supplied scope is left alone.
          */
         fun forRealDefault(
             client: VadeClient,
-            scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            scope: CoroutineScope? = null,
             autoRefresh: Boolean = true,
-        ): ModelState = wired(
-            actions = ModelActionsReal(client, scope),
-            scope = ModelScope.Default,
-            coroutineScope = scope,
-            autoRefresh = autoRefresh,
-        )
+        ): ModelState {
+            val resolved = scope ?: CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            return wired(
+                actions = ModelActionsReal(client, resolved),
+                scope = ModelScope.Default,
+                coroutineScope = resolved,
+                autoRefresh = autoRefresh,
+                ownsScope = scope == null,
+            )
+        }
+    }
+
+    /**
+     * 页面离开组合时调用：取消**这个状态自己创建**的拉取/写入作用域。
+     *
+     * 为什么需要（f9-audit P1-1）：real 路径的 `forSession` / `forDefault` 会自建一个
+     * `CoroutineScope(SupervisorJob() + Dispatchers.Default)` 并立刻 `launch { refresh() }`，
+     * 而这个作用域没有任何外部句柄。状态对象被 `remember` 丢掉之后，在途的 `model/list` /
+     * `session/model.get`（以及回包对 `models` / `selectedId` 的写入）还能活到 RPC 自己超时：
+     * 频繁进出会话 = 反复发同一对请求，旧状态的对象图也不可回收。本仓的约定是
+     * `DisposableEffect(loader) { onDispose { loader.dispose() } }`（`UsageCard` /
+     * `ActivityScreen` / `SubagentCard` / `App`），`ChatState.dispose()` 同一口径 ——
+     * `SessionDetailScreen` / `ProfileScreen` 已按这个形状接线。
+     *
+     * **只取消自己建的那个作用域**：调用方传进来的 scope 归调用方（测试要自己控制生命周期，
+     * `rememberCoroutineScope` 也由组合负责取消），这里不许越权取消。幂等；内存 seam
+     * （`real == null`）与调用方自持 scope 的两种情况下都已经没有在途任务。
+     *
+     * **置死的是状态，不只是作用域**（f18 复审 P1-1）：取消 `ownsScope` 只拦住本类自己
+     * launch 的协程，挡不住调用方在**自己**的 scope 上跑的 [refresh]（`ProfileScreen` 的
+     * `retryScope` 正是这种）。所以这里同时把 [disposed] 置真、把两个在途标志复位：
+     * [refresh] 的入口与每个 suspension 之后都查这个门禁，迟到回包既不改写 `models` /
+     * `selectedId`，也不再追发 `session/model.get`；写路径（[select] 等）同样拒绝开工。
+     */
+    fun dispose() {
+        if (disposed) return
+        disposed = true
+        // 立刻从「正在加载 / 正在写入」落下来：这个状态已经不在任何屏上，没有人会再观察它，
+        // 但把它留在 true 会让「dispose 之后…」的断言读到一个假象。
+        loadInFlight = false
+        writePending = false
+        real?.takeIf { it.ownsScope }?.scope?.cancel()
     }
 
     // --- degrade / refusal copy -------------------------------------------------------
@@ -292,8 +355,18 @@ class ModelState private constructor(
      *    a retryable failure and MUST land in [loadFailure]. Rethrowing it is what collapsed
      *    a weak-network timeout into the 「无可用模型」 false empty state (`models` still null,
      *    `loadFailure` null, `loadInFlight` reset by the finally).
+     *
+     * ## Dead state (f18 复审 P1-1)
+     * [refresh] is **public and suspend**, so any caller can run it on a scope this state does
+     * not own (`ProfileScreen`'s retry button uses `rememberCoroutineScope`). Cancelling
+     * `ownsScope` therefore cannot stop those pulls. The [disposed] gate is checked at entry
+     * and **after every suspension**: a late `model/list` answer must not mirror into
+     * [models] and must not chase `session/model.get`; a late override answer must not adopt
+     * into [selectedId]. What was already pulled before `dispose()` stays as it was — the
+     * gate is positional, not a silent wipe.
      */
     suspend fun refresh() {
+        if (disposed) return
         val wiring = real ?: return
         // From here on the picker is 「正在加载」, not 「无可用模型」: the request is out and no
         // answer has been handled yet (`models` is still null on a first pull).
@@ -310,6 +383,8 @@ class ModelState private constructor(
             } catch (t: Throwable) {
                 loadFailure = modelLoadFailureOf(t)
             }
+            // Late answer for a dead state: do not mirror, do not chase the override.
+            if (disposed) return
             models = wiring.adapter.models
             readOnly = wiring.adapter.readOnly
             defaultModelId = wiring.adapter.defaultModelId
@@ -319,6 +394,9 @@ class ModelState private constructor(
             if (sessionId != null) {
                 try {
                     wiring.adapter.refreshSessionOverride(sessionId)
+                    // Same gate, one suspension later: a `session/model.get` answer that lands
+                    // after the page is gone must not become this dead state's selection.
+                    if (disposed) return
                     // Only adopt the pulled override into an empty selection: a pick made while
                     // the pull was in flight must not be clobbered by a stale answer.
                     if (selectedId == null) selectedId = wiring.adapter.sessionOverride(sessionId)
@@ -379,6 +457,7 @@ class ModelState private constructor(
      * a failure reverts it and lands in [writeFailure] (that is the fire-and-forget path).
      */
     fun select(modelId: String): Boolean {
+        if (disposed) return false
         val option = selectable(modelId) ?: return false
         val wiring = real
         if (wiring == null) {
@@ -405,6 +484,7 @@ class ModelState private constructor(
      * [writeFailure], then RETHROWS the failure (use it from coroutines that want it directly).
      */
     suspend fun selectAwaiting(modelId: String): Boolean {
+        if (disposed) return false
         val option = selectable(modelId) ?: return false
         val wiring = real
         if (wiring == null) {
@@ -427,6 +507,7 @@ class ModelState private constructor(
      * [writeFailure] on failure.
      */
     fun followGlobalDefault(): Boolean {
+        if (disposed) return false
         val s = scope as? ModelScope.Session ?: return false
         if (!canClearOverride) return false
         val previous = selectedId ?: return false
@@ -453,6 +534,7 @@ class ModelState private constructor(
 
     /** Suspend variant of [followGlobalDefault]: revert + record, then RETHROW the failure. */
     suspend fun followGlobalDefaultAwaiting(): Boolean {
+        if (disposed) return false
         val s = scope as? ModelScope.Session ?: return false
         if (!canClearOverride) return false
         val previous = selectedId ?: return false
@@ -515,6 +597,8 @@ class ModelState private constructor(
         writePending = true
         try {
             wiring.adapter.setSessionModelAwaiting(sessionId, modelId)
+            // A dead state must not report the outcome of a write that outlived its page.
+            if (disposed) return
             writeFailure = null
         } catch (c: CancellationException) {
             // Undo the optimistic flip for BOTH shapes (a dead scope and a timed-out write
@@ -522,12 +606,16 @@ class ModelState private constructor(
             // rethrows with no failure recorded; a timeout-shaped cancellation is a REAL
             // failure — record it before rethrowing so the fire-and-forget launch (which
             // swallows the rethrow) still shows the card's error line.
-            selectedId = previous
-            lastNotice = null
+            if (!disposed) {
+                selectedId = previous
+                lastNotice = null
+            }
             currentCoroutineContext().ensureActive()
+            if (disposed) throw c
             writeFailure = modelWriteFailureOf(c)
             throw c
         } catch (t: Throwable) {
+            if (disposed) throw t
             selectedId = previous
             lastNotice = null
             writeFailure = modelWriteFailureOf(t)
@@ -584,4 +672,6 @@ private const val CLEAR_NOTICE = "已清除会话覆盖，跟随全局默认"
 private class RealWiring(
     val adapter: ModelActionsReal,
     val scope: CoroutineScope,
+    /** True when [scope] was created by this factory — the only case [ModelState.dispose] cancels. */
+    val ownsScope: Boolean = false,
 )

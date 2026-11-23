@@ -38,8 +38,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -63,6 +61,7 @@ import vade.ui.data.pairingEndpointOf
 import vade.ui.data.rawSourceStrings
 import vade.ui.icon.VadeIcon
 import vade.ui.icon.VadeIcons
+import vade.ui.shell.BackDispatcher
 import vade.ui.shell.BackLayer
 import vade.ui.skin.BtnStyle
 import vade.ui.skin.LocalSkin
@@ -575,6 +574,21 @@ internal data class PairingTarget(
  * 在表单任何变更时都会把它撤掉（`invalidateTlsWarning`）。「仍然连接」
  * ([PAIRING_TLS_CONFIRM_LABEL]) 重试的也是同一个快照目标。
  *
+ * ## 返回栈（f9-audit P1-3）
+ * 「内联」是**视觉**形态，不是返回语义：警告在屏上时，Esc / 系统返回必须先取消**这一层**，
+ * 而不是关掉宿主页。没有 [BackLayer] 时，返回会落到下面那一层 —— 设置 → 更换 core 子页
+ * （`ProfileScreen` 的 `showCoreSwitch`）被整个关掉、用户填的地址/码随 `remember` 一起消失；
+ * 首次运行卡上更糟：栈里 0 层，返回交还系统，**应用直接退出**，而屏上还挂着一张
+ * 「正在确认信任自签证书」。所以这里在组合内部登记一层，`onCancel` 是唯一动作 ——
+ * 取消 = 零请求、码不动，与取消按钮逐字节同义。警告撤掉（取消 / 表单变更 / tls 关掉）
+ * 即随组合离开出栈。
+ *
+ * **栈序不够，还要优先级**（f18 复审 P1-3）：栈序按入栈时刻算。`CoreSwitchPanel` 的
+ * busy 层先组合（在警告之前）、但 `busy` 可以在警告出现**之后**才变 true（提交中）——
+ * 它后入栈就压在警告之上，Esc 落到那个 `onBack = {}` 的空层，「取消警告」变成按了没
+ * 反应。警告在视觉/语义上必然压住整页，所以它登记成 [BackDispatcher.PRIORITY_ALERT]：
+ * 只要它还在栈里，返回就先问它（见 [vade.ui.shell.BackLayer] 的优先级参数）。
+ *
  * 文案只说事实：自签证书无法验证 core 的身份、可能被中间人、仅在你信任此主机时继续。
  */
 @Composable
@@ -584,6 +598,10 @@ internal fun TlsWarningDialog(
     onCancel: () -> Unit,
     onConfirm: () -> Unit,
 ) {
+    // 栈顶的一层：Esc / 系统返回只取消这张警告（见上面的「返回栈」一节）。
+    // 优先级 = ALERT：busy 层可能在警告出现之后才启用（后入栈 ⇒ 按栈序会盖住警告），
+    // 警告必须永远先被问到。
+    BackLayer(enabled = true, onBack = onCancel, priority = BackDispatcher.PRIORITY_ALERT)
     val skin = LocalSkin.current
     val shape = RoundedCornerShape(skin.shapes.sheet)
     Column(

@@ -18,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -147,6 +148,12 @@ fun ProfileScreen(
     }
     val modelActionsResolved = seam.value
     val modelState = remember(modelActionsResolved) { ModelState.forDefault(modelActionsResolved) }
+    // f9-audit P1-1 · 与 SessionDetailScreen 同一条口径：real 路径的 ModelState 自建一个
+    // 作用域并立刻 refresh()，页面/actions 换代时旧实例必须 dispose，否则在途 model/list
+    // 会跑到自己超时，旧状态也不可回收。
+    DisposableEffect(modelState) {
+        onDispose { modelState.dispose() }
+    }
     // 「重试拉取模型列表」行的协程作用域（refresh() 是 suspend，挂在组合作用域上）。
     val retryScope = rememberCoroutineScope()
     // A5 · 关于 opens as a full-screen subpage over this screen (D91: 设置项打开为全屏子页，

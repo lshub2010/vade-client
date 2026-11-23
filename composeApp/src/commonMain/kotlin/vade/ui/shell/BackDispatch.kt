@@ -40,6 +40,15 @@ import androidx.compose.runtime.staticCompositionLocalOf
  * BackLayer(enabled = drawerOpen, onBack = { drawerOpen = false })
  * ```
  *
+ * ## 「必须在最上面」的层：优先级（f18 复审 P1-3）
+ *
+ * 栈序按**入栈时刻**算，不按组合序重排。一个先组成、后启用的层（`CoreSwitchPanel` 的
+ * `enabled = busy` 那层：提交中才入栈）会压在它之后组成的层之上 —— 自签证书警告
+ * （`TlsWarningDialog`）就这样被一个 no-op 的 busy 层盖住，Esc 落到「什么都不做」。
+ * 所以层可以带 [BackDispatcher.PRIORITY_DEFAULT] 以上的优先级：[dispatch] 先在**最高
+ * 优先级**里取最后压入的那层，同优先级仍按栈序（topmost wins）。只有「视觉/语义上必然
+ * 压住整页」的确认层（TLS 警告）该用 [BackDispatcher.PRIORITY_ALERT]；普通浮层保持默认。
+ *
  * 已接清单（g-nav-stack / c2-nav 收口）：
  *  - 搜索浮层（`SearchOverlay`）、附件预览（`ChatThread`）、模型选择浮层
  *    （`ModelPickerSheet`）；
@@ -58,8 +67,11 @@ import androidx.compose.runtime.staticCompositionLocalOf
  */
 class BackDispatcher {
 
-    /** 栈元素：只带回调。用引用相等配对 push/pop（`mutableStateListOf.remove` 按equals，普通类的 equals 即引用）。 */
-    internal class Layer(val onBack: () -> Unit)
+    /**
+     * 栈元素：回调 + 优先级。用引用相等配对 push/pop（`mutableStateListOf.remove` 按 equals，
+     * 普通类的 equals 即引用）。
+     */
+    internal class Layer(val onBack: () -> Unit, val priority: Int = PRIORITY_DEFAULT)
 
     private val stack = mutableStateListOf<Layer>()
 
@@ -69,9 +81,15 @@ class BackDispatcher {
     /** 栈深（诊断/测试用：浮层关干净后必须回到 0 —— 开关 5 次不泄漏的验收判据）。 */
     val depth: Int get() = stack.size
 
-    /** 入栈。由 [BackLayer] 在 enabled 时调用；返回句柄供出栈配对。 */
-    internal fun push(onBack: () -> Unit): Layer {
-        val layer = Layer(onBack)
+    /**
+     * 入栈。由 [BackLayer] 在 enabled 时调用；返回句柄供出栈配对。
+     *
+     * `priority` 在前、`onBack` 在后：这样 `push { ... }` 的尾随 lambda 仍然落在
+     * `onBack` 上（尾随 lambda 永远绑最后一个参数），而 `push(PRIORITY_ALERT) { ... }`
+     * 也读得通。
+     */
+    internal fun push(priority: Int = PRIORITY_DEFAULT, onBack: () -> Unit): Layer {
+        val layer = Layer(onBack, priority)
         stack.add(layer)
         return layer
     }
@@ -82,13 +100,32 @@ class BackDispatcher {
     }
 
     /**
-     * 系统返回（或 Esc）到来：栈顶的 `onBack` 先处理，返回 `true` = 已消费；
-     * 栈空返回 `false` = 未消费，调用方应把行为交还系统（Android 允许退出）。
+     * 系统返回（或 Esc）到来：**最高优先级**里最后压入的那层的 `onBack` 先处理，
+     * 返回 `true` = 已消费；栈空返回 `false` = 未消费，调用方应把行为交还系统（Android 允许退出）。
+     *
+     * 同优先级仍按栈序（topmost wins）；优先级只在「先组成、后启用」的层会盖住更高层时
+     * 才参与决策（见类 KDoc 的优先级一节）。取 `>=` 让后面的层在优先级相同时胜出。
      */
     fun dispatch(): Boolean {
-        val top = stack.lastOrNull() ?: return false
-        top.onBack()
+        if (stack.isEmpty()) return false
+        var chosen = stack.first()
+        for (index in 1 until stack.size) {
+            val layer = stack[index]
+            if (layer.priority >= chosen.priority) chosen = layer
+        }
+        chosen.onBack()
         return true
+    }
+
+    companion object {
+        /** 普通层：栈序 = 组合序，后压入的先处理。 */
+        const val PRIORITY_DEFAULT = 0
+
+        /**
+         * 必然压住整页的确认层（自签证书警告）：哪怕一个 no-op 的 busy 层在它之后启用，
+         * 返回也必须先落到这里 —— 否则屏上挂着「确认信任证书」而 Esc 什么都不做。
+         */
+        const val PRIORITY_ALERT = 100
     }
 }
 
@@ -125,19 +162,25 @@ val LocalDetailCovered = compositionLocalOf { false }
  * 重新压栈打乱栈序。
  *
  * 顺序语义：栈序 = 组合序，后组成的（视觉上更靠上的浮层）后入栈、先被消费 ——
- * topmost wins。
+ * topmost wins。组合序**不能**表达的「后启用但位置更靠下」的层（busy 闸门）用
+ * [priority] 兜底：高优先级的层永远先被问到（见 [BackDispatcher] 类 KDoc）。
  */
 @Composable
 fun BackLayer(
     enabled: Boolean,
     onBack: () -> Unit,
+    /**
+     * 返回栈里的优先级：默认 [BackDispatcher.PRIORITY_DEFAULT]。只有「必须压住整页」的
+     * 确认层（TLS 自签警告）才用 [BackDispatcher.PRIORITY_ALERT]。
+     */
+    priority: Int = BackDispatcher.PRIORITY_DEFAULT,
     content: @Composable () -> Unit = {},
 ) {
     val dispatcher = LocalBackDispatcher.current ?: remember { BackDispatcher() }
     val latestOnBack by rememberUpdatedState(onBack)
     val stableOnBack = remember { { latestOnBack() } }
-    DisposableEffect(dispatcher, enabled) {
-        val layer = if (enabled) dispatcher.push(stableOnBack) else null
+    DisposableEffect(dispatcher, enabled, priority) {
+        val layer = if (enabled) dispatcher.push(priority, stableOnBack) else null
         onDispose { layer?.let(dispatcher::pop) }
     }
     content()
