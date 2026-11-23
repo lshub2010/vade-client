@@ -28,7 +28,7 @@
 | Android | ✅ 可用 | minSdk 24，targetSdk 36，compileSdk 37。已在 API 30 真机与 API 37 模拟器上验证。 |
 | 桌面 · Windows | ✅ 可用 | 可用 MSI 安装器或免安装 zip（自带运行时）；也可用 `gradle :composeApp:run` 直接运行。 |
 | 桌面 · macOS / Linux | ⚠️ 未验证 | 源码与构建路径相同，但没有现成产物，也没有记录在案的验证结果。需自备 JDK 21 从源码构建。 |
-| Web · wasmJs | 🟡 能编译，CI 会打包静态站点 | 浏览器无法完成首次配对（见[已知限制](#已知限制)）；构建出的站点在浏览器里运行尚未验证。 |
+| Web · wasmJs | 🟡 能编译，CI 会打包静态站点 | 页面与 core 同源（或 Origin 在白名单）时可以完成首次配对；构建出的站点尚未在真实浏览器验证。 |
 
 ## 下载与安装（0.0.2-alpha）
 
@@ -116,9 +116,9 @@ $env:VADE_SOURCE="real"; $env:VADE_HOST="192.168.1.10"; $env:VADE_PORT="8443"; $
 http://localhost:8080/?source=real&host=192.168.1.10&port=8443&pair_code=ABCDEFGH
 ```
 
-> Web 端会解析 `pair_code`，但浏览器读不到 `POST /ui/session` 返回的 `Set-Cookie`，因此无法完成首次配对，代码也会刻意不去尝试。请先在桌面或 Android 客户端完成首次配对。
+> Web 端会解析 `pair_code`，并在配对请求里带 `x-vade-session-token: 1`；页面 Origin 通过 core 闸门时，core 会把同一个会话 token 放进 JSON 响应体。页面必须与 core 同源（或 Origin 在白名单）；拿不到 body token 时仍会尝试浏览器托管的 cookie，失败时提示“浏览器没有保存会话”，而不是“码错”。
 
-也可以什么参数都不传：首次启动时会话列表顶部会出现一张配对卡，可在卡里填写 host、port 和一次性配对码；配对成功后客户端会按这个 core 重建真实数据源。该卡片的配对输入在桌面与 Android 可用；浏览器不会发起兑换，只会提示改用桌面或手机配对。
+也可以什么参数都不传：首次启动时会话列表顶部会出现一张配对卡，可在卡里填写 host、port 和一次性配对码；配对成功后客户端会按这个 core 重建真实数据源。桌面、Android 与同源 Web 页面都可以发起兑换。
 
 ### 3. 开始使用
 
@@ -180,7 +180,7 @@ gradle :composeApp:compileKotlinWasmJs
 
 ## 已知限制
 
-1. **Web 端无法完成首次配对。** 浏览器读不到 `POST /ui/session` 返回的 `Set-Cookie`，Web 构建会拒绝尝试这次兑换。请先在桌面或 Android 客户端完成配对。构建出的 Web 站点在浏览器里运行也尚未在本仓库验证。
+1. **Web 首次配对要求同源页面。** 浏览器读不到 `Set-Cookie`，Web 构建会向 core 请求 body token；core 只在页面 Origin 与 `/ws` 通过同一闸门时返回。把 Web 静态站点与 core 放在同一 origin（或把页面 Origin 加进白名单）。构建出的站点尚未在真实浏览器验证。
 2. **会话中段没有连接状态指示。** 断线会自动重连（指数退避，上限 30 秒），但连接状态只在会话列表首次加载时显示。
 3. **同一会话在一条连接上可能 attach 两次。** 这是既有基线问题。正常使用基本无感，但长连接下事件可能被处理两次；重启客户端即可回收。
 

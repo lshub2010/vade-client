@@ -28,7 +28,7 @@ This repository is the **client**: one Compose Multiplatform UI shared by Androi
 | Android | ✅ Available | minSdk 24, targetSdk 36, compileSdk 37. Tested on an API 30 device and an API 37 emulator. |
 | Desktop · Windows | ✅ Available | MSI installer or portable zip (bundled runtime). `gradle :composeApp:run` also works. |
 | Desktop · macOS / Linux | ⚠️ Not verified | Same source and build path, but no prebuilt artifacts and no recorded test pass. Build from source with JDK 21. |
-| Web · wasmJs | 🟡 Compiles; CI packages a static site | The browser cannot complete first-time pairing (see [Known limitations](#known-limitations)); running the built site in a browser has not been verified here. |
+| Web · wasmJs | 🟡 Compiles; CI packages a static site | First pairing works when the page is served from the core origin (or an allowlisted Origin); the built site has not been verified in a real browser here. |
 
 ## Download and install (0.0.2-alpha)
 
@@ -116,7 +116,7 @@ $env:VADE_SOURCE="real"; $env:VADE_HOST="192.168.1.10"; $env:VADE_PORT="8443"; $
 http://localhost:8080/?source=real&host=192.168.1.10&port=8443&pair_code=ABCDEFGH
 ```
 
-> The Web build parses `pair_code`, but a browser cannot read the `Set-Cookie` returned by `POST /ui/session`, so it cannot bootstrap pairing and deliberately does not try. Complete the first pairing in the desktop or Android client.
+> The Web build parses `pair_code` and sends `x-vade-session-token: 1`; the core returns the session token in the JSON body when the page Origin passes the gate. The page must be served from the same origin as the core (or its Origin must be allowlisted). If the body token is unavailable, the browser-managed cookie is still tried; a rejection is reported as “browser did not keep the session”, not “wrong code”.
 
 You can also pass no parameters: on first launch the session list shows a pairing card where you can enter the host, port and one-time code. After a successful pairing the client rebuilds its source against that core. The input is available on desktop and Android; the browser does not attempt the exchange and only tells you to pair on another device.
 
@@ -180,7 +180,7 @@ Test totals must be read from `composeApp/build/test-results/desktopTest/TEST-*.
 
 ## Known limitations
 
-1. **Web cannot perform first-time pairing.** A browser cannot read the `Set-Cookie` from `POST /ui/session`, so the Web build refuses to attempt the exchange. Pair in the desktop or Android client first. Running the built Web site in a browser is also not verified in this repository.
+1. **Web first pairing needs a same-origin page.** A browser cannot read `Set-Cookie`; the Web build asks the core for a body token, which the core only returns when the page Origin passes the same gate as `/ws`. Serve the Web bundle and core under one origin (or allowlist the page Origin). Running the built site in a real browser is still unverified in this repository.
 2. **No connection indicator mid-session.** The client reconnects automatically with exponential backoff (capped at 30 s), but the connection state is only shown while the session list first loads.
 3. **A session can attach twice on one connection.** This is a known baseline issue. Normal use is unaffected, but events may be processed twice on a long-lived connection; restarting the client clears it.
 
