@@ -14,6 +14,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import vade.ui.chat.ChatMessage
 import vade.ui.protocol.ApprovalDecision
 import vade.ui.protocol.ApprovalScope
+import vade.ui.protocol.BrowserCookieUnavailableException
 import vade.ui.protocol.BrowserPairing
 import vade.ui.protocol.KtorTransportFactory
 import vade.ui.protocol.SessionCookie
@@ -99,12 +100,14 @@ object SourceKeys {
 expect fun rawSourceStrings(): RawSourceStrings
 
 /**
- * H4 · 本平台能否真的兑换一次性配对码。
+ * H4/T5 · 本平台能否真的兑换一次性配对码。
  *
- * `POST /ui/session` 的成功凭据是 `Set-Cookie: __Host-ac_ui`，而浏览器运行时**读不到**
- * 它 —— 在 Wasm 上发起这次 POST 只会把用户的一次性码烧掉，然后提示「码不对，再取一个」
- * （死循环）。所以能力是 `expect` 的：JVM/Android = true，浏览器 = false，调用方据此
- * 根本不发请求、直接给「请用桌面/手机配对」的文案。
+ * 两条凭据通道，有一条能用就算：
+ *  - 读得到 `Set-Cookie`（JVM/Android）—— 直接用 cookie；
+ *  - 读不到，但能从 `POST /ui/session` 的 body 拿 `session_token`（浏览器/wasm，
+ *    请求显式带 `x-vade-session-token: 1`，且页面 Origin 通过 core 的闸门）。
+ *
+ * 两条都不通的平台才返回 false：调用方据此**不发请求、不烧用户的码**，直接给可执行文案。
  */
 expect fun canBootstrapPairing(): Boolean
 
@@ -265,8 +268,10 @@ fun sessionSourceFrom(raw: RawSourceStrings): SessionSource =
             // extra / `?pair_code=` 因此**完全不生效**：WS 升级被当成「设备 peer」，core
             // 走 Noise 握手，明文 JSON 客户端永远接不上（用户看到的是「core 不可达」）。
             //
-            // 浏览器（[canBootstrapPairing] = false）不注入：它读不到 `POST /ui/session`
-            // 的 `Set-Cookie`，发这次请求只会把用户的一次性码烧掉（H4）。
+            // 浏览器（T5 之后 canBootstrapPairing = true）也注入：它读不到 `Set-Cookie`，
+            // 但 core 会把同一份 token 放进 `POST /ui/session` 的响应体（页面 Origin 必须
+            // 通过闸门）。旧 core 不回 token 时，浏览器托管 cookie 模式仍然兜底 —— 见
+            // `KtorTransportFactory.ensureCookie`。
             //
             // r5-tls · 协议照 `spec.tls` 透传，但 **`allowInsecureTls` 恒为 false**：
             // trust-all 只有在用户对着警告弹层点过「仍然连接」之后才允许（见
@@ -563,6 +568,16 @@ enum class PairingFailureKind {
      * 正规 CA 签发的证书永远走不到这里 —— 那才是「合法 CA 正常校验」。
      */
     CertificateUntrusted,
+
+    /**
+     * T5 · 配对码被 core 接受了（`POST /ui/session` 已 200），但本次运行读不到
+     * `Set-Cookie`、响应里也没有 `session_token`，随后 `/ws` 升级被拒 —— 浏览器没把
+     * 会话 cookie 带上。
+     *
+     * 与 [BadCode] 的区别是下一步：码**已被消费**，重试同一个码只会再失败一次；可执行的
+     * 动作是让页面与 core 同源（反向代理），或者改用桌面 / 手机配对并重新取码。
+     */
+    BrowserCookieMissing,
 }
 
 /** 一次首次运行配对尝试的结局。 */
@@ -649,8 +664,10 @@ internal fun pairingEndpointOf(raw: RawSourceStrings): String {
  *  - 端口/地址不合法 = [PairingFailureKind.BadConfig]，**一次网络请求都不发**；
  *  - "refused" = 服务端没起；其余 = 网络。
  *
- * H4 · 本平台不能兑换码（[canBootstrapPairing] = false，浏览器/Wasm）时直接返回
- * [PairingFailureKind.NotAvailableHere] —— 不烧掉用户的一次性码。
+ * H4/T5 · 本平台两条凭据通道都不通（[canBootstrapPairing] = false）时直接返回
+ * [PairingFailureKind.NotAvailableHere] —— 不烧掉用户的一次性码。今天三端都至少有一条
+ * 通道（JVM/Android 读 cookie；wasm 读 body token 或让浏览器托管 cookie），这条分支是
+ * 给未来平台的兜底，而不是浏览器路径。
  *
  * 码只走函数参数与进程内存 —— 不写盘、不拼进 URL、不进日志。
  */
@@ -725,6 +742,9 @@ suspend fun firstRunPairingAttempt(
  * 不再把所有 `AUTH_FAILED` 笼统说成「配对码不对」；配置解析错误单独一类，不发网络请求。
  */
 internal fun pairingFailureKindOf(t: Throwable): PairingFailureKind = when {
+    // T5 · 码有效、但浏览器没把会话带上来。必须排在 AUTH_FAILED 之前：卡片对这两者的
+    // 下一步完全不同（一个是「重新取码」，一个是「让页面同源 / 换端配对」）。
+    t is BrowserCookieUnavailableException -> PairingFailureKind.BrowserCookieMissing
     t is VadeException && t.code in PAIR_CODE_ERRORS -> PairingFailureKind.BadCode
     t is IllegalArgumentException -> PairingFailureKind.BadConfig
     // P0-6 · 证书不被信任（自签 / 名字不匹配）：唯一会要求「显式确认」的一类。它发生在
@@ -1271,9 +1291,9 @@ object PairingRuntime {
                     PairingAttempt.Rejected(PairingFailureKind.BadConfig, it),
                 )
             }
-        // H4 · 本平台不能兑换码（浏览器读不到 Set-Cookie）：同样原地拒绝 —— 不许先把旧
-        // core 的会话吊销掉再告诉用户「这里不能配对」。[firstRunPairingAttempt] 自己不发明
-        // 网络请求，复用它同一条文案，不在这里抄第二份。
+        // H4/T5 · 本平台两条通道都不通时原地拒绝 —— 不许先把旧 core 的会话吊销掉再告诉
+        // 用户「这里不能配对」。[firstRunPairingAttempt] 自己不发明网络请求，复用它同一条
+        // 文案，不在这里抄第二份。今天三端都至少有一条通道，这条只是兜底。
         if (!canBootstrapPairing()) {
             return CoreSwitchOutcome(
                 SessionRevocation.NotNeeded,

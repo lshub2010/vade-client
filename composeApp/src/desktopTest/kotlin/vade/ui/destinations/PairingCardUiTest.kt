@@ -217,9 +217,9 @@ class PairingCardUiTest {
         // 漏一条 when 分支会在这里立刻红（不是编译错误，是文案缺失）。
         val kinds = PairingFailureKind.entries
         assertEquals(
-            6,
+            7,
             kinds.size,
-            "失败分类数量变了：新分类（P0-6 的 CertificateUntrusted）必须同时补 headline / nextStep 文案",
+            "失败分类数量变了：新分类（T5 的 BrowserCookieMissing）必须同时补 headline / nextStep 文案",
         )
         val headlines = kinds.map { pairingHeadline(it, raw) }
         assertEquals(headlines.size, headlines.toSet().size, "每种失败的标题必须互不相同：$headlines")
@@ -236,5 +236,15 @@ class PairingCardUiTest {
         val certificateStep = pairingNextStep(PairingFailureKind.CertificateUntrusted, raw)
         assertTrue(certificateStep.contains("自签证书"), "证书类失败要点名自签：$certificateStep")
         assertTrue(certificateStep.contains("仍然连接"), "确认动作必须照抄按钮文案：$certificateStep")
+        // T5 · 「码有效但浏览器没保住 cookie」的下一步必须是「同源 / 换端 + 重新取码」，
+        // 而不是让人拿着一个已经消费掉的码反复点。
+        val browserStep = pairingNextStep(PairingFailureKind.BrowserCookieMissing, raw)
+        assertTrue(browserStep.contains("同源"), "浏览器没保存会话 → 第一步是让页面与 core 同源：$browserStep")
+        assertTrue(browserStep.contains("桌面应用"), "也要给「换端配对」的出口：$browserStep")
+        assertTrue(browserStep.contains("新码"), "码已被消费，必须提示重新取码：$browserStep")
+        assertTrue(
+            pairingHeadline(PairingFailureKind.BrowserCookieMissing, raw).contains("配对码本身是对的"),
+            "不能把它说成「码错」—— 用户会拿同一个码重试",
+        )
     }
 }

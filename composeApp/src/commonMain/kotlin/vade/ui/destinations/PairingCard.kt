@@ -83,13 +83,16 @@ import vade.ui.skin.LocalSkin
  * 的 factory + 实际 endpoint 装进 [PairingRuntime]：卡片消失（本组件读桥）、入口处的源构造
  * 重读桥（`App`）、列表开始拉真数据 —— 没有第二条连接路径。
  *
- * ## H4 · 浏览器/Was**不发起任何请求**
- * Wasm 读不到 `Set-Cookie`，真发 POST 只会把用户的一次性码烧掉。所以
- * [canBootstrapPairing] 为 false 时表单**不渲染输入框**，只给「请用桌面/手机配对」的
- * 可行动文案；`firstRunPairingAttempt` 内部还有第二道闸（防别的调用点绕过卡片）。
+ * ## H4/T5 · 浏览器：有 token 通道，但仍然不落盘
+ * Wasm 读不到 `Set-Cookie`。core 现在可以在 `POST /ui/session` 的响应体里回同一个
+ * `session_token`（请求显式带 `x-vade-session-token: 1`、页面 Origin 通过闸门），所以
+ * [canBootstrapPairing] 在 wasm 上是 `true`，表单正常渲染；旧 core 不回 token 时退回
+ * 「浏览器托管 cookie」模式。真正不可用的平台（两条通道都不通）才不渲染输入框。
  *
- * **码的边界**：输入值只活在 [PairingForm] 的组合内存 state 与 [firstRunPairingAttempt] 的
- * 函数参数里 —— 不写 DataStore / 不拼进 URL / 不进日志（守卫测试扫描持久化与 URL sink）。
+ * **码与 token 的边界**：输入值只活在 [PairingForm] 的组合内存 state 与
+ * [firstRunPairingAttempt] 的函数参数里 —— 不写 DataStore / 不拼进 URL / 不进日志
+ * （守卫测试扫描持久化与 URL sink）。token 同理：它只进进程内存的
+ * [StoredPairing]，从不进 `localStorage`（wasm 的 [platformPairingStore] 就是内存实现）。
  *
  * [raw] / [onSubmit] 是注入缝：默认值 = 平台真实通道 + 真实尝试（生产逐字节不变）；
  * 测试注入替身。可见性判定在**卡内**完成（`rawSourceStrings` 是数据层的公共通道，
@@ -1205,10 +1208,10 @@ internal const val PAIRING_SAVED_RETRY = "用已保存的配对重连"
 /** 重连在途时的同一个按钮。 */
 internal const val PAIRING_SAVED_RETRYING = "正在重连已保存的配对…"
 
-/** H4 · 浏览器/Wasм 的替代路径（不发起 POST，也不消耗码）。 */
+/** H4 · 两条凭据通道都不通的平台的替代路径（不发起 POST，也不消耗码）。 */
 internal const val PAIRING_UNAVAILABLE_HERE =
-    "浏览器版读不到配对 cookie，所以这里不会发配对请求（你的一次性码不会被用掉）。" +
-        "请用桌面应用或手机 App 连接 core；浏览器版等页面壳子接上配对后再开通。"
+    "这个平台拿不到配对会话（读不到 Set-Cookie，也不支持 token 通道），所以这里不会发配对请求" +
+        "（你的一次性码不会被用掉）。请用桌面应用或手机 App 连接 core。"
 
 /**
  * 每种失败的标题 —— 互不可替换（测试逐条断言相等 + 两两不等）。
@@ -1220,8 +1223,9 @@ internal fun pairingHeadline(kind: PairingFailureKind, raw: RawSourceStrings): S
     PairingFailureKind.ServerDown -> "core 没有在 ${pairingEndpointOf(raw)} 上运行（连接被拒绝）"
     PairingFailureKind.Network -> "网络不通：连不上 core"
     PairingFailureKind.BadConfig -> "地址填得不对：${pairingEndpointOf(raw)}"
-    PairingFailureKind.NotAvailableHere -> "浏览器版不能直接配对"
+    PairingFailureKind.NotAvailableHere -> "这个平台不能直接配对"
     PairingFailureKind.CertificateUntrusted -> "core 的证书不被信任：${pairingEndpointOf(raw)}"
+    PairingFailureKind.BrowserCookieMissing -> "浏览器没能保存这次配对（配对码本身是对的，已被用掉）"
 }
 
 /**
@@ -1248,4 +1252,9 @@ internal fun pairingNextStep(kind: PairingFailureKind, raw: RawSourceStrings): S
     PairingFailureKind.CertificateUntrusted ->
         "下一步：如果这台 core 用的是自签证书（自己的局域网机器 / 本机），确认「仍然连接」后" +
             "会再试一次；否则请换成带可信证书的地址，或先在系统里信任那张证书。"
+    PairingFailureKind.BrowserCookieMissing ->
+        "下一步：让页面与 core 同源后再试 —— 用反向代理把静态站点和 core 放在同一个 " +
+            "scheme/host/port 下（同 host 不同端口时把页面 Origin 加进 core 的 " +
+            "`[server].ui_origins`），或者改用桌面应用 / 手机 App 配对。" +
+            "这个码已经被 core 用掉了，重试前请回 core 的终端取一个新码。"
 }
