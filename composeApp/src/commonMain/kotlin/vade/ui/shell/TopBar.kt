@@ -10,6 +10,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -123,6 +124,8 @@ internal const val TopBarTitleFadeOutMs = 160
  * @param animate `false` = 瞬时替换（无中间态）—— 供测试与无动画场景；
  *   `true`（默认）= 淡入淡出。
  * @param onSubtitleClick 副标题可点（g-topbar-usage 失败态的重试入口）；`null` = 不可点。
+ * @param connection T1 · 真实连接状态（null = 源没有传输，例如夹具源；不画徽标）。
+ *   放在参数表末尾以保持既有调用点（含测试）逐字节不变。
  */
 @Composable
 fun TopBar(
@@ -132,6 +135,7 @@ fun TopBar(
     actions: (@Composable RowScope.() -> Unit)? = null,
     animate: Boolean = true,
     onSubtitleClick: (() -> Unit)? = null,
+    connection: ConnectionStatus? = null,
 ) {
     val skin = LocalSkin.current
     // K1 · 动画门（Skin.kt 的既定读法：CompositionLocal OR 宿主级安装值）。
@@ -155,33 +159,42 @@ fun TopBar(
             if (skin.colors.isDark) skin.glass.tintDark else skin.glass.tintLight,
         ),
     ) {
-        Row(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (leading != null) {
-                leading()
-                Spacer(Modifier.width(4.dp))
-            }
-            Column(Modifier.weight(1f).padding(horizontal = 6.dp)) {
-                if (animate) {
-                    AnimatedContent(
-                        targetState = title to subtitle,
-                        transitionSpec = {
-                            fadeIn(tween(durationMillis = titleFadeInMs)) togetherWith
-                                fadeOut(tween(durationMillis = titleFadeOutMs)) using
-                                SizeTransform(clip = false) { _, _ -> snap() }
-                        },
-                        contentAlignment = Alignment.TopStart,
-                        label = "TopBarTitlePair",
-                    ) { (t, s) ->
-                        TopBarTitlePair(title = t, subtitle = s, onSubtitleClick = onSubtitleClick)
-                    }
-                } else {
-                    TopBarTitlePair(title = title, subtitle = subtitle, onSubtitleClick = onSubtitleClick)
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            // T1 · 窄屏只留圆点：判据是胶囊**自身**宽度（不是窗口断点），双栏/rail 下
+            // 顶栏被栏区收窄时也一样生效，标题最多让出 8dp 圆点 + 8dp 内边距。
+            val compactConnection = maxWidth < 420.dp
+            Row(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (leading != null) {
+                    leading()
+                    Spacer(Modifier.width(4.dp))
                 }
+                Column(Modifier.weight(1f).padding(horizontal = 6.dp)) {
+                    if (animate) {
+                        AnimatedContent(
+                            targetState = title to subtitle,
+                            transitionSpec = {
+                                fadeIn(tween(durationMillis = titleFadeInMs)) togetherWith
+                                    fadeOut(tween(durationMillis = titleFadeOutMs)) using
+                                    SizeTransform(clip = false) { _, _ -> snap() }
+                            },
+                            contentAlignment = Alignment.TopStart,
+                            label = "TopBarTitlePair",
+                        ) { (t, s) ->
+                            TopBarTitlePair(title = t, subtitle = s, onSubtitleClick = onSubtitleClick)
+                        }
+                    } else {
+                        TopBarTitlePair(title = title, subtitle = subtitle, onSubtitleClick = onSubtitleClick)
+                    }
+                }
+                if (connection != null) {
+                    Spacer(Modifier.width(4.dp))
+                    ConnectionBadge(status = connection, compact = compactConnection)
+                }
+                if (actions != null) actions()
             }
-            if (actions != null) actions()
         }
     }
 }

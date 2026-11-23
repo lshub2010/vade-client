@@ -1,5 +1,6 @@
 package vade.ui.data
 
+import kotlinx.coroutines.flow.StateFlow
 import vade.ui.protocol.VadeConnectionState
 
 /**
@@ -38,3 +39,18 @@ internal fun VadeConnectionState.toRealState(): RealSessionState = when (this) {
     is VadeConnectionState.Reconnecting -> RealSessionState.Reconnecting(attempt, delayMs)
     is VadeConnectionState.Closed -> RealSessionState.Disconnected
 }
+
+/**
+ * Narrow read-only seam for "this source owns a live transport, here is its lifecycle".
+ *
+ * T1 · The shell binds its connection indicator to [connectionState]. Implementing this
+ * does **not** create a second connection state: [RealSessionSource] exposes the very
+ * same `MutableStateFlow` it already feeds from `VadeConnectionState` — fakes that have
+ * no transport simply do not implement the interface, and the indicator stays absent
+ * instead of inventing a "connected" claim.
+ */
+interface ConnectionStateHost {
+    /** Same lifecycle flow as [RealSessionSource.state] (not a copy). */
+    val connectionState: StateFlow<RealSessionState>
+}
+

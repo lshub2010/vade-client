@@ -435,6 +435,8 @@ private fun DrawerDetailBase(
         contentPadding = PaddingValues(top = TOP_BAR_ZONE),
         bottomBarInset = bottomInset,
         onOverlayChange = onOverlayChange,
+        // T1 · 手机抽屉宿主的详情同样要看到断线/重连（与顶栏同一份状态）。
+        connection = rememberConnectionStatus(state.source),
     )
 }
 
