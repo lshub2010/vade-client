@@ -81,8 +81,14 @@ class BackDispatcher {
     /** 栈深（诊断/测试用：浮层关干净后必须回到 0 —— 开关 5 次不泄漏的验收判据）。 */
     val depth: Int get() = stack.size
 
-    /** 入栈。由 [BackLayer] 在 enabled 时调用；返回句柄供出栈配对。 */
-    internal fun push(onBack: () -> Unit, priority: Int = PRIORITY_DEFAULT): Layer {
+    /**
+     * 入栈。由 [BackLayer] 在 enabled 时调用；返回句柄供出栈配对。
+     *
+     * `priority` 在前、`onBack` 在后：这样 `push { ... }` 的尾随 lambda 仍然落在
+     * `onBack` 上（尾随 lambda 永远绑最后一个参数），而 `push(PRIORITY_ALERT) { ... }`
+     * 也读得通。
+     */
+    internal fun push(priority: Int = PRIORITY_DEFAULT, onBack: () -> Unit): Layer {
         val layer = Layer(onBack, priority)
         stack.add(layer)
         return layer
@@ -174,7 +180,7 @@ fun BackLayer(
     val latestOnBack by rememberUpdatedState(onBack)
     val stableOnBack = remember { { latestOnBack() } }
     DisposableEffect(dispatcher, enabled, priority) {
-        val layer = if (enabled) dispatcher.push(stableOnBack, priority) else null
+        val layer = if (enabled) dispatcher.push(priority, stableOnBack) else null
         onDispose { layer?.let(dispatcher::pop) }
     }
     content()

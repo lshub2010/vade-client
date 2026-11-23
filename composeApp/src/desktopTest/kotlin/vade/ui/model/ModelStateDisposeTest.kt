@@ -212,15 +212,28 @@ class ModelStateDisposeTest {
         callerScope.cancel()
     }
 
-    /** 内存 seam（没有 real wiring）：dispose 是纯 no-op，状态仍可正常使用。 */
+    /**
+     * 内存 seam（没有 real wiring）：dispose 仍然**把状态置死** —— 修的是「状态」而不是
+     * 「作用域」，seam 只是没有在途任务，不是「还活着」。选择在 dispose 之前照常生效，
+     * dispose 之后所有写入口都拒绝开工（否则下屏的状态还能被迟到的点击改掉）。
+     */
     @Test
-    fun disposeOnTheInMemorySeamIsANoOp() {
+    fun disposeOnTheInMemorySeamTurnsTheStateDead() {
         val actions = InMemoryModelActions()
         val state = ModelState.forSession(actions, "s-1")
+        assertTrue(state.select(ModelFixtures.localQwen.id), "前置条件：dispose 之前选择照常生效")
         state.dispose()
         state.dispose()
-        assertTrue(state.select(ModelFixtures.localQwen.id), "seam 路径不归 scope 管：dispose 不该影响选择")
-        assertEquals(ModelFixtures.localQwen.id, state.selectedId)
+        assertFalse(
+            state.select(ModelFixtures.claudeSonnet.id),
+            "dispose 之后 seam 状态也是死的：select 必须拒绝开工",
+        )
+        assertEquals(
+            ModelFixtures.localQwen.id,
+            state.selectedId,
+            "死状态不接受任何新写入，也不回滚已落地的选择",
+        )
+        assertFalse(state.followGlobalDefault(), "followGlobalDefault 同样被 disposed 拦住")
     }
 
     // --- 5 · 接线（源码扫描） ------------------------------------------------------------

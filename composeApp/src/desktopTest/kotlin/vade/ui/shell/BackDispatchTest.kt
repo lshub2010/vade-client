@@ -92,7 +92,7 @@ class BackDispatchTest {
         var alertClosed = 0
         var busySwallowed = 0
 
-        val alert = d.push({ alertClosed++ }, BackDispatcher.PRIORITY_ALERT)
+        val alert = d.push(BackDispatcher.PRIORITY_ALERT) { alertClosed++ }
         val busy = d.push { busySwallowed++ } // 后压入 ⇒ 没有优先级时它会赢
 
         assertTrue(d.dispatch(), "栈非空，返回被消费")

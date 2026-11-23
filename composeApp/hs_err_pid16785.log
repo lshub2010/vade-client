@@ -1,0 +1,1907 @@
+#
+# A fatal error has been detected by the Java Runtime Environment:
+#
+#  SIGSEGV (0xb) at pc=0x0000007237096cdc, pid=16785, tid=20230
+#
+# JRE version: OpenJDK Runtime Environment (21.0.13.1+2) (build 21.0.13.1+2-1-24.04.1-Ubuntu)
+# Java VM: OpenJDK 64-Bit Server VM (21.0.13.1+2-1-24.04.1-Ubuntu, mixed mode, sharing, tiered, compressed oops, compressed class ptrs, g1 gc, linux-aarch64)
+# Problematic frame:
+# C  [libskiko-linux-arm64.so+0x8b6cdc]  hb_font_create_sub_font+0x1c
+#
+# No core dump will be written. Core dumps have been disabled. To enable core dumping, try "ulimit -c unlimited" before starting Java again
+#
+# If you would like to submit a bug report, please visit:
+#   https://bugs.launchpad.net/ubuntu/+source/openjdk-21
+# The crash happened outside the Java Virtual Machine in native code.
+# See problematic frame for where to report the bug.
+#
+
+---------------  S U M M A R Y ------------
+
+Command Line: -Dorg.gradle.internal.worker.tmpdir=/root/HermesWorkspace/Vade-wt/f18-effects/composeApp/build/tmp/desktopTest/work -Xmx512m -Dfile.encoding=UTF-8 -Duser.country=US -Duser.language=en -Duser.variant -ea worker.org.gradle.process.internal.worker.GradleWorkerMain 'Gradle Test Executor 1'
+
+Host: AArch64, 8 cores, 2G, Ubuntu 24.04.5 LTS
+Time: Mon Nov 23 03:17:18 2026 UTC elapsed time: 2355.082157 seconds (0d 0h 39m 15s)
+
+---------------  T H R E A D  ---------------
+
+Current thread (0x00000072dbcb0010):  JavaThread "AWT-EventQueue-0 @coroutine#16972"        [_thread_in_native, id=20230, stack(0x00000071ca206000,0x00000071ca404000) (2040K)]
+
+Stack: [0x00000071ca206000,0x00000071ca404000],  sp=0x00000071ca3ff070,  free space=2020k
+Native frames: (J=compiled Java code, j=interpreted, Vv=VM code, C=native code)
+C  [libskiko-linux-arm64.so+0x8b6cdc]  hb_font_create_sub_font+0x1c
+C  [libskiko-linux-arm64.so+0x89463c]  (anonymous namespace)::ShaperHarfBuzz::shape(char const*, unsigned long, char const*, char const*, SkShaper::BiDiRunIterator const&, SkShaper::LanguageRunIterator const&, SkShaper::ScriptRunIterator const&, SkShaper::FontRunIterator const&, SkShaper::Feature const*, unsigned long) const+0x3bc
+C  [libskiko-linux-arm64.so+0x898148]  (anonymous namespace)::ShapeDontWrapOrReorder::wrap(char const*, unsigned long, SkShaper::BiDiRunIterator const&, SkShaper::LanguageRunIterator const&, SkShaper::ScriptRunIterator const&, SkShaper::FontRunIterator const&, (anonymous namespace)::RunIteratorQueue&, SkShaper::Feature const*, unsigned long, float, SkShaper::RunHandler*) const+0x198
+C  [libskiko-linux-arm64.so+0x893c74]  (anonymous namespace)::ShaperHarfBuzz::shape(char const*, unsigned long, SkShaper::FontRunIterator&, SkShaper::BiDiRunIterator&, SkShaper::ScriptRunIterator&, SkShaper::LanguageRunIterator&, SkShaper::Feature const*, unsigned long, float, SkShaper::RunHandler*) const+0x324
+C  [libskiko-linux-arm64.so+0x883ecc]  skia::textlayout::OneLineShaper::shape()::{lambda(skia::textlayout::SkRange<unsigned long>, SkSpan<skia::textlayout::Block>, float&, unsigned long, unsigned char)#1}::operator()(skia::textlayout::SkRange<unsigned long>, SkSpan<skia::textlayout::Block>, float&, unsigned long, unsigned char) const::{lambda(skia::textlayout::Block, skia_private::TArray<SkShaper::Feature, true>)#1}::operator()(skia::textlayout::Block, skia_private::TArray<SkShaper::Feature, true>) const::{lambda(sk_sp<SkTypeface>)#1}::operator()(sk_sp<SkTypeface>) const+0x3ac
+C  [libskiko-linux-arm64.so+0x88462c]  std::_Function_handler<skia::textlayout::OneLineShaper::Resolved (sk_sp<SkTypeface>), skia::textlayout::OneLineShaper::shape()::{lambda(skia::textlayout::SkRange<unsigned long>, SkSpan<skia::textlayout::Block>, float&, unsigned long, unsigned char)#1}::operator()(skia::textlayout::SkRange<unsigned long>, SkSpan<skia::textlayout::Block>, float&, unsigned long, unsigned char) const::{lambda(skia::textlayout::Block, skia_private::TArray<SkShaper::Feature, true>)#1}::operator()(skia::textlayout::Block, skia_private::TArray<SkShaper::Feature, true>) const::{lambda(sk_sp<SkTypeface>)#1}>::_M_invoke(std::_Any_data const&, sk_sp<SkTypeface>&&)+0x3c
+C  [libskiko-linux-arm64.so+0x88c49c]  skia::textlayout::OneLineShaper::matchResolvedFonts(skia::textlayout::TextStyle const&, std::function<skia::textlayout::OneLineShaper::Resolved (sk_sp<SkTypeface>)> const&)+0xdc
+C  [libskiko-linux-arm64.so+0x88eda0]  void std::__invoke_impl<void, skia::textlayout::OneLineShaper::shape()::{lambda(skia::textlayout::SkRange<unsigned long>, SkSpan<skia::textlayout::Block>, float&, unsigned long, unsigned char)#1}::operator()(skia::textlayout::SkRange<unsigned long>, SkSpan<skia::textlayout::Block>, float&, unsigned long, unsigned char) const::{lambda(skia::textlayout::Block, skia_private::TArray<SkShaper::Feature, true>)#1}&, skia::textlayout::Block, skia_private::TArray<SkShaper::Feature, true> >(std::__invoke_other, skia::textlayout::OneLineShaper::shape()::{lambda(skia::textlayout::SkRange<unsigned long>, SkSpan<skia::textlayout::Block>, float&, unsigned long, unsigned char)#1}::operator()(skia::textlayout::SkRange<unsigned long>, SkSpan<skia::textlayout::Block>, float&, unsigned long, unsigned char) const::{lambda(skia::textlayout::Block, skia_private::TArray<SkShaper::Feature, true>)#1}&, skia::textlayout::Block&&, skia_private::TArray<SkShaper::Feature, true>&&) [clone .constprop.0]+0x3e0
+C  [libskiko-linux-arm64.so+0x886900]  skia::textlayout::OneLineShaper::iterateThroughFontStyles(skia::textlayout::SkRange<unsigned long>, SkSpan<skia::textlayout::Block>, std::function<void (skia::textlayout::Block, skia_private::TArray<SkShaper::Feature, true>)> const&)+0xe10
+C  [libskiko-linux-arm64.so+0x887d04]  std::_Function_handler<float (skia::textlayout::SkRange<unsigned long>, SkSpan<skia::textlayout::Block>, float&, unsigned long, unsigned char), skia::textlayout::OneLineShaper::shape()::{lambda(skia::textlayout::SkRange<unsigned long>, SkSpan<skia::textlayout::Block>, float&, unsigned long, unsigned char)#1}>::_M_invoke(std::_Any_data const&, skia::textlayout::SkRange<unsigned long>&&, SkSpan<skia::textlayout::Block>&&, float&, unsigned long&&, unsigned char&&)+0x144
+C  [libskiko-linux-arm64.so+0x88829c]  skia::textlayout::OneLineShaper::iterateThroughShapingRegions(std::function<float (skia::textlayout::SkRange<unsigned long>, SkSpan<skia::textlayout::Block>, float&, unsigned long, unsigned char)> const&)+0x4ec
+C  [libskiko-linux-arm64.so+0x888a00]  skia::textlayout::OneLineShaper::shape()+0x50
+C  [libskiko-linux-arm64.so+0x86c7b4]  skia::textlayout::ParagraphImpl::shapeTextIntoEndlessLine() [clone .part.0]+0x1f4
+C  [libskiko-linux-arm64.so+0x86cc38]  skia::textlayout::ParagraphImpl::layout(float)+0x3e8
+J 4884  org.jetbrains.skia.paragraph.ParagraphKt._nLayout(JF)V (0 bytes) @ 0x00000072c865f564 [0x00000072c865f4c0+0x00000000000000a4]
+J 14912 c2 androidx.compose.ui.text.ParagraphIntrinsicsKt.ParagraphIntrinsics(Ljava/lang/String;Landroidx/compose/ui/text/TextStyle;Ljava/util/List;Landroidx/compose/ui/unit/Density;Landroidx/compose/ui/text/font/FontFamily$Resolver;Ljava/util/List;Z)Landroidx/compose/ui/text/ParagraphIntrinsics; (19 bytes) @ 0x00000072c8ce2940 [0x00000072c8ce23c0+0x0000000000000580]
+J 15578 c2 androidx.compose.foundation.text.modifiers.ParagraphLayoutCache.setLayoutDirection(Landroidx/compose/ui/unit/LayoutDirection;)Landroidx/compose/ui/text/ParagraphIntrinsics; (80 bytes) @ 0x00000072c8dba7f8 [0x00000072c8dba380+0x0000000000000478]
+J 16811 c2 androidx.compose.foundation.text.modifiers.ParagraphLayoutCache.layoutWithConstraints-K40F9xA(JLandroidx/compose/ui/unit/LayoutDirection;)Z (442 bytes) @ 0x00000072c8efd258 [0x00000072c8efd180+0x00000000000000d8]
+J 16213 c2 androidx.compose.foundation.text.modifiers.TextStringSimpleNode.measure-3p2s80s(Landroidx/compose/ui/layout/MeasureScope;Landroidx/compose/ui/layout/Measurable;J)Landroidx/compose/ui/layout/MeasureResult; (352 bytes) @ 0x00000072c8ac3508 [0x00000072c8ac3280+0x0000000000000288]
+J 9774 c2 androidx.compose.ui.node.LayoutModifierNodeCoordinator.measure-BRTryo0(J)Landroidx/compose/ui/layout/Placeable; (353 bytes) @ 0x00000072c84bab88 [0x00000072c84baa00+0x0000000000000188]
+J 15844 c2 androidx.compose.foundation.layout.PaddingNode.measure-3p2s80s(Landroidx/compose/ui/layout/MeasureScope;Landroidx/compose/ui/layout/Measurable;J)Landroidx/compose/ui/layout/MeasureResult; (112 bytes) @ 0x00000072c8e217fc [0x00000072c8e21440+0x00000000000003bc]
+J 9774 c2 androidx.compose.ui.node.LayoutModifierNodeCoordinator.measure-BRTryo0(J)Landroidx/compose/ui/layout/Placeable; (353 bytes) @ 0x00000072c84bab88 [0x00000072c84baa00+0x0000000000000188]
+J 10796 c2 androidx.compose.ui.node.MeasurePassDelegate$$Lambda+0x0000000501247c60.invoke()Ljava/lang/Object; (8 bytes) @ 0x00000072c898f0a0 [0x00000072c898ed80+0x0000000000000320]
+J 14503 c2 androidx.compose.runtime.snapshots.SnapshotStateObserver.observeReads(Ljava/lang/Object;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;)V (890 bytes) @ 0x00000072c8c93530 [0x00000072c8c92d00+0x0000000000000830]
+J 10566 c2 androidx.compose.ui.node.MeasurePassDelegate.remeasure-BRTryo0(J)Z (465 bytes) @ 0x00000072c8880400 [0x00000072c8880080+0x0000000000000380]
+J 16362 c2 androidx.compose.ui.node.MeasureAndLayoutDelegate.remeasureIfNeeded(Landroidx/compose/ui/node/LayoutNode;ZZ)Z (182 bytes) @ 0x00000072c881aed0 [0x00000072c881acc0+0x0000000000000210]
+J 15457 c1 androidx.compose.ui.node.MeasureAndLayoutDelegate.remeasureIfNeeded$default(Landroidx/compose/ui/node/MeasureAndLayoutDelegate;Landroidx/compose/ui/node/LayoutNode;ZZILjava/lang/Object;)Z (26 bytes) @ 0x00000072c238b2ac [0x00000072c238b1c0+0x00000000000000ec]
+J 9890 c2 androidx.compose.ui.node.MeasureAndLayoutDelegate.forceMeasureTheSubtreeInternal(Landroidx/compose/ui/node/LayoutNode;Z)V (172 bytes) @ 0x00000072c89042f0 [0x00000072c8903f80+0x0000000000000370]
+J 9890 c2 androidx.compose.ui.node.MeasureAndLayoutDelegate.forceMeasureTheSubtreeInternal(Landroidx/compose/ui/node/LayoutNode;Z)V (172 bytes) @ 0x00000072c8904164 [0x00000072c8903f80+0x00000000000001e4]
+J 9890 c2 androidx.compose.ui.node.MeasureAndLayoutDelegate.forceMeasureTheSubtreeInternal(Landroidx/compose/ui/node/LayoutNode;Z)V (172 bytes) @ 0x00000072c8904164 [0x00000072c8903f80+0x00000000000001e4]
+J 9890 c2 androidx.compose.ui.node.MeasureAndLayoutDelegate.forceMeasureTheSubtreeInternal(Landroidx/compose/ui/node/LayoutNode;Z)V (172 bytes) @ 0x00000072c8904164 [0x00000072c8903f80+0x00000000000001e4]
+J 15746 c2 androidx.compose.ui.node.RootNodeOwner$OwnerImpl.forceMeasureTheSubtree(Landroidx/compose/ui/node/LayoutNode;Z)V (13 bytes) @ 0x00000072c8df8ec0 [0x00000072c8df8cc0+0x0000000000000200]
+J 10566 c2 androidx.compose.ui.node.MeasurePassDelegate.remeasure-BRTryo0(J)Z (465 bytes) @ 0x00000072c8880644 [0x00000072c8880080+0x00000000000005c4]
+J 15408 c2 androidx.compose.foundation.layout.RowColumnMeasurePolicyKt.measure(Landroidx/compose/foundation/layout/RowColumnMeasurePolicy;IIIIILandroidx/compose/ui/layout/MeasureScope;Ljava/util/List;[Landroidx/compose/ui/layout/Placeable;II[II)Landroidx/compose/ui/layout/MeasureResult; (1167 bytes) @ 0x00000072c8d8bff0 [0x00000072c8d8bbc0+0x0000000000000430]
+J 15915 c2 androidx.compose.foundation.layout.ColumnMeasurePolicy.measure-3p2s80s(Landroidx/compose/ui/layout/MeasureScope;Ljava/util/List;J)Landroidx/compose/ui/layout/MeasureResult; (63 bytes) @ 0x00000072c8e510a4 [0x00000072c8e50e40+0x0000000000000264]
+J 10797 c2 androidx.compose.ui.node.InnerNodeCoordinator.measure-BRTryo0(J)Landroidx/compose/ui/layout/Placeable; (173 bytes) @ 0x00000072c8990660 [0x00000072c89903c0+0x00000000000002a0]
+J 15844 c2 androidx.compose.foundation.layout.PaddingNode.measure-3p2s80s(Landroidx/compose/ui/layout/MeasureScope;Landroidx/compose/ui/layout/Measurable;J)Landroidx/compose/ui/layout/MeasureResult; (112 bytes) @ 0x00000072c8e217fc [0x00000072c8e21440+0x00000000000003bc]
+J 9774 c2 androidx.compose.ui.node.LayoutModifierNodeCoordinator.measure-BRTryo0(J)Landroidx/compose/ui/layout/Placeable; (353 bytes) @ 0x00000072c84bab88 [0x00000072c84baa00+0x0000000000000188]
+J 14558 c1 androidx.compose.foundation.ScrollNode.measure-3p2s80s(Landroidx/compose/ui/layout/MeasureScope;Landroidx/compose/ui/layout/Measurable;J)Landroidx/compose/ui/layout/MeasureResult; (234 bytes) @ 0x00000072c0d6de4c [0x00000072c0d6db00+0x000000000000034c]
+J 9774 c2 androidx.compose.ui.node.LayoutModifierNodeCoordinator.measure-BRTryo0(J)Landroidx/compose/ui/layout/Placeable; (353 bytes) @ 0x00000072c84bab88 [0x00000072c84baa00+0x0000000000000188]
+J 15097 c2 androidx.compose.ui.graphics.SimpleGraphicsLayerModifier.measure-3p2s80s(Landroidx/compose/ui/layout/MeasureScope;Landroidx/compose/ui/layout/Measurable;J)Landroidx/compose/ui/layout/MeasureResult; (35 bytes) @ 0x00000072c8d20794 [0x00000072c8d20740+0x0000000000000054]
+J 9774 c2 androidx.compose.ui.node.LayoutModifierNodeCoordinator.measure-BRTryo0(J)Landroidx/compose/ui/layout/Placeable; (353 bytes) @ 0x00000072c84bab88 [0x00000072c84baa00+0x0000000000000188]
+J 14216 c2 androidx.compose.foundation.layout.FillNode.measure-3p2s80s(Landroidx/compose/ui/layout/MeasureScope;Landroidx/compose/ui/layout/Measurable;J)Landroidx/compose/ui/layout/MeasureResult; (314 bytes) @ 0x00000072c8c4c42c [0x00000072c8c4c1c0+0x000000000000026c]
+J 9774 c2 androidx.compose.ui.node.LayoutModifierNodeCoordinator.measure-BRTryo0(J)Landroidx/compose/ui/layout/Placeable; (353 bytes) @ 0x00000072c84bab88 [0x00000072c84baa00+0x0000000000000188]
+J 16969 c1 dev.chrisbanes.haze.HazeSourceNode.measure-3p2s80s(Landroidx/compose/ui/layout/MeasureScope;Landroidx/compose/ui/layout/Measurable;J)Landroidx/compose/ui/layout/MeasureResult; (49 bytes) @ 0x00000072c179e24c [0x00000072c179dc00+0x000000000000064c]
+J 9774 c2 androidx.compose.ui.node.LayoutModifierNodeCoordinator.measure-BRTryo0(J)Landroidx/compose/ui/layout/Placeable; (353 bytes) @ 0x00000072c84bab88 [0x00000072c84baa00+0x0000000000000188]
+J 10796 c2 androidx.compose.ui.node.MeasurePassDelegate$$Lambda+0x0000000501247c60.invoke()Ljava/lang/Object; (8 bytes) @ 0x00000072c898f0a0 [0x00000072c898ed80+0x0000000000000320]
+J 14503 c2 androidx.compose.runtime.snapshots.SnapshotStateObserver.observeReads(Ljava/lang/Object;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;)V (890 bytes) @ 0x00000072c8c941e8 [0x00000072c8c92d00+0x00000000000014e8]
+J 10566 c2 androidx.compose.ui.node.MeasurePassDelegate.remeasure-BRTryo0(J)Z (465 bytes) @ 0x00000072c8880400 [0x00000072c8880080+0x0000000000000380]
+J 16362 c2 androidx.compose.ui.node.MeasureAndLayoutDelegate.remeasureIfNeeded(Landroidx/compose/ui/node/LayoutNode;ZZ)Z (182 bytes) @ 0x00000072c881aed0 [0x00000072c881acc0+0x0000000000000210]
+J 10458 c1 androidx.compose.ui.node.MeasureAndLayoutDelegate.measureAndLayout(Lkotlin/jvm/functions/Function0;)Z (521 bytes) @ 0x00000072c110420c [0x00000072c11029c0+0x000000000000184c]
+J 15831 c2 androidx.compose.ui.node.RootNodeOwner.measureAndLayout()V (56 bytes) @ 0x00000072c8e1c6b0 [0x00000072c8e1c580+0x0000000000000130]
+J 16742 c2 androidx.compose.ui.test.DesktopSynchronization_desktopKt.runOnUiThread(Lkotlin/jvm/functions/Function0;)Ljava/lang/Object; (53 bytes) @ 0x00000072c8ee6ca8 [0x00000072c8ee5d40+0x0000000000000f68]
+J 16762 c1 androidx.compose.ui.test.SkikoComposeUiTest.redraw()V (12 bytes) @ 0x00000072c26bdfcc [0x00000072c26bdb80+0x000000000000044c]
+J 16742 c2 androidx.compose.ui.test.DesktopSynchronization_desktopKt.runOnUiThread(Lkotlin/jvm/functions/Function0;)Ljava/lang/Object; (53 bytes) @ 0x00000072c8ee6b84 [0x00000072c8ee5d40+0x0000000000000e44]
+J 8753 c1 androidx.compose.ui.test.SkikoComposeUiTest$withRenderLoop$1.invokeSuspend(Ljava/lang/Object;)Ljava/lang/Object; (123 bytes) @ 0x00000072c18b4a98 [0x00000072c18b4580+0x0000000000000518]
+J 10834 c2 kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(Ljava/lang/Object;)V (124 bytes) @ 0x00000072c89a3e98 [0x00000072c89a3e40+0x0000000000000058]
+J 13618 c2 kotlinx.coroutines.DispatchedTaskKt.resume(Lkotlinx/coroutines/DispatchedTask;Lkotlin/coroutines/Continuation;Z)V (211 bytes) @ 0x00000072c8be7de0 [0x00000072c8be7ac0+0x0000000000000320]
+J 15269 c2 kotlinx.coroutines.DispatchedTaskKt.dispatch(Lkotlinx/coroutines/DispatchedTask;I)V (126 bytes) @ 0x00000072c8d52f74 [0x00000072c8d52d00+0x0000000000000274]
+J 13513 c2 kotlinx.coroutines.CancellableContinuationImpl.resumeImpl$kotlinx_coroutines_core(Ljava/lang/Object;ILkotlin/jvm/functions/Function3;)V (138 bytes) @ 0x00000072c8bc6314 [0x00000072c8bc6040+0x00000000000002d4]
+J 17401 c2 kotlinx.coroutines.test.CancellableContinuationRunnable.run()V (29 bytes) @ 0x00000072c8d63d50 [0x00000072c8d63cc0+0x0000000000000090]
+J 10405 c1 kotlinx.coroutines.test.TestCoroutineScheduler.advanceTimeBy-LRDsOJo(J)V (318 bytes) @ 0x00000072c1c8ab08 [0x00000072c1c89a40+0x00000000000010c8]
+J 10402 c1 androidx.compose.ui.test.AbstractMainTestClock$$Lambda+0x000000050143ae68.invoke()Ljava/lang/Object; (12 bytes) @ 0x00000072c1c8ca38 [0x00000072c1c8c800+0x0000000000000238]
+J 15446 c2 java.awt.EventDispatchThread.pumpOneEventForFilters(I)V java.desktop@21.0.13.1 (106 bytes) @ 0x00000072c8d979b8 [0x00000072c8d954c0+0x00000000000024f8]
+j  java.awt.EventDispatchThread.pumpEventsForFilter(ILjava/awt/Conditional;Ljava/awt/EventFilter;)V+35 java.desktop@21.0.13.1
+j  java.awt.EventDispatchThread.pumpEventsForHierarchy(ILjava/awt/Conditional;Ljava/awt/Component;)V+11 java.desktop@21.0.13.1
+j  java.awt.EventDispatchThread.pumpEvents(ILjava/awt/Conditional;)V+4 java.desktop@21.0.13.1
+j  java.awt.EventDispatchThread.pumpEvents(Ljava/awt/Conditional;)V+3 java.desktop@21.0.13.1
+j  java.awt.EventDispatchThread.run()V+9 java.desktop@21.0.13.1
+v  ~StubRoutines::call_stub 0x00000072c7e8d154
+V  [libjvm.so+0x8a4fa4]  JavaCalls::call_helper(JavaValue*, methodHandle const&, JavaCallArguments*, JavaThread*)+0x224
+V  [libjvm.so+0x8a6528]  JavaCalls::call_virtual(JavaValue*, Handle, Klass*, Symbol*, Symbol*, JavaThread*)+0x148
+V  [libjvm.so+0x973110]  thread_entry(JavaThread*, JavaThread*)+0x90
+V  [libjvm.so+0x8bd3d8]  JavaThread::thread_main_inner()+0x184
+V  [libjvm.so+0xea099c]  Thread::call_run()+0xac
+V  [libjvm.so+0xc5aad0]  thread_native_entry(Thread*)+0xe0
+C  [libc.so.6+0x8582c]
+Java frames: (J=compiled Java code, j=interpreted, Vv=VM code)
+J 4884  org.jetbrains.skia.paragraph.ParagraphKt._nLayout(JF)V (0 bytes) @ 0x00000072c865f564 [0x00000072c865f4c0+0x00000000000000a4]
+J 14912 c2 androidx.compose.ui.text.ParagraphIntrinsicsKt.ParagraphIntrinsics(Ljava/lang/String;Landroidx/compose/ui/text/TextStyle;Ljava/util/List;Landroidx/compose/ui/unit/Density;Landroidx/compose/ui/text/font/FontFamily$Resolver;Ljava/util/List;Z)Landroidx/compose/ui/text/ParagraphIntrinsics; (19 bytes) @ 0x00000072c8ce2940 [0x00000072c8ce23c0+0x0000000000000580]
+J 15578 c2 androidx.compose.foundation.text.modifiers.ParagraphLayoutCache.setLayoutDirection(Landroidx/compose/ui/unit/LayoutDirection;)Landroidx/compose/ui/text/ParagraphIntrinsics; (80 bytes) @ 0x00000072c8dba7f8 [0x00000072c8dba380+0x0000000000000478]
+J 16811 c2 androidx.compose.foundation.text.modifiers.ParagraphLayoutCache.layoutWithConstraints-K40F9xA(JLandroidx/compose/ui/unit/LayoutDirection;)Z (442 bytes) @ 0x00000072c8efd258 [0x00000072c8efd180+0x00000000000000d8]
+J 16213 c2 androidx.compose.foundation.text.modifiers.TextStringSimpleNode.measure-3p2s80s(Landroidx/compose/ui/layout/MeasureScope;Landroidx/compose/ui/layout/Measurable;J)Landroidx/compose/ui/layout/MeasureResult; (352 bytes) @ 0x00000072c8ac3508 [0x00000072c8ac3280+0x0000000000000288]
+J 9774 c2 androidx.compose.ui.node.LayoutModifierNodeCoordinator.measure-BRTryo0(J)Landroidx/compose/ui/layout/Placeable; (353 bytes) @ 0x00000072c84bab88 [0x00000072c84baa00+0x0000000000000188]
+J 15844 c2 androidx.compose.foundation.layout.PaddingNode.measure-3p2s80s(Landroidx/compose/ui/layout/MeasureScope;Landroidx/compose/ui/layout/Measurable;J)Landroidx/compose/ui/layout/MeasureResult; (112 bytes) @ 0x00000072c8e217fc [0x00000072c8e21440+0x00000000000003bc]
+J 9774 c2 androidx.compose.ui.node.LayoutModifierNodeCoordinator.measure-BRTryo0(J)Landroidx/compose/ui/layout/Placeable; (353 bytes) @ 0x00000072c84bab88 [0x00000072c84baa00+0x0000000000000188]
+J 10796 c2 androidx.compose.ui.node.MeasurePassDelegate$$Lambda+0x0000000501247c60.invoke()Ljava/lang/Object; (8 bytes) @ 0x00000072c898f0a0 [0x00000072c898ed80+0x0000000000000320]
+J 14503 c2 androidx.compose.runtime.snapshots.SnapshotStateObserver.observeReads(Ljava/lang/Object;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;)V (890 bytes) @ 0x00000072c8c93530 [0x00000072c8c92d00+0x0000000000000830]
+J 10566 c2 androidx.compose.ui.node.MeasurePassDelegate.remeasure-BRTryo0(J)Z (465 bytes) @ 0x00000072c8880400 [0x00000072c8880080+0x0000000000000380]
+J 16362 c2 androidx.compose.ui.node.MeasureAndLayoutDelegate.remeasureIfNeeded(Landroidx/compose/ui/node/LayoutNode;ZZ)Z (182 bytes) @ 0x00000072c881aed0 [0x00000072c881acc0+0x0000000000000210]
+J 15457 c1 androidx.compose.ui.node.MeasureAndLayoutDelegate.remeasureIfNeeded$default(Landroidx/compose/ui/node/MeasureAndLayoutDelegate;Landroidx/compose/ui/node/LayoutNode;ZZILjava/lang/Object;)Z (26 bytes) @ 0x00000072c238b2ac [0x00000072c238b1c0+0x00000000000000ec]
+J 9890 c2 androidx.compose.ui.node.MeasureAndLayoutDelegate.forceMeasureTheSubtreeInternal(Landroidx/compose/ui/node/LayoutNode;Z)V (172 bytes) @ 0x00000072c89042f0 [0x00000072c8903f80+0x0000000000000370]
+J 9890 c2 androidx.compose.ui.node.MeasureAndLayoutDelegate.forceMeasureTheSubtreeInternal(Landroidx/compose/ui/node/LayoutNode;Z)V (172 bytes) @ 0x00000072c8904164 [0x00000072c8903f80+0x00000000000001e4]
+J 9890 c2 androidx.compose.ui.node.MeasureAndLayoutDelegate.forceMeasureTheSubtreeInternal(Landroidx/compose/ui/node/LayoutNode;Z)V (172 bytes) @ 0x00000072c8904164 [0x00000072c8903f80+0x00000000000001e4]
+J 9890 c2 androidx.compose.ui.node.MeasureAndLayoutDelegate.forceMeasureTheSubtreeInternal(Landroidx/compose/ui/node/LayoutNode;Z)V (172 bytes) @ 0x00000072c8904164 [0x00000072c8903f80+0x00000000000001e4]
+J 15746 c2 androidx.compose.ui.node.RootNodeOwner$OwnerImpl.forceMeasureTheSubtree(Landroidx/compose/ui/node/LayoutNode;Z)V (13 bytes) @ 0x00000072c8df8ec0 [0x00000072c8df8cc0+0x0000000000000200]
+J 10566 c2 androidx.compose.ui.node.MeasurePassDelegate.remeasure-BRTryo0(J)Z (465 bytes) @ 0x00000072c8880644 [0x00000072c8880080+0x00000000000005c4]
+J 15408 c2 androidx.compose.foundation.layout.RowColumnMeasurePolicyKt.measure(Landroidx/compose/foundation/layout/RowColumnMeasurePolicy;IIIIILandroidx/compose/ui/layout/MeasureScope;Ljava/util/List;[Landroidx/compose/ui/layout/Placeable;II[II)Landroidx/compose/ui/layout/MeasureResult; (1167 bytes) @ 0x00000072c8d8bff0 [0x00000072c8d8bbc0+0x0000000000000430]
+J 15915 c2 androidx.compose.foundation.layout.ColumnMeasurePolicy.measure-3p2s80s(Landroidx/compose/ui/layout/MeasureScope;Ljava/util/List;J)Landroidx/compose/ui/layout/MeasureResult; (63 bytes) @ 0x00000072c8e510a4 [0x00000072c8e50e40+0x0000000000000264]
+J 10797 c2 androidx.compose.ui.node.InnerNodeCoordinator.measure-BRTryo0(J)Landroidx/compose/ui/layout/Placeable; (173 bytes) @ 0x00000072c8990660 [0x00000072c89903c0+0x00000000000002a0]
+J 15844 c2 androidx.compose.foundation.layout.PaddingNode.measure-3p2s80s(Landroidx/compose/ui/layout/MeasureScope;Landroidx/compose/ui/layout/Measurable;J)Landroidx/compose/ui/layout/MeasureResult; (112 bytes) @ 0x00000072c8e217fc [0x00000072c8e21440+0x00000000000003bc]
+J 9774 c2 androidx.compose.ui.node.LayoutModifierNodeCoordinator.measure-BRTryo0(J)Landroidx/compose/ui/layout/Placeable; (353 bytes) @ 0x00000072c84bab88 [0x00000072c84baa00+0x0000000000000188]
+J 14558 c1 androidx.compose.foundation.ScrollNode.measure-3p2s80s(Landroidx/compose/ui/layout/MeasureScope;Landroidx/compose/ui/layout/Measurable;J)Landroidx/compose/ui/layout/MeasureResult; (234 bytes) @ 0x00000072c0d6de4c [0x00000072c0d6db00+0x000000000000034c]
+J 9774 c2 androidx.compose.ui.node.LayoutModifierNodeCoordinator.measure-BRTryo0(J)Landroidx/compose/ui/layout/Placeable; (353 bytes) @ 0x00000072c84bab88 [0x00000072c84baa00+0x0000000000000188]
+J 15097 c2 androidx.compose.ui.graphics.SimpleGraphicsLayerModifier.measure-3p2s80s(Landroidx/compose/ui/layout/MeasureScope;Landroidx/compose/ui/layout/Measurable;J)Landroidx/compose/ui/layout/MeasureResult; (35 bytes) @ 0x00000072c8d20794 [0x00000072c8d20740+0x0000000000000054]
+J 9774 c2 androidx.compose.ui.node.LayoutModifierNodeCoordinator.measure-BRTryo0(J)Landroidx/compose/ui/layout/Placeable; (353 bytes) @ 0x00000072c84bab88 [0x00000072c84baa00+0x0000000000000188]
+J 14216 c2 androidx.compose.foundation.layout.FillNode.measure-3p2s80s(Landroidx/compose/ui/layout/MeasureScope;Landroidx/compose/ui/layout/Measurable;J)Landroidx/compose/ui/layout/MeasureResult; (314 bytes) @ 0x00000072c8c4c42c [0x00000072c8c4c1c0+0x000000000000026c]
+J 9774 c2 androidx.compose.ui.node.LayoutModifierNodeCoordinator.measure-BRTryo0(J)Landroidx/compose/ui/layout/Placeable; (353 bytes) @ 0x00000072c84bab88 [0x00000072c84baa00+0x0000000000000188]
+J 16969 c1 dev.chrisbanes.haze.HazeSourceNode.measure-3p2s80s(Landroidx/compose/ui/layout/MeasureScope;Landroidx/compose/ui/layout/Measurable;J)Landroidx/compose/ui/layout/MeasureResult; (49 bytes) @ 0x00000072c179e24c [0x00000072c179dc00+0x000000000000064c]
+J 9774 c2 androidx.compose.ui.node.LayoutModifierNodeCoordinator.measure-BRTryo0(J)Landroidx/compose/ui/layout/Placeable; (353 bytes) @ 0x00000072c84bab88 [0x00000072c84baa00+0x0000000000000188]
+J 10796 c2 androidx.compose.ui.node.MeasurePassDelegate$$Lambda+0x0000000501247c60.invoke()Ljava/lang/Object; (8 bytes) @ 0x00000072c898f0a0 [0x00000072c898ed80+0x0000000000000320]
+J 14503 c2 androidx.compose.runtime.snapshots.SnapshotStateObserver.observeReads(Ljava/lang/Object;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;)V (890 bytes) @ 0x00000072c8c941e8 [0x00000072c8c92d00+0x00000000000014e8]
+J 10566 c2 androidx.compose.ui.node.MeasurePassDelegate.remeasure-BRTryo0(J)Z (465 bytes) @ 0x00000072c8880400 [0x00000072c8880080+0x0000000000000380]
+J 16362 c2 androidx.compose.ui.node.MeasureAndLayoutDelegate.remeasureIfNeeded(Landroidx/compose/ui/node/LayoutNode;ZZ)Z (182 bytes) @ 0x00000072c881aed0 [0x00000072c881acc0+0x0000000000000210]
+J 10458 c1 androidx.compose.ui.node.MeasureAndLayoutDelegate.measureAndLayout(Lkotlin/jvm/functions/Function0;)Z (521 bytes) @ 0x00000072c110420c [0x00000072c11029c0+0x000000000000184c]
+J 15831 c2 androidx.compose.ui.node.RootNodeOwner.measureAndLayout()V (56 bytes) @ 0x00000072c8e1c6b0 [0x00000072c8e1c580+0x0000000000000130]
+J 16742 c2 androidx.compose.ui.test.DesktopSynchronization_desktopKt.runOnUiThread(Lkotlin/jvm/functions/Function0;)Ljava/lang/Object; (53 bytes) @ 0x00000072c8ee6ca8 [0x00000072c8ee5d40+0x0000000000000f68]
+J 16762 c1 androidx.compose.ui.test.SkikoComposeUiTest.redraw()V (12 bytes) @ 0x00000072c26bdfcc [0x00000072c26bdb80+0x000000000000044c]
+J 16742 c2 androidx.compose.ui.test.DesktopSynchronization_desktopKt.runOnUiThread(Lkotlin/jvm/functions/Function0;)Ljava/lang/Object; (53 bytes) @ 0x00000072c8ee6b84 [0x00000072c8ee5d40+0x0000000000000e44]
+J 8753 c1 androidx.compose.ui.test.SkikoComposeUiTest$withRenderLoop$1.invokeSuspend(Ljava/lang/Object;)Ljava/lang/Object; (123 bytes) @ 0x00000072c18b4a98 [0x00000072c18b4580+0x0000000000000518]
+J 10834 c2 kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(Ljava/lang/Object;)V (124 bytes) @ 0x00000072c89a3e98 [0x00000072c89a3e40+0x0000000000000058]
+J 13618 c2 kotlinx.coroutines.DispatchedTaskKt.resume(Lkotlinx/coroutines/DispatchedTask;Lkotlin/coroutines/Continuation;Z)V (211 bytes) @ 0x00000072c8be7de0 [0x00000072c8be7ac0+0x0000000000000320]
+J 15269 c2 kotlinx.coroutines.DispatchedTaskKt.dispatch(Lkotlinx/coroutines/DispatchedTask;I)V (126 bytes) @ 0x00000072c8d52f74 [0x00000072c8d52d00+0x0000000000000274]
+J 13513 c2 kotlinx.coroutines.CancellableContinuationImpl.resumeImpl$kotlinx_coroutines_core(Ljava/lang/Object;ILkotlin/jvm/functions/Function3;)V (138 bytes) @ 0x00000072c8bc6314 [0x00000072c8bc6040+0x00000000000002d4]
+J 17401 c2 kotlinx.coroutines.test.CancellableContinuationRunnable.run()V (29 bytes) @ 0x00000072c8d63d50 [0x00000072c8d63cc0+0x0000000000000090]
+J 10405 c1 kotlinx.coroutines.test.TestCoroutineScheduler.advanceTimeBy-LRDsOJo(J)V (318 bytes) @ 0x00000072c1c8ab08 [0x00000072c1c89a40+0x00000000000010c8]
+J 10402 c1 androidx.compose.ui.test.AbstractMainTestClock$$Lambda+0x000000050143ae68.invoke()Ljava/lang/Object; (12 bytes) @ 0x00000072c1c8ca38 [0x00000072c1c8c800+0x0000000000000238]
+J 15446 c2 java.awt.EventDispatchThread.pumpOneEventForFilters(I)V java.desktop@21.0.13.1 (106 bytes) @ 0x00000072c8d979b8 [0x00000072c8d954c0+0x00000000000024f8]
+j  java.awt.EventDispatchThread.pumpEventsForFilter(ILjava/awt/Conditional;Ljava/awt/EventFilter;)V+35 java.desktop@21.0.13.1
+j  java.awt.EventDispatchThread.pumpEventsForHierarchy(ILjava/awt/Conditional;Ljava/awt/Component;)V+11 java.desktop@21.0.13.1
+j  java.awt.EventDispatchThread.pumpEvents(ILjava/awt/Conditional;)V+4 java.desktop@21.0.13.1
+j  java.awt.EventDispatchThread.pumpEvents(Ljava/awt/Conditional;)V+3 java.desktop@21.0.13.1
+j  java.awt.EventDispatchThread.run()V+9 java.desktop@21.0.13.1
+v  ~StubRoutines::call_stub 0x00000072c7e8d154
+
+siginfo: si_signo: 11 (SIGSEGV), si_code: 1 (SEGV_MAPERR), si_addr: 0x41a8225a3485d7f5
+
+Registers:
+R0=0x41a8225a3485d7d5
+R1=0x0000007237ff2780
+R2=0x000000000714ccd3
+R3=0x00000072388033b0
+R4=0x0000000000000002
+R5=0x000000714ccd3370
+R6=0x41a8225a3485d7d5
+R7=0x00000071b713a040
+R8=0x0000000000000d70
+R9=0x00000000000000ff
+R10=0x00000072370631b0
+R11=0x00000000000000d7
+R12=0x0000000000000064
+R13=0x00000000ffffd7c0
+R14=0x0000007218ec39a8
+R15=0x0000000000000000
+R16=0x00000072dd6e1cf8
+R17=0x00000072decc6d90
+R18=0x00000000e25e2220
+R19=0x000000714e82b79c
+R20=0x41a8225a3485d7d5
+R21=0x000000714e82b788
+R22=0x000000714c39cf80
+R23=0x0000007237ff9048
+R24=0x00000071ca3ff9f8
+R25=0x0000000085ebca6b
+R26=0x00000071ca3ffa28
+R27=0x0000007237ff9010
+R28=0x00000071ca3ffa10
+R29=0x00000071ca3ff070
+R30=0x000000723707463c
+
+
+Register to memory mapping:
+
+R0 =0x41a8225a3485d7d5 is an unknown value
+R1 =0x0000007237ff2780: <offset 0x0000000001812780> in /root/.skiko/skiko-linux-arm64-c7e4d2bbd25e1f0425927d86fd32b9105ccba1aab2bf8bebbea1edd47c97cb8b/libskiko-linux-arm64.so at 0x00000072367e0000
+R2 =0x000000000714ccd3 is an unknown value
+R3 =0x00000072388033b0 points into unknown readable memory: 0x0007000600000006 | 06 00 00 00 06 00 07 00
+R4 =0x0000000000000002 is an unknown value
+R5 =0x000000714ccd3370 points into unknown readable memory: 0x7261612f62696c2f | 2f 6c 69 62 2f 61 61 72
+R6 =0x41a8225a3485d7d5 is an unknown value
+R7 =0x00000071b713a040 points into unknown readable memory: 0x000000723a622710 | 10 27 62 3a 72 00 00 00
+R8 =0x0000000000000d70 is an unknown value
+R9 =0x00000000000000ff is an unknown value
+R10=0x00000072370631b0: <offset 0x00000000008831b0> in /root/.skiko/skiko-linux-arm64-c7e4d2bbd25e1f0425927d86fd32b9105ccba1aab2bf8bebbea1edd47c97cb8b/libskiko-linux-arm64.so at 0x00000072367e0000
+R11=0x00000000000000d7 is an unknown value
+R12=0x0000000000000064 is an unknown value
+R13=
+[error occurred during error reporting (printing register info), id 0xb, SIGSEGV (0xb) at pc=0x00000072dde47ff8]
+R14=0x0000007218ec39a8 points into unknown readable memory: 0x0000000000000000 | 00 00 00 00 00 00 00 00
+R15=0x0 is null
+R16=0x00000072dd6e1cf8: <offset 0x0000000000281cf8> in /lib/aarch64-linux-gnu/libstdc++.so.6 at 0x00000072dd460000
+R17=0x00000072decc6d90: __libc_free+0x0000000000000000 in /lib/aarch64-linux-gnu/libc.so.6 at 0x00000072dec30000
+R18=0x00000000e25e2220 is an oop: androidx.compose.ui.text.platform.ParagraphBuilder 
+{0x00000000e25e2220} - klass: 'androidx/compose/ui/text/platform/ParagraphBuilder'
+ - ---- fields (total size 10 words):
+ - private 'maxLines' 'I' @12  2147483647 (0x7fffffff)
+ - private 'brushSize' 'J' @16  9205357640488583168 (0x7fc000007fc00000)
+ - private 'blendMode' 'I' @24  3 (0x00000003)
+ - private final 'fontFamilyResolver' 'Landroidx/compose/ui/text/font/FontFamily$Resolver;' @28  a 'androidx/compose/ui/text/font/FontFamilyResolverImpl'{0x00000000e2a42d48} (0xe2a42d48)
+ - private final 'text' 'Ljava/lang/String;' @32  "tasks.register("prin"{0x00000000e25e0020} (0xe25e0020)
+ - private 'textStyle' 'Landroidx/compose/ui/text/TextStyle;' @36  a 'androidx/compose/ui/text/TextStyle'{0x00000000e25e2028} (0xe25e2028)
+ - private 'ellipsis' 'Ljava/lang/String;' @40  ""{0x00000000ffe00000} (0xffe00000)
+ - private 'annotations' 'Ljava/util/List;' @44  a 'kotlin/collections/EmptyList'{0x00000000e0414280} (0xe0414280)
+ - private final 'placeholders' 'Ljava/util/List;' @48  a 'kotlin/collections/EmptyList'{0x00000000e0414280} (0xe0414280)
+ - private final 'density' 'Landroidx/compose/ui/unit/Density;' @52  a 'androidx/compose/ui/node/LayoutModifierNodeCoordinator'{0x00000000e26f6760} (0xe26f6760)
+ - private final 'textDirection' 'Landroidx/compose/ui/text/style/ResolvedTextDirection;' @56  a 'androidx/compose/ui/text/style/ResolvedTextDirection'{0x00000000e075d558} (0xe075d558)
+ - private 'drawStyle' 'Landroidx/compose/ui/graphics/drawscope/DrawStyle;' @60  null (0x00000000)
+ - private 'defaultStyle' 'Landroidx/compose/ui/text/platform/ComputedStyle$Immutable;' @64  a 'androidx/compose/ui/text/platform/ComputedStyle$Immutable'{0x00000000e25e24b8} (0xe25e24b8)
+ - private 'initialStyle' 'Landroidx/compose/ui/text/SpanStyle;' @68  a 'androidx/compose/ui/text/SpanStyle'{0x00000000e25e23e8} (0xe25e23e8)
+ - private 'ops' 'Ljava/util/List;' @72  a 'java/util/ArrayList'{0x00000000e25e2668} (0xe25e2668)
+ - private final 'defaultFont$delegate' 'Lkotlin/Lazy;' @76  a 'kotlin/SynchronizedLazyImpl'{0x00000000e25e23b0} (0xe25e23b0)
+R19=0x000000714e82b79c points into unknown readable memory: 00 00 00 00
+R20=0x41a8225a3485d7d5 is an unknown value
+R21=0x000000714e82b788 points into unknown readable memory: 0x65722e736b736174 | 74 61 73 6b 73 2e 72 65
+R22=0x000000714c39cf80 points into unknown readable memory: 0x0000000100000001 | 01 00 00 00 01 00 00 00
+R23=0x0000007237ff9048: <offset 0x0000000001819048> in /root/.skiko/skiko-linux-arm64-c7e4d2bbd25e1f0425927d86fd32b9105ccba1aab2bf8bebbea1edd47c97cb8b/libskiko-linux-arm64.so at 0x00000072367e0000
+R24=0x00000071ca3ff9f8 is pointing into the stack for thread: 0x00000072dbcb0010
+R25=0x0000000085ebca6b is an unknown value
+R26=0x00000071ca3ffa28 is pointing into the stack for thread: 0x00000072dbcb0010
+R27=0x0000007237ff9010: <offset 0x0000000001819010> in /root/.skiko/skiko-linux-arm64-c7e4d2bbd25e1f0425927d86fd32b9105ccba1aab2bf8bebbea1edd47c97cb8b/libskiko-linux-arm64.so at 0x00000072367e0000
+R28=0x00000071ca3ffa10 is pointing into the stack for thread: 0x00000072dbcb0010
+R29=0x00000071ca3ff070 is pointing into the stack for thread: 0x00000072dbcb0010
+R30=0x000000723707463c: <offset 0x000000000089463c> in /root/.skiko/skiko-linux-arm64-c7e4d2bbd25e1f0425927d86fd32b9105ccba1aab2bf8bebbea1edd47c97cb8b/libskiko-linux-arm64.so at 0x00000072367e0000
+
+Top of Stack: (sp=0x00000071ca3ff070)
+0x00000071ca3ff070:   00000071ca3ff0d0 000000723707463c   ..?.q...<F.7r...
+0x00000071ca3ff080:   000000714e82b79c 00000071ca3ff790   ...Nq.....?.q...
+0x00000071ca3ff090:   00000071ca3ff0d0 00000072370755a0   ..?.q....U.7r...
+0x00000071ca3ff0a0:   0000007237ff9030 0000007237ff9038   0..7r...8..7r...
+0x00000071ca3ff0b0:   000000714ccd3370 000000714c39cf80   p3.Lq.....9Lq...
+0x00000071ca3ff0c0:   0000007237ff9048 cecfba838a0cd600   H..7r...........
+0x00000071ca3ff0d0:   00000071ca3ff6c0 0000007237078148   ..?.q...H..7r...
+0x00000071ca3ff0e0:   000000714e82b79c 0000000000000000   ...Nq...........
+0x00000071ca3ff0f0:   00000071ca4008c0 0000000000000000   ..@.q...........
+0x00000071ca3ff100:   00000071ca3ff8c0 0000000000000000   ..?.q...........
+0x00000071ca3ff110:   000000714e82b788 0000000000000000   ...Nq...........
+0x00000071ca3ff120:   000000714e82b788 000000714ccd1970   ...Nq...p..Lq...
+0x00000071ca3ff130:   00000071ca3ff150 0000007236ccaed4   P.?.q......6r...
+0x00000071ca3ff140:   00000071ca3ff9e0 000000714ccd1970   ..?.q...p..Lq...
+0x00000071ca3ff150:   00000071ca3ff1d0 0000000000000000   ..?.q...........
+0x00000071ca3ff160:   0000000000000000 0000000043800000   ...........C....
+0x00000071ca3ff170:   00000071ca3ff7a0 000000714ccd3370   ..?.q...p3.Lq...
+0x00000071ca3ff180:   00000071ca3ff790 0000000000000014   ..?.q...........
+0x00000071ca3ff190:   000000714e82b788 000000714e82b79c   ...Nq......Nq...
+0x00000071ca3ff1a0:   0000000000000002 0000007100000004   ............q...
+0x00000071ca3ff1b0:   0000000000000000 00000000b5a84038   ........8@......
+0x00000071ca3ff1c0:   000000714e82b79c 0000000000000000   ...Nq...........
+0x00000071ca3ff1d0:   0000007237ff9030 0000007237ff22c8   0..7r....".7r...
+0x00000071ca3ff1e0:   0000000000000000 00000071ca400888   ..........@.q...
+0x00000071ca3ff1f0:   000000003fc00000 0000000000000000   ...?............
+0x00000071ca3ff200:   00000071ca401310 00000071ca3ff220   ..@.q... .?.q...
+0x00000071ca3ff210:   00000071ca3ff248 0000007237fe0468   H.?.q...h..7r...
+0x00000071ca3ff220:   0000000000000000 0000000000000000   ................
+0x00000071ca3ff230:   0000007124600060 0000000000000000   `.`$q...........
+0x00000071ca3ff240:   000000003f000000 0000000000000000   ...?............
+0x00000071ca3ff250:   0000030000000400 00000071ca3ff6d8   ..........?.q...
+0x00000071ca3ff260:   0000000000000000 0000000000000000   ................
+
+Instructions: (pc=0x0000007237096cdc)
+0x0000007237096bdc:   1f a4 01 71 41 03 00 54 94 0e 00 91 e2 03 1a aa
+0x0000007237096bec:   e1 03 19 aa e0 03 18 aa 04 02 80 52 23 00 80 52
+0x0000007237096bfc:   f4 33 00 f9 4c 0e 00 94 1f 1c 00 72 c0 04 00 54
+0x0000007237096c0c:   e0 4a 40 f9 e2 5f 40 b9 04 08 40 f9 df 02 00 b9
+0x0000007237096c1c:   44 00 00 b4 84 08 40 f9 e3 03 16 aa 05 18 40 f9
+0x0000007237096c2c:   e0 03 17 aa e1 4e 40 f9 a0 00 3f d6 1f 00 00 71
+0x0000007237096c3c:   f5 07 9f 1a f9 6b 44 a9 ca ff ff 17 f9 6b 44 a9
+0x0000007237096c4c:   c8 ff ff 17 35 00 80 52 c6 ff ff 17 81 06 40 39
+0x0000007237096c5c:   3f a4 01 71 21 fb ff 54 81 0a 40 39 3f 90 01 71
+0x0000007237096c6c:   c1 fa ff 54 85 0e 00 91 e2 03 1a aa e1 03 19 aa
+0x0000007237096c7c:   e0 03 18 aa 44 01 80 52 23 00 80 52 e5 33 00 f9
+0x0000007237096c8c:   29 0e 00 94 1f 1c 00 72 41 f6 ff 54 80 02 40 39
+0x0000007237096c9c:   ca ff ff 17 15 00 80 52 f9 6b 44 a9 b1 ff ff 17
+0x0000007237096cac:   f9 6b 04 a9 24 9b df 97 00 00 00 00 00 00 00 00
+0x0000007237096cbc:   00 00 00 00 fd 7b ba a9 1f 00 00 f1 e1 7a 00 90
+0x0000007237096ccc:   fd 03 00 91 21 00 1e 91 f3 53 01 a9 34 00 80 9a
+0x0000007237096cdc:   80 12 40 f9 6c e1 ff 97 f3 03 00 aa 00 10 00 91
+0x0000007237096cec:   00 00 40 39 1f 1c 00 72 a1 00 00 54 e0 03 13 aa
+0x0000007237096cfc:   f3 53 41 a9 fd 7b c6 a8 c0 03 5f d6 f5 5b 02 a9
+0x0000007237096d0c:   f7 63 03 a9 80 02 40 b9 80 02 40 b9 a0 00 00 34
+0x0000007237096d1c:   80 fe 5f 88 00 04 00 11 80 fe 01 88 a1 ff ff 35
+0x0000007237096d2c:   80 16 40 fd 75 42 00 91 80 f2 40 39 76 c2 02 91
+0x0000007237096d3c:   81 42 43 fc 60 16 00 fd 80 36 40 fd 61 42 03 fc
+0x0000007237096d4c:   81 4a 40 bd 60 36 00 fd 97 7e 40 b9 80 72 40 bd
+0x0000007237096d5c:   74 0e 00 f9 60 f2 00 39 61 4a 00 bd 60 72 00 bd
+0x0000007237096d6c:   97 09 00 35 60 12 40 f9 01 50 00 91 22 00 40 b9
+0x0000007237096d7c:   62 17 00 34 61 02 45 29 40 00 23 1e 23 00 22 1e
+0x0000007237096d8c:   05 00 22 1e 62 18 20 1e a1 18 20 1e 62 06 0a 2d
+0x0000007237096d9c:   61 07 f8 37 22 7c 70 93 41 00 22 9e 21 18 20 1e
+0x0000007237096dac:   22 00 38 9e 62 2e 00 f9 00 06 f8 37 02 7c 70 93
+0x0000007237096dbc:   41 00 22 9e 20 18 20 1e 22 00 80 52 62 9a 46 2d
+0x0000007237096dcc:   48 20 20 1e 03 00 38 9e 63 32 00 f9 c1 00 00 54
+
+
+Stack slot to memory mapping:
+
+stack at sp + 0 slots: 0x00000071ca3ff0d0 is pointing into the stack for thread: 0x00000072dbcb0010
+stack at sp + 1 slots: 0x000000723707463c: <offset 0x000000000089463c> in /root/.skiko/skiko-linux-arm64-c7e4d2bbd25e1f0425927d86fd32b9105ccba1aab2bf8bebbea1edd47c97cb8b/libskiko-linux-arm64.so at 0x00000072367e0000
+stack at sp + 2 slots: 0x000000714e82b79c points into unknown readable memory: 00 00 00 00
+stack at sp + 3 slots: 0x00000071ca3ff790 is pointing into the stack for thread: 0x00000072dbcb0010
+stack at sp + 4 slots: 0x00000071ca3ff0d0 is pointing into the stack for thread: 0x00000072dbcb0010
+stack at sp + 5 slots: 0x00000072370755a0: <offset 0x00000000008955a0> in /root/.skiko/skiko-linux-arm64-c7e4d2bbd25e1f0425927d86fd32b9105ccba1aab2bf8bebbea1edd47c97cb8b/libskiko-linux-arm64.so at 0x00000072367e0000
+stack at sp + 6 slots: 0x0000007237ff9030: <offset 0x0000000001819030> in /root/.skiko/skiko-linux-arm64-c7e4d2bbd25e1f0425927d86fd32b9105ccba1aab2bf8bebbea1edd47c97cb8b/libskiko-linux-arm64.so at 0x00000072367e0000
+stack at sp + 7 slots: 0x0000007237ff9038: <offset 0x0000000001819038> in /root/.skiko/skiko-linux-arm64-c7e4d2bbd25e1f0425927d86fd32b9105ccba1aab2bf8bebbea1edd47c97cb8b/libskiko-linux-arm64.so at 0x00000072367e0000
+
+
+Compiled method (n/a) 2355280 4884     n 0       org.jetbrains.skia.paragraph.ParagraphKt::_nLayout (native)
+ total in heap  [0x00000072c865f310,0x00000072c865f680] = 880
+ relocation     [0x00000072c865f460,0x00000072c865f490] = 48
+ main code      [0x00000072c865f4c0,0x00000072c865f668] = 424
+ oops           [0x00000072c865f668,0x00000072c865f678] = 16
+ metadata       [0x00000072c865f678,0x00000072c865f680] = 8
+
+[Constant Pool (empty)]
+
+[MachCode]
+[Entry Point]
+  # {method} {0x00000072a662de38} '_nLayout' '(JF)V' in 'org/jetbrains/skia/paragraph/ParagraphKt'
+  # parm0:    c_rarg1:c_rarg1 
+                        = long
+  # parm1:    v0        = float
+  #           [sp+0x60]  (sp of caller)
+  0x00000072c865f4c0: 2808 40b9 | 3f01 086b | 4000 0054 
+
+  0x00000072c865f4cc: ;   {runtime_call ic_miss_stub}
+  0x00000072c865f4cc: 6da6 e117 
+[Verified Entry Point]
+  0x00000072c865f4d0: 1f20 03d5 | e953 40d1 | 3f01 00f9 | fd7b bfa9 | fd03 0091 | ff43 01d1 | 2801 0018 | 8923 40b9 
+  0x00000072c865f4f0: 1f01 09eb | e000 0054 | 0830 85d2 | a8fd b8f2 | 480e c0f2 | 0001 3fd6 | 0200 0014 | 1900 0000 
+  0x00000072c865f510: e203 01aa 
+
+  0x00000072c865f514: ;   {oop(a 'java/lang/Class'{0x00000000e198e9b0} = 'org/jetbrains/skia/paragraph/ParagraphKt')}
+  0x00000072c865f514: 0136 9dd2 | 0133 bcf2 | 0100 c0f2 | e123 00f9 | e103 0191 | e801 0010 | 88d7 01f9 | e803 0091 
+  0x00000072c865f534: 88d3 01f9 
+
+  0x00000072c865f538: ;   {external_word}
+  0x00000072c865f538: c82a 0b90 | 08b5 6a39 | 0806 0035 | 8003 0f91 | e803 7eb2 | 8933 1191 | 28fd 9f88 
+
+  0x00000072c865f554: ;   {runtime_call Java_org_jetbrains_skia_paragraph_ParagraphKt__1nLayout}
+  0x00000072c865f554: 08f9 80d2 | 28d1 a6f2 | 480e c0f2 | 0001 3fd6 | a800 80d2 | 884f 04b9 | bf3b 03d5 | 8843 1191 
+  0x00000072c865f574: 08fd dfc8 | bf03 08eb | 6803 0054 | 884b 44b9 | 2803 0035 | e803 7db2 | 8933 1191 | 28fd 9f88 
+  0x00000072c865f594: 8823 5339 | 1f09 0071 | c001 0054 
+
+  0x00000072c865f5a0: ;   {external_word}
+  0x00000072c865f5a0: c82a 0b90 | 08b5 6a39 | a804 0035 | 9fd3 01f9 | 9fd7 01f9 | 821b 42f9 | 5f80 00f9 | bf03 0091 
+  0x00000072c865f5c0: fd7b c1a8 | 8807 40f9 | 4800 00b5 | c003 5fd6 
+
+  0x00000072c865f5d0: ;   {runtime_call StubRoutines (initial stubs)}
+  0x00000072c865f5d0: acb6 e017 
+
+  0x00000072c865f5d4: ;   {runtime_call SharedRuntime::reguard_yellow_pages()}
+  0x00000072c865f5d4: 08a6 87d2 | 08c8 bbf2 | 480e c0f2 | 0001 3fd6 | efff ff17 | e003 1caa 
+
+  0x00000072c865f5ec: ;   {runtime_call JavaThread::check_special_condition_for_native_trans(JavaThread*)}
+  0x00000072c865f5ec: 08b4 9bd2 | 48bf bbf2 | 480e c0f2 | 0001 3fd6 | e3ff ff17 | e00f 1ffc | e10b bfa9 
+
+  0x00000072c865f608: ;   {metadata({method} {0x00000072a662de38} '_nLayout' '(JF)V' in 'org/jetbrains/skia/paragraph/ParagraphKt')}
+  0x00000072c865f608: 01c7 9bd2 | 41cc b4f2 | 410e c0f2 | e003 1caa | e833 bfa9 | 08ac 85d2 | 08c8 bbf2 | 480e c0f2 
+  0x00000072c865f628: 0001 3fd6 | e833 c1a8 | e10b c1a8 | e007 41fc | c3ff ff17 
+
+  0x00000072c865f63c: ;   {metadata({method} {0x00000072a662de38} '_nLayout' '(JF)V' in 'org/jetbrains/skia/paragraph/ParagraphKt')}
+  0x00000072c865f63c: 01c7 9bd2 | 41cc b4f2 | 410e c0f2 | e003 1caa | e833 bfa9 | 88ce 85d2 | 08c8 bbf2 | 480e c0f2 
+  0x00000072c865f65c: 0001 3fd6 | e833 c1a8 | d2ff ff17 
+[/MachCode]
+
+
+Compiled method (c2) 2355285 14912       4       androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics (19 bytes)
+ total in heap  [0x00000072c8ce1f90,0x00000072c8ce4b78] = 11240
+ relocation     [0x00000072c8ce20e0,0x00000072c8ce2380] = 672
+ constants      [0x00000072c8ce2380,0x00000072c8ce23c0] = 64
+ main code      [0x00000072c8ce23c0,0x00000072c8ce3938] = 5496
+ stub code      [0x00000072c8ce3938,0x00000072c8ce3bd8] = 672
+ oops           [0x00000072c8ce3bd8,0x00000072c8ce3c20] = 72
+ metadata       [0x00000072c8ce3c20,0x00000072c8ce3df0] = 464
+ scopes data    [0x00000072c8ce3df0,0x00000072c8ce4598] = 1960
+ scopes pcs     [0x00000072c8ce4598,0x00000072c8ce4918] = 896
+ dependencies   [0x00000072c8ce4918,0x00000072c8ce4920] = 8
+ handler table  [0x00000072c8ce4920,0x00000072c8ce4b30] = 528
+ nul chk table  [0x00000072c8ce4b30,0x00000072c8ce4b78] = 72
+
+
+[Constant Pool]
+             Address          hex4                    hex8      
+  0x00000072c8ce2380:   0x7f800000      0x3727c5ac7f800000      
+  0x00000072c8ce2384:   0x3727c5ac                              
+  0x00000072c8ce2388:   0x00000000      0x0000000000000000      
+  0x00000072c8ce238c:   0x00000000                              
+  0x00000072c8ce2390:   0x00000000      0x0000000000000000      
+  0x00000072c8ce2394:   0x00000000                              
+  0x00000072c8ce2398:   0x00000000      0x0000000000000000      
+  0x00000072c8ce239c:   0x00000000                              
+  0x00000072c8ce23a0:   0x00000000      0x0000000000000000      
+  0x00000072c8ce23a4:   0x00000000                              
+  0x00000072c8ce23a8:   0x00000000      0x0000000000000000      
+  0x00000072c8ce23ac:   0x00000000                              
+  0x00000072c8ce23b0:   0x00000000      0x0000000000000000      
+  0x00000072c8ce23b4:   0x00000000                              
+  0x00000072c8ce23b8:   0x00000000      0x0000000000000000      
+  0x00000072c8ce23bc:   0x00000000                              
+
+[MachCode]
+[Verified Entry Point]
+  # {method} {0x00000072a65b5308} 'ParagraphIntrinsics' '(Ljava/lang/String;Landroidx/compose/ui/text/TextStyle;Ljava/util/List;Landroidx/compose/ui/unit/Density;Landroidx/compose/ui/text/font/FontFamily$Resolver;Ljava/util/List;Z)Landroidx/compose/ui/text/ParagraphIntrinsics;' in 'androidx/compose/ui/text/ParagraphIntrinsicsKt'
+  # parm0:    c_rarg1:c_rarg1 
+                        = 'java/lang/String'
+  # parm1:    c_rarg2:c_rarg2 
+                        = 'androidx/compose/ui/text/TextStyle'
+  # parm2:    c_rarg3:c_rarg3 
+                        = 'java/util/List'
+  # parm3:    c_rarg4:c_rarg4 
+                        = 'androidx/compose/ui/unit/Density'
+  # parm4:    c_rarg5:c_rarg5 
+                        = 'androidx/compose/ui/text/font/FontFamily$Resolver'
+  # parm5:    c_rarg6:c_rarg6 
+                        = 'java/util/List'
+  # parm6:    c_rarg7   = boolean
+  #           [sp+0x70]  (sp of caller)
+  0x00000072c8ce23c0: ;   {no_reloc}
+  0x00000072c8ce23c0: 1f20 03d5 | e953 40d1 | 3f01 00f9 | ffc3 01d1 | fd7b 06a9 | e8aa 0018 | 8923 40b9 | 1f01 09eb 
+  0x00000072c8ce23e0: e1a9 0054 | 80df 40f9 | 8ae7 40f9 | 8cc7 41f9 | 0be0 0091 | e20f 00a9 | e417 01a9 | e613 00f9 
+  0x00000072c8ce2400: 9501 40f9 | fd03 01aa | 7f01 0aeb | 6274 0054 | ea03 40b2 | 8bdf 00f9 | 0a00 00f9 
+
+  0x00000072c8ce241c: ;   {metadata('androidx/compose/ui/text/platform/SkiaParagraphIntrinsics')}
+  0x00000072c8ce241c: aa29 a0d2 | 0ace 93f2 | 0a7c 0129 | 1f10 00b9 | 1f2c 00b9 | 7061 80f9 | 1f18 00f9 | ed03 1daa 
+  0x00000072c8ce243c: eb03 0daa | ea03 40f9 | ec03 0aaa | 0b14 00b9 | eb07 40f9 | 0c18 00b9 | ec13 40f9 | 0b1c 00b9 
+  0x00000072c8ce245c: eb0b 40f9 | 0c20 00b9 | ec0f 40f9 | 0bb0 0429 | f303 00aa 
+
+  0x00000072c8ce2470: ; implicit exception: dispatches to 0x00000072c8ce37ec
+  0x00000072c8ce2470: 4b11 40b9 | 4a0d 40b9 
+
+  0x00000072c8ce2478: ; implicit exception: dispatches to 0x00000072c8ce3800
+  0x00000072c8ce2478: 6c19 40b9 
+
+  0x00000072c8ce247c: ; implicit exception: dispatches to 0x00000072c8ce3814
+  0x00000072c8ce247c: 4b45 40b9 | 9f05 0071 | a003 0054 | 9f09 0071 | c08a 0054 | 9f0d 0071 | 808b 0054 | 2c8f 0035 
+  0x00000072c8ce249c: 82df 40f9 | 8ae7 40f9 | 4c40 0091 | 9f01 0aeb | 6275 0054 | ea03 40b2 | 8cdf 00f9 
+
+  0x00000072c8ce24b8: ;   {metadata('androidx/compose/ui/text/platform/SkiaParagraphIntrinsics_skikoKt$$Lambda+0x0000000501636af0')}
+  0x00000072c8ce24b8: 6e2c a0d2 | 0e5e 8df2 | 4a00 00f9 | 4e08 00b9 | 9061 80f9 | f54f 00a9 | 4b0c 00b9 | bf3b 03d5 
+  0x00000072c8ce24d8: e103 1daa 
+
+  0x00000072c8ce24dc: ; ImmutableOopMap {[0]=Oop [8]=Oop }
+                      ;*invokestatic contentBasedTextDirection {reexecute=0 rethrow=0 return_oop=1}
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics_skikoKt::resolveTextDirection-Ikz0yAw@90 (line 85)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@59 (line 40)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {static_call}
+  0x00000072c8ce24dc: e95a 1096 
+
+  0x00000072c8ce24e0: ;   {other}
+  0x00000072c8ce24e0: 1f20 03d5 | 1faa 80f2 | 1f00 80f2 | f54f 40a9 | f403 00aa | 0400 0014 
+
+  0x00000072c8ce24f8: ;   {oop(a 'androidx/compose/ui/text/style/ResolvedTextDirection'{0x00000000e075d558})}
+  0x00000072c8ce24f8: 14ab 9ad2 | b40e bcf2 | 1400 c0f2 | 8a03 c139 | 0a47 0035 | eb03 13aa | ea03 14aa | 4a01 0bca 
+  0x00000072c8ce2518: ec03 14aa | 4afd 54d3 | 6c2e 00b9 | 4a01 00b4 | 3401 00b4 | 6afd 49d3 | 0b00 84d2 | 4b7c bbf2 
+  0x00000072c8ce2538: 4b0e c0f2 | 6001 0a8b | 0a00 c039 | 5f09 0071 | a161 0054 | 94df 40f9 | 8ae7 40f9 | 8b62 0091 
+  0x00000072c8ce2558: 7f01 0aeb | 226b 0054 | ea03 40b2 | 8bdf 00f9 | 8a02 00f9 
+
+  0x00000072c8ce256c: ;   {metadata('androidx/compose/runtime/SnapshotMutableStateImpl')}
+  0x00000072c8ce256c: 0a23 a0d2 | 0aec 8ef2 | 8a7e 0129 | 7061 80f9 | 9f0a 00f9 | 96df 40f9 | 8ae7 40f9 | cb42 0091 
+  0x00000072c8ce258c: 7f01 0aeb | 226b 0054 | ea03 40b2 | 8bdf 00f9 | ca02 00f9 
+
+  0x00000072c8ce25a0: ;   {metadata('androidx/compose/runtime/internal/AtomicInt')}
+  0x00000072c8ce25a0: 6a22 a0d2 | 0ac8 96f2 | ca0a 00b9 | 7061 80f9 | df0e 00b9 | bf3a 03d5 | ca32 0091 | 5ffd 9f88 
+  0x00000072c8ce25c0: 8b03 c139 | 8b42 0035 | ea03 14aa | eb03 16aa | 6b01 0aca | ed03 16aa | 6bfd 54d3 | 8d0e 00b9 
+  0x00000072c8ce25e0: 2b01 00b4 | 4afd 49d3 | 0b00 84d2 | 4b7c bbf2 | 4b0e c0f2 | 6001 0a8b | 0a00 c039 | 5f09 0071 
+  0x00000072c8ce2600: 8149 0054 | bf3b 03d5 | 8b03 c139 | ab41 0035 
+
+  0x00000072c8ce2610: ;   {oop(a 'androidx/compose/runtime/StructuralEqualityPolicy'{0x00000000e0453640})}
+  0x00000072c8ce2610: 0bc8 86d2 | ab08 bcf2 | 0b00 c0f2 | ea03 14aa | 6b01 0aca 
+
+  0x00000072c8ce2624: ;   {oop(a 'androidx/compose/runtime/StructuralEqualityPolicy'{0x00000000e0453640})}
+  0x00000072c8ce2624: ad08 bcd2 | 0dc8 86f2 | 6bfd 54d3 | 8d12 00b9 | 2b01 00b4 | 4afd 49d3 | 0b00 84d2 | 4b7c bbf2 
+  0x00000072c8ce2644: 4b0e c0f2 | 6001 0a8b | 0b00 c039 | 7f09 0071 | c149 0054 
+
+  0x00000072c8ce2658: ;   {oop(a 'androidx/compose/runtime/internal/SnapshotThreadLocal'{0x00000000e044bec8})}
+  0x00000072c8ce2658: 0ad9 97d2 | 8a08 bcf2 | 0a00 c0f2 | 4a0d 40b9 | af0e 40f9 | eb03 0aaa | ff05 00b1 | a078 0054 
+  0x00000072c8ce2678: 6a6b 0034 | 6a31 0091 | 4afd df88 
+
+  0x00000072c8ce2684: ; implicit exception: dispatches to 0x00000072c8ce3828
+  0x00000072c8ce2684: 4c09 40b9 
+
+  0x00000072c8ce2688: ;   {metadata('androidx/compose/runtime/internal/ThreadMap')}
+  0x00000072c8ce2688: 6b22 a0d2 | 0bce 92f2 | 9f01 0b6b | c189 0054 | f103 0aaa | 2b0e 40b9 | 0a00 a012 | 2e12 40b9 
+  0x00000072c8ce26a8: 7f05 0071 | e135 0054 
+
+  0x00000072c8ce26b0: ; implicit exception: dispatches to 0x00000072c8ce3844
+  0x00000072c8ce26b0: cb0d 40b9 | 7f01 0071 | 096a 0054 | cb09 40f9 | 7f01 0feb | 2134 0054 | ea03 1f2a | ec03 1f2a 
+  0x00000072c8ce26d0: 4a34 f837 | 2d16 40b9 | eb03 0daa 
+
+  0x00000072c8ce26dc: ; implicit exception: dispatches to 0x00000072c8ce3858
+  0x00000072c8ce26dc: ae0d 40b9 | 6bc9 2a8b | 5f01 0e6b | a269 0054 | 6b11 40b9 | 4b33 0034 | 6a09 40b9 | aa00 c0f2 
+  0x00000072c8ce26fc: 4a1d 40f9 
+
+  0x00000072c8ce2700: ;   {metadata('androidx/compose/runtime/snapshots/Snapshot')}
+  0x00000072c8ce2700: 0d9e 90d2 | 6d22 a0f2 | ad00 c0f2 | 5f01 0deb | 6169 0054 | ed03 0baa | 9ddf 40f9 | 8ae7 40f9 
+  0x00000072c8ce2720: ab83 0091 | 7f01 0aeb | 0260 0054 | ea03 40b2 | 8bdf 00f9 | aa03 00f9 
+
+  0x00000072c8ce2738: ;   {metadata('androidx/compose/runtime/SnapshotMutableStateImpl$StateStateRecord')}
+  0x00000072c8ce2738: 0a23 a0d2 | 0a46 90f2 | 7061 80f9 | aa0b 00b9 | aa43 0091 | bf0f 00b9 | 5f7d 00a9 | f353 00a9 
+  0x00000072c8ce2758: ec13 00b9 | ed0f 00f9 | bf3a 03d5 | e10f 40f9 | e9ff 9fd2 | e9ff bff2 | e9ff dff2 
+
+  0x00000072c8ce2774: ; ImmutableOopMap {rfp=Oop [0]=Oop [8]=Oop [24]=Oop }
+                      ;*invokevirtual getSnapshotId {reexecute=0 rethrow=0 return_oop=0}
+                      ; - androidx.compose.runtime.SnapshotMutableStateImpl::<init>@24 (line 152)
+                      ; - androidx.compose.runtime.SnapshotState_nonAndroidKt::createSnapshotMutableState@6 (line 24)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf@2 (line 65)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf@2 (line 1)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf$default@12 (line 62)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf$default@4 (line 1)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@73 (line 43)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {virtual_call}
+  0x00000072c8ce2774: 05a0 cb97 
+
+  0x00000072c8ce2778: ;   {other}
+  0x00000072c8ce2778: 1f20 03d5 | 1ffd 80f2 | 1f20 80f2 | 8a03 c139 | f303 00aa | ea39 0035 
+
+  0x00000072c8ce2790: ;   {oop(a 'java/lang/Boolean'{0x00000000e059c528} = false)}
+  0x00000072c8ce2790: 0ba5 98d2 | 2b0b bcf2 | 0b00 c0f2 | ea03 1daa | 6b01 0aca | b30b 00f9 | f307 40f9 
+
+  0x00000072c8ce27ac: ;   {oop(a 'java/lang/Boolean'{0x00000000e059c528} = false)}
+  0x00000072c8ce27ac: 2d0b bcd2 | 0da5 98f2 | 6bfd 54d3 | ec0f 40f9 | 9409 40b9 | f703 13aa | f603 1daa 
+
+  0x00000072c8ce27c8: ;   {metadata('androidx/compose/runtime/snapshots/GlobalSnapshot')}
+  0x00000072c8ce27c8: 7522 a0d2 | 15e5 95f2 | ad1b 00b9 | 2b01 00b4 | 4afd 49d3 | 0b00 84d2 | 4b7c bbf2 | 4b0e c0f2 
+  0x00000072c8ce27e8: 6001 0a8b | 0b00 c039 | 7f09 0071 | a13f 0054 | 9f02 156b | 0123 0054 | 8a03 c139 | 4a33 0035 
+  0x00000072c8ce2808: ea03 13aa | eb03 1daa | 6b01 0aca | 6bfd 54d3 | 7616 00b9 | 2b01 00b4 | 4afd 49d3 | 0b00 84d2 
+  0x00000072c8ce2828: 4b7c bbf2 | 4b0e c0f2 | 6001 0a8b | 0a00 c039 | 5f09 0071 | 4140 0054 | bf3b 03d5 | 8b03 c139 
+  0x00000072c8ce2848: 8b32 0035 | fd03 40f9 | ea03 1daa | eb03 13aa | 6b01 0aca | 6bfd 54d3 | b733 00b9 | 2b01 00b4 
+  0x00000072c8ce2868: 4afd 49d3 | 0b00 84d2 | 4b7c bbf2 | 4b0e c0f2 | 6001 0a8b | 0b00 c039 | 7f09 0071 | e140 0054 
+  0x00000072c8ce2888: e103 1daa 
+
+  0x00000072c8ce288c: ; ImmutableOopMap {rfp=Oop }
+                      ;*invokespecial newLayouter {reexecute=0 rethrow=0 return_oop=1}
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@81 (line 46)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {optimized virtual_call}
+  0x00000072c8ce288c: 7121 ff97 
+
+  0x00000072c8ce2890: ;   {other}
+  0x00000072c8ce2890: 1f20 03d5 | 1f20 81f2 | 1f40 80f2 | 8a03 c139 | f303 00aa | ea32 0035 | f403 1daa | eb03 14aa 
+  0x00000072c8ce28b0: ea03 13aa | 4a01 0bca | ec03 13aa | 4afd 54d3 | 8c36 00b9 | 8a31 00b4 | 6afd 49d3 | 0b00 84d2 
+  0x00000072c8ce28d0: 4b7c bbf2 | 4b0e c0f2 | 6001 0a8b | 3344 00b4 | 0a00 c039 | 5f09 0071 | a140 0054 | 7db6 4329 
+  0x00000072c8ce28f0: ;   {section_word}
+  0x00000072c8ce28f0: 80d4 ff1c | 4d0c 0035 | bd69 0034 | f403 00f9 | e00b 00bd | f30b 00f9 | e103 1daa 
+
+  0x00000072c8ce290c: ; ImmutableOopMap {[0]=Oop [16]=Oop }
+                      ;*invokevirtual build {reexecute=0 rethrow=0 return_oop=1}
+                      ; - androidx.compose.ui.text.platform.ParagraphLayouter::layoutParagraph@74 (line 244)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@98 (line 71)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {optimized virtual_call}
+  0x00000072c8ce290c: 31a6 fb97 
+
+  0x00000072c8ce2910: ;   {other}
+  0x00000072c8ce2910: 1f20 03d5 | 1f30 81f2 | 1f60 80f2 
+
+  0x00000072c8ce291c: ; implicit exception: dispatches to 0x00000072c8ce3870
+  0x00000072c8ce291c: 0108 40f9 
+
+  0x00000072c8ce2920: ;   {oop(a 'java/lang/Class'{0x00000000e0819350} = 'org/jetbrains/skia/impl/Stats')}
+  0x00000072c8ce2920: 0a6a 92d2 | 2a10 bcf2 | 0a00 c0f2 | 4a01 4239 | 0a6d 0035 | fd03 00aa | e00b 40bd 
+
+  0x00000072c8ce293c: ; ImmutableOopMap {rfp=Oop [0]=Oop [16]=Oop }
+                      ;*invokestatic _nLayout {reexecute=0 rethrow=0 return_oop=0}
+                      ; - org.jetbrains.skia.paragraph.ParagraphKt::access$_nLayout@2 (line 1)
+                      ; - org.jetbrains.skia.paragraph.Paragraph::layout@11 (line 84)
+                      ; - androidx.compose.ui.text.platform.ParagraphLayouter::layoutParagraph@80 (line 245)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@98 (line 71)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {static_call}
+  0x00000072c8ce293c: e5f2 e597 
+
+  0x00000072c8ce2940: ;   {other}
+  0x00000072c8ce2940: 1f20 03d5 | 1f36 81f2 | 1f80 80f2 | 8b03 c139 | 8b44 0035 | f30b 40f9 | f403 1daa | ea03 13aa 
+  0x00000072c8ce2960: eb03 14aa | 6b01 0aca | ed03 14aa | 6bfd 54d3 | 6d22 00b9 | 2b01 00b4 | 4afd 49d3 | 0b00 84d2 
+  0x00000072c8ce2980: 4b7c bbf2 | 4b0e c0f2 | 6001 0a8b | 0a00 c039 | 5f09 0071 | e143 0054 
+
+  0x00000072c8ce2998: ;   {oop(a 'java/lang/Class'{0x00000000e0819350} = 'org/jetbrains/skia/impl/Stats')}
+  0x00000072c8ce2998: 0a6a 92d2 | 2a10 bcf2 | 0a00 c0f2 | 4a01 4239 | 8a6a 0035 | f3d3 00a9 | 810a 40f9 
+
+  0x00000072c8ce29b4: ; ImmutableOopMap {rfp=Oop [0]=Oop [8]=Oop [16]=Oop }
+                      ;*invokestatic _nGetUnresolvedCodepointsCount {reexecute=0 rethrow=0 return_oop=0}
+                      ; - org.jetbrains.skia.paragraph.ParagraphKt::access$_nGetUnresolvedCodepointsCount@1 (line 1)
+                      ; - org.jetbrains.skia.paragraph.Paragraph::getUnresolvedCodepoints@11 (line 202)
+                      ; - androidx.compose.ui.text.platform.ParagraphLayouter::layoutParagraph@91 (line 247)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@98 (line 71)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {static_call}
+  0x00000072c8ce29b4: 27ca e697 
+
+  0x00000072c8ce29b8: ;   {other}
+  0x00000072c8ce29b8: 1f20 03d5 | 1f45 81f2 | 1fa0 80f2 | 0a7c 4093 | ec03 002a | 1f00 4171 | 2800 0054 | 1f00 4171 
+  0x00000072c8ce29d8: 884d 0054 | 4af5 7ed3 | 80df 40f9 | 4a5d 0091 | 4bf1 7d92 | 8de7 40f9 | 0b00 0b8b | 7f01 0deb 
+  0x00000072c8ce29f8: 824c 0054 | ed03 40b2 | 8bdf 00f9 | 0d00 00f9 
+
+  0x00000072c8ce2a08: ;   {metadata({type array int})}
+  0x00000072c8ce2a08: 0d00 a0d2 | 0de1 84f2 | 7061 80f9 | 0d08 00b9 | 7081 80f9 | 4dfd 43d3 | 70a1 80f9 | 0a40 0091 
+  0x00000072c8ce2a28: ab09 00d1 | 0c0c 00b9 | 6821 00f1 | 4300 0054 
+
+  0x00000072c8ce2a38: ;   {runtime_call StubRoutines (final stubs)}
+  0x00000072c8ce2a38: 02b7 c797 | 6b00 1036 | 5f7d 81a8 | 5f7d 81a8 | 4b00 0836 | 5f7d 81a8 | 4b00 0036 | 5f01 00f9 
+  0x00000072c8ce2a58: 9f01 0071 | ec65 0054 | eb07 40f9 | 6a25 40b9 | ca5e 0035 | 7f41 0039 | f403 40f9 | fd0b 40f9 
+  0x00000072c8ce2a78: 5300 0014 | 6a42 4039 | eb03 0daa | 0a07 0034 | dd66 0034 | ea03 1daa | ea53 00a9 | e017 00bd 
+  0x00000072c8ce2a98: ebcf 01a9 | ed2b 00b9 | e103 0aaa 
+
+  0x00000072c8ce2aa4: ; ImmutableOopMap {rfp=NarrowOop [0]=Oop [8]=Oop [24]=Oop [32]=Oop [40]=NarrowOop }
+                      ;*invokespecial prepareDefaultStyle {reexecute=0 rethrow=0 return_oop=0}
+                      ; - androidx.compose.ui.text.platform.ParagraphBuilder::updateForegroundPaint@6 (line 396)
+                      ; - androidx.compose.ui.text.platform.ParagraphLayouter::layoutParagraph@23 (line 227)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@98 (line 71)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {optimized virtual_call}
+  0x00000072c8ce2aa4: b799 c797 
+
+  0x00000072c8ce2aa8: ;   {other}
+  0x00000072c8ce2aa8: 1f20 03d5 | 1f63 81f2 | 1fc0 80f2 | ab43 40b9 | 0b66 0034 | e103 0baa 
+
+  0x00000072c8ce2ac0: ; ImmutableOopMap {rfp=NarrowOop [0]=Oop [8]=Oop [24]=Oop [32]=Oop [40]=NarrowOop }
+                      ;*invokevirtual getForegroundPaint {reexecute=0 rethrow=0 return_oop=1}
+                      ; - androidx.compose.ui.text.platform.ParagraphBuilder::updateForegroundPaint@13 (line 397)
+                      ; - androidx.compose.ui.text.platform.ParagraphLayouter::layoutParagraph@23 (line 227)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@98 (line 71)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {optimized virtual_call}
+  0x00000072c8ce2ac0: b099 c797 
+
+  0x00000072c8ce2ac4: ;   {other}
+  0x00000072c8ce2ac4: 1f20 03d5 | 9f66 81f2 | 1fe0 80f2 | aa23 40b9 | e003 00f9 | aa65 0034 | e103 0aaa 
+
+  0x00000072c8ce2ae0: ; ImmutableOopMap {[0]=Oop [8]=Oop [24]=Oop [32]=Oop [40]=NarrowOop }
+                      ;*invokevirtual length {reexecute=0 rethrow=0 return_oop=0}
+                      ; - androidx.compose.ui.text.platform.ParagraphBuilder::updateForegroundPaint@23 (line 398)
+                      ; - androidx.compose.ui.text.platform.ParagraphLayouter::layoutParagraph@23 (line 227)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@98 (line 71)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {optimized virtual_call}
+  0x00000072c8ce2ae0: a899 c797 
+
+  0x00000072c8ce2ae4: ;   {other}
+  0x00000072c8ce2ae4: 1f20 03d5 | 9f6a 81f2 | 1f00 81f2 | e303 002a | e403 40f9 | e213 40b9 | e10f 40f9 
+
+  0x00000072c8ce2b00: ; ImmutableOopMap {[8]=Oop [24]=Oop [32]=Oop [40]=NarrowOop }
+                      ;*invokevirtual updateForegroundPaint {reexecute=0 rethrow=0 return_oop=1}
+                      ; - androidx.compose.ui.text.platform.ParagraphBuilder::updateForegroundPaint@27 (line 398)
+                      ; - androidx.compose.ui.text.platform.ParagraphLayouter::layoutParagraph@23 (line 227)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@98 (line 71)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {optimized virtual_call}
+  0x00000072c8ce2b00: a099 c797 
+
+  0x00000072c8ce2b04: ;   {other}
+  0x00000072c8ce2b04: 1f20 03d5 | 9f6e 81f2 | 1f20 81f2 | ea13 40f9 | 5f41 0039 
+
+  0x00000072c8ce2b18: ;   {oop(a 'org/jetbrains/skia/impl/Stats'{0x00000000e0828180})}
+  0x00000072c8ce2b18: 0130 90d2 | 4110 bcf2 | 0100 c0f2 
+
+  0x00000072c8ce2b24: ; ImmutableOopMap {[8]=Oop [24]=Oop [32]=Oop [40]=NarrowOop }
+                      ;*invokevirtual onNativeCall {reexecute=0 rethrow=0 return_oop=0}
+                      ; - org.jetbrains.skia.paragraph.Paragraph::markDirty@3 (line 178)
+                      ; - androidx.compose.ui.text.platform.ParagraphLayouter::layoutParagraph@32 (line 232)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@98 (line 71)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {optimized virtual_call}
+  0x00000072c8ce2b24: 9799 c797 
+
+  0x00000072c8ce2b28: ;   {other}
+  0x00000072c8ce2b28: 1f20 03d5 | 1f73 81f2 | 1f40 81f2 | eb2b 40b9 | 6109 40f9 
+
+  0x00000072c8ce2b3c: ; ImmutableOopMap {[8]=Oop [24]=Oop [32]=Oop [40]=NarrowOop }
+                      ;*invokestatic _nMarkDirty {reexecute=0 rethrow=0 return_oop=0}
+                      ; - org.jetbrains.skia.paragraph.ParagraphKt::access$_nMarkDirty@1 (line 1)
+                      ; - org.jetbrains.skia.paragraph.Paragraph::markDirty@10 (line 179)
+                      ; - androidx.compose.ui.text.platform.ParagraphLayouter::layoutParagraph@32 (line 232)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@98 (line 71)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {static_call}
+  0x00000072c8ce2b3c: 119b c797 
+
+  0x00000072c8ce2b40: ;   {other}
+  0x00000072c8ce2b40: 1f20 03d5 | 1f76 81f2 | 1f60 81f2 | ea03 0032 | f407 40f9 | e017 40bd | ebcf 41a9 | ed2b 40b9 
+  0x00000072c8ce2b60: 0200 0014 | ea13 40b9 | 710e 40bd | 30d6 a07e 
+
+  0x00000072c8ce2b70: ;   {section_word}
+  0x00000072c8ce2b70: b2c0 ff1c | 4022 301e | 6c00 0054 | 600e 00bd | 0200 0014 | ea01 0034 
+
+  0x00000072c8ce2b88: ;   {oop(a 'java/lang/Class'{0x00000000e0819350} = 'org/jetbrains/skia/impl/Stats')}
+  0x00000072c8ce2b88: 0a6a 92d2 | 2a10 bcf2 | 0a00 c0f2 | 4a01 4239 | 4a56 0035 | eb03 00f9 | fd03 14aa | a109 40f9 
+  0x00000072c8ce2ba8: ; ImmutableOopMap {rfp=Oop [0]=Oop }
+                      ;*invokestatic _nLayout {reexecute=0 rethrow=0 return_oop=0}
+                      ; - org.jetbrains.skia.paragraph.ParagraphKt::access$_nLayout@2 (line 1)
+                      ; - org.jetbrains.skia.paragraph.Paragraph::layout@11 (line 84)
+                      ; - androidx.compose.ui.text.platform.ParagraphLayouter::layoutParagraph@62 (line 240)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@98 (line 71)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {static_call}
+  0x00000072c8ce2ba8: f69a c797 
+
+  0x00000072c8ce2bac: ;   {other}
+  0x00000072c8ce2bac: 1f20 03d5 | 9f83 81f2 | 1f80 81f2 | f403 1daa | eb03 40f9 | fd03 0baa 
+
+  0x00000072c8ce2bc4: ;   {oop(a 'java/lang/Class'{0x00000000e0819350} = 'org/jetbrains/skia/impl/Stats')}
+  0x00000072c8ce2bc4: 0a6a 92d2 | 2a10 bcf2 | 0a00 c0f2 | 4a01 4239 | ea4e 0035 | f403 00f9 | a10b 40f9 
+
+  0x00000072c8ce2be0: ; ImmutableOopMap {rfp=Oop [0]=Oop }
+                      ;*invokestatic _nGetMinIntrinsicWidth {reexecute=0 rethrow=0 return_oop=0}
+                      ; - org.jetbrains.skia.paragraph.ParagraphKt::access$_nGetMinIntrinsicWidth@1 (line 1)
+                      ; - org.jetbrains.skia.paragraph.Paragraph::getMinIntrinsicWidth@11 (line 40)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@106 (line 72)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {static_call}
+  0x00000072c8ce2be0: 7cf6 e797 
+
+  0x00000072c8ce2be4: ;   {other}
+  0x00000072c8ce2be4: 1f20 03d5 | 9f8a 81f2 | 1fa0 81f2 | 10c0 221e | 10c2 641e 
+
+  0x00000072c8ce2bf8: ;   {oop(a 'java/lang/Class'{0x00000000e0819350} = 'org/jetbrains/skia/impl/Stats')}
+  0x00000072c8ce2bf8: 0a6a 92d2 | 2a10 bcf2 | 0a00 c0f2 | 1042 621e | eb03 40f9 | 4a01 4239 | 700d 00bd | ca4d 0035 
+  0x00000072c8ce2c18: a10b 40f9 
+
+  0x00000072c8ce2c1c: ; ImmutableOopMap {rfp=Oop [0]=Oop }
+                      ;*invokestatic _nGetMaxIntrinsicWidth {reexecute=0 rethrow=0 return_oop=0}
+                      ; - org.jetbrains.skia.paragraph.ParagraphKt::access$_nGetMaxIntrinsicWidth@1 (line 1)
+                      ; - org.jetbrains.skia.paragraph.Paragraph::getMaxIntrinsicWidth@11 (line 47)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@120 (line 73)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {static_call}
+  0x00000072c8ce2c1c: 6df7 e797 
+
+  0x00000072c8ce2c20: ;   {other}
+  0x00000072c8ce2c20: 1f20 03d5 | 1f92 81f2 | 1fc0 81f2 | 10c0 221e | 10c2 641e | 1042 621e | e003 40f9 | 1010 00bd 
+  0x00000072c8ce2c40: bf3b 03d5 | fd7b 46a9 | ffc3 0191 
+
+  0x00000072c8ce2c4c: ;   {poll_return}
+  0x00000072c8ce2c4c: 882b 42f9 | ff63 28eb | e865 0054 | c003 5fd6 | 94df 40f9 | 8ae7 40f9 | 8b82 0091 | 7f01 0aeb 
+  0x00000072c8ce2c6c: 423a 0054 | ea03 40b2 | 8bdf 00f9 
+
+  0x00000072c8ce2c78: ;   {metadata('androidx/compose/runtime/SnapshotMutableStateImpl$StateStateRecord')}
+  0x00000072c8ce2c78: 0c23 a0d2 | 0c46 90f2 | 8a02 00f9 | 8c7e 0129 | 7061 80f9 | 9f1e 00b9 | ea03 40b2 | 8a0a 00f9 
+  0x00000072c8ce2c98: ;   {oop(a 'java/lang/Boolean'{0x00000000e059c528} = false)}
+  0x00000072c8ce2c98: 2a0b bcd2 | 0aa5 98f2 | 8a1a 00b9 | bf3a 03d5 | 8a03 c139 | 0a2e 0035 | ea03 1daa | eb03 14aa 
+  0x00000072c8ce2cb8: 6b01 0aca | ec03 14aa | 6bfd 54d3 | ac0f 00b9 | cbd9 ffb4 | 4afd 49d3 | 0b00 84d2 | 4b7c bbf2 
+  0x00000072c8ce2cd8: 4b0e c0f2 | 6001 0a8b | 0b00 c039 | 7f09 0071 | c0d8 ff54 | 8a27 40f9 | 8b2f 40f9 | bf3b 03d5 
+  0x00000072c8ce2cf8: 0d00 c039 | 2dd8 ff34 | 1f00 0039 | 8a01 00b5 | e103 1caa | c900 0010 | 89d7 01f9 
+
+  0x00000072c8ce2d14: ;   {runtime_call G1BarrierSetRuntime::write_ref_field_post_entry(unsigned char volatile*, JavaThread*)}
+  0x00000072c8ce2d14: 080e 8ed2 | 68bc bbf2 | 480e c0f2 | 0001 3fd6 
+
+  0x00000072c8ce2d24: ;   {other}
+  0x00000072c8ce2d24: 1f20 03d5 | 1f00 80f2 | 1f00 80f2 | b4fe ff17 | 4c21 00d1 | 6a01 0a8b | 4081 1ff8 | 8c27 00f9 
+  0x00000072c8ce2d44: affe ff17 | 7f01 0feb | 0dcc ff54 | ea7b 1f32 | 5efe ff17 
+
+  0x00000072c8ce2d58: ;   {oop(a 'androidx/compose/runtime/snapshots/GlobalSnapshot'{0x00000000e044bc60})}
+  0x00000072c8ce2d58: 0d8c 97d2 | 8d08 bcf2 | 0d00 c0f2 | 6dfe ff17 | 7f09 0071 | 6323 0054 | 6d05 0051 
+
+  0x00000072c8ce2d74: ; implicit exception: dispatches to 0x00000072c8ce3884
+  0x00000072c8ce2d74: c50d 40b9 | e403 0eaa | f003 1f2a | ec03 1f2a | 1f02 0d6b | cc01 0054 | 1202 0d0b | 4b7e 0153 
+  0x00000072c8ce2d94: 7f01 056b | 024d 0054 | 92cc 2b8b | 520a 40f9 | 5202 0fcb | 1201 f8b6 | 812f 42f9 
+
+  0x00000072c8ce2db0: ; ImmutableOopMap {r14=NarrowOop r17=Oop c_rarg4=Oop r19=Oop resp=Oop }
+                      ;*goto {reexecute=1 rethrow=0 return_oop=0}
+                      ; - (reexecute) androidx.compose.runtime.internal.ThreadMap::find@113 (line 146)
+                      ; - androidx.compose.runtime.internal.ThreadMap::get@2 (line 69)
+                      ; - androidx.compose.runtime.internal.SnapshotThreadLocal::get@30 (line 45)
+                      ; - androidx.compose.runtime.snapshots.SnapshotKt::currentSnapshot@3 (line 1284)
+                      ; - androidx.compose.runtime.SnapshotMutableStateImpl::<init>@10 (line 151)
+                      ; - androidx.compose.runtime.SnapshotState_nonAndroidKt::createSnapshotMutableState@6 (line 24)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf@2 (line 65)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf@2 (line 1)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf$default@12 (line 62)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf$default@4 (line 1)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@73 (line 43)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+  0x00000072c8ce2db0: 7005 0011 
+
+  0x00000072c8ce2db4: ;   {poll}
+  0x00000072c8ce2db4: 3f00 40b9 | 1f02 0d6b | 8dfe ff54 | 4a01 104b | 43fe ff17 | 5f02 00f1 | 6c00 0054 | ea03 0b2a 
+  0x00000072c8ce2dd4: 3ffe ff17 | 862f 42f9 
+
+  0x00000072c8ce2ddc: ; ImmutableOopMap {r14=NarrowOop r17=Oop c_rarg4=Oop r19=Oop resp=Oop }
+                      ;*goto {reexecute=1 rethrow=0 return_oop=0}
+                      ; - (reexecute) androidx.compose.runtime.internal.ThreadMap::find@128 (line 147)
+                      ; - androidx.compose.runtime.internal.ThreadMap::get@2 (line 69)
+                      ; - androidx.compose.runtime.internal.SnapshotThreadLocal::get@30 (line 45)
+                      ; - androidx.compose.runtime.snapshots.SnapshotKt::currentSnapshot@3 (line 1284)
+                      ; - androidx.compose.runtime.SnapshotMutableStateImpl::<init>@10 (line 151)
+                      ; - androidx.compose.runtime.SnapshotState_nonAndroidKt::createSnapshotMutableState@6 (line 24)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf@2 (line 65)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf@2 (line 1)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf$default@12 (line 62)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf$default@4 (line 1)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@73 (line 43)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+  0x00000072c8ce2ddc: 6d05 0051 
+
+  0x00000072c8ce2de0: ;   {poll}
+  0x00000072c8ce2de0: df00 40b9 | e8ff ff17 | 6b2e 40b9 | 0bb9 ff34 | 8a17 40f9 | 60fd 40d3 | ea32 00b4 | 8b1f 40f9 
+  0x00000072c8ce2e00: 4c21 00d1 | 6a01 0a8b | 4081 1ff8 | 8c17 00f9 | bffd ff17 | 8a0e 40b9 | 8abd ff34 | 8b17 40f9 
+  0x00000072c8ce2e20: 40fd 40d3 | eb32 00b4 | 8a1f 40f9 | 6c21 00d1 | 4a01 0b8b | 4081 1ff8 | 8c17 00f9 | e3fd ff17 
+  0x00000072c8ce2e40: 8a12 40b9 | 6abe ff34 | 8b17 40f9 | 40fd 40d3 | eb32 00b4 | 8a1f 40f9 | 6c21 00d1 | 4a01 0b8b 
+  0x00000072c8ce2e60: 4081 1ff8 | 8c17 00f9 | eafd ff17 | 6b16 40b9 | cbcc ff34 | 8a17 40f9 | 60fd 40d3 | 4a34 00b4 
+  0x00000072c8ce2e80: 8b1f 40f9 | 4c21 00d1 | 6a01 0a8b | 4081 1ff8 | 8c17 00f9 | 5dfe ff17 | fd03 40f9 | aa33 40b9 
+  0x00000072c8ce2ea0: 8acd ff34 | 8b17 40f9 | 40fd 40d3 | 2b34 00b4 | 8a1f 40f9 | 6c21 00d1 | 4a01 0b8b | 4081 1ff8 
+  0x00000072c8ce2ec0: 8c17 00f9 | 63fe ff17 | ab1b 40b9 | 2bc6 ff34 | 8a17 40f9 | 60fd 40d3 | 0a30 00b4 | 8b1f 40f9 
+  0x00000072c8ce2ee0: 4c21 00d1 | 6a01 0a8b | 4081 1ff8 | 8c17 00f9 | 28fe ff17 | d3cf ffb5 | fd03 13aa | 9a00 0014 
+  0x00000072c8ce2f00: ab37 40b9 | f403 1daa | 2bcd ff34 | 8a17 40f9 | 60fd 40d3 | 4a32 00b4 | 8b1f 40f9 | 4c21 00d1 
+  0x00000072c8ce2f20: 6a01 0a8b | 4081 1ff8 | 8c17 00f9 | 60fe ff17 | 8a27 40f9 | 8b2f 40f9 | bf3b 03d5 | 0c00 c039 
+  0x00000072c8ce2f40: 2cb6 ff34 | 1f00 0039 | 8a01 00b5 | e103 1caa | c900 0010 | 89d7 01f9 
+
+  0x00000072c8ce2f58: ;   {runtime_call G1BarrierSetRuntime::write_ref_field_post_entry(unsigned char volatile*, JavaThread*)}
+  0x00000072c8ce2f58: 080e 8ed2 | 68bc bbf2 | 480e c0f2 | 0001 3fd6 
+
+  0x00000072c8ce2f68: ;   {other}
+  0x00000072c8ce2f68: 1f20 03d5 | 1f00 80f2 | 1f00 80f2 | a4fd ff17 | 4c21 00d1 | 6a01 0a8b | 4081 1ff8 | 8c27 00f9 
+  0x00000072c8ce2f88: 9ffd ff17 | 8a27 40f9 | 8b2f 40f9 | bf3b 03d5 | 0d00 c039 | edb5 ff34 | 1f00 0039 | 8a01 00b5 
+  0x00000072c8ce2fa8: e103 1caa | c900 0010 | 89d7 01f9 
+
+  0x00000072c8ce2fb4: ;   {runtime_call G1BarrierSetRuntime::write_ref_field_post_entry(unsigned char volatile*, JavaThread*)}
+  0x00000072c8ce2fb4: 080e 8ed2 | 68bc bbf2 | 480e c0f2 | 0001 3fd6 
+
+  0x00000072c8ce2fc4: ;   {other}
+  0x00000072c8ce2fc4: 1f20 03d5 | 1f00 80f2 | 1f00 80f2 | a2fd ff17 | 4c21 00d1 | 6a01 0a8b | 4081 1ff8 | 8c27 00f9 
+  0x00000072c8ce2fe4: 9dfd ff17 | 8a27 40f9 | 8b2f 40f9 | bf3b 03d5 | 0d00 c039 | 0dc0 ff34 | 1f00 0039 | 8a01 00b5 
+  0x00000072c8ce3004: e103 1caa | c900 0010 | 89d7 01f9 
+
+  0x00000072c8ce3010: ;   {runtime_call G1BarrierSetRuntime::write_ref_field_post_entry(unsigned char volatile*, JavaThread*)}
+  0x00000072c8ce3010: 080e 8ed2 | 68bc bbf2 | 480e c0f2 | 0001 3fd6 
+
+  0x00000072c8ce3020: ;   {other}
+  0x00000072c8ce3020: 1f20 03d5 | 1f00 80f2 | 1f00 80f2 | f3fd ff17 | 4c21 00d1 | 6a01 0a8b | 4081 1ff8 | 8c27 00f9 
+  0x00000072c8ce3040: eefd ff17 | 8a27 40f9 | 8b2f 40f9 | bf3b 03d5 | 0c00 c039 | 6cbf ff34 | 1f00 0039 | 8a01 00b5 
+  0x00000072c8ce3060: e103 1caa | c900 0010 | 89d7 01f9 
+
+  0x00000072c8ce306c: ;   {runtime_call G1BarrierSetRuntime::write_ref_field_post_entry(unsigned char volatile*, JavaThread*)}
+  0x00000072c8ce306c: 080e 8ed2 | 68bc bbf2 | 480e c0f2 | 0001 3fd6 
+
+  0x00000072c8ce307c: ;   {other}
+  0x00000072c8ce307c: 1f20 03d5 | 1f00 80f2 | 1f00 80f2 | eefd ff17 | 4c21 00d1 | 6a01 0a8b | 4081 1ff8 | 8c27 00f9 
+  0x00000072c8ce309c: e9fd ff17 | 8a27 40f9 | 8b2f 40f9 | bf3b 03d5 | 0d00 c039 | cdbe ff34 | 1f00 0039 | 8a01 00b5 
+  0x00000072c8ce30bc: e103 1caa | c900 0010 | 89d7 01f9 
+
+  0x00000072c8ce30c8: ;   {runtime_call G1BarrierSetRuntime::write_ref_field_post_entry(unsigned char volatile*, JavaThread*)}
+  0x00000072c8ce30c8: 080e 8ed2 | 68bc bbf2 | 480e c0f2 | 0001 3fd6 
+
+  0x00000072c8ce30d8: ;   {other}
+  0x00000072c8ce30d8: 1f20 03d5 | 1f00 80f2 | 1f00 80f2 | e9fd ff17 | 4c21 00d1 | 6a01 0a8b | 4081 1ff8 | 8c27 00f9 
+  0x00000072c8ce30f8: e4fd ff17 | 8a2f 40f9 | 8b27 40f9 | bf3b 03d5 | 0c00 c039 | 4c02 0034 | 1f00 0039 | cb00 00b4 
+  0x00000072c8ce3118: 6c21 00d1 | 4a01 0b8b | 4081 1ff8 | 8c27 00f9 | 0b00 0014 | e103 1caa | c900 0010 | 89d7 01f9 
+  0x00000072c8ce3138: ;   {runtime_call G1BarrierSetRuntime::write_ref_field_post_entry(unsigned char volatile*, JavaThread*)}
+  0x00000072c8ce3138: 080e 8ed2 | 68bc bbf2 | 480e c0f2 | 0001 3fd6 
+
+  0x00000072c8ce3148: ;   {other}
+  0x00000072c8ce3148: 1f20 03d5 | 1f00 80f2 | 1f00 80f2 | 8b36 40b9 | 73fd 40d3 | 8bbc ff35 | fd03 13aa | 4117 8012 
+  0x00000072c8ce3168: f407 00f9 
+
+  0x00000072c8ce316c: ; ImmutableOopMap {rfp=Oop [8]=Oop }
+                      ;*ifnonnull {reexecute=1 rethrow=0 return_oop=0}
+                      ; - (reexecute) kotlin.jvm.internal.Intrinsics::checkNotNull@1 (line 24)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@93 (line 71)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce316c: 85b3 c797 
+
+  0x00000072c8ce3170: ;   {other}
+  0x00000072c8ce3170: 1f20 03d5 | 1f3c 82f2 | 1f20 82f2 | 8a2f 40f9 | 8b27 40f9 | bf3b 03d5 | 0c00 c039 | 0c9e ff34 
+  0x00000072c8ce3190: 1f00 0039 | 8b01 00b5 | e103 1caa | c900 0010 | 89d7 01f9 
+
+  0x00000072c8ce31a4: ;   {runtime_call G1BarrierSetRuntime::write_ref_field_post_entry(unsigned char volatile*, JavaThread*)}
+  0x00000072c8ce31a4: 080e 8ed2 | 68bc bbf2 | 480e c0f2 | 0001 3fd6 
+
+  0x00000072c8ce31b4: ;   {other}
+  0x00000072c8ce31b4: 1f20 03d5 | 1f00 80f2 | 1f00 80f2 | e3fc ff17 | 6c21 00d1 | 4a01 0b8b | 4081 1ff8 | 8c27 00f9 
+  0x00000072c8ce31d4: defc ff17 | ec03 1f2a | 3dfd ff17 | f30b 40f9 | 6a22 40b9 | 8abb ff34 | 8b17 40f9 | 40fd 40d3 
+  0x00000072c8ce31f4: 8b25 00b4 | 8a1f 40f9 | 6c21 00d1 | 4a01 0b8b | 4081 1ff8 | 8c17 00f9 | d3fd ff17 | 8a2f 40f9 
+  0x00000072c8ce3214: 8b27 40f9 | bf3b 03d5 | 0c00 c039 | ccbb ff34 | 1f00 0039 | 8b01 00b5 | e103 1caa | c900 0010 
+  0x00000072c8ce3234: 89d7 01f9 
+
+  0x00000072c8ce3238: ;   {runtime_call G1BarrierSetRuntime::write_ref_field_post_entry(unsigned char volatile*, JavaThread*)}
+  0x00000072c8ce3238: 080e 8ed2 | 68bc bbf2 | 480e c0f2 | 0001 3fd6 
+
+  0x00000072c8ce3248: ;   {other}
+  0x00000072c8ce3248: 1f20 03d5 | 1f00 80f2 | 1f00 80f2 | d1fd ff17 | 6c21 00d1 | 4a01 0b8b | 4081 1ff8 | 8c27 00f9 
+  0x00000072c8ce3268: ccfd ff17 | ab0f 40b9 | 0bd2 ff34 | 8a17 40f9 | 60fd 40d3 | 2a29 00b4 | 8b1f 40f9 | 4c21 00d1 
+  0x00000072c8ce3288: 6a01 0a8b | 4081 1ff8 | 8c17 00f9 | 87fe ff17 | f517 00f9 
+
+  0x00000072c8ce329c: ;   {metadata('androidx/compose/ui/text/platform/SkiaParagraphIntrinsics')}
+  0x00000072c8ce329c: 01ce 93d2 | a129 a0f2 | a100 c0f2 
+
+  0x00000072c8ce32a8: ; ImmutableOopMap {rfp=Oop [0]=Oop [8]=Oop [16]=Oop [24]=Oop [32]=Oop [40]=Oop }
+                      ;*new {reexecute=0 rethrow=0 return_oop=1}
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@0 (line 100)
+                      ;   {runtime_call _new_instance_Java}
+  0x00000072c8ce32a8: 7617 cb97 
+
+  0x00000072c8ce32ac: ;   {other}
+  0x00000072c8ce32ac: 1f20 03d5 | 9f63 82f2 | 1f40 82f2 | f517 40f9 | 5ffc ff17 | f303 00f9 | fd03 15aa 
+
+  0x00000072c8ce32c8: ;   {metadata('androidx/compose/runtime/SnapshotMutableStateImpl')}
+  0x00000072c8ce32c8: 01ec 8ed2 | 0123 a0f2 | a100 c0f2 
+
+  0x00000072c8ce32d4: ; ImmutableOopMap {rfp=Oop [0]=Oop }
+                      ;*new {reexecute=0 rethrow=0 return_oop=1}
+                      ; - androidx.compose.runtime.SnapshotState_nonAndroidKt::createSnapshotMutableState@0 (line 24)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf@2 (line 65)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf@2 (line 1)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf$default@12 (line 62)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf$default@4 (line 1)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@73 (line 43)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call _new_instance_Java}
+  0x00000072c8ce32d4: 6b17 cb97 
+
+  0x00000072c8ce32d8: ;   {other}
+  0x00000072c8ce32d8: 1f20 03d5 | 1f69 82f2 | 1f60 82f2 | f503 1daa | f303 40f9 | f403 00aa | a4fc ff17 | f353 00a9 
+  0x00000072c8ce32f8: fd03 15aa 
+
+  0x00000072c8ce32fc: ;   {metadata('androidx/compose/runtime/internal/AtomicInt')}
+  0x00000072c8ce32fc: 01c8 96d2 | 6122 a0f2 | a100 c0f2 
+
+  0x00000072c8ce3308: ; ImmutableOopMap {rfp=Oop [0]=Oop [8]=Oop }
+                      ;*new {reexecute=0 rethrow=0 return_oop=1}
+                      ; - androidx.compose.runtime.snapshots.StateObjectImpl::<init>@5 (line 29)
+                      ; - androidx.compose.runtime.SnapshotMutableStateImpl::<init>@1 (line 136)
+                      ; - androidx.compose.runtime.SnapshotState_nonAndroidKt::createSnapshotMutableState@6 (line 24)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf@2 (line 65)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf@2 (line 1)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf$default@12 (line 62)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf$default@4 (line 1)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@73 (line 43)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call _new_instance_Java}
+  0x00000072c8ce3308: 5e17 cb97 
+
+  0x00000072c8ce330c: ;   {other}
+  0x00000072c8ce330c: 1f20 03d5 | 9f6f 82f2 | 1f80 82f2 | f503 1daa | f353 40a9 | f603 00aa | a4fc ff17 | f353 00a9 
+  0x00000072c8ce332c: ec13 00b9 | ed0f 00f9 
+
+  0x00000072c8ce3334: ;   {metadata('androidx/compose/runtime/SnapshotMutableStateImpl$StateStateRecord')}
+  0x00000072c8ce3334: 0146 90d2 | 0123 a0f2 | a100 c0f2 
+
+  0x00000072c8ce3340: ; ImmutableOopMap {[0]=Oop [8]=Oop [24]=Oop }
+                      ;*new {reexecute=0 rethrow=0 return_oop=1}
+                      ; - androidx.compose.runtime.SnapshotMutableStateImpl::<init>@19 (line 152)
+                      ; - androidx.compose.runtime.SnapshotState_nonAndroidKt::createSnapshotMutableState@6 (line 24)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf@2 (line 65)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf@2 (line 1)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf$default@12 (line 62)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf$default@4 (line 1)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@73 (line 43)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call _new_instance_Java}
+  0x00000072c8ce3340: 5017 cb97 
+
+  0x00000072c8ce3344: ;   {other}
+  0x00000072c8ce3344: 1f20 03d5 | 9f76 82f2 | 1fa0 82f2 | fd03 00aa | 03fd ff17 | f54f 00a9 | eb13 00b9 
+
+  0x00000072c8ce3360: ;   {metadata('androidx/compose/ui/text/platform/SkiaParagraphIntrinsics_skikoKt$$Lambda+0x0000000501636af0')}
+  0x00000072c8ce3360: 015e 8dd2 | 612c a0f2 | a100 c0f2 
+
+  0x00000072c8ce336c: ; ImmutableOopMap {rfp=Oop [0]=Oop [8]=Oop [16]=NarrowOop }
+                      ;*invokevirtual allocateInstance {reexecute=0 rethrow=0 return_oop=1}
+                      ; - java.lang.invoke.DirectMethodHandle::allocateInstance@12 (line 501)
+                      ; - java.lang.invoke.DirectMethodHandle$Holder::newInvokeSpecial@1
+                      ; - java.lang.invoke.Invokers$Holder::linkToTargetMethod@5
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics_skikoKt::resolveTextDirection-Ikz0yAw@85 (line 85)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@59 (line 40)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call _new_instance_Java}
+  0x00000072c8ce336c: 4517 cb97 
+
+  0x00000072c8ce3370: ;   {other}
+  0x00000072c8ce3370: 1f20 03d5 | 1f7c 82f2 | 1fc0 82f2 | e203 00aa | eb13 40b9 | 53fc ff17 | fd03 0c2a 
+
+  0x00000072c8ce338c: ;   {metadata({type array int})}
+  0x00000072c8ce338c: 01e1 84d2 | 0100 a0f2 | a100 c0f2 | e203 0c2a 
+
+  0x00000072c8ce339c: ; ImmutableOopMap {[0]=Oop [8]=Oop [16]=Oop }
+                      ;*newarray {reexecute=0 rethrow=0 return_oop=1}
+                      ; - org.jetbrains.skia.paragraph.Paragraph::getUnresolvedCodepoints@16 (line 203)
+                      ; - androidx.compose.ui.text.platform.ParagraphLayouter::layoutParagraph@91 (line 247)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@98 (line 71)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call _new_array_Java}
+  0x00000072c8ce339c: 3926 cb97 
+
+  0x00000072c8ce33a0: ;   {other}
+  0x00000072c8ce33a0: 1f20 03d5 | 1f82 82f2 | 1fe0 82f2 | ec03 1d2a | aafd ff17 | f7db 0229 
+
+  0x00000072c8ce33b8: ;   {metadata('androidx/compose/runtime/SnapshotMutableStateImpl$StateStateRecord')}
+  0x00000072c8ce33b8: 0146 90d2 | 0123 a0f2 | a100 c0f2 
+
+  0x00000072c8ce33c4: ; ImmutableOopMap {rfp=Oop [0]=Oop [8]=Oop [20]=NarrowOop [24]=NarrowOop }
+                      ;*new {reexecute=0 rethrow=0 return_oop=1}
+                      ; - androidx.compose.runtime.SnapshotMutableStateImpl::<init>@49 (line 154)
+                      ; - androidx.compose.runtime.SnapshotState_nonAndroidKt::createSnapshotMutableState@6 (line 24)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf@2 (line 65)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf@2 (line 1)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf$default@12 (line 62)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf$default@4 (line 1)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@73 (line 43)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call _new_instance_Java}
+  0x00000072c8ce33c4: 2f17 cb97 
+
+  0x00000072c8ce33c8: ;   {other}
+  0x00000072c8ce33c8: 1f20 03d5 | 1f87 82f2 | 1f00 83f2 | f307 40f9 | f403 00aa | f7db 4229 | 2cfe ff17 | 2101 8012 
+  0x00000072c8ce33e8: ; ImmutableOopMap {}
+                      ;*invokevirtual get {reexecute=0 rethrow=0 return_oop=0}
+                      ; - androidx.compose.runtime.internal.SnapshotThreadLocal::get@23 (line 45)
+                      ; - androidx.compose.runtime.snapshots.SnapshotKt::currentSnapshot@3 (line 1284)
+                      ; - androidx.compose.runtime.SnapshotMutableStateImpl::<init>@10 (line 151)
+                      ; - androidx.compose.runtime.SnapshotState_nonAndroidKt::createSnapshotMutableState@6 (line 24)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf@2 (line 65)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf@2 (line 1)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf$default@12 (line 62)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf$default@4 (line 1)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@73 (line 43)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce33e8: e6b2 c797 
+
+  0x00000072c8ce33ec: ;   {other}
+  0x00000072c8ce33ec: 1f20 03d5 | 9f8b 82f2 | 1f20 83f2 | 6103 8012 | f34f 00a9 | f40f 00f9 | f1bf 02a9 | ee3b 00b9 
+  0x00000072c8ce340c: ; ImmutableOopMap {[0]=Oop [8]=Oop [24]=Oop [40]=Oop [56]=NarrowOop }
+                      ;*laload {reexecute=0 rethrow=0 return_oop=0}
+                      ; - androidx.compose.runtime.internal.ThreadMap::find@39 (line 137)
+                      ; - androidx.compose.runtime.internal.ThreadMap::get@2 (line 69)
+                      ; - androidx.compose.runtime.internal.SnapshotThreadLocal::get@30 (line 45)
+                      ; - androidx.compose.runtime.snapshots.SnapshotKt::currentSnapshot@3 (line 1284)
+                      ; - androidx.compose.runtime.SnapshotMutableStateImpl::<init>@10 (line 151)
+                      ; - androidx.compose.runtime.SnapshotState_nonAndroidKt::createSnapshotMutableState@6 (line 24)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf@2 (line 65)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf@2 (line 1)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf$default@12 (line 62)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf$default@4 (line 1)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@73 (line 43)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce340c: ddb2 c797 
+
+  0x00000072c8ce3410: ;   {other}
+  0x00000072c8ce3410: 1f20 03d5 | 1f90 82f2 | 1f40 83f2 | 6103 8012 | f34f 00a9 | f40f 00f9 | ed2b 0429 
+
+  0x00000072c8ce342c: ; ImmutableOopMap {[0]=Oop [8]=Oop [24]=Oop [32]=NarrowOop }
+                      ;*aaload {reexecute=0 rethrow=0 return_oop=0}
+                      ; - androidx.compose.runtime.internal.ThreadMap::get@15 (line 70)
+                      ; - androidx.compose.runtime.internal.SnapshotThreadLocal::get@30 (line 45)
+                      ; - androidx.compose.runtime.snapshots.SnapshotKt::currentSnapshot@3 (line 1284)
+                      ; - androidx.compose.runtime.SnapshotMutableStateImpl::<init>@10 (line 151)
+                      ; - androidx.compose.runtime.SnapshotState_nonAndroidKt::createSnapshotMutableState@6 (line 24)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf@2 (line 65)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf@2 (line 1)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf$default@12 (line 62)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf$default@4 (line 1)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@73 (line 43)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce342c: d5b2 c797 
+
+  0x00000072c8ce3430: ;   {other}
+  0x00000072c8ce3430: 1f20 03d5 | 1f94 82f2 | 1f60 83f2 | 2104 8012 | fd03 0b2a 
+
+  0x00000072c8ce3444: ; ImmutableOopMap {rfp=NarrowOop }
+                      ;*checkcast {reexecute=0 rethrow=0 return_oop=0}
+                      ; - androidx.compose.runtime.snapshots.SnapshotKt::currentSnapshot@6 (line 1284)
+                      ; - androidx.compose.runtime.SnapshotMutableStateImpl::<init>@10 (line 151)
+                      ; - androidx.compose.runtime.SnapshotState_nonAndroidKt::createSnapshotMutableState@6 (line 24)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf@2 (line 65)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf@2 (line 1)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf$default@12 (line 62)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf$default@4 (line 1)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@73 (line 43)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce3444: cfb2 c797 
+
+  0x00000072c8ce3448: ;   {other}
+  0x00000072c8ce3448: 1f20 03d5 | 1f97 82f2 | 1f80 83f2 | e103 1caa | c900 0010 | 89d7 01f9 
+
+  0x00000072c8ce3460: ;   {runtime_call G1BarrierSetRuntime::write_ref_field_pre_entry(oopDesc*, JavaThread*)}
+  0x00000072c8ce3460: 0808 8ed2 | 68bc bbf2 | 480e c0f2 | 0001 3fd6 
+
+  0x00000072c8ce3470: ;   {other}
+  0x00000072c8ce3470: 1f20 03d5 | 1f00 80f2 | 1f00 80f2 | 24fc ff17 | e103 1caa | c900 0010 | 89d7 01f9 
+
+  0x00000072c8ce348c: ;   {runtime_call G1BarrierSetRuntime::write_ref_field_pre_entry(oopDesc*, JavaThread*)}
+  0x00000072c8ce348c: 0808 8ed2 | 68bc bbf2 | 480e c0f2 | 0001 3fd6 
+
+  0x00000072c8ce349c: ;   {other}
+  0x00000072c8ce349c: 1f20 03d5 | 1f00 80f2 | 1f00 80f2 | 48fc ff17 | e103 1caa | c900 0010 | 89d7 01f9 
+
+  0x00000072c8ce34b8: ;   {runtime_call G1BarrierSetRuntime::write_ref_field_pre_entry(oopDesc*, JavaThread*)}
+  0x00000072c8ce34b8: 0808 8ed2 | 68bc bbf2 | 480e c0f2 | 0001 3fd6 
+
+  0x00000072c8ce34c8: ;   {other}
+  0x00000072c8ce34c8: 1f20 03d5 | 1f00 80f2 | 1f00 80f2 | 4ffc ff17 | e103 1caa | c900 0010 | 89d7 01f9 
+
+  0x00000072c8ce34e4: ;   {runtime_call G1BarrierSetRuntime::write_ref_field_pre_entry(oopDesc*, JavaThread*)}
+  0x00000072c8ce34e4: 0808 8ed2 | 68bc bbf2 | 480e c0f2 | 0001 3fd6 
+
+  0x00000072c8ce34f4: ;   {other}
+  0x00000072c8ce34f4: 1f20 03d5 | 1f00 80f2 | 1f00 80f2 | a4fc ff17 | e103 1caa | c900 0010 | 89d7 01f9 
+
+  0x00000072c8ce3510: ;   {runtime_call G1BarrierSetRuntime::write_ref_field_pre_entry(oopDesc*, JavaThread*)}
+  0x00000072c8ce3510: 0808 8ed2 | 68bc bbf2 | 480e c0f2 | 0001 3fd6 
+
+  0x00000072c8ce3520: ;   {other}
+  0x00000072c8ce3520: 1f20 03d5 | 1f00 80f2 | 1f00 80f2 | b7fc ff17 | e103 1caa | c900 0010 | 89d7 01f9 
+
+  0x00000072c8ce353c: ;   {runtime_call G1BarrierSetRuntime::write_ref_field_pre_entry(oopDesc*, JavaThread*)}
+  0x00000072c8ce353c: 0808 8ed2 | 68bc bbf2 | 480e c0f2 | 0001 3fd6 
+
+  0x00000072c8ce354c: ;   {other}
+  0x00000072c8ce354c: 1f20 03d5 | 1f00 80f2 | 1f00 80f2 | befc ff17 | e103 1caa | c900 0010 | 89d7 01f9 
+
+  0x00000072c8ce3568: ;   {runtime_call G1BarrierSetRuntime::write_ref_field_pre_entry(oopDesc*, JavaThread*)}
+  0x00000072c8ce3568: 0808 8ed2 | 68bc bbf2 | 480e c0f2 | 0001 3fd6 
+
+  0x00000072c8ce3578: ;   {other}
+  0x00000072c8ce3578: 1f20 03d5 | 1f00 80f2 | 1f00 80f2 | cafc ff17 | ff05 00b1 | fd07 9f1a | bda7 9d5a | 4117 8012 
+  0x00000072c8ce3598: f3cf 00a9 | f413 00f9 
+
+  0x00000072c8ce35a0: ; ImmutableOopMap {[8]=Oop [16]=Oop [32]=Oop }
+                      ;*ifne {reexecute=1 rethrow=0 return_oop=0}
+                      ; - (reexecute) androidx.compose.runtime.internal.SnapshotThreadLocal::get@9 (line 42)
+                      ; - androidx.compose.runtime.snapshots.SnapshotKt::currentSnapshot@3 (line 1284)
+                      ; - androidx.compose.runtime.SnapshotMutableStateImpl::<init>@10 (line 151)
+                      ; - androidx.compose.runtime.SnapshotState_nonAndroidKt::createSnapshotMutableState@6 (line 24)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf@2 (line 65)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf@2 (line 1)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf$default@12 (line 62)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf$default@4 (line 1)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@73 (line 43)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce35a0: 78b2 c797 
+
+  0x00000072c8ce35a4: ;   {other}
+  0x00000072c8ce35a4: 1f20 03d5 | 9fc2 82f2 | 1fa0 83f2 | 4117 8012 | f4d3 00a9 | ea23 00b9 
+
+  0x00000072c8ce35bc: ; ImmutableOopMap {rfp=Oop [8]=Oop [16]=Oop }
+                      ;*ifeq {reexecute=1 rethrow=0 return_oop=0}
+                      ; - (reexecute) org.jetbrains.skia.impl.Stats::onNativeCall@3 (line 10)
+                      ; - org.jetbrains.skia.paragraph.Paragraph::getMinIntrinsicWidth@4 (line 39)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@106 (line 72)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce35bc: 71b2 c797 
+
+  0x00000072c8ce35c0: ;   {other}
+  0x00000072c8ce35c0: 1f20 03d5 | 1fc6 82f2 | 1fc0 83f2 | 4117 8012 | ea13 00b9 
+
+  0x00000072c8ce35d4: ; ImmutableOopMap {rfp=Oop [0]=Oop }
+                      ;*ifeq {reexecute=1 rethrow=0 return_oop=0}
+                      ; - (reexecute) org.jetbrains.skia.impl.Stats::onNativeCall@3 (line 10)
+                      ; - org.jetbrains.skia.paragraph.Paragraph::getMaxIntrinsicWidth@4 (line 46)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@120 (line 73)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce35d4: 6bb2 c797 
+
+  0x00000072c8ce35d8: ;   {other}
+  0x00000072c8ce35d8: 1f20 03d5 | 1fc9 82f2 | 1fe0 83f2 | 9f09 0071 | fd17 9f1a | 4117 8012 | f3cf 00a9 
+
+  0x00000072c8ce35f4: ; ImmutableOopMap {[8]=Oop [16]=Oop }
+                      ;*ifeq {reexecute=1 rethrow=0 return_oop=0}
+                      ; - (reexecute) androidx.compose.ui.text.platform.SkiaParagraphIntrinsics_skikoKt::resolveTextDirection-Ikz0yAw@48 (line 84)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@59 (line 40)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce35f4: 63b2 c797 
+
+  0x00000072c8ce35f8: ;   {other}
+  0x00000072c8ce35f8: 1f20 03d5 | 1fcd 82f2 | 1f00 84f2 | 9f0d 0071 | fd17 9f1a | 4117 8012 | f3cf 00a9 | ed0f 00f9 
+  0x00000072c8ce3618: eb23 00b9 
+
+  0x00000072c8ce361c: ; ImmutableOopMap {[8]=Oop [16]=Oop [24]=Oop [32]=NarrowOop }
+                      ;*ifne {reexecute=1 rethrow=0 return_oop=0}
+                      ; - (reexecute) androidx.compose.ui.text.platform.SkiaParagraphIntrinsics_skikoKt::resolveTextDirection-Ikz0yAw@67 (line 85)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@59 (line 40)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce361c: 59b2 c797 
+
+  0x00000072c8ce3620: ;   {other}
+  0x00000072c8ce3620: 1f20 03d5 | 1fd2 82f2 | 1f20 84f2 | 2101 8012 
+
+  0x00000072c8ce3630: ; ImmutableOopMap {}
+                      ;*invokevirtual build {reexecute=0 rethrow=0 return_oop=0}
+                      ; - androidx.compose.ui.text.platform.ParagraphLayouter::layoutParagraph@74 (line 244)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@98 (line 71)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce3630: 54b2 c797 
+
+  0x00000072c8ce3634: ;   {other}
+  0x00000072c8ce3634: 1f20 03d5 | 9fd4 82f2 | 1f40 84f2 | 6102 8012 | fd03 40f9 | e013 00f9 | ea2b 00b9 
+
+  0x00000072c8ce3650: ; ImmutableOopMap {rfp=Oop [8]=Oop [16]=Oop [32]=Oop [40]=NarrowOop }
+                      ;*ifnonnull {reexecute=1 rethrow=0 return_oop=0}
+                      ; - (reexecute) androidx.compose.ui.text.platform.ParagraphLayouter::setUnresolvedCodepoints@4 (line 92)
+                      ; - androidx.compose.ui.text.platform.ParagraphLayouter::layoutParagraph@94 (line 247)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@98 (line 71)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce3650: 4cb2 c797 
+
+  0x00000072c8ce3654: ;   {other}
+  0x00000072c8ce3654: 1f20 03d5 | 9fd8 82f2 | 1f60 84f2 | 4117 8012 | f403 00f9 | edab 0129 
+
+  0x00000072c8ce366c: ; ImmutableOopMap {[0]=Oop [12]=NarrowOop }
+                      ;*ifeq {reexecute=1 rethrow=0 return_oop=0}
+                      ; - (reexecute) org.jetbrains.skia.impl.Stats::onNativeCall@3 (line 10)
+                      ; - org.jetbrains.skia.paragraph.Paragraph::layout@3 (line 83)
+                      ; - androidx.compose.ui.text.platform.ParagraphLayouter::layoutParagraph@62 (line 240)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@98 (line 71)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce366c: 45b2 c797 
+
+  0x00000072c8ce3670: ;   {other}
+  0x00000072c8ce3670: 1f20 03d5 | 1fdc 82f2 | 1f80 84f2 | 9f01 0071 | fd17 9f1a | 4117 8012 | f3cf 00a9 | ed0f 00f9 
+  0x00000072c8ce3690: ec23 00b9 
+
+  0x00000072c8ce3694: ; ImmutableOopMap {[8]=Oop [16]=Oop [24]=Oop }
+                      ;*ifeq {reexecute=1 rethrow=0 return_oop=0}
+                      ; - (reexecute) androidx.compose.ui.text.platform.SkiaParagraphIntrinsics_skikoKt::resolveTextDirection-Ikz0yAw@80 (line 85)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@59 (line 40)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce3694: 3bb2 c797 
+
+  0x00000072c8ce3698: ;   {other}
+  0x00000072c8ce3698: 1f20 03d5 | 1fe1 82f2 | 1fa0 84f2 | e103 1caa | c900 0010 | 89d7 01f9 
+
+  0x00000072c8ce36b0: ;   {runtime_call G1BarrierSetRuntime::write_ref_field_pre_entry(oopDesc*, JavaThread*)}
+  0x00000072c8ce36b0: 0808 8ed2 | 68bc bbf2 | 480e c0f2 | 0001 3fd6 
+
+  0x00000072c8ce36c0: ;   {other}
+  0x00000072c8ce36c0: 1f20 03d5 | 1f00 80f2 | 1f00 80f2 | a3fc ff17 | 4117 8012 | fd03 40f9 | e80b 40f9 | e807 00f9 
+  0x00000072c8ce36e0: e00f 00f9 | ea23 00b9 
+
+  0x00000072c8ce36e8: ; ImmutableOopMap {rfp=Oop [8]=Oop [24]=Oop }
+                      ;*ifeq {reexecute=1 rethrow=0 return_oop=0}
+                      ; - (reexecute) org.jetbrains.skia.impl.Stats::onNativeCall@3 (line 10)
+                      ; - org.jetbrains.skia.paragraph.Paragraph::layout@3 (line 83)
+                      ; - androidx.compose.ui.text.platform.ParagraphLayouter::layoutParagraph@80 (line 245)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@98 (line 71)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce36e8: 26b2 c797 
+
+  0x00000072c8ce36ec: ;   {other}
+  0x00000072c8ce36ec: 1f20 03d5 | 9feb 82f2 | 1fc0 84f2 | 4117 8012 | fd03 40f9 | f3d3 01a9 | ea2b 00b9 
+
+  0x00000072c8ce3708: ; ImmutableOopMap {rfp=Oop [24]=Oop [32]=Oop }
+                      ;*ifeq {reexecute=1 rethrow=0 return_oop=0}
+                      ; - (reexecute) org.jetbrains.skia.impl.Stats::onNativeCall@3 (line 10)
+                      ; - org.jetbrains.skia.paragraph.Paragraph::getUnresolvedCodepoints@4 (line 201)
+                      ; - androidx.compose.ui.text.platform.ParagraphLayouter::layoutParagraph@91 (line 247)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@98 (line 71)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce3708: 1eb2 c797 
+
+  0x00000072c8ce370c: ;   {other}
+  0x00000072c8ce370c: 1f20 03d5 | 9fef 82f2 | 1fe0 84f2 | 4117 8012 | fd03 40f9 | e017 00f9 | ec33 00b9 
+
+  0x00000072c8ce3728: ; ImmutableOopMap {rfp=Oop [8]=Oop [16]=Oop [40]=Oop }
+                      ;*ifle {reexecute=1 rethrow=0 return_oop=0}
+                      ; - (reexecute) org.jetbrains.skia.paragraph.Paragraph::getUnresolvedCodepoints@20 (line 204)
+                      ; - androidx.compose.ui.text.platform.ParagraphLayouter::layoutParagraph@91 (line 247)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@98 (line 71)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce3728: 16b2 c797 
+
+  0x00000072c8ce372c: ;   {other}
+  0x00000072c8ce372c: 1f20 03d5 | 9ff3 82f2 | 1f00 85f2 | 6103 8012 | f34f 00a9 | f40f 00f9 | f1bf 02a9 | ed43 0729 
+  0x00000072c8ce374c: eeaf 0829 
+
+  0x00000072c8ce3750: ; ImmutableOopMap {[0]=Oop [8]=Oop [24]=Oop [40]=Oop [68]=NarrowOop }
+                      ;*laload {reexecute=0 rethrow=0 return_oop=0}
+                      ; - androidx.compose.runtime.internal.ThreadMap::find@90 (line 143)
+                      ; - androidx.compose.runtime.internal.ThreadMap::get@2 (line 69)
+                      ; - androidx.compose.runtime.internal.SnapshotThreadLocal::get@30 (line 45)
+                      ; - androidx.compose.runtime.snapshots.SnapshotKt::currentSnapshot@3 (line 1284)
+                      ; - androidx.compose.runtime.SnapshotMutableStateImpl::<init>@10 (line 151)
+                      ; - androidx.compose.runtime.SnapshotState_nonAndroidKt::createSnapshotMutableState@6 (line 24)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf@2 (line 65)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf@2 (line 1)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf$default@12 (line 62)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf$default@4 (line 1)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@73 (line 43)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce3750: 0cb2 c797 
+
+  0x00000072c8ce3754: ;   {other}
+  0x00000072c8ce3754: 1f20 03d5 | 9ff8 82f2 | 1f20 85f2 | 2101 8012 | fd03 0d2a 
+
+  0x00000072c8ce3768: ; ImmutableOopMap {rfp=NarrowOop }
+                      ;*invokevirtual updateForegroundPaint {reexecute=0 rethrow=0 return_oop=0}
+                      ; - androidx.compose.ui.text.platform.ParagraphLayouter::layoutParagraph@23 (line 227)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@98 (line 71)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce3768: 06b2 c797 
+
+  0x00000072c8ce376c: ;   {other}
+  0x00000072c8ce376c: 1f20 03d5 | 9ffb 82f2 | 1f40 85f2 | 2101 8012 
+
+  0x00000072c8ce377c: ; ImmutableOopMap {}
+                      ;*invokevirtual getForegroundPaint {reexecute=0 rethrow=0 return_oop=0}
+                      ; - androidx.compose.ui.text.platform.ParagraphBuilder::updateForegroundPaint@13 (line 397)
+                      ; - androidx.compose.ui.text.platform.ParagraphLayouter::layoutParagraph@23 (line 227)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@98 (line 71)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce377c: 01b2 c797 
+
+  0x00000072c8ce3780: ;   {other}
+  0x00000072c8ce3780: 1f20 03d5 | 1ffe 82f2 | 1f60 85f2 | 2101 8012 
+
+  0x00000072c8ce3790: ; ImmutableOopMap {}
+                      ;*invokevirtual length {reexecute=0 rethrow=0 return_oop=0}
+                      ; - androidx.compose.ui.text.platform.ParagraphBuilder::updateForegroundPaint@23 (line 398)
+                      ; - androidx.compose.ui.text.platform.ParagraphLayouter::layoutParagraph@23 (line 227)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@98 (line 71)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce3790: fcb1 c797 
+
+  0x00000072c8ce3794: ;   {other}
+  0x00000072c8ce3794: 1f20 03d5 | 9f00 83f2 | 1f80 85f2 | e103 1caa | c900 0010 | 89d7 01f9 
+
+  0x00000072c8ce37ac: ;   {runtime_call G1BarrierSetRuntime::write_ref_field_pre_entry(oopDesc*, JavaThread*)}
+  0x00000072c8ce37ac: 0808 8ed2 | 68bc bbf2 | 480e c0f2 | 0001 3fd6 
+
+  0x00000072c8ce37bc: ;   {other}
+  0x00000072c8ce37bc: 1f20 03d5 | 1f00 80f2 | 1f00 80f2 | 3afd ff17 | 2104 8012 | f34f 00a9 | f4bf 01a9 | ea2b 00b9 
+  0x00000072c8ce37dc: ; ImmutableOopMap {[0]=Oop [8]=Oop [24]=Oop [40]=NarrowOop }
+                      ;*checkcast {reexecute=0 rethrow=0 return_oop=0}
+                      ; - androidx.compose.runtime.internal.SnapshotThreadLocal::get@26 (line 45)
+                      ; - androidx.compose.runtime.snapshots.SnapshotKt::currentSnapshot@3 (line 1284)
+                      ; - androidx.compose.runtime.SnapshotMutableStateImpl::<init>@10 (line 151)
+                      ; - androidx.compose.runtime.SnapshotState_nonAndroidKt::createSnapshotMutableState@6 (line 24)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf@2 (line 65)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf@2 (line 1)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf$default@12 (line 62)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf$default@4 (line 1)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@73 (line 43)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce37dc: e9b1 c797 
+
+  0x00000072c8ce37e0: ;   {other}
+  0x00000072c8ce37e0: 1f20 03d5 | 1f0a 83f2 | 1fa0 85f2 | 2101 8012 
+
+  0x00000072c8ce37f0: ; ImmutableOopMap {}
+                      ;*invokevirtual getTextDirection-s_7X-co {reexecute=0 rethrow=0 return_oop=0}
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@46 (line 40)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce37f0: e4b1 c797 
+
+  0x00000072c8ce37f4: ;   {other}
+  0x00000072c8ce37f4: 1f20 03d5 | 9f0c 83f2 | 1fc0 85f2 | 2101 8012 
+
+  0x00000072c8ce3804: ; ImmutableOopMap {}
+                      ;*invokevirtual getTextDirection-s_7X-co {reexecute=0 rethrow=0 return_oop=0}
+                      ; - androidx.compose.ui.text.TextStyle::getTextDirection-s_7X-co@4 (line 1424)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@46 (line 40)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce3804: dfb1 c797 
+
+  0x00000072c8ce3808: ;   {other}
+  0x00000072c8ce3808: 1f20 03d5 | 1f0f 83f2 | 1fe0 85f2 | 2101 8012 
+
+  0x00000072c8ce3818: ; ImmutableOopMap {}
+                      ;*invokevirtual getLocaleList {reexecute=0 rethrow=0 return_oop=0}
+                      ; - androidx.compose.ui.text.TextStyle::getLocaleList@4 (line 1390)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@56 (line 40)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce3818: dab1 c797 
+
+  0x00000072c8ce381c: ;   {other}
+  0x00000072c8ce381c: 1f20 03d5 | 9f11 83f2 | 1f00 86f2 | 6101 8012 | f34f 00a9 | f4bf 01a9 
+
+  0x00000072c8ce3834: ; ImmutableOopMap {[0]=Oop [8]=Oop [24]=Oop }
+                      ;*checkcast {reexecute=0 rethrow=0 return_oop=0}
+                      ; - androidx.compose.runtime.internal.SnapshotThreadLocal::get@26 (line 45)
+                      ; - androidx.compose.runtime.snapshots.SnapshotKt::currentSnapshot@3 (line 1284)
+                      ; - androidx.compose.runtime.SnapshotMutableStateImpl::<init>@10 (line 151)
+                      ; - androidx.compose.runtime.SnapshotState_nonAndroidKt::createSnapshotMutableState@6 (line 24)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf@2 (line 65)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf@2 (line 1)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf$default@12 (line 62)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf$default@4 (line 1)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@73 (line 43)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce3834: d3b1 c797 
+
+  0x00000072c8ce3838: ;   {other}
+  0x00000072c8ce3838: 1f20 03d5 | 1f15 83f2 | 1f20 86f2 | 2101 8012 
+
+  0x00000072c8ce3848: ; ImmutableOopMap {}
+                      ;*laload {reexecute=0 rethrow=0 return_oop=0}
+                      ; - androidx.compose.runtime.internal.ThreadMap::find@39 (line 137)
+                      ; - androidx.compose.runtime.internal.ThreadMap::get@2 (line 69)
+                      ; - androidx.compose.runtime.internal.SnapshotThreadLocal::get@30 (line 45)
+                      ; - androidx.compose.runtime.snapshots.SnapshotKt::currentSnapshot@3 (line 1284)
+                      ; - androidx.compose.runtime.SnapshotMutableStateImpl::<init>@10 (line 151)
+                      ; - androidx.compose.runtime.SnapshotState_nonAndroidKt::createSnapshotMutableState@6 (line 24)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf@2 (line 65)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf@2 (line 1)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf$default@12 (line 62)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf$default@4 (line 1)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@73 (line 43)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce3848: ceb1 c797 
+
+  0x00000072c8ce384c: ;   {other}
+  0x00000072c8ce384c: 1f20 03d5 | 9f17 83f2 | 1f40 86f2 | 2101 8012 | fd03 0a2a 
+
+  0x00000072c8ce3860: ; ImmutableOopMap {}
+                      ;*aaload {reexecute=0 rethrow=0 return_oop=0}
+                      ; - androidx.compose.runtime.internal.ThreadMap::get@15 (line 70)
+                      ; - androidx.compose.runtime.internal.SnapshotThreadLocal::get@30 (line 45)
+                      ; - androidx.compose.runtime.snapshots.SnapshotKt::currentSnapshot@3 (line 1284)
+                      ; - androidx.compose.runtime.SnapshotMutableStateImpl::<init>@10 (line 151)
+                      ; - androidx.compose.runtime.SnapshotState_nonAndroidKt::createSnapshotMutableState@6 (line 24)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf@2 (line 65)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf@2 (line 1)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf$default@12 (line 62)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf$default@4 (line 1)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@73 (line 43)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce3860: c8b1 c797 
+
+  0x00000072c8ce3864: ;   {other}
+  0x00000072c8ce3864: 1f20 03d5 | 9f1a 83f2 | 1f60 86f2 | 2101 8012 
+
+  0x00000072c8ce3874: ; ImmutableOopMap {}
+                      ;*invokevirtual layout {reexecute=0 rethrow=0 return_oop=0}
+                      ; - androidx.compose.ui.text.platform.ParagraphLayouter::layoutParagraph@80 (line 245)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@98 (line 71)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce3874: c3b1 c797 
+
+  0x00000072c8ce3878: ;   {other}
+  0x00000072c8ce3878: 1f20 03d5 | 1f1d 83f2 | 1f80 86f2 | 2108 8012 | f34f 00a9 | f40f 00f9 | f1bf 02a9 | ed3b 00b9 
+  0x00000072c8ce3898: ; ImmutableOopMap {[0]=Oop [8]=Oop [24]=Oop [40]=Oop }
+                      ;*iload {reexecute=0 rethrow=0 return_oop=0}
+                      ; - androidx.compose.runtime.internal.ThreadMap::find@70 (line 141)
+                      ; - androidx.compose.runtime.internal.ThreadMap::get@2 (line 69)
+                      ; - androidx.compose.runtime.internal.SnapshotThreadLocal::get@30 (line 45)
+                      ; - androidx.compose.runtime.snapshots.SnapshotKt::currentSnapshot@3 (line 1284)
+                      ; - androidx.compose.runtime.SnapshotMutableStateImpl::<init>@10 (line 151)
+                      ; - androidx.compose.runtime.SnapshotState_nonAndroidKt::createSnapshotMutableState@6 (line 24)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf@2 (line 65)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf@2 (line 1)
+                      ; - androidx.compose.runtime.SnapshotStateKt__SnapshotStateKt::mutableStateOf$default@12 (line 62)
+                      ; - androidx.compose.runtime.SnapshotStateKt::mutableStateOf$default@4 (line 1)
+                      ; - androidx.compose.ui.text.platform.SkiaParagraphIntrinsics::<init>@73 (line 43)
+                      ; - androidx.compose.ui.text.ParagraphIntrinsicsKt::ParagraphIntrinsics@12 (line 100)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8ce3898: bab1 c797 
+
+  0x00000072c8ce389c: ;   {other}
+  0x00000072c8ce389c: 1f20 03d5 | 9f21 83f2 | 1fa0 86f2 | 1600 0014 | 1500 0014 | 1400 0014 | 1300 0014 | 1200 0014 
+  0x00000072c8ce38bc: 1100 0014 | e103 00aa | 1000 0014 | 0e00 0014 | 0d00 0014 | 0c00 0014 | 0b00 0014 | 0a00 0014 
+  0x00000072c8ce38dc: 0900 0014 | 0800 0014 | 0700 0014 | 0600 0014 | 0500 0014 | 0400 0014 | 0300 0014 | 0200 0014 
+  0x00000072c8ce38fc: 0100 0014 | e103 00aa | fd7b 46a9 | ffc3 0191 
+
+  0x00000072c8ce390c: ;   {runtime_call _rethrow_Java}
+  0x00000072c8ce390c: fd45 cb17 
+
+  0x00000072c8ce3910: ;   {internal_word}
+  0x00000072c8ce3910: e899 ff10 | 8837 02f9 
+
+  0x00000072c8ce3918: ;   {runtime_call SafepointBlob}
+  0x00000072c8ce3918: faaf c717 | 0830 85d2 | a8fd b8f2 | 480e c0f2 | 0001 3fd6 | aefa ff17 
+
+  0x00000072c8ce3930: ;   {other}
+  0x00000072c8ce3930: 1900 0000 | 0000 0000 
+[Stub Code]
+  0x00000072c8ce3938: ;   {no_reloc}
+  0x00000072c8ce3938: 4800 0058 | 0001 1fd6 | 8090 0fc1 | 7200 0000 
+
+  0x00000072c8ce3948: ;   {trampoline_stub}
+  0x00000072c8ce3948: 4800 0058 | 0001 1fd6 | 88a7 fcc7 | 7200 0000 
+
+  0x00000072c8ce3958: ;   {trampoline_stub}
+  0x00000072c8ce3958: 4800 0058 | 0001 1fd6 | 50ae cac8 | 7200 0000 
+
+  0x00000072c8ce3968: ;   {trampoline_stub}
+  0x00000072c8ce3968: 4800 0058 | 0001 1fd6 | d0c1 bcc8 | 7200 0000 
+
+  0x00000072c8ce3978: ;   {trampoline_stub}
+  0x00000072c8ce3978: 4800 0058 | 0001 1fd6 | d0f4 65c8 | 7200 0000 
+
+  0x00000072c8ce3988: ;   {trampoline_stub}
+  0x00000072c8ce3988: 4800 0058 | 0001 1fd6 | 5052 69c8 | 7200 0000 
+
+  0x00000072c8ce3998: ;   {trampoline_stub}
+  0x00000072c8ce3998: 4800 0058 | 0001 1fd6 | 8091 ecc7 | 7200 0000 
+
+  0x00000072c8ce39a8: ;   {trampoline_stub}
+  0x00000072c8ce39a8: 4800 0058 | 0001 1fd6 | 8091 ecc7 | 7200 0000 
+
+  0x00000072c8ce39b8: ;   {trampoline_stub}
+  0x00000072c8ce39b8: 4800 0058 | 0001 1fd6 | 8091 ecc7 | 7200 0000 
+
+  0x00000072c8ce39c8: ;   {trampoline_stub}
+  0x00000072c8ce39c8: 4800 0058 | 0001 1fd6 | 8091 ecc7 | 7200 0000 
+
+  0x00000072c8ce39d8: ;   {trampoline_stub}
+  0x00000072c8ce39d8: 4800 0058 | 0001 1fd6 | 8091 ecc7 | 7200 0000 
+
+  0x00000072c8ce39e8: ;   {trampoline_stub}
+  0x00000072c8ce39e8: 4800 0058 | 0001 1fd6 | 8097 ecc7 | 7200 0000 
+
+  0x00000072c8ce39f8: ;   {trampoline_stub}
+  0x00000072c8ce39f8: 4800 0058 | 0001 1fd6 | 8097 ecc7 | 7200 0000 
+
+  0x00000072c8ce3a08: ;   {trampoline_stub}
+  0x00000072c8ce3a08: 4800 0058 | 0001 1fd6 | d005 6ec8 | 7200 0000 
+
+  0x00000072c8ce3a18: ;   {trampoline_stub}
+  0x00000072c8ce3a18: 4800 0058 | 0001 1fd6 | d009 6ec8 | 7200 0000 
+
+  0x00000072c8ce3a28: ;   {static_stub}
+  0x00000072c8ce3a28: df3f 03d5 
+
+  0x00000072c8ce3a2c: ;   {metadata(nullptr)}
+  0x00000072c8ce3a2c: 0c00 80d2 | 0c00 a0f2 | 0c00 c0f2 | 0800 80d2 | 0800 a0f2 | 0800 c0f2 | 0001 1fd6 
+
+  0x00000072c8ce3a48: ;   {static_stub}
+  0x00000072c8ce3a48: df3f 03d5 
+
+  0x00000072c8ce3a4c: ;   {metadata(nullptr)}
+  0x00000072c8ce3a4c: 0c00 80d2 | 0c00 a0f2 | 0c00 c0f2 | 0800 80d2 | 0800 a0f2 | 0800 c0f2 | 0001 1fd6 
+
+  0x00000072c8ce3a68: ;   {static_stub}
+  0x00000072c8ce3a68: df3f 03d5 
+
+  0x00000072c8ce3a6c: ;   {metadata(nullptr)}
+  0x00000072c8ce3a6c: 0c00 80d2 | 0c00 a0f2 | 0c00 c0f2 | 0800 80d2 | 0800 a0f2 | 0800 c0f2 | 0001 1fd6 
+
+  0x00000072c8ce3a88: ;   {static_stub}
+  0x00000072c8ce3a88: df3f 03d5 
+
+  0x00000072c8ce3a8c: ;   {metadata(nullptr)}
+  0x00000072c8ce3a8c: 0c00 80d2 | 0c00 a0f2 | 0c00 c0f2 | 0800 80d2 | 0800 a0f2 | 0800 c0f2 | 0001 1fd6 
+
+  0x00000072c8ce3aa8: ;   {static_stub}
+  0x00000072c8ce3aa8: df3f 03d5 
+
+  0x00000072c8ce3aac: ;   {metadata(nullptr)}
+  0x00000072c8ce3aac: 0c00 80d2 | 0c00 a0f2 | 0c00 c0f2 | 0800 80d2 | 0800 a0f2 | 0800 c0f2 | 0001 1fd6 
+
+  0x00000072c8ce3ac8: ;   {static_stub}
+  0x00000072c8ce3ac8: df3f 03d5 
+
+  0x00000072c8ce3acc: ;   {metadata(nullptr)}
+  0x00000072c8ce3acc: 0c00 80d2 | 0c00 a0f2 | 0c00 c0f2 | 0800 80d2 | 0800 a0f2 | 0800 c0f2 | 0001 1fd6 
+
+  0x00000072c8ce3ae8: ;   {static_stub}
+  0x00000072c8ce3ae8: df3f 03d5 
+
+  0x00000072c8ce3aec: ;   {metadata(nullptr)}
+  0x00000072c8ce3aec: 0c00 80d2 | 0c00 a0f2 | 0c00 c0f2 | 0800 80d2 | 0800 a0f2 | 0800 c0f2 | 0001 1fd6 
+
+  0x00000072c8ce3b08: ;   {static_stub}
+  0x00000072c8ce3b08: df3f 03d5 
+
+  0x00000072c8ce3b0c: ;   {metadata(nullptr)}
+  0x00000072c8ce3b0c: 0c00 80d2 | 0c00 a0f2 | 0c00 c0f2 | 0800 80d2 | 0800 a0f2 | 0800 c0f2 | 0001 1fd6 
+
+  0x00000072c8ce3b28: ;   {static_stub}
+  0x00000072c8ce3b28: df3f 03d5 
+
+  0x00000072c8ce3b2c: ;   {metadata(nullptr)}
+  0x00000072c8ce3b2c: 0c00 80d2 | 0c00 a0f2 | 0c00 c0f2 | 0800 80d2 | 0800 a0f2 | 0800 c0f2 | 0001 1fd6 
+
+  0x00000072c8ce3b48: ;   {static_stub}
+  0x00000072c8ce3b48: df3f 03d5 
+
+  0x00000072c8ce3b4c: ;   {metadata(nullptr)}
+  0x00000072c8ce3b4c: 0c00 80d2 | 0c00 a0f2 | 0c00 c0f2 | 0800 80d2 | 0800 a0f2 | 0800 c0f2 | 0001 1fd6 
+
+  0x00000072c8ce3b68: ;   {static_stub}
+  0x00000072c8ce3b68: df3f 03d5 
+
+  0x00000072c8ce3b6c: ;   {metadata(nullptr)}
+  0x00000072c8ce3b6c: 0c00 80d2 | 0c00 a0f2 | 0c00 c0f2 | 0800 80d2 | 0800 a0f2 | 0800 c0f2 | 0001 1fd6 
+
+  0x00000072c8ce3b88: ;   {static_stub}
+  0x00000072c8ce3b88: df3f 03d5 
+
+  0x00000072c8ce3b8c: ;   {metadata(nullptr)}
+  0x00000072c8ce3b8c: 0c00 80d2 | 0c00 a0f2 | 0c00 c0f2 | 0800 80d2 | 0800 a0f2 | 0800 c0f2 | 0001 1fd6 
+
+  0x00000072c8ce3ba8: ;   {static_stub}
+  0x00000072c8ce3ba8: df3f 03d5 
+
+  0x00000072c8ce3bac: ;   {metadata(nullptr)}
+  0x00000072c8ce3bac: 0c00 80d2 | 0c00 a0f2 | 0c00 c0f2 | 0800 80d2 | 0800 a0f2 | 0800 c0f2 | 0001 1fd6 
+[Exception Handler]
+  0x00000072c8ce3bc8: ;   {runtime_call ExceptionBlob}
+  0x00000072c8ce3bc8: ae17 cb17 
+[Deopt Handler Code]
+  0x00000072c8ce3bcc: 1e00 0010 
+
+  0x00000072c8ce3bd0: ;   {runtime_call DeoptimizationBlob}
+  0x00000072c8ce3bd0: 1cb0 c717 | 0000 0000 
+[/MachCode]
+
+
+Compiled method (c2) 2355354 15578       4       androidx.compose.foundation.text.modifiers.ParagraphLayoutCache::setLayoutDirection (80 bytes)
+ total in heap  [0x00000072c8dba110,0x00000072c8dbb798] = 5768
+ relocation     [0x00000072c8dba260,0x00000072c8dba370] = 272
+ main code      [0x00000072c8dba380,0x00000072c8dbb190] = 3600
+ stub code      [0x00000072c8dbb190,0x00000072c8dbb230] = 160
+ oops           [0x00000072c8dbb230,0x00000072c8dbb258] = 40
+ metadata       [0x00000072c8dbb258,0x00000072c8dbb2c0] = 104
+ scopes data    [0x00000072c8dbb2c0,0x00000072c8dbb588] = 712
+ scopes pcs     [0x00000072c8dbb588,0x00000072c8dbb6f8] = 368
+ dependencies   [0x00000072c8dbb6f8,0x00000072c8dbb700] = 8
+ handler table  [0x00000072c8dbb700,0x00000072c8dbb778] = 120
+ nul chk table  [0x00000072c8dbb778,0x00000072c8dbb798] = 32
+
+[Constant Pool (empty)]
+
+[MachCode]
+[Entry Point]
+  # {method} {0x00000072a659f730} 'setLayoutDirection' '(Landroidx/compose/ui/unit/LayoutDirection;)Landroidx/compose/ui/text/ParagraphIntrinsics;' in 'androidx/compose/foundation/text/modifiers/ParagraphLayoutCache'
+  # this:     c_rarg1:c_rarg1 
+                        = 'androidx/compose/foundation/text/modifiers/ParagraphLayoutCache'
+  # parm0:    c_rarg2:c_rarg2 
+                        = 'androidx/compose/ui/unit/LayoutDirection'
+  #           [sp+0x60]  (sp of caller)
+  0x00000072c8dba380: 2808 40b9 | 3f01 086b | 4000 0054 
+
+  0x00000072c8dba38c: ;   {runtime_call ic_miss_stub}
+  0x00000072c8dba38c: bd3a c417 
+[Verified Entry Point]
+  0x00000072c8dba390: 1f20 03d5 | e953 40d1 | 3f01 00f9 | ff83 01d1 | fd7b 05a9 | 486f 0018 | 8923 40b9 | 1f01 09eb 
+  0x00000072c8dba3b0: 416e 0054 | 2a5c 40b9 | f303 02aa | f403 01aa | 8a25 0035 | 8b03 c139 | ab2c 0035 | ea03 14aa 
+  0x00000072c8dba3d0: eb03 13aa | 6b01 0aca | ed03 13aa | 6bfd 54d3 | 8d62 00b9 | 4b01 00b4 | 3301 00b4 | 4afd 49d3 
+  0x00000072c8dba3f0: 0b00 84d2 | 4b7c bbf2 | 4b0e c0f2 | 6001 0a8b | 0b00 c039 | 7f09 0071 | c13d 0054 | 80df 40f9 
+  0x00000072c8dba410: 8ae7 40f9 | 9d4a 40b9 | 0b60 0091 | 8d46 40b9 | 7f01 0aeb | 424b 0054 | ea03 40b2 | 8bdf 00f9 
+  0x00000072c8dba430: ;   {metadata('androidx/compose/ui/text/TextStyle')}
+  0x00000072c8dba430: 4c28 a0d2 | 0c42 90f2 | 0a00 00f9 | 0c7c 0129 | 7061 80f9 | 1f08 00f9 | eb03 00aa 
+
+  0x00000072c8dba44c: ; implicit exception: dispatches to 0x00000072c8dbb108
+  0x00000072c8dba44c: aa0f 40b9 | eb0f 00f9 | eb03 1daa | f44f 00a9 | ed13 00b9 | eb13 00f9 | 41fd 40d3 
+
+  0x00000072c8dba468: ; ImmutableOopMap {rfp=NarrowOop [0]=Oop [8]=Oop [16]=NarrowOop [24]=Oop [32]=Oop }
+                      ;*invokestatic resolveSpanStyleDefaults {reexecute=0 rethrow=0 return_oop=1}
+                      ; - androidx.compose.ui.text.TextStyleKt::resolveDefaults@8 (line 1592)
+                      ; - androidx.compose.foundation.text.modifiers.ParagraphLayoutCache::setLayoutDirection@40 (line 277)
+                      ;   {static_call}
+  0x00000072c8dba468: c632 fa97 
+
+  0x00000072c8dba46c: ;   {other}
+  0x00000072c8dba46c: 1f20 03d5 | 9f6b 80f2 | 1f00 80f2 | 93df 40f9 | 8ae7 40f9 | 6be2 0091 | e017 00f9 | ac13 40b9 
+  0x00000072c8dba48c: f403 1d2a | 7f01 0aeb | a249 0054 | ea03 40b2 | 8bdf 00f9 | 6a02 00f9 
+
+  0x00000072c8dba4a4: ;   {metadata('androidx/compose/ui/text/ParagraphStyle')}
+  0x00000072c8dba4a4: 4a28 a0d2 | 0a9f 95f2 | 7061 80f9 | 6a0a 00b9 | 6a42 0091 | 7f0e 00b9 | 5f01 00f9 | 5ffd 00a9 
+  0x00000072c8dba4c4: 5ffd 01a9 
+
+  0x00000072c8dba4c8: ; implicit exception: dispatches to 0x00000072c8dbb11c
+  0x00000072c8dba4c8: 8b0d 40b9 | 8d19 40b9 | 4b00 0035 | ab00 8052 | bf0d 0071 | e048 0054 | 0d4f 0035 | ea07 40f9 
+  0x00000072c8dba4e8: ; implicit exception: dispatches to 0x00000072c8dbb130
+  0x00000072c8dba4e8: 5d0d 40b9 
+
+  0x00000072c8dba4ec: ;   {oop([I{0x00000000e199b750})}
+  0x00000072c8dba4ec: 0aea 96d2 | 2a33 bcf2 | 0a00 c0f2 | 4ac9 3d8b | bf0b 0071 | 0249 0054 | 4a11 40b9 | 8d1d 40b9 
+  0x00000072c8dba50c: 8f09 40f9 | 5f05 0071 | 6149 0054 | ea1d 6092 | 4a00 00b5 | ef23 6ab2 | 9d25 40b9 | 9d4f 0035 
+  0x00000072c8dba52c: 8e59 4529 | bf11 0071 | a149 0054 | 8d21 40b9 | 0d50 0035 | 9d31 40b9 | 5d51 0035 
+
+  0x00000072c8dba548: ;   {oop(a 'androidx/compose/ui/text/style/TextIndent'{0x00000000e0d542f0})}
+  0x00000072c8dba548: 0c5e 88d2 | ac1a bcf2 | 0c00 c0f2 | ea03 13aa | 8c01 0aca | 6f0a 00f9 | f703 0032 
+
+  0x00000072c8dba564: ;   {oop(a 'androidx/compose/ui/text/style/TextIndent'{0x00000000e0d542f0})}
+  0x00000072c8dba564: af1a bcd2 | 0f5e 88f2 | 8cfd 54d3 | d5fd 40d3 | d8fe 40d3 
+
+  0x00000072c8dba578: ;   {oop(a 'androidx/compose/ui/text/style/TextMotion'{0x00000000e075d548})}
+  0x00000072c8dba578: b90e bcd2 | 19a9 9af2 | 771a 00b9 
+
+  0x00000072c8dba584: ;   {oop(a 'androidx/compose/ui/text/style/TextMotion'{0x00000000e075d548})}
+  0x00000072c8dba584: 1aa9 9ad2 | ba0e bcf2 | 1a00 c0f2 | 6f26 00b9 | 6b0e 00b9 | 2c01 00b4 | 4afd 49d3 | 0b00 84d2 
+  0x00000072c8dba5a4: 4b7c bbf2 | 4b0e c0f2 | 6001 0a8b | 0a00 c039 | 5f09 0071 | e126 0054 | 8b03 c139 | 4b1e 0035 
+  0x00000072c8dba5c4: ea03 13aa | eb03 15aa | 6b01 0aca | 6bfd 54d3 | 6e2a 00b9 | 4b01 00b4 | 2e01 0034 | 4afd 49d3 
+  0x00000072c8dba5e4: 0b00 84d2 | 4b7c bbf2 | 4b0e c0f2 | 6001 0a8b | 0b00 c039 | 7f09 0071 | 0131 0054 | 8a03 c139 
+  0x00000072c8dba604: 8a1d 0035 | ea03 13aa | eb03 18aa | 6b01 0aca | 6bfd 54d3 | 762e 00b9 | 4b01 00b4 | 3601 0034 
+  0x00000072c8dba624: 4afd 49d3 | 0b00 84d2 | 4b7c bbf2 | 4b0e c0f2 | 6001 0a8b | 0a00 c039 | 5f09 0071 | c131 0054 
+  0x00000072c8dba644: 8b03 c139 | cb1c 0035 | ea03 13aa | eb03 1aaa | 6b01 0aca | 7932 00b9 | 6bfd 54d3 | 77de 0329 
+  0x00000072c8dba664: 2b01 00b4 | 4afd 49d3 | 0b00 84d2 | 4b7c bbf2 | 4b0e c0f2 | 6001 0a8b | 0b00 c039 | 7f09 0071 
+  0x00000072c8dba684: 2124 0054 | 6a0a 40f9 | e823 6ab2 | 5f01 08eb | e001 0054 | eb03 0a2a | 7001 271e | 0822 201e 
+  0x00000072c8dba6a4: 6a01 0054 | f40b 00b9 | f313 00f9 | 0822 201e | fd03 9f5a | bdb7 9d5a | 4117 8012 
+
+  0x00000072c8dba6c0: ; ImmutableOopMap {[0]=Oop [8]=NarrowOop [16]=NarrowOop [24]=Oop [32]=Oop [40]=Oop }
+                      ;*iflt {reexecute=1 rethrow=0 return_oop=0}
+                      ; - (reexecute) androidx.compose.ui.text.ParagraphStyle::<init>@81 (line 208)
+                      ; - androidx.compose.ui.text.ParagraphStyle::<init>@16
+                      ; - androidx.compose.ui.text.ParagraphStyleKt::resolveParagraphStyleDefaults@173 (line 465)
+                      ; - androidx.compose.ui.text.TextStyleKt::resolveDefaults@16 (line 1593)
+                      ; - androidx.compose.foundation.text.modifiers.ParagraphLayoutCache::setLayoutDirection@40 (line 277)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8dba6c0: 3056 c497 
+
+  0x00000072c8dba6c4: ;   {other}
+  0x00000072c8dba6c4: 1f20 03d5 | 9fb6 80f2 | 1f20 80f2 | bf3b 03d5 | 8a03 c139 | 0a1b 0035 | f50f 40f9 | ec17 40f9 
+  0x00000072c8dba6e4: ea03 15aa | eb03 0caa | 6b01 0aca | 9416 40b9 | ed03 0caa | 6bfd 54d3 | f603 13aa | 97fe 40d3 
+  0x00000072c8dba704: ad0e 00b9 | 4b01 00b4 | 2c01 00b4 | 4afd 49d3 | 0b00 84d2 | 4b7c bbf2 | 4b0e c0f2 | 6001 0a8b 
+  0x00000072c8dba724: 0b00 c039 | 7f09 0071 | 412d 0054 | 8a03 c139 | aa19 0035 | eb03 15aa | ea03 13aa | 4a01 0bca 
+  0x00000072c8dba744: 4afd 54d3 | b612 00b9 | 2a01 00b4 | 6afd 49d3 | 0b00 84d2 | 4b7c bbf2 | 4b0e c0f2 | 6001 0a8b 
+  0x00000072c8dba764: 0a00 c039 | 5f09 0071 | c11f 0054 | 8b03 c139 | cb14 0035 | ea03 15aa | eb03 17aa | 6b01 0aca 
+  0x00000072c8dba784: 6bfd 54d3 | b416 00b9 | 4b01 00b4 | 3401 0034 | 4afd 49d3 | 0b00 84d2 | 4b7c bbf2 | 4b0e c0f2 
+  0x00000072c8dba7a4: 6001 0a8b | 0b00 c039 | 7f09 0071 | 012c 0054 | bf3b 03d5 | eb03 40f9 | 6af5 4929 | bd47 0034 
+  0x00000072c8dba7c4: 6701 4139 | e403 1daa | ec13 40b9 | 81fd 40d3 | 45fd 40d3 | e203 15aa 
+
+  0x00000072c8dba7dc: ;   {oop(a 'kotlin/collections/EmptyList'{0x00000000e0414280})}
+  0x00000072c8dba7dc: 0350 88d2 | 2308 bcf2 | 0300 c0f2 
+
+  0x00000072c8dba7e8: ;   {oop(a 'kotlin/collections/EmptyList'{0x00000000e0414280})}
+  0x00000072c8dba7e8: 0650 88d2 | 2608 bcf2 | 0600 c0f2 
+
+  0x00000072c8dba7f4: ; ImmutableOopMap {[0]=Oop }
+                      ;*invokestatic ParagraphIntrinsics {reexecute=0 rethrow=0 return_oop=1}
+                      ; - androidx.compose.foundation.text.modifiers.ParagraphLayoutCache::setLayoutDirection@65 (line 275)
+                      ;   {static_call}
+  0x00000072c8dba7f4: f39e fc97 
+
+  0x00000072c8dba7f8: ;   {other}
+  0x00000072c8dba7f8: 1f20 03d5 | 1fdd 80f2 | 1f40 80f2 | fd03 00aa | 8b03 c139 | 2b06 0035 | f303 40f9 | ea03 13aa 
+  0x00000072c8dba818: eb03 1daa | 6b01 0aca | ed03 1daa | 6bfd 54d3 | 6d5e 00b9 | 4b01 00b4 | 3d01 00b4 | 4afd 49d3 
+  0x00000072c8dba838: 0b00 84d2 | 4b7c bbf2 | 4b0e c0f2 | 6001 0a8b | 0b00 c039 | 7f09 0071 | 8105 0054 | e003 1daa 
+  0x00000072c8dba858: fd7b 45a9 | ff83 0191 
+
+  0x00000072c8dba860: ;   {poll_return}
+  0x00000072c8dba860: 882b 42f9 | ff63 28eb | 2848 0054 | c003 5fd6 | 3d60 40b9 | abff 40d3 | 4c09 40b9 | 5f00 0beb 
+  0x00000072c8dba880: 6143 0054 
+
+  0x00000072c8dba884: ;   {metadata('androidx/compose/ui/text/platform/SkiaParagraphIntrinsics')}
+  0x00000072c8dba884: ad29 a0d2 | 0dce 93f2 | 9f01 0d6b | e141 0054 | fd03 0aaa | e10b 00a9 | e103 1daa 
+
+  0x00000072c8dba8a0: ; ImmutableOopMap {rfp=Oop [0]=Oop [8]=Oop }
+                      ;*invokeinterface getHasStaleResolvedFonts {reexecute=0 rethrow=0 return_oop=0}
+                      ; - androidx.compose.foundation.text.modifiers.ParagraphLayoutCache::setLayoutDirection@18 (line 272)
+                      ;   {optimized virtual_call}
+  0x00000072c8dba8a0: 2cca fb97 
+
+  0x00000072c8dba8a4: ;   {other}
+  0x00000072c8dba8a4: 1f20 03d5 | 9ff2 80f2 | 1f60 80f2 | c0fa ff34 | e013 00b9 | 4117 8012 | fd03 40f9 
+
+  0x00000072c8dba8c0: ; ImmutableOopMap {rfp=Oop [8]=Oop }
+                      ;*ifeq {reexecute=1 rethrow=0 return_oop=0}
+                      ; - (reexecute) androidx.compose.foundation.text.modifiers.ParagraphLayoutCache::setLayoutDirection@23 (line 272)
+                      ;   {runtime_call UncommonTrapBlob}
+  0x00000072c8dba8c0: b055 c497 
+
+  0x00000072c8dba8c4: ;   {other}
+  0x00000072c8dba8c4: 1f20 03d5 | 9ff6 80f2 | 1f80 80f2 | f303 40f9 | 6a5e 40b9 | eaf9 ff34 | 8b17 40f9 | 40fd 40d3 
+  0x00000072c8dba8e4: 8b2d 00b4 | 8a1f 40f9 | 6c21 00d1 | 4a01 0b8b | 4081 1ff8 | 8c17 00f9 | c6ff ff17 | 8a2f 40f9 
+  0x00000072c8dba904: 8b27 40f9 | bf3b 03d5 | 0d00 c039 | 2dfa ff34 | 1f00 0039 | 8b01 00b5 | e103 1caa | c900 0010 
+  0x00000072c8dba924: 89d7 01f9 
+
+  0x00000072c8dba928: ;   {runtime_call G1BarrierSetRuntime::write_ref_field_post_entry(unsigned char volatile*, JavaThread*)}
+  0x00000072c8dba928: 080e 8ed2 | 68bc bbf2 | 480e c0f2 | 0001 3fd6 
+
+  0x00000072c8dba938: ;   {other}
+  0x00000072c8dba938: 1f20 03d5 | 1f00 80f2 | 1f00 80f2 | c4ff ff17 | 6c21 00d1 | 4a01 0b8b | 4081 1ff8 | 8c27 00f9 
+  0x00000072c8dba958: bfff ff17 | 2a60 40b9 | 6ad3 ff34 | 8b17 40f9 | 40fd 40d3 | 0b2c 00b4 | 8a1f 40f9 | 6c21 00d1 
+  0x00000072c8dba978: 4a01 0b8b | 4081 1ff8 | 8c17 00f9 | 92fe ff17 | 6a2a 40b9 | cae1 ff34 | 8b17 40f9 | 40fd 40d3 
+  0x00000072c8dba998: eb2f 00b4 | 8a1f 40f9 | 6c21 00d1 | 4a01 0b8b | 4081 1ff8 | 8c17 00f9 | 05ff ff17 | 6b2e 40b9 
+  0x00000072c8dba9b8: 8be2 ff34 | 8a17 40f9 | 60fd 40d3 | aa30 00b4 | 8b1f 40f9 | 4c21 00d1 | 6a01 0a8b | 4081 1ff8 
+  0x00000072c8dba9d8: 8c17 00f9 | 0bff ff17 | 6a32 40b9 | 4ae3 ff34 | 8b17 40f9 | 40fd 40d3 | ab30 00b4 | 8a1f 40f9 
+  0x00000072c8dba9f8: 6c21 00d1 | 4a01 0b8b | 4081 1ff8 | 8c17 00f9 | 11ff ff17 | aa16 40b9 | 4aeb ff34 | 8b17 40f9 
+  0x00000072c8dbaa18: 40fd 40d3 | 6b33 00b4 | 8a1f 40f9 | 6c21 00d1 | 4a01 0b8b | 4081 1ff8 | 8c17 00f9 | 51ff ff17 
+  0x00000072c8dbaa38: f50f 40f9 | ab0e 40b9 | 0be5 ff34 | 8a17 40f9 | 60fd 40d3 | 2a2f 00b4 | 8b1f 40f9 | 4c21 00d1 
+  0x00000072c8dbaa58: 6a01 0a8b | 4081 1ff8 | 8c17 00f9 | 1fff ff17 | ab12 40b9 | 6be6 ff34 | 8a17 40f9 | 60fd 40d3 
+  0x00000072c8dbaa78: 2a2f 00b4 | 8b1f 40f9 | 4c21 00d1 | 6a01 0a8b | 4081 1ff8 | 8c17 00f9 | 2aff ff17 | 8a27 40f9 
+  0x00000072c8dbaa98: 8b2f 40f9 | bf3b 03d5 | 0c00 c039 | ccd8 ff34 | 1f00 0039 | 4a02 00b5 | fd03 0e2a | e103 1caa 
+  0x00000072c8dbaab8: c900 0010 | 89d7 01f9 
+
+  0x00000072c8dbaac0: ;   {runtime_call G1BarrierSetRuntime::write_ref_field_post_entry(unsigned char volatile*, JavaThread*)}
+  0x00000072c8dbaac0: 080e 8ed2 | 68bc bbf2 | 480e c0f2 | 0001 3fd6 
+
+  0x00000072c8dbaad0: ;   {other}
+  0x00000072c8dbaad0: 1f20 03d5 | 1f00 80f2 | 1f00 80f2 | fb03 162a | f603 13aa | f303 16aa | f603 1b2a | ee03 1d2a 
+  0x00000072c8dbaaf0: b3fe ff17 | 4c21 00d1 | 6a01 0a8b | 4081 1ff8 | 8c27 00f9 | aefe ff17 | 8a2f 40f9 | 8b27 40f9 
+  0x00000072c8dbab10: bf3b 03d5 | 0d00 c039 | 8ddb ff34 | 1f00 0039 | 8b01 00b5 | e103 1caa | c900 0010 | 89d7 01f9 
+  0x00000072c8dbab30: ;   {runtime_call G1BarrierSetRuntime::write_ref_field_post_entry(unsigned char volatile*, JavaThread*)}
+  0x00000072c8dbab30: 080e 8ed2 | 68bc bbf2 | 480e c0f2 | 0001 3fd6 
+
+  0x00000072c8dbab40: ;   {other}
+  0x00000072c8dbab40: 1f20 03d5 | 1f00 80f2 | 1f00 80f2 | cffe ff17 | 6c21 00d1 | 4a01 0b8b | 4081 1ff8 | 8c27 00f9 
+  0x00000072c8dbab60: cafe ff17 | 8a2f 40f9 | 8b27 40f9 | bf3b 03d5 | 0c00 c039 | ecdf ff34 | 1f00 0039 | 8b01 00b5 
+  0x00000072c8dbab80: e103 1caa | c900 0010 | 89d7 01f9 
+
+  0x00000072c8dbab8c: ;   {runtime_call G1BarrierSetRuntime::write_ref_field_post_entry(unsigned char volatile*, JavaThread*)}
+  0x00000072c8dbab8c: 080e 8ed2 | 68bc bbf2 | 480e c0f2 | 0001 3fd6 
+
+  0x00000072c8dbab9c: ;   {other}
+  0x00000072c8dbab9c: 1f20 03d5 | 1f00 80f2 | 1f00 80f2 | f2fe ff17 | 6c21 00d1 | 4a01 0b8b | 4081 1ff8 | 8c27 00f9 
+  0x00000072c8dbabbc: edfe ff17 | 8a27 40f9 | 8b2f 40f9 | bf3b 03d5 | 0d00 c039 | edc1 ff34 | 1f00 0039 | 8a01 00b5 
+  0x00000072c8dbabdc: e103 1caa | c900 0010 | 89d7 01f9 
+
+  0x00000072c8dbabe8: ;   {runtime_call G1BarrierSetRuntime::write_ref_field_post_entry(unsigned char volatile*, JavaThread*)}
+  0x00000072c8dbabe8: 080e 8ed2 | 68bc bbf2 | 480e c0f2 | 0001 3fd6 
+
+  0x00000072c8dbabf8: ;   {other}
+  0x00000072c8dbabf8: 1f20 03d5 | 1f00 80f2 | 1f00 80f2 | 02fe ff17 | 4c21 00d1 | 6a01 0a8b | 4081 1ff8 | 8c27 00f9 
+  0x00000072c8dbac18: fdfd ff17 | 8a2f 40f9 | 8b27 40f9 | bf3b 03d5 | 0d00 c039 | adce ff34 | 1f00 0039 | 8b01 00b5 
+  0x00000072c8dbac38: e103 1caa | c900 0010 | 89d7 01f9 
+
+  0x00000072c8dbac44: ;   {runtime_call G1BarrierSetRuntime::write_ref_field_post_entry(unsigned char volatile*, JavaThread*)}
+  0x00000072c8dbac44: 080e 8ed2 | 68bc bbf2 | 480e c0f2 | 0001 3fd6 
+
+  0x00000072c8dbac54: ;   {other}
+  0x00000072c8dbac54: 1f20 03d5 | 1f00 80f2 | 1f00 80f2 | 68fe ff17 | 6c21 00d1 | 4a01 0b8b | 4081 1ff8 | 8c27 00f9 
+  0x00000072c8dbac74: 63fe ff17 | 8a2f 40f9 | 8b27 40f9 | bf3b 03d5 | 0c00 c039 | eccd ff34 | 1f00 0039 | 8b01 00b5 
+  0x00000072c8dbac94: e103 1caa | c900 0010 | 89d7 01f9 
+
+  0x00000072c8dbaca0: ;   {runtime_call G1BarrierSetRuntime::write_ref_field_post_entry(unsigned char volatile*, JavaThread*)}
+  0x00000072c8dbaca0: 080e 8ed2 | 68bc bbf2 | 480e c0f2 | 0001 3fd6 
+
+  0x00000072c8dbacb0: ;   {other}
+  0x00000072c8dbacb0: 1f20 03d5 | 1f00 80f2 | 1f00 80f2 | 62fe ff17 | 6c21 00d1 | 4a01 0b8b | 4081 1ff8 | 8c27 00f9 
+  0x00000072c8dbacd0: 5dfe ff17 | 8a27 40f9 | 8b2f 40f9 | bf3b 03d5 | 0d00 c039 | 6dd2 ff34 | 1f00 0039 | 8a01 00b5 
+  0x00000072c8dbacf0: e103 1caa | c900 0010 | 89d7 01f9 
+
+  0x00000072c8dbacfc: ;   {runtime_call G1BarrierSetRuntime::write_ref_field_post_entry(unsigned char volatile*, JavaThread*)}
+  0x00000072c8dbacfc: 080e 8ed2 | 68bc bbf2 | 480e c0f2 | 0001 3fd6 
+
+  0x00000072c8dbad0c: ;   {other}
+  0x00000072c8dbad0c: 1f20 03d5 | 1f00 80f2 | 1f00 80f2 | 86fe ff17 | 4c21 00d1 | 6a01 0a8b | 4081 1ff8 | 8c27 00f9 
+  0x00000072c8dbad2c: 81fe ff17 | 8a27 40f9 | 8b2f 40f9 | bf3b 03d5 | 0d00 c039 | add3 ff34 | 1f00 0039 | 8a01 00b5 
+  0x00000072c8dbad4c: e103 1caa | c900 0010 | 89d7 01f9 
+
+  0x00000072c8dbad58: ;   {runtime_call G1BarrierSetRuntime::write_ref_field_post_entry(unsigned char volatile*, JavaThread*)}
+  0x00000072c8dbad58: 080e 8ed2 | 68bc bbf2 | 480e c0f2 | 0001 3fd6 
+
+  0x00000072c8dbad68: ;   {other}
+  0x00000072c8dbad68: 1f20 03d5 | 1f00 80f2 | 1f00 80f2 | 90fe ff17 | 4c21 00d1 | 6a01 0a8b | 4081 1ff8 | 8c27 00f9 
+  0x00000072c8dbad88: 8bfe ff17 | fd0b 00b9 | f303 00f9 | ed0f 00b9 | fd03 14aa 
+
+  0x00000072c8dbad9c: ;   {metadata('androidx/compose/ui/text/TextStyle')}
+  0x00000072c8dbad9c: 0142 90d2 | 4128 a0f2 | a100 c0f2 
+
+  0x00000072c8dbada8: ; ImmutableOopMap {rfp=Oop [0]=Oop [8]=NarrowOop [12]=NarrowOop }
+                      ;*new {reexecute=0 rethrow=0 return_oop=1}
+                      ; - androidx.compose.ui.text.TextStyleKt::resolveDefaults@0 (line 1591)
+                      ; - androidx.compose.foundation.text.modifiers.ParagraphLayoutCache::setLayoutDirection@40 (line 277)
+                      ;   {runtime_call _new_instance_Java}
+  0x00000072c8dbada8: b6b8 c797 
+
+  0x00000072c8dbadac: ;   {other}
+  0x00000072c8dbadac: 1f20 03d5 | 9f93 81f2 | 1fa0 80f2 | f403 1daa | f303 40f9 | fd37 4129 | a1fd ff17 | ec17 00b9 
+  0x00000072c8dbadcc: ;   {metadata('androidx/compose/ui/text/ParagraphStyle')}
+  0x00000072c8dbadcc: 019f 95d2 | 4128 a0f2 | a100 c0f2 
+
+  0x00000072c8dbadd8: ; ImmutableOopMap {rfp=NarrowOop [0]=Oop [8]=Oop [16]=NarrowOop [20]=NarrowOop [24]=Oop [32]=Oop [40]=Oop }
+                      ;*new {reexecute=0 rethrow=0 return_oop=1}
+                
