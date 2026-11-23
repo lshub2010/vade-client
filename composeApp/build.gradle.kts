@@ -223,7 +223,7 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "vade.ui"
+        applicationId = "io.github.lshub2010.vade"
         minSdk = 24
         targetSdk = 36
         versionCode = 1

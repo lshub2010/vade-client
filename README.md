@@ -70,7 +70,7 @@ core 起来后会打印一行形如 `pair_code=茶源-45JV2U purpose=browser exp
 **Android**（ADB 启动，注意是**裸键**，不是 `vade.source`）：
 
 ```bash
-adb shell am start -n vade.ui/.MainActivity \
+adb shell am start -n io.github.lshub2010.vade/vade.ui.MainActivity \
   --es source real --es host 192.168.1.10 --es port 8443 --es pair_code ABCDEFGH
 ```
 
