@@ -17,7 +17,7 @@ This repository is the **client**: one Compose Multiplatform UI shared by Androi
 
 ## Release status
 
-- **Upcoming release: `0.0.2-alpha`** — [download page](https://github.com/lshub2010/vade-client/releases/tag/v0.0.2-alpha). The assets below are attached by CI when the release is published.
+- **Current release: `0.0.2-alpha`** — [download page](https://github.com/lshub2010/vade-client/releases/tag/v0.0.2-alpha). The assets below were built by CI and attached to that release.
 - The single version source (`vadeVersion` in [`gradle.properties`](gradle.properties)) is `0.0.2-alpha`; the Android `versionName` and the MSI `packageVersion` (numeric `0.0.2`) derive from it.
 - The Android APK is built with `:composeApp:assembleDebug` and is **debug-signed** (see [Debug-signed APK](#debug-signed-apk)).
 

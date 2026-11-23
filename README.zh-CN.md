@@ -17,7 +17,7 @@
 
 ## 发布状态
 
-- **即将发布：`0.0.2-alpha`** —— [下载页面](https://github.com/lshub2010/vade-client/releases/tag/v0.0.2-alpha)。发布后由 CI 把下表中的产物挂上去。
+- **当前发布：`0.0.2-alpha`** —— [下载页](https://github.com/lshub2010/vade-client/releases/tag/v0.0.2-alpha)。下列产物由 CI 构建并挂在该 Release 上。
 - 唯一的版本源（[`gradle.properties`](gradle.properties) 里的 `vadeVersion`）是 `0.0.2-alpha`；Android 的 `versionName` 与 MSI 的 `packageVersion`（数字部分 `0.0.2`）都由它派生。
 - Android APK 由 `:composeApp:assembleDebug` 构建，使用 **debug 签名**（见[debug 签名说明](#debug-签名说明)）。
 
