@@ -7,10 +7,12 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import java.io.IOException
 import vade.ui.chat.ChatHistory
 import vade.ui.chat.ChatItem
 import vade.ui.chat.ChatState
@@ -268,4 +270,277 @@ class SessionAttachFailureRoutingTest {
             client.close()
         }
     }
+
+    /**
+     * P1-4 · create 窗口（`session_id = null` 的 attach 在途）**不再**放行「其它会话」
+     * 的帧：目标 id 未知不能成为「所有非当前会话都可交付」的理由（旧启发式是一条真实
+     * 的注入路径）。别的会话的帧只推自己的水位；create 提交后新会话的帧才进 UI。
+     */
+    @Test
+    fun aCreateAttachDoesNotOpenTheGateForOtherSessions() = runBlocking {
+        val factory = FakeTransportFactory()
+        val client = testClient(factory)
+        val transport = connectAndAwait(client, factory)
+
+        runBlocking {
+            val attachA = async { client.attach(AttachParams("s-A", null)) }
+            transport.push(responseFrame(idOf(transport.awaitSent()), """{"session_id":"s-A","from_seq":0,"snapshot":null}"""))
+            withTimeout(5_000) { attachA.await() }
+
+            val seen = mutableListOf<VadeEvent>()
+            val collector = collectEvents(client) { seen.add(it) }
+
+            val create = async { client.attach(AttachParams(null, null)) }
+            val createFrame = transport.awaitSent()
+            assertEquals("""{"session_id":null}""", requestOf(createFrame).second)
+
+            // create 在途：幽灵会话的帧只推它自己的水位，不许交付给 UI。
+            transport.push(eventFrame("turn.delta", 3, """{"turn_id":"tg","text":"ghost"}""", sessionId = "s-G"))
+            waitUntil { client.lastSeqFor("s-G") >= 3L }
+            delay(100) // 负例窗口
+            assertTrue(seen.isEmpty(), "create 窗口不许放行其它会话的帧")
+
+            // create 提交：门跟到 core 铸出来的新 id，新会话的帧才进 UI。
+            transport.push(responseFrame(idOf(createFrame), """{"session_id":"s-NEW","from_seq":0,"snapshot":null}"""))
+            withTimeout(5_000) { create.await() }
+            assertEquals("s-NEW", client.attachedSession)
+
+            transport.push(eventFrame("turn.delta", 1, """{"turn_id":"tn","text":"n-1"}""", sessionId = "s-NEW"))
+            waitUntil { seen.any { it is TurnDelta && it.payload.text == "n-1" } }
+            assertEquals(listOf("n-1"), seen.mapNotNull { (it as? TurnDelta)?.payload?.text })
+            collector.cancel()
+            client.close()
+        }
+    }
+
+    /**
+     * P1-1 · 被淘汰的 attach 失败时**不许**回退可见门：最新的 attach（C）还在路上，
+     * 门必须停在 C。旧实现没有 ticket 判据，B 的失败会把门拉回 A，C 的 replay 就进不来。
+     */
+    @Test
+    fun aSupersededAttachFailureDoesNotRollBackTheVisibleGate() = runBlocking {
+        val factory = FakeTransportFactory()
+        val client = testClient(factory)
+        val transport = connectAndAwait(client, factory)
+
+        runBlocking {
+            val attachA = async { client.attach(AttachParams("s-A", null)) }
+            transport.push(responseFrame(idOf(transport.awaitSent()), """{"session_id":"s-A","from_seq":0,"snapshot":null}"""))
+            withTimeout(5_000) { attachA.await() }
+
+            val seen = mutableListOf<VadeEvent>()
+            val collector = collectEvents(client) { seen.add(it) }
+
+            val attachB = async { runCatching { client.attach(AttachParams("s-B", null)) } }
+            val bFrame = transport.awaitSent()
+            val attachC = async { client.attach(AttachParams("s-C", null)) }
+            val cFrame = transport.awaitSent()
+
+            transport.push(errorFrame(idOf(bFrame), "NOT_FOUND", "no such session"))
+            assertIs<VadeException>(withTimeout(5_000) { attachB.await() }.exceptionOrNull())
+
+            // 门仍是 C：B 的帧不进 UI，C 的进；屏幕外的 B 只推自己的水位。
+            transport.push(eventFrame("turn.delta", 1, """{"turn_id":"tb","text":"b-1"}""", sessionId = "s-B"))
+            transport.push(eventFrame("turn.delta", 1, """{"turn_id":"tc","text":"c-1"}""", sessionId = "s-C"))
+            waitUntil { client.lastSeqFor("s-B") >= 1L && client.lastSeqFor("s-C") >= 1L }
+            waitUntil { seen.isNotEmpty() }
+            delay(100)
+            assertEquals(listOf("c-1"), seen.map { (it as TurnDelta).payload.text })
+
+            // 被淘汰的 B 要补 detach；在途的 C 绝不许碰。
+            val detachB = transport.awaitSent()
+            assertEquals("ui/detach", requestOf(detachB).first)
+            assertEquals("""{"session_id":"s-B"}""", requestOf(detachB).second)
+            assertTrue(
+                transport.record.none { requestOf(it).first == "ui/detach" && requestOf(it).second == """{"session_id":"s-C"}""" },
+                "在途的 C 的 sink 不许被失败路径摘掉",
+            )
+
+            transport.push(responseFrame(idOf(cFrame), """{"session_id":"s-C","from_seq":0,"snapshot":null}"""))
+            withTimeout(5_000) { attachC.await() }
+            assertEquals("s-C", client.attachedSession)
+            collector.cancel()
+            client.close()
+        }
+    }
+
+    /**
+     * P1-4 · 失败的那次 attach 与更新的一次 attach 指向**同一个会话**时，失败路径
+     * 不许摘 sink：新的那次还在用它。摘了 = 新 attach 成功但永远收不到帧。
+     */
+    @Test
+    fun aFailedAttachDoesNotDetachASinkANewerAttachIsUsing() = runBlocking {
+        val factory = FakeTransportFactory()
+        val client = testClient(factory)
+        val transport = connectAndAwait(client, factory)
+
+        runBlocking {
+            val attachA = async { client.attach(AttachParams("s-A", null)) }
+            transport.push(responseFrame(idOf(transport.awaitSent()), """{"session_id":"s-A","from_seq":0,"snapshot":null}"""))
+            withTimeout(5_000) { attachA.await() }
+
+            val first = async { runCatching { client.attach(AttachParams("s-B", null)) } }
+            val firstFrame = transport.awaitSent()
+            val second = async { client.attach(AttachParams("s-B", null)) }
+            val secondFrame = transport.awaitSent()
+
+            transport.push(errorFrame(idOf(firstFrame), "UNAVAILABLE", "boom"))
+            assertIs<VadeException>(withTimeout(5_000) { first.await() }.exceptionOrNull())
+
+            transport.push(responseFrame(idOf(secondFrame), """{"session_id":"s-B","from_seq":0,"snapshot":null}"""))
+            withTimeout(5_000) { second.await() }
+            assertEquals("s-B", client.attachedSession)
+
+            assertTrue(
+                transport.record.none { requestOf(it).first == "ui/detach" && requestOf(it).second == """{"session_id":"s-B"}""" },
+                "更新的 attach 还在用 B 的 sink，失败的那次不许摘",
+            )
+            assertTrue(
+                transport.record.any { requestOf(it).first == "ui/detach" && requestOf(it).second == """{"session_id":"s-A"}""" },
+                "切到 B 之后才摘 A",
+            )
+            client.close()
+        }
+    }
+
+    /**
+     * P1-1 · 最新的在途 attach 是 create 时门不动（屏上仍是 A）；先前那次 attach 即使
+     * **成功**也被 create 淘汰 —— 它绝不能继续占着门，否则它的帧会从 `events` 漏给
+     * 按「当前会话」消费事件的观察者。可见门必须回到最后成功提交的 A。
+     */
+    @Test
+    fun aDiscardedAttachDoesNotStayVisibleWhileANewerCreateIsPending() = runBlocking {
+        val factory = FakeTransportFactory()
+        val client = testClient(factory)
+        val transport = connectAndAwait(client, factory)
+
+        runBlocking {
+            val attachA = async { client.attach(AttachParams("s-A", null)) }
+            transport.push(responseFrame(idOf(transport.awaitSent()), """{"session_id":"s-A","from_seq":0,"snapshot":null}"""))
+            withTimeout(5_000) { attachA.await() }
+
+            val seen = mutableListOf<VadeEvent>()
+            val collector = collectEvents(client) { seen.add(it) }
+
+            val attachB = async { client.attach(AttachParams("s-B", null)) }
+            val bFrame = transport.awaitSent()
+            val create = async { client.attach(AttachParams(null, null)) }
+            val createFrame = transport.awaitSent()
+
+            // B 成功，但最新的意图是 create：B 被淘汰 → 摘 sink、门回 A。
+            transport.push(responseFrame(idOf(bFrame), """{"session_id":"s-B","from_seq":0,"snapshot":null}"""))
+            withTimeout(5_000) { attachB.await() }
+            assertEquals("s-A", client.attachedSession, "被淘汰的成功 attach 不许改 attached")
+
+            val detachB = transport.awaitSent()
+            assertEquals("ui/detach", requestOf(detachB).first)
+            assertEquals("""{"session_id":"s-B"}""", requestOf(detachB).second)
+
+            transport.push(eventFrame("turn.delta", 9, """{"turn_id":"tb","text":"b-9"}""", sessionId = "s-B"))
+            transport.push(eventFrame("turn.delta", 7, """{"turn_id":"ta","text":"a-7"}""", sessionId = "s-A"))
+            waitUntil { client.lastSeqFor("s-B") >= 9L && client.lastSeqFor("s-A") >= 7L }
+            waitUntil { seen.isNotEmpty() }
+            delay(100)
+            assertEquals(listOf("a-7"), seen.map { (it as TurnDelta).payload.text }, "被淘汰的 B 不许继续占着可见门")
+
+            // create 成功：门跟到新会话。
+            transport.push(responseFrame(idOf(createFrame), """{"session_id":"s-NEW","from_seq":0,"snapshot":null}"""))
+            withTimeout(5_000) { create.await() }
+            assertEquals("s-NEW", client.attachedSession)
+            collector.cancel()
+            client.close()
+        }
+    }
+
+    /**
+     * P1-1 · 同上，但被淘汰的那次 attach **失败**：门同样必须回到 A（不是停在 B）。
+     * 这是 `failAttachLocked` 里「最新的一次失败才回退」之外的另一半 —— 被淘汰的失败
+     * 自己不做门回退，却也不能把门留在自己身上。
+     */
+    @Test
+    fun aDiscardedAttachFailureDoesNotStayVisibleWhileANewerCreateIsPending() = runBlocking {
+        val factory = FakeTransportFactory()
+        val client = testClient(factory)
+        val transport = connectAndAwait(client, factory)
+
+        runBlocking {
+            val attachA = async { client.attach(AttachParams("s-A", null)) }
+            transport.push(responseFrame(idOf(transport.awaitSent()), """{"session_id":"s-A","from_seq":0,"snapshot":null}"""))
+            withTimeout(5_000) { attachA.await() }
+
+            val seen = mutableListOf<VadeEvent>()
+            val collector = collectEvents(client) { seen.add(it) }
+
+            val attachB = async { runCatching { client.attach(AttachParams("s-B", null)) } }
+            val bFrame = transport.awaitSent()
+            val create = async { runCatching { client.attach(AttachParams(null, null)) } }
+            val createFrame = transport.awaitSent()
+
+            transport.push(errorFrame(idOf(bFrame), "NOT_FOUND", "no such session"))
+            assertIs<VadeException>(withTimeout(5_000) { attachB.await() }.exceptionOrNull())
+
+            transport.push(eventFrame("turn.delta", 9, """{"turn_id":"tb","text":"b-9"}""", sessionId = "s-B"))
+            transport.push(eventFrame("turn.delta", 7, """{"turn_id":"ta","text":"a-7"}""", sessionId = "s-A"))
+            waitUntil { client.lastSeqFor("s-B") >= 9L && client.lastSeqFor("s-A") >= 7L }
+            waitUntil { seen.isNotEmpty() }
+            delay(100)
+            assertEquals(listOf("a-7"), seen.map { (it as TurnDelta).payload.text }, "被淘汰的失败 attach 不许继续占着可见门")
+
+            // create 也失败：previous（A）仍是跟踪会话。
+            transport.push(errorFrame(idOf(createFrame), "UNAVAILABLE", "create failed"))
+            assertIs<VadeException>(withTimeout(5_000) { create.await() }.exceptionOrNull())
+            assertEquals("s-A", client.attachedSession)
+            collector.cancel()
+            client.close()
+        }
+    }
+
+    /**
+     * `close()` 的 detach 是 best-effort：transport 在 send 上抛错时关闭仍必须走完
+     * （state=Closed、transport 关掉），否则关页面会卡在一个死 socket 上。
+     */
+    @Test
+    fun closeStillCompletesWhenTheBestEffortDetachSendThrows() = runBlocking {
+        val factory = SendSpyFactory()
+        val client = testClient(factory)
+        client.connect()
+        assertTrue(client.awaitConnected(5_000), "client must reach Connected")
+
+        val attach = async { client.attach(AttachParams("s-A", null)) }
+        val frame = factory.wrapper.inner.awaitSent()
+        factory.wrapper.inner.push(responseFrame(idOf(frame), """{"session_id":"s-A","from_seq":0,"snapshot":null}"""))
+        withTimeout(5_000) { attach.await() }
+
+        factory.wrapper.failSends = true
+        withTimeout(5_000) { client.close() }
+        assertEquals(VadeConnectionState.Closed, client.state.value)
+        assertTrue(
+            factory.wrapper.attempted.any { requestOf(it).first == "ui/detach" },
+            "关闭仍会尝试摘 sink（失败被吞掉）",
+        )
+        assertTrue(factory.wrapper.inner.closedCount >= 1, "transport 必须真的关掉")
+    }
+}
+
+/** 只包一层 send 失败开关的 transport：用于 close 的 best-effort 路径。 */
+private class SendSpyTransport(val inner: FakeTransport) : VadeTransport {
+    val attempted: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf<String>())
+
+    @Volatile
+    var failSends: Boolean = false
+
+    override val incoming: Flow<String> get() = inner.incoming
+
+    override suspend fun send(frame: String) {
+        attempted.add(frame)
+        if (failSends) throw IOException("simulated send failure")
+        inner.send(frame)
+    }
+
+    override suspend fun close() = inner.close()
+}
+
+private class SendSpyFactory : VadeTransportFactory {
+    val wrapper = SendSpyTransport(FakeTransport())
+    override suspend fun connect(): VadeTransport = wrapper
 }

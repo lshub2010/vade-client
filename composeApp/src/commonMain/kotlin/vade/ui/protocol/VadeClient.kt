@@ -789,10 +789,7 @@ class VadeClient(
                 endAttachLocked(params.sessionId)
                 // 被淘汰的 attach 已经在 core 注册了 sink（replay 甚至已经发来）。补一条
                 // detach 收拾它；但它若正被更新的 attach 接管、或就是当前会话，不许碰。
-                val staleTarget = params.sessionId ?: result.sessionId
-                if (staleTarget != attachedSessionId && (attachInFlight[staleTarget] ?: 0) == 0) {
-                    sendDetachQuietly(staleTarget)
-                }
+                retireDiscardedAttachLocked(params.sessionId ?: result.sessionId)
                 return@withLock
             }
             val previous = attachedSessionId
@@ -837,11 +834,29 @@ class VadeClient(
                 visibleSessionId = attachedSessionId
             }
             endAttachLocked(params.sessionId)
-            val target = params.sessionId
-            if (target != null && target != attachedSessionId && (attachInFlight[target] ?: 0) == 0) {
-                sendDetachQuietly(target)
-            }
+            retireDiscardedAttachLocked(params.sessionId)
         }
+
+    /**
+     * P1-1 · 一次**被淘汰 / 失败**的 attach 不再代表「UI 想看谁」。
+     *
+     * 最新那次 attach 可以是 create（`session_id = null`）——它按约定不动可见门，于是
+     * 门会停在**上一条**被淘汰的 attach 目标上。那条 attach 随后成功（但被 create
+     * 淘汰）或失败，都不能继续占着门：它的帧会从 [events] 漏给聊天投影之外、按
+     * 「当前会话」消费事件的观察者（列表缝不受影响 —— 那条本来就收全量）。
+     *
+     * 顺序是「先回退门，再 best-effort 摘 sink」：
+     * - 目标就是已提交会话、或还有更新的 attach 在管它 → 不动（它可能仍要收帧）；
+     * - 否则门回退到 [attachedSessionId]（屏上仍应显示最后成功提交的那个会话）。
+     *
+     * 调用方持有 [sessionMutex]，且已把这次 attach 从 [attachInFlight] 摘掉。
+     */
+    private suspend fun retireDiscardedAttachLocked(target: String?) {
+        if (target == null || target == attachedSessionId) return
+        if ((attachInFlight[target] ?: 0) > 0) return
+        if (visibleSessionId == target) visibleSessionId = attachedSessionId
+        sendDetachQuietly(target)
+    }
 
     /** 同会话才补水位（调用方持有 [sessionMutex]）。 */
     private fun resolveResumeLocked(params: AttachParams): AttachParams {

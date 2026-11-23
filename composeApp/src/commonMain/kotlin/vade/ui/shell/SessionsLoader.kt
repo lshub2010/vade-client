@@ -192,8 +192,8 @@ class SessionsLoader(
     // ------------------------------------------------------------------ events
 
     /**
-     * The data layer projects six core events (`RealSessionEvents.kt`); there is no
-     * `session.updated` / `session.list_changed` subtype yet. Attach + the turn
+     * The data layer projects eight core events (`RealSessionEvents.kt`), including the
+     * contract-defined `session.list_changed` invalidation edge. Attach + the turn
      * lifecycle events mean session-level truth moved (updated_at / unread), so they
      * trigger the coalesced list refresh; `turn.delta` is per-character streaming and
      * must NOT re-pull the list per delta; anything else (future subtypes) is
