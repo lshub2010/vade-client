@@ -167,7 +167,7 @@ class SelfRescueRemedyGuardTest {
     fun theAndroidCommandIsCompleteEnoughToRunVerbatim() {
         val command = androidCommand()
         assertTrue(command.startsWith("adb shell am start -n "), "必须整行可跑（含 am start 与组件）: $command")
-        assertTrue(command.contains("-n vade.ui/.MainActivity"), "要点名 MainActivity 的组件: $command")
+        assertTrue(command.contains("-n io.github.lshub2010.vade/vade.ui.MainActivity"), "要点名 MainActivity 的组件: $command")
     }
 
     @Test

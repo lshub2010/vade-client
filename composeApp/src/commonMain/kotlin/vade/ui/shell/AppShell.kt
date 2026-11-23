@@ -833,7 +833,7 @@ internal fun selfRescueRemedy(raw: RawSourceStrings): String {
     val port = portOf(raw)
     val desktop = "VADE_SOURCE=${SourceConfig.REAL} VADE_HOST=$host VADE_PORT=$port " +
         "VADE_PAIR_CODE=<配对码> gradle :composeApp:run"
-    val android = "adb shell am start -n vade.ui/.MainActivity " +
+    val android = "adb shell am start -n io.github.lshub2010.vade/vade.ui.MainActivity " +
         "--es ${SourceKeys.SOURCE} ${SourceConfig.REAL} " +
         "--es ${SourceKeys.HOST} $host --es ${SourceKeys.PORT} $port " +
         "--es ${SourceKeys.PAIR_CODE} <配对码>"

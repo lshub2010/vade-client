@@ -1,278 +1,236 @@
-# Vade
+# Vade Client
+
+**English** | [简体中文](README.zh-CN.md)
 
 ![Release build](https://github.com/lshub2010/vade-client/actions/workflows/release.yml/badge.svg)
+![CI](https://github.com/lshub2010/vade-client/actions/workflows/ci.yml/badge.svg)
 
-**Vade**（中文名「偕行」）是一个「内核极薄、能力全靠模块」的 Agent 运行时。
+**Vade** (Chinese name 「偕行」) is an agent runtime built around a deliberately thin core: the core owns connection, routing, the turn loop, keys and audit, while models, tools, memory and clients attach as separate processes.
 
-本仓库是它的**客户端**：Android / 桌面 / Web 三端共用同一套 Compose UI（Kotlin Multiplatform）。协议内核、契约与设计文档在 **[lshub2010/Vade](https://github.com/lshub2010/Vade)**。
-
-> **当前发布：`0.0.1-alpha`（pre-release）**
-> alpha 的含义：能连真 core、能发消息、能审批、能管会话——**不保证**协议 / 数据 / 界面稳定，前后版本的数据结构随时可能变。
+This repository is the **client**: one Compose Multiplatform UI shared by Android, desktop (JVM) and Web (wasmJs). The protocol core, contracts and design docs live in **[lshub2010/Vade](https://github.com/lshub2010/Vade)**. The client contains no model of its own — **it must connect to a core**.
 
 > [!WARNING]
-> **项目处于起步阶段（alpha）**：功能尚不完善，协议、数据格式与界面行为都可能随时变化。**不建议用于生产环境**，也不要用它存放不可恢复的重要数据；升级前请自行备份。
+> **Alpha software.** Features are incomplete, and the protocol, data formats and UI behaviour may change between releases. Do not use it in production, and do not store important data that cannot be recovered. Back up before upgrading.
 
 > [!WARNING]
-> **本项目由 AI 辅助开发**：代码在 AI 生成的基础上经过自动化测试与人工审查，但**不保证**代码风格统一、可读性良好、注释完备，也**不保证**所有边界条件与异常路径都已覆盖。用于关键场景前，请自行审计、加固并补充测试。
+> **AI-assisted development.** The code is built on AI-generated work and has gone through automated tests and human review, but consistent style, readability, complete comments and coverage of every edge case are not guaranteed. Audit, harden and extend the tests before using it in critical settings.
 
----
+## Release status
 
-## 下载
+- **Upcoming release: `0.0.2-alpha`** — [download page](https://github.com/lshub2010/vade-client/releases/tag/v0.0.2-alpha). The assets below are attached by CI when the release is published.
+- The single version source (`vadeVersion` in [`gradle.properties`](gradle.properties)) is `0.0.2-alpha`; the Android `versionName` and the MSI `packageVersion` (numeric `0.0.2`) derive from it.
+- The Android APK is built with `:composeApp:assembleDebug` and is **debug-signed** (see [Debug-signed APK](#debug-signed-apk)).
 
-现成产物挂在 [Releases](https://github.com/lshub2010/vade-client/releases/tag/v0.0.1-alpha)（每次发布由 CI 自动构建）：
+## Platform status
 
-| 文件 | 平台 |
-|---|---|
-| `vade-ui-<版本>-android.apk` | Android |
-| `vade-ui-<版本>-windows-x64.msi` | Windows 安装器 |
-| `vade-ui-<版本>-windows-x64.zip` | Windows 免安装（解压即用，自带运行时） |
-| `vade-ui-<版本>-web.zip` | Web 静态站点（解压后起任意静态服务器） |
-
-## 三端状态
-
-| 平台 | 状态 | 怎么装 |
+| Platform | Status | Notes |
 |---|---|---|
-| Android | ✅ 可用（minSdk 24，实测 API 30 / API 37） | 装 `composeApp-debug.apk` |
-| 桌面 · Windows | ✅ 可用 | 装 MSI，或 `gradle :composeApp:run` |
-| 桌面 · macOS / Linux | ⚠️ 未验证 | 同上，需自备 JDK 21 |
-| Web · wasmJs | 🟡 能编译通过，**未出可分发的站点** | 仅源码构建 |
+| Android | ✅ Available | minSdk 24, targetSdk 36, compileSdk 37. Tested on an API 30 device and an API 37 emulator. |
+| Desktop · Windows | ✅ Available | MSI installer or portable zip (bundled runtime). `gradle :composeApp:run` also works. |
+| Desktop · macOS / Linux | ⚠️ Not verified | Same source and build path, but no prebuilt artifacts and no recorded test pass. Build from source with JDK 21. |
+| Web · wasmJs | 🟡 Compiles; CI packages a static site | The browser cannot complete first-time pairing (see [Known limitations](#known-limitations)); running the built site in a browser has not been verified here. |
 
----
+## Download and install (0.0.2-alpha)
 
-## 快速开始
+Release page: **<https://github.com/lshub2010/vade-client/releases/tag/v0.0.2-alpha>**
 
-### 1. 先跑一个 core
+| Asset | Platform | How to install |
+|---|---|---|
+| `vade-ui-0.0.2-alpha-android.apk` | Android | Sideload the APK (allow installation from unknown sources). |
+| `vade-ui-0.0.2-alpha-windows-x64.msi` | Windows | Run the installer. If a release has no MSI (the WiX step is allowed to fail), use the zip. |
+| `vade-ui-0.0.2-alpha-windows-x64.zip` | Windows | Unzip anywhere and run `vade-ui.exe`. The bundled jlink runtime means no JDK is needed. |
+| `vade-ui-0.0.2-alpha-web.zip` | Web | Unzip and serve the directory over HTTP; it will not run from `file://`. |
 
-Vade 客户端自己**不产生任何智能**——它必须连一个 core 才有模型、工具和会话。
+### Debug-signed APK
+
+The APK comes from the `debug` build variant, and this repository has no release signing configuration, so it carries the Android **debug key**:
+
+- it is intended for testing and sideloading, not for app stores or production distribution;
+- a debug key is not a stable release key: APKs built on different machines or CI runs may not share the same key. If Android reports a signature mismatch when updating, uninstall the previous build first.
+
+### Windows MSI and alpha versions
+
+`jpackage` derives the MSI `ProductVersion` by dropping the `-alpha` suffix. Two alphas with the same numeric `x.y.z` (for example `0.0.2-alpha.1` and `0.0.2-alpha.2`) are therefore indistinguishable to Windows Installer: uninstall the older build first, or use the portable zip. Moving from `0.0.1` to `0.0.2` is a normal version change.
+
+## Connect to a core
+
+The client starts in **fixture mode** by default: it shows local sample data and makes no network requests. This is useful for previewing the UI offline. To use real sessions, models, tools and approvals, start a core and point the client at it.
+
+### 1. Start a core
+
+The core is not in this repository; run it from the root of [lshub2010/Vade](https://github.com/lshub2010/Vade).
 
 ```bash
-# 在内核仓库根目录（lshub2010/Vade）
-# Windows（分隔符是分号）
-export PYTHONPATH="core;protocol/core/python"
-.venv/Scripts/python.exe -m vade --config core.toml
-
-# Linux / macOS（分隔符是冒号）
+# Linux / macOS — both entries are required in PYTHONPATH
 export PYTHONPATH="core:protocol/core/python"
 .venv/bin/python -m vade --config core.toml
 ```
 
-> `PYTHONPATH` 里**两处都必须有**：`core`（`vade` 包本身）和 `protocol/core/python`（原生绑定 `vade_protocol`）。
-> 少了前者报 `No module named vade`，少了后者报 `protocol core python binding is not importable`。
-> 详见主仓 `docs/PAIRING.md`。
+```powershell
+# Windows — the separator is a semicolon
+$env:PYTHONPATH = "core;protocol/core/python"
+.venv\Scripts\python.exe -m vade --config core.toml
+```
 
-core 起来后会打印一行形如 `pair_code=茶源-45JV2U purpose=browser expires_in=600s` 的配对码
-（2 个汉字 + 6 位 base32，**一次性、600 秒（10 分钟）有效**）。过期了就重启 core 拿新的。
+`PYTHONPATH` must contain both `core` (the `vade` package) and `protocol/core/python` (the native `vade_protocol` binding). Without the first you get `No module named vade`; without the second, `protocol core python binding is not importable`.
 
-### 2. 让客户端连上这个 core
+On startup the core prints a pairing code like:
 
-客户端**默认是假数据模式**（用来离线看界面）。要连真 core，三端各有传参方式，键名固定为 `source` / `host` / `port` / `pair_code`：
+```text
+pair_code=茶源-45JV2U purpose=browser expires_in=600s
+```
 
-**Android**（ADB 启动，注意是**裸键**，不是 `vade.source`）：
+The code is one-time and valid for **600 seconds (10 minutes)**. If it expires, restart the core to get a new one.
+
+### 2. Point the client at the core
+
+All three targets accept the same four keys: **`source`**, **`host`**, **`port`**, **`pair_code`**. Each platform only differs in how the values are passed.
+
+| Key | Required | Meaning |
+|---|---|---|
+| `source` | No | The exact value `real` enables the live core. Missing or any other value keeps fixture mode. |
+| `host` | No | Core host. Defaults to `127.0.0.1`. |
+| `port` | No | Core port. Defaults to `8443`; a non-empty invalid value is a hard error, never a silent fallback. |
+| `pair_code` | Practically required | The one-time code. Without it the WebSocket upgrade is treated as a device peer and the client cannot attach. |
+
+**Android** — ADB intent extras. The keys are **bare** (`source`, not `vade.source`):
 
 ```bash
 adb shell am start -n io.github.lshub2010.vade/vade.ui.MainActivity \
   --es source real --es host 192.168.1.10 --es port 8443 --es pair_code ABCDEFGH
 ```
 
-**桌面**（环境变量）：
+**Desktop** — environment variables (example uses the portable app-image; on Windows the executable is `vade-ui.exe`):
 
 ```bash
-VADE_SOURCE=real VADE_HOST=192.168.1.10 VADE_PORT=8443 VADE_PAIR_CODE=ABCDEFGH ./vade-ui
-# Windows PowerShell: $env:VADE_SOURCE="real"; ... ; .\vade-ui.exe
+VADE_SOURCE=real VADE_HOST=192.168.1.10 VADE_PORT=8443 VADE_PAIR_CODE=ABCDEFGH ./bin/vade-ui
 ```
 
-**Web**（URL 查询参数）：
-
+```powershell
+$env:VADE_SOURCE="real"; $env:VADE_HOST="192.168.1.10"; $env:VADE_PORT="8443"; $env:VADE_PAIR_CODE="ABCDEFGH"; .\vade-ui.exe
 ```
+
+**Web** — URL query parameters:
+
+```text
 http://localhost:8080/?source=real&host=192.168.1.10&port=8443&pair_code=ABCDEFGH
 ```
 
-> 也可以什么都不传：首次启动时**会话列表顶部会出现一张引导卡**，在卡里输入配对码即可。
-> 三种失败（码错 / core 没起 / 网络不通）会**分开报**，不会含糊成一句「连接失败」。
+> The Web build parses `pair_code`, but a browser cannot read the `Set-Cookie` returned by `POST /ui/session`, so it cannot bootstrap pairing and deliberately does not try. Complete the first pairing in the desktop or Android client.
 
-### 3. 开始用
+You can also pass no parameters: on first launch the session list shows a pairing card where you can enter the host, port and one-time code. After a successful pairing the client rebuilds its source against that core. The input is available on desktop and Android; the browser does not attempt the exchange and only tells you to pair on another device.
 
-1. 点右上角 **✎**（手机）或按 **⌘N / Ctrl+N**（桌面）**新建会话**；
-2. 底部悬浮输入框里输入，点右侧圆形按钮发送；
-3. 想换模型：输入框右下角的**模型 chip** → 弹出选择面板；
-4. 模型要执行危险动作时会弹一张**内联审批卡**（不弹独立窗口），点 ✓ 批准 / ✕ 拒绝。
+### 3. First steps
 
----
+1. Tap **✎** (phone) or press **⌘N / Ctrl+N** (desktop) to create a session. The session is created on the core, not locally.
+2. Type in the floating composer and press the round send button.
+3. To change the model, use the **model chip** at the bottom-right of the composer.
+4. When a model wants to run a risky action, an **inline approval card** appears: ✓ allows that one call, ✕ denies it. If nobody answers before the timeout, the call is denied (fail-closed).
 
-## 日常使用
+## What you can do
 
-### 会话
+- **Sessions** — create, open, rename, pin, archive, group and delete; failures roll the row back and show an error instead of leaving the UI out of sync with the core.
+- **Chat** — token-by-token streaming replies; the ■ button interrupts generation and keeps what was already produced.
+- **Approvals** — inline cards with a tool/argument summary; decisions apply to one call only. Browser sessions cannot approve by design; approve on the device.
+- **Models and usage** — per-session model selection, with the session's cumulative token usage in the header.
+- **Attachments** — add images or files with **+**; image-only messages are allowed.
+- **Search** — 3-character minimum, 200 ms debounce, highlighted matches.
+- **Groups and appearance** — group colour/icon management (deleting a group does not delete its sessions); `material` and `miuix` skins; system/light/dark theme.
 
-- **新建**：✎ / `⌘N`——会在服务端**真建**一个会话（不是本地假草稿），其他设备会同步看到。
-- **打开**：点列表任意一行进入会话详情。
-- **回到列表**：手机端从左侧滑出抽屉，返回键 = 收起抽屉；桌面端是双栏，直接点左栏。
-- **长按一行**：重命名 / 置顶 / 归档 / 移动到分组 / 新建分组 / 删除（删除有二次确认）。
-- 任何失败都会**整行回滚**并在顶部显示错误横条——不会出现「界面改了、服务端没改」的假象。
+## Build from source
 
-### 发消息
+Requirements:
 
-- 输入框是**常驻悬浮**的，发送键是右侧独立圆钮。
-- 回复**逐字流式上屏**（不是等完成再整段替换）。
-- 生成中点 **■** 中断：已生成的部分会保留。
-- 发送失败的消息气泡留在屏上并带错误分类（可重试 / 需重连 / 需你操作 / 致命）。
+- **JDK 21**
+- **Gradle 9.6.1** on `PATH` — this project does not generate a wrapper
+- **Android SDK** with `platforms;android-37.0` and `build-tools;37.0.0` (only for the APK)
+- `local.properties` with `sdk.dir` pointing at your SDK, using forward slashes (the file is git-ignored)
 
-### 审批（approval）
+```properties
+sdk.dir=D:/Android/Sdk
+```
 
-模型要执行高风险动作时，会话流里会出现一张卡：
-
-- 显示工具名与参数**摘要**（完整参数不上屏，避免泄漏）；
-- ✓ 允许 / ✕ 拒绝，**只对这次调用生效**；
-- 决定会发往 core；**超时未点 = 拒绝**（fail-closed，安全默认）；
-- 若你用浏览器会话连入，审批会回「浏览器会话不能审批」——这是设计行为，请在设备端操作。
-
-### 模型与用量
-
-- 会话内可单独指定模型；不指定则用全局默认。
-- 顶栏副标题显示**本会话累计用量**（`6.6k tokens · 5 轮`），数据来自 `session/usage.get`。
-  加载中或失败**不显示任何数字**；失败时那一行可点重试。
-
-### 附件
-
-- 输入框左侧 **+** 添加图片 / 文件；纯图片消息（无文字）也可以发。
-- 预览浮层是**真高斯模糊的玻璃卡**，点空白或按 Esc 关闭。
-
-### 搜索
-
-- 手机：列表页顶部搜索图标；桌面：`⌘K / Ctrl+K`。
-- 输入 3 个字符触发，防抖 200ms，命中片段高亮。
-
-### 分组
-
-- 会话行显示**组色点 + 组名**。
-- 分组可建 / 改图标（39 个内置）/ 改颜色 / 删除；**删组不删会话**，会话回到未分组。
-
-### 外观
-
-- 两套皮肤：`material`（默认）与 `miuix`。
-- 主题三态：跟随系统 / 亮 / 暗（「我的 → 外观」）。
-- 底栏两态：贴底（docked）与悬浮胶囊（floating）。
-
----
-
-## 从源码构建
-
-**要求**：JDK **21**、Gradle **9.6.1**、Android SDK（仅构建 APK 时需要）、Node 22（仅 Web）。
+Common commands, from the repository root:
 
 ```bash
-gradle :composeApp:run                     # 桌面：直接运行
-gradle :composeApp:packageMsi              # 桌面：打包安装器
-gradle :composeApp:assembleDebug           # Android APK
-#   → composeApp/build/outputs/apk/debug/composeApp-debug.apk
-gradle :composeApp:compileKotlinWasmJs     # Web：只验证编译
-gradle :composeApp:desktopTest --rerun     # 全量测试（~1500 条）
+gradle :composeApp:run                          # desktop: run from source
+gradle :composeApp:createDistributable          # desktop: portable app-image with bundled runtime
+gradle :composeApp:packageMsi                   # desktop: MSI installer
+gradle :composeApp:assembleDebug                # Android APK
+gradle :composeApp:compileKotlinWasmJs          # Web: compile check
+gradle :composeApp:wasmJsBrowserDistribution    # Web: static site
+gradle :composeApp:desktopTest --rerun          # full desktop test suite
 ```
 
-构建前把 `local.properties` 里的 `sdk.dir` 指到你自己的 Android SDK（该文件不进仓库）。
-构建矩阵、门禁、防回退约束、截图工具见 **[`docs/DEVELOPING.md`](docs/DEVELOPING.md)**。
+Before merging, all three gates must pass:
 
----
+```bash
+gradle :composeApp:desktopTest --rerun
+gradle :composeApp:assembleDebug
+gradle :composeApp:compileKotlinWasmJs
+```
 
-## 数据与隐私
+Test totals must be read from `composeApp/build/test-results/desktopTest/TEST-*.xml`; a bare `BUILD SUCCESSFUL` is not enough. The Gradle daemon caches environment variables, so run `gradle --stop` after changing `JAVA_HOME` or `ANDROID_HOME`. See [`docs/DEVELOPING.md`](docs/DEVELOPING.md) for the build matrix and anti-regression constraints, and [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md) for why each version is pinned.
 
-- 配对码**只走内存**：不落盘、不进日志、不进 URL（有专门的守卫测试盯着）。
-- 鉴权 token 由 core 下发，客户端不打印、不上报。
-- 默认假数据模式**不发出任何网络请求**——想离线看界面就一直用默认模式。
+## Data and privacy
 
----
+- The pairing code stays **in memory** and is not written to disk or logs; guard tests enforce this. The Web launch form is the exception for transport: it accepts `pair_code` in the URL query, so avoid that form on shared machines.
+- The auth token is issued by the core; the client does not print or report it.
+- Fixture mode sends **no network requests**.
 
-## 已知限制
+## Known limitations
 
-alpha 阶段的完整清单在 **[主仓 `docs/ALPHA.md` §八](https://github.com/lshub2010/Vade/blob/main/docs/ALPHA.md)**（每条都写了「用户会看到什么 / 怎么绕」）。最常被问到的三条：
+1. **Web cannot perform first-time pairing.** A browser cannot read the `Set-Cookie` from `POST /ui/session`, so the Web build refuses to attempt the exchange. Pair in the desktop or Android client first. Running the built Web site in a browser is also not verified in this repository.
+2. **No connection indicator mid-session.** The client reconnects automatically with exponential backoff (capped at 30 s), but the connection state is only shown while the session list first loads.
+3. **A session can attach twice on one connection.** This is a known baseline issue. Normal use is unaffected, but events may be processed twice on a long-lived connection; restarting the client clears it.
 
-1. **Web 端首次配对不可用**——浏览器读不到 `Set-Cookie`，请在桌面 / 手机完成首次配对。
-2. **会话中段没有连接状态指示**——断线会自动重连（指数退避，上限 30 s），但界面只在列表首次加载时显示连接态。
-3. **同一会话在一条连接上会 attach 两次**（既有基线问题）——正常使用无感，长连接下事件可能被处理两次，重启客户端即回收。
+**Verification gaps.** macOS and Linux desktop builds are unverified. Android has been tested on an API 30 device and an API 37 emulator, not across a wider device matrix. The real-core streaming chat path (`ui/submit` / `turn.delta`) has not been re-verified end to end in this tree; protocol attach and pairing are covered by tests.
 
----
+## Documentation
 
-## 文档
-
-| 想看什么 | 去哪 |
+| What you need | Where |
 |---|---|
-| 整个项目的设计、协议、决策台账 | [lshub2010/Vade](https://github.com/lshub2010/Vade) 的 `docs/` |
-| 从零跑起来（分步命令 + 常见错误） | [`docs/QUICKSTART.md`](docs/QUICKSTART.md) |
-| 构建矩阵 / 门禁 / 防回退约束 | [`docs/DEVELOPING.md`](docs/DEVELOPING.md) |
-| 构建环境与版本矩阵 | [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md) |
-| 视觉规范（圆角 / 阴影 / 模糊 / token） | [`docs/visual-language.md`](docs/visual-language.md) |
-| 协议契约原文（rpc / events / schema） | [`contracts/vade`](contracts/vade)（submodule） |
-| alpha 台账与已知缺陷 | [主仓 `docs/ALPHA.md`](https://github.com/lshub2010/Vade/blob/main/docs/ALPHA.md) |
+| Project design, protocol and decision log | [`docs/` in lshub2010/Vade](https://github.com/lshub2010/Vade) |
+| Step-by-step setup and common errors | [`docs/QUICKSTART.md`](docs/QUICKSTART.md) |
+| Build matrix, gates, anti-regression constraints | [`docs/DEVELOPING.md`](docs/DEVELOPING.md) |
+| Build environment and pinned versions | [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md) |
+| Visual language (radii, shadows, blur, tokens) | [`docs/visual-language.md`](docs/visual-language.md) |
+| Protocol contracts (rpc / events / schema) | [`contracts/vade`](contracts/vade) (git submodule) |
+| Alpha status and known defects | [`docs/ALPHA.md` in lshub2010/Vade](https://github.com/lshub2010/Vade/blob/main/docs/ALPHA.md) |
 
----
+## License
 
-## 许可
+**Apache License 2.0** — see [`LICENSE`](LICENSE) for the full terms and [`NOTICE`](NOTICE) for attribution and third-party notices.
 
-**Apache License 2.0** —— 完整条款见 [`LICENSE`](LICENSE)，署名与第三方声明见 [`NOTICE`](NOTICE)。
+If you modify and redistribute Vade, keep `LICENSE` and `NOTICE`, state prominently in modified files that you changed them, do not imply that the original authors endorse your version, and do not use the project's trademarks. In short: you may modify, commercialise and closed-source your changes, but you may not remove the original attribution or present a modified version as the original.
 
-```
-Copyright (c) 2026 Vade contributors
+## Citation
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-```
-
-### 二次修改与再分发（必须标明原作者）
-
-Apache-2.0 是宽松许可（可商用、可闭源衍生），但**署名不能省**：
-
-- 再分发时必须保留 [`LICENSE`](LICENSE) 与 [`NOTICE`](NOTICE)（§4(c)(d)）；
-- **凡改动过的文件，必须在文件内显著声明「你改过」**（§4(b)）；
-- 不得暗示原作者为你背书（§4(g)），不得使用项目商标（§6）。
-
-一句话：**可以改、可以商用、可以不开源，但不能抹掉原作者、不能把改过的版本说成原版。**
-
-## 引用
-
-如果你在文章、论文或产品里用到 Vade，请按下面格式引用：
+If you use Vade in academic work, cite it using the metadata in [`CITATION.cff`](CITATION.cff):
 
 ```bibtex
 @software{vade2026,
   title     = {Vade: a thin-core, module-first agent runtime},
   author    = {{Vade contributors}},
   year      = {2026},
-  version   = {0.0.1-alpha},
   url       = {https://github.com/lshub2010/vade-client},
   note      = {Client for Android / Desktop / Web (Kotlin Multiplatform)}
 }
 ```
 
-机器可读的引用元数据见 [`CITATION.cff`](CITATION.cff)。
+## Third-party components
 
----
+The project builds on the open-source components below. Their licenses are independent of this project's license, but their notices must be retained when redistributing binaries. Versions are taken from this repository's build files; license identifiers follow the upstream projects' published metadata.
 
-## 第三方组件与许可
-
-本项目站在这些开源组件上。**它们各自的许可与你使用本项目无关，但再分发二进制时必须保留它们的声明**。
-下表由构建脚本里的真实坐标 + 各组件 POM 里声明的许可证核实（2026-11-15），不是凭印象写的。
-
-| 组件 | 版本 | 许可 | 用途 / 链接 |
+| Component | Version | License | Use / link |
 |---|---|---|---|
-| Compose Multiplatform | 1.12.0 | Apache-2.0 | 三端 UI 运行时 · [JetBrains](https://github.com/JetBrains/compose-multiplatform) |
-| Kotlin / kotlinx（coroutines、serialization） | 2.x / 1.11 | Apache-2.0 | 语言与协程、序列化 |
-| Ktor Client（core / websockets / content-negotiation / cio / okhttp / js） | 3.6.1 | Apache-2.0 | 传输层与 WebSocket · [Ktor](https://ktor.io) |
-| Skiko | 0.150.1 | Apache-2.0 | Compose 的 Skia 绑定 |
-| AndroidX Activity Compose | 1.13.0 | Apache-2.0 | Android 入口 |
-| **Miuix**（miuix-ui / miuix-blur） | 0.9.4 | **Apache-2.0** | 毛玻璃、回弹、主题组件 · [miuix](https://github.com/miuix-kotlin-multiplatform/miuix) |
-| **haze**（haze / haze-blur） | 2.1.0 | **Apache-2.0** | 真高斯背景模糊 · [haze](https://github.com/chrisbanes/haze) |
-| **Tabler Icons**（icons-tabler-cmp / outline / filled） | 2.2.1 | **MIT** | 矢量图标，经 [composeicons](https://github.com/composablehorizons/composeicons) 打包 · 图标集本身 Copyright (c) 2018-2026 Tabler contributors |
-| **KernelSU**（浮动胶囊交互移植） | — | **Apache-2.0** | 阻尼拖拽指示器、按压缩放、速度拉伸、橡皮筋、内层阴影 · Copyright (c) 2023-2026 weishu & contributors · [KernelSU](https://github.com/tiann/KernelSU)（原实现改编自 compose-miuix-ui 的 `IosLiquidGlassNavigationBar`） |
+| Compose Multiplatform | 1.12.0 | Apache-2.0 | UI runtime for all three targets · [JetBrains](https://github.com/JetBrains/compose-multiplatform) |
+| Kotlin | 2.4.20 | Apache-2.0 | Language runtime |
+| Ktor Client (core / websockets / content-negotiation / cio / okhttp / js) | 3.6.1 | Apache-2.0 | Transport and WebSocket · [Ktor](https://ktor.io) |
+| AndroidX Activity Compose | 1.9.3 | Apache-2.0 | Android entry point |
+| **Miuix** (`miuix-ui`) | 0.9.4 | **Apache-2.0** | Theme, spring and component set · [miuix](https://github.com/miuix-kotlin-multiplatform/miuix) |
+| **haze** (haze / haze-blur) | 2.1.0 | **Apache-2.0** | Real Gaussian background blur · [haze](https://github.com/chrisbanes/haze) |
+| **Tabler Icons** (icons-tabler-cmp / outline / filled) | 2.2.1 | **MIT** | Vector icons, packaged via [composeicons](https://github.com/composablehorizons/composeicons); icon set Copyright (c) 2018-2026 Tabler contributors |
+| **KernelSU** (floating-capsule interaction port) | — | **Apache-2.0** | Damped drag indicator, press scale, velocity stretch, rubber band, inner shadow · Copyright (c) 2023-2026 weishu & contributors · [KernelSU](https://github.com/tiann/KernelSU) (original implementation adapted from `IosLiquidGlassNavigationBar` in compose-miuix-ui) |
 
-> **许可兼容性**：上述组件均为 Apache-2.0 / MIT，与本项目所选许可互不冲突。
-> 本项目按 Apache-2.0 分发，这些组件的版权与许可声明随源码与二进制一同保留（见 `NOTICE`）。
-
-### HarmonyOS Sans（待定）
-若后续采用，需在此声明：本软件使用 HarmonyOS Sans 字体（© Huawei Device Co., Ltd.），
-按 HarmonyOS Sans Fonts License Agreement 使用。
+All of the above are Apache-2.0 or MIT, which is compatible with this project's Apache-2.0 distribution. Their copyright and license notices are kept with the source and binaries; see [`NOTICE`](NOTICE).
