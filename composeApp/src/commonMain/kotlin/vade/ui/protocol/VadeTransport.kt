@@ -110,7 +110,8 @@ internal fun parseSessionToken(body: String): String? {
     if (body.isBlank()) return null
     val obj = runCatching { VadeJson.default.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject }
         .getOrNull() ?: return null
-    return obj.strStrict("session_token")?.trim()?.takeIf { it.isNotEmpty() }
+    return runCatching { obj.strStrict("session_token") }.getOrNull()
+        ?.trim()?.takeIf { it.isNotEmpty() }
 }
 
 /**
