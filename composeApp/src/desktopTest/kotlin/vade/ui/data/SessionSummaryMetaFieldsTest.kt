@@ -214,7 +214,7 @@ class SessionSummaryMetaFieldsTest {
                 // 契约 session/list 行投影
                 "id", "title", "pinned", "unread", "archived", "groupId", "updatedAt",
                 // UI 自有（派生/展示），不回写线上
-                "preview", "bucket", "updatedLabel", "model", "isDraft",
+                "preview", "bucket", "updatedLabel", "model", "isDraft", "isProvisional",
             ),
             fields,
             "SessionSummary 的字段集合被改动了：新槽位必须先在契约里存在（或来本文件把理由写清）",
