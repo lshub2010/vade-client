@@ -9,6 +9,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.concurrent.Volatile
 import vade.ui.data.SessionAttachedEvent
+import vade.ui.data.SessionListChangedEvent
 import vade.ui.data.SessionSource
 import vade.ui.data.SessionSummary
 import vade.ui.data.TurnCompletedEvent
@@ -85,9 +86,12 @@ internal fun loadErrorOf(t: Throwable): LoadError =
  * 选中对账：归档 / 删除当前会话后，权威列表不再包含它 ⇒ 清选中回列表（审查 P1-4）。
  *
  * ## Events
- * `observeEvents()` is collected once; handled events trigger a coalesced list refresh
- * (a trailing-edge flag collapses an event storm arriving mid-flight into ONE extra
- * fetch). Unhandled / unknown event subtypes are explicitly ignored — never a crash.
+ * `observeListEvents()` is collected once: it is the UNFILTERED list-level seam, so
+ * handled events from any session (including while no chat session is visible) trigger
+ * a coalesced list refresh (a trailing-edge flag collapses an event storm arriving
+ * mid-flight into ONE extra fetch). Unhandled / unknown event subtypes are explicitly
+ * ignored — never a crash. `observeEvents()` is deliberately NOT used here: it is
+ * gated to the visible chat session (P1-3).
  *
  * ## Disposal
  * [dispose] stops accepting work and cancels every launched job; a result that arrives
@@ -134,7 +138,10 @@ class SessionsLoader(
     fun start() {
         refreshSessions()
         launchJob {
-            source.observeEvents().collect { onEvent(it) }
+            // P1-3 · 列表刷新与聊天投影是两个可见性规则不同的消费者：这里收**全量**
+            // 事件（列表根 attachedSessionId==null 时 session.* 也要到），不能用
+            // observeEvents()（它只交付当前可见会话）。
+            source.observeListEvents().collect { onEvent(it) }
         }
     }
 
@@ -197,8 +204,8 @@ class SessionsLoader(
     // ------------------------------------------------------------------ events
 
     /**
-     * The data layer projects six core events (`RealSessionEvents.kt`); there is no
-     * `session.updated` / `session.list_changed` subtype yet. Attach + the turn
+     * The data layer projects eight core events (`RealSessionEvents.kt`), including the
+     * contract-defined `session.list_changed` invalidation edge. Attach + the turn
      * lifecycle events mean session-level truth moved (updated_at / unread), so they
      * trigger the coalesced list refresh; `turn.delta` is per-character streaming and
      * must NOT re-pull the list per delta; anything else (future subtypes) is
@@ -211,6 +218,9 @@ class SessionsLoader(
             is TurnStartedEvent -> refreshSessions()
             is TurnCompletedEvent -> refreshSessions()
             is TurnFailedEvent -> refreshSessions()
+            // P1-3 · 契约指定的列表失效边：别的会话被建/被删（另一台设备、ui/attach
+            // 自动建会话）时也要重拉，不能只靠 turn.* 的副作用。
+            is SessionListChangedEvent -> refreshSessions()
             is TurnDeltaEvent -> {
                 // Streaming text increments change no list row — explicit ignore.
             }

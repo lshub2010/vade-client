@@ -5,6 +5,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -14,6 +15,7 @@ import vade.ui.protocol.FakeTransport
 import vade.ui.protocol.FakeTransportFactory
 import vade.ui.protocol.eventFrame
 import vade.ui.protocol.idOf
+import vade.ui.protocol.requestOf
 import vade.ui.protocol.responseFrame
 import vade.ui.protocol.waitUntil
 import kotlin.test.Test
@@ -57,11 +59,21 @@ class RealSessionEventsTest {
             val (source, transport) = connectedSource(factory)
             val received = Channel<VadeEvent>(Channel.UNLIMITED)
             val collector = collectEvents(source, received)
+            // C-06 路由的前提：这条连接先 attach 到 s-1 —— 别的会话的帧不交付。
+            val attach = async { source.attach("s-1") }
+            transport.push(
+                responseFrame(
+                    idOf(transport.awaitSent()),
+                    """{"session_id":"s-1","from_seq":0,"snapshot":null}""",
+                ),
+            )
+            withTimeout(5_000) { attach.await() }
             transport.push(
                 eventFrame(
                     "session.attached",
                     1,
                     """{"session_id":"s-1","from_seq":1,"state":"open","snapshot":true,"replay_count":0}""",
+                    sessionId = "s-1",
                 ),
             )
             waitUntil { !received.isEmpty }
@@ -248,6 +260,58 @@ class RealSessionEventsTest {
         }
     }
 
+    /**
+     * C-06 · 切换会话后，旧会话的帧不得从 UI 缝（`observeEvents`）漏出来 —— ChatState
+     * 对收到的一切做投影，所以「不串台」必须在这里成立，而不是靠消费方自己过滤。
+     * 旧会话自己的水位仍照常前进（切回去才接得上）。
+     */
+    @Test
+    fun switchingSessionsStopsProjectingThePreviousSessionsFrames() {
+        val factory = FakeTransportFactory()
+        runBlocking {
+            val (source, transport) = connectedSource(factory)
+            val received = Channel<VadeEvent>(Channel.UNLIMITED)
+            val collector = collectEvents(source, received)
+            try {
+                var attach = async { source.attach("s-A") }
+                transport.push(
+                    responseFrame(
+                        idOf(transport.awaitSent()),
+                        """{"session_id":"s-A","from_seq":0,"snapshot":null}""",
+                    ),
+                )
+                withTimeout(5_000) { attach.await() }
+
+                attach = async { source.attach("s-B") }
+                val bFrame = transport.awaitSent()
+                assertEquals("ui/attach", requestOf(bFrame).first)
+                transport.push(
+                    responseFrame(
+                        idOf(bFrame),
+                        """{"session_id":"s-B","from_seq":0,"snapshot":null}""",
+                    ),
+                )
+                withTimeout(5_000) { attach.await() }
+                // 切走 = 摘旧 sink：单向 ui/detach，不等回包。
+                val detach = transport.awaitSent()
+                assertEquals("ui/detach", requestOf(detach).first)
+                assertEquals("""{"session_id":"s-A"}""", requestOf(detach).second)
+
+                transport.push(eventFrame("turn.started", 1, """{"turn_id":"tA","state":"running"}""", sessionId = "s-A"))
+                transport.push(eventFrame("turn.started", 1, """{"turn_id":"tB","state":"running"}""", sessionId = "s-B"))
+                waitUntil { source.client!!.lastSeqFor("s-A") == 1L && source.client!!.lastSeqFor("s-B") == 1L }
+                val only = withTimeout(5_000) { received.receive() }
+                assertEquals("tB", (only as TurnStartedEvent).turnId, "A 的帧不许进 B 的界面")
+                delay(100) // 负例：A 的帧若漏出来，会在这段时间里进 channel
+                assertTrue(received.isEmpty, "exactly one event reached the UI seam")
+                assertEquals(1L, source.client!!.lastSeqFor("s-A"), "A 的水位仍然前进")
+            } finally {
+                collector.cancel()
+                source.disconnect()
+            }
+        }
+    }
+
     @Test
     fun deltasArriveInSeqOrderForConcatenation() {
         val factory = FakeTransportFactory()
@@ -268,6 +332,77 @@ class RealSessionEventsTest {
             assertEquals(listOf(1L, 2L, 3L), events.map { (it as TurnDeltaEvent).seq })
             source.disconnect()
             collector.cancel()
+        }
+    }
+
+    /**
+     * P1-3 · 列表刷新缝**不按可见会话门控**：列表根（没有任何 attach）时，
+     * `session.attached` / `turn.completed` 这类 session.* 帧也必须到达，否则列表的
+     * 排序 / 预览 / 「刚刚」只能等手动刷新（f13 引入的饿死）。
+     *
+     * 同时钉住两条流的分工：聊天投影缝（[RealSessionSource.observeEvents]）在列表根
+     * 依旧什么都不交付。
+     */
+    @Test
+    fun listRefreshSeamReceivesSessionEventsEvenWithNoAttachedSession() {
+        val factory = FakeTransportFactory()
+        runBlocking {
+            val (source, transport) = connectedSource(factory)
+            val listEvents = Channel<VadeEvent>(Channel.UNLIMITED)
+            val projectionEvents = Channel<VadeEvent>(Channel.UNLIMITED)
+            val listReady = CompletableDeferred<Unit>()
+            val projectionReady = CompletableDeferred<Unit>()
+            val listJob = launch {
+                source.observeListEvents()
+                    .onSubscription { listReady.complete(Unit) }
+                    .collect { listEvents.trySend(it) }
+            }
+            val projectionJob = launch {
+                source.observeEvents()
+                    .onSubscription { projectionReady.complete(Unit) }
+                    .collect { projectionEvents.trySend(it) }
+            }
+            listReady.await()
+            projectionReady.await()
+            try {
+                // 列表根：一次 attach 都没有。
+                transport.push(
+                    eventFrame(
+                        "session.attached", 1,
+                        """{"session_id":"s-X","from_seq":1,"state":"open","snapshot":true,"replay_count":0}""",
+                        sessionId = "s-X",
+                    ),
+                )
+                transport.push(
+                    eventFrame(
+                        "turn.completed", 2,
+                        """{"session_id":"s-X","turn_id":"tX","state":"completed","usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2},"stopped_reason":"stop"}""",
+                        sessionId = "s-X",
+                    ),
+                )
+                transport.push(
+                    eventFrame(
+                        "session.list_changed", 3,
+                        """{"session_id":"s-X","change":"added","by":"device"}""",
+                        sessionId = "s-X",
+                    ),
+                )
+                waitUntil { listEvents.isEmpty.not() }
+                waitUntil { source.client!!.lastSeqFor("s-X") >= 3L }
+                val first = listEvents.receive()
+                assertEquals("s-X", (first as SessionAttachedEvent).sessionId)
+                waitUntil { listEvents.isEmpty.not() }
+                assertTrue(listEvents.receive() is TurnCompletedEvent)
+                waitUntil { listEvents.isEmpty.not() }
+                val listChanged = listEvents.receive()
+                assertEquals("s-X", (listChanged as SessionListChangedEvent).changedSessionId)
+                delay(100) // 聊天投影在列表根不收任何一帧
+                assertTrue(projectionEvents.isEmpty, "投影缝在列表根仍然不交付")
+            } finally {
+                listJob.cancel()
+                projectionJob.cancel()
+                source.disconnect()
+            }
         }
     }
 }

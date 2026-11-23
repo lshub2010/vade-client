@@ -1129,73 +1129,83 @@ sealed class VadeEvent {
 
     /** Frame carried `x-vade.coalesce` — droppable/self-contained; a seq gap made only of such events is not a hole. */
     abstract val coalesced: Boolean
+
+    /**
+     * C-06 · 这一帧**属于哪个会话**：信封 `params.session_id`（权威），老 core 回退到
+     * `payload.session_id`。
+     *
+     * `null` = 该帧没有显式归属（老 core 的单会话连接 / 全局帧），消费方必须按旧行为
+     * 接收。非 null 时**只有该会话的消费方**可以投影它 —— `ChatState` 用它把「B 的
+     * 线程」和「A 的帧」硬隔开，attach 失败/切换窗口期间也不依赖协议层门控是否正确。
+     */
+    abstract val sessionId: String?
 }
 
-data class SessionAttached(override val seq: Long, override val coalesced: Boolean, val payload: SessionAttachedPayload) : VadeEvent()
+data class SessionAttached(override val seq: Long, override val coalesced: Boolean, val payload: SessionAttachedPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class TurnQueued(override val seq: Long, override val coalesced: Boolean, val payload: TurnQueuedPayload) : VadeEvent()
+data class TurnQueued(override val seq: Long, override val coalesced: Boolean, val payload: TurnQueuedPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class TurnStarted(override val seq: Long, override val coalesced: Boolean, val payload: TurnStartedPayload) : VadeEvent()
+data class TurnStarted(override val seq: Long, override val coalesced: Boolean, val payload: TurnStartedPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class TurnDelta(override val seq: Long, override val coalesced: Boolean, val payload: TurnDeltaPayload) : VadeEvent()
+data class TurnDelta(override val seq: Long, override val coalesced: Boolean, val payload: TurnDeltaPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class TurnToolCall(override val seq: Long, override val coalesced: Boolean, val payload: TurnToolCallPayload) : VadeEvent()
+data class TurnToolCall(override val seq: Long, override val coalesced: Boolean, val payload: TurnToolCallPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class TurnToolResult(override val seq: Long, override val coalesced: Boolean, val payload: TurnToolResultPayload) : VadeEvent()
+data class TurnToolResult(override val seq: Long, override val coalesced: Boolean, val payload: TurnToolResultPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class TurnApprovalRequired(override val seq: Long, override val coalesced: Boolean, val payload: TurnApprovalRequiredPayload) : VadeEvent()
+data class TurnApprovalRequired(override val seq: Long, override val coalesced: Boolean, val payload: TurnApprovalRequiredPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class TurnApprovalResolved(override val seq: Long, override val coalesced: Boolean, val payload: TurnApprovalResolvedPayload) : VadeEvent()
+data class TurnApprovalResolved(override val seq: Long, override val coalesced: Boolean, val payload: TurnApprovalResolvedPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class TurnInputRequired(override val seq: Long, override val coalesced: Boolean, val payload: TurnInputRequiredPayload) : VadeEvent()
+data class TurnInputRequired(override val seq: Long, override val coalesced: Boolean, val payload: TurnInputRequiredPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class TurnInputResolved(override val seq: Long, override val coalesced: Boolean, val payload: TurnInputResolvedPayload) : VadeEvent()
+data class TurnInputResolved(override val seq: Long, override val coalesced: Boolean, val payload: TurnInputResolvedPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class TurnCompleted(override val seq: Long, override val coalesced: Boolean, val payload: TurnCompletedPayload) : VadeEvent()
+data class TurnCompleted(override val seq: Long, override val coalesced: Boolean, val payload: TurnCompletedPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class TurnFailed(override val seq: Long, override val coalesced: Boolean, val payload: TurnFailedPayload) : VadeEvent()
+data class TurnFailed(override val seq: Long, override val coalesced: Boolean, val payload: TurnFailedPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class TurnInterrupted(override val seq: Long, override val coalesced: Boolean, val payload: TurnInterruptedPayload) : VadeEvent()
+data class TurnInterrupted(override val seq: Long, override val coalesced: Boolean, val payload: TurnInterruptedPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class TurnCancelled(override val seq: Long, override val coalesced: Boolean, val payload: TurnCancelledPayload) : VadeEvent()
+data class TurnCancelled(override val seq: Long, override val coalesced: Boolean, val payload: TurnCancelledPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class QueueUpdated(override val seq: Long, override val coalesced: Boolean, val payload: QueueUpdatedPayload) : VadeEvent()
+data class QueueUpdated(override val seq: Long, override val coalesced: Boolean, val payload: QueueUpdatedPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class ModuleStatus(override val seq: Long, override val coalesced: Boolean, val payload: ModuleStatusPayload) : VadeEvent()
+data class ModuleStatus(override val seq: Long, override val coalesced: Boolean, val payload: ModuleStatusPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class TaskStarted(override val seq: Long, override val coalesced: Boolean, val payload: TaskStartedPayload) : VadeEvent()
+data class TaskStarted(override val seq: Long, override val coalesced: Boolean, val payload: TaskStartedPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class TaskStatus(override val seq: Long, override val coalesced: Boolean, val payload: TaskStatusPayload) : VadeEvent()
+data class TaskStatus(override val seq: Long, override val coalesced: Boolean, val payload: TaskStatusPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class TaskProgress(override val seq: Long, override val coalesced: Boolean, val payload: TaskProgressPayload) : VadeEvent()
+data class TaskProgress(override val seq: Long, override val coalesced: Boolean, val payload: TaskProgressPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class TaskFinished(override val seq: Long, override val coalesced: Boolean, val payload: TaskFinishedPayload) : VadeEvent()
+data class TaskFinished(override val seq: Long, override val coalesced: Boolean, val payload: TaskFinishedPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class SessionTurn(override val seq: Long, override val coalesced: Boolean, val payload: SessionTurnPayload) : VadeEvent()
+data class SessionTurn(override val seq: Long, override val coalesced: Boolean, val payload: SessionTurnPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class SessionClosed(override val seq: Long, override val coalesced: Boolean, val payload: SessionClosedPayload) : VadeEvent()
+data class SessionClosed(override val seq: Long, override val coalesced: Boolean, val payload: SessionClosedPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class SkillProposed(override val seq: Long, override val coalesced: Boolean, val payload: SkillProposedPayload) : VadeEvent()
+data class SkillProposed(override val seq: Long, override val coalesced: Boolean, val payload: SkillProposedPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class UsageBudget(override val seq: Long, override val coalesced: Boolean, val payload: UsageBudgetPayload) : VadeEvent()
+data class UsageBudget(override val seq: Long, override val coalesced: Boolean, val payload: UsageBudgetPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class TurnSuperseded(override val seq: Long, override val coalesced: Boolean, val payload: TurnSupersededPayload) : VadeEvent()
+data class TurnSuperseded(override val seq: Long, override val coalesced: Boolean, val payload: TurnSupersededPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class MessageEdited(override val seq: Long, override val coalesced: Boolean, val payload: MessageEditedPayload) : VadeEvent()
+data class MessageEdited(override val seq: Long, override val coalesced: Boolean, val payload: MessageEditedPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class SessionUpdated(override val seq: Long, override val coalesced: Boolean, val payload: SessionUpdatedPayload) : VadeEvent()
+data class SessionUpdated(override val seq: Long, override val coalesced: Boolean, val payload: SessionUpdatedPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class SessionListChanged(override val seq: Long, override val coalesced: Boolean, val payload: SessionListChangedPayload) : VadeEvent()
+data class SessionListChanged(override val seq: Long, override val coalesced: Boolean, val payload: SessionListChangedPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class SubagentSpawned(override val seq: Long, override val coalesced: Boolean, val payload: SubagentSpawnedPayload) : VadeEvent()
+data class SubagentSpawned(override val seq: Long, override val coalesced: Boolean, val payload: SubagentSpawnedPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class SubagentStatus(override val seq: Long, override val coalesced: Boolean, val payload: SubagentStatusPayload) : VadeEvent()
+data class SubagentStatus(override val seq: Long, override val coalesced: Boolean, val payload: SubagentStatusPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class SubagentResult(override val seq: Long, override val coalesced: Boolean, val payload: SubagentResultPayload) : VadeEvent()
+data class SubagentResult(override val seq: Long, override val coalesced: Boolean, val payload: SubagentResultPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class TurnSkillCatalog(override val seq: Long, override val coalesced: Boolean, val payload: TurnSkillCatalogPayload) : VadeEvent()
+data class TurnSkillCatalog(override val seq: Long, override val coalesced: Boolean, val payload: TurnSkillCatalogPayload, override val sessionId: String? = null) : VadeEvent()
 
-data class TurnToolDiscovered(override val seq: Long, override val coalesced: Boolean, val payload: TurnToolDiscoveredPayload) : VadeEvent()
+data class TurnToolDiscovered(override val seq: Long, override val coalesced: Boolean, val payload: TurnToolDiscoveredPayload, override val sessionId: String? = null) : VadeEvent()
 
 /** Every declared topic name, in events.json order — tests walk this to pin coverage. */
 val VADE_EVENT_TYPES: List<String> = listOf(
@@ -1225,6 +1235,7 @@ object VadeEventParser {
         seq: Long,
         coalesced: Boolean,
         payload: JsonElement?,
+        sessionId: String? = null,
         onMalformed: ((eventType: String?, error: Throwable) -> Unit)? = null,
     ): VadeEvent? {
         val o = payload as? JsonObject
@@ -1239,39 +1250,39 @@ object VadeEventParser {
             null
         }
         return when (type) {
-            "session.attached" -> decode { SessionAttached(seq, coalesced, SessionAttachedPayload.fromJson(o!!)) }
-            "turn.queued" -> decode { TurnQueued(seq, coalesced, TurnQueuedPayload.fromJson(o!!)) }
-            "turn.started" -> decode { TurnStarted(seq, coalesced, TurnStartedPayload.fromJson(o!!)) }
-            "turn.delta" -> decode { TurnDelta(seq, coalesced, TurnDeltaPayload.fromJson(o!!)) }
-            "turn.tool_call" -> decode { TurnToolCall(seq, coalesced, TurnToolCallPayload.fromJson(o!!)) }
-            "turn.tool_result" -> decode { TurnToolResult(seq, coalesced, TurnToolResultPayload.fromJson(o!!)) }
-            "turn.approval_required" -> decode { TurnApprovalRequired(seq, coalesced, TurnApprovalRequiredPayload.fromJson(o!!)) }
-            "turn.approval_resolved" -> decode { TurnApprovalResolved(seq, coalesced, TurnApprovalResolvedPayload.fromJson(o!!)) }
-            "turn.input_required" -> decode { TurnInputRequired(seq, coalesced, TurnInputRequiredPayload.fromJson(o!!)) }
-            "turn.input_resolved" -> decode { TurnInputResolved(seq, coalesced, TurnInputResolvedPayload.fromJson(o!!)) }
-            "turn.completed" -> decode { TurnCompleted(seq, coalesced, TurnCompletedPayload.fromJson(o!!)) }
-            "turn.failed" -> decode { TurnFailed(seq, coalesced, TurnFailedPayload.fromJson(o!!)) }
-            "turn.interrupted" -> decode { TurnInterrupted(seq, coalesced, TurnInterruptedPayload.fromJson(o!!)) }
-            "turn.cancelled" -> decode { TurnCancelled(seq, coalesced, TurnCancelledPayload.fromJson(o!!)) }
-            "queue.updated" -> decode { QueueUpdated(seq, coalesced, QueueUpdatedPayload.fromJson(o!!)) }
-            "module.status" -> decode { ModuleStatus(seq, coalesced, ModuleStatusPayload.fromJson(o!!)) }
-            "task.started" -> decode { TaskStarted(seq, coalesced, TaskStartedPayload.fromJson(o!!)) }
-            "task.status" -> decode { TaskStatus(seq, coalesced, TaskStatusPayload.fromJson(o!!)) }
-            "task.progress" -> decode { TaskProgress(seq, coalesced, TaskProgressPayload.fromJson(o!!)) }
-            "task.finished" -> decode { TaskFinished(seq, coalesced, TaskFinishedPayload.fromJson(o!!)) }
-            "session.turn" -> decode { SessionTurn(seq, coalesced, SessionTurnPayload.fromJson(o!!)) }
-            "session.closed" -> decode { SessionClosed(seq, coalesced, SessionClosedPayload.fromJson(o!!)) }
-            "skill.proposed" -> decode { SkillProposed(seq, coalesced, SkillProposedPayload.fromJson(o!!)) }
-            "usage.budget" -> decode { UsageBudget(seq, coalesced, UsageBudgetPayload.fromJson(o!!)) }
-            "turn.superseded" -> decode { TurnSuperseded(seq, coalesced, TurnSupersededPayload.fromJson(o!!)) }
-            "message.edited" -> decode { MessageEdited(seq, coalesced, MessageEditedPayload.fromJson(o!!)) }
-            "session.updated" -> decode { SessionUpdated(seq, coalesced, SessionUpdatedPayload.fromJson(o!!)) }
-            "session.list_changed" -> decode { SessionListChanged(seq, coalesced, SessionListChangedPayload.fromJson(o!!)) }
-            "subagent.spawned" -> decode { SubagentSpawned(seq, coalesced, SubagentSpawnedPayload.fromJson(o!!)) }
-            "subagent.status" -> decode { SubagentStatus(seq, coalesced, SubagentStatusPayload.fromJson(o!!)) }
-            "subagent.result" -> decode { SubagentResult(seq, coalesced, SubagentResultPayload.fromJson(o!!)) }
-            "turn.skill_catalog" -> decode { TurnSkillCatalog(seq, coalesced, TurnSkillCatalogPayload.fromJson(o!!)) }
-            "turn.tool_discovered" -> decode { TurnToolDiscovered(seq, coalesced, TurnToolDiscoveredPayload.fromJson(o!!)) }
+            "session.attached" -> decode { SessionAttached(seq, coalesced, SessionAttachedPayload.fromJson(o!!), sessionId) }
+            "turn.queued" -> decode { TurnQueued(seq, coalesced, TurnQueuedPayload.fromJson(o!!), sessionId) }
+            "turn.started" -> decode { TurnStarted(seq, coalesced, TurnStartedPayload.fromJson(o!!), sessionId) }
+            "turn.delta" -> decode { TurnDelta(seq, coalesced, TurnDeltaPayload.fromJson(o!!), sessionId) }
+            "turn.tool_call" -> decode { TurnToolCall(seq, coalesced, TurnToolCallPayload.fromJson(o!!), sessionId) }
+            "turn.tool_result" -> decode { TurnToolResult(seq, coalesced, TurnToolResultPayload.fromJson(o!!), sessionId) }
+            "turn.approval_required" -> decode { TurnApprovalRequired(seq, coalesced, TurnApprovalRequiredPayload.fromJson(o!!), sessionId) }
+            "turn.approval_resolved" -> decode { TurnApprovalResolved(seq, coalesced, TurnApprovalResolvedPayload.fromJson(o!!), sessionId) }
+            "turn.input_required" -> decode { TurnInputRequired(seq, coalesced, TurnInputRequiredPayload.fromJson(o!!), sessionId) }
+            "turn.input_resolved" -> decode { TurnInputResolved(seq, coalesced, TurnInputResolvedPayload.fromJson(o!!), sessionId) }
+            "turn.completed" -> decode { TurnCompleted(seq, coalesced, TurnCompletedPayload.fromJson(o!!), sessionId) }
+            "turn.failed" -> decode { TurnFailed(seq, coalesced, TurnFailedPayload.fromJson(o!!), sessionId) }
+            "turn.interrupted" -> decode { TurnInterrupted(seq, coalesced, TurnInterruptedPayload.fromJson(o!!), sessionId) }
+            "turn.cancelled" -> decode { TurnCancelled(seq, coalesced, TurnCancelledPayload.fromJson(o!!), sessionId) }
+            "queue.updated" -> decode { QueueUpdated(seq, coalesced, QueueUpdatedPayload.fromJson(o!!), sessionId) }
+            "module.status" -> decode { ModuleStatus(seq, coalesced, ModuleStatusPayload.fromJson(o!!), sessionId) }
+            "task.started" -> decode { TaskStarted(seq, coalesced, TaskStartedPayload.fromJson(o!!), sessionId) }
+            "task.status" -> decode { TaskStatus(seq, coalesced, TaskStatusPayload.fromJson(o!!), sessionId) }
+            "task.progress" -> decode { TaskProgress(seq, coalesced, TaskProgressPayload.fromJson(o!!), sessionId) }
+            "task.finished" -> decode { TaskFinished(seq, coalesced, TaskFinishedPayload.fromJson(o!!), sessionId) }
+            "session.turn" -> decode { SessionTurn(seq, coalesced, SessionTurnPayload.fromJson(o!!), sessionId) }
+            "session.closed" -> decode { SessionClosed(seq, coalesced, SessionClosedPayload.fromJson(o!!), sessionId) }
+            "skill.proposed" -> decode { SkillProposed(seq, coalesced, SkillProposedPayload.fromJson(o!!), sessionId) }
+            "usage.budget" -> decode { UsageBudget(seq, coalesced, UsageBudgetPayload.fromJson(o!!), sessionId) }
+            "turn.superseded" -> decode { TurnSuperseded(seq, coalesced, TurnSupersededPayload.fromJson(o!!), sessionId) }
+            "message.edited" -> decode { MessageEdited(seq, coalesced, MessageEditedPayload.fromJson(o!!), sessionId) }
+            "session.updated" -> decode { SessionUpdated(seq, coalesced, SessionUpdatedPayload.fromJson(o!!), sessionId) }
+            "session.list_changed" -> decode { SessionListChanged(seq, coalesced, SessionListChangedPayload.fromJson(o!!), sessionId) }
+            "subagent.spawned" -> decode { SubagentSpawned(seq, coalesced, SubagentSpawnedPayload.fromJson(o!!), sessionId) }
+            "subagent.status" -> decode { SubagentStatus(seq, coalesced, SubagentStatusPayload.fromJson(o!!), sessionId) }
+            "subagent.result" -> decode { SubagentResult(seq, coalesced, SubagentResultPayload.fromJson(o!!), sessionId) }
+            "turn.skill_catalog" -> decode { TurnSkillCatalog(seq, coalesced, TurnSkillCatalogPayload.fromJson(o!!), sessionId) }
+            "turn.tool_discovered" -> decode { TurnToolDiscovered(seq, coalesced, TurnToolDiscoveredPayload.fromJson(o!!), sessionId) }
             // Unknown topic: ignore it (events.json rule 6) — the caller still advances last_seq.
             else -> null
         }

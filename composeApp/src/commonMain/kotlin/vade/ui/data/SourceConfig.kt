@@ -404,6 +404,9 @@ internal class AutoConnectingSessionSource(
 
     override fun observeEvents(): Flow<VadeEvent> = real.observeEvents()
 
+    /** P1-3 · 列表级失效边透传（全量、不按可见会话门控）。 */
+    override fun observeListEvents(): Flow<VadeEvent> = real.observeListEvents()
+
     /**
      * B6 · `approval/decide` 透传：先等连接（与 sessions/messages 同一口径），再交
      * [real] 的实现 —— 参数逐字、错误原码穿透。

@@ -1,13 +1,13 @@
 package vade.ui.data
 
 /**
- * The **seven** core events this batch projects from the 26-event stream (c-data §3):
+ * The **eight** core events this batch projects from the 26-event stream (c-data §3):
  * `session.attached` / `turn.queued` / `turn.started` / `turn.delta` /
- * `turn.completed` / `turn.failed` — plus `module.status` (g-modules-wire: the only
- * module topic in the frozen schema, projected so `ModuleCatalog` can treat it as the
- * invalidation edge for the `ui/modules` pull). These are [VadeEvent] subtypes — the sealed
- * interface `SessionSource.observeEvents()` has promised since Wave 0 — so UI pages
- * consume protocol truth without importing `vade.ui.protocol`. The untouched payloads
+ * `turn.completed` / `turn.failed` / `session.list_changed` — plus `module.status`
+ * (g-modules-wire: the only module topic in the frozen schema, projected so `ModuleCatalog`
+ * can treat it as the invalidation edge for the `ui/modules` pull). These are [VadeEvent]
+ * subtypes — the sealed interface `SessionSource.observeEvents()` has promised since
+ * Wave 0 — so UI pages consume protocol truth without importing `vade.ui.protocol`. The untouched payloads
  * stay one import away in the protocol layer for a later wiring batch.
  *
  * All other event types are dropped by [RealSessionSource] (explicitly ignored, never
@@ -70,6 +70,23 @@ data class TurnFailedEvent(
     val turnId: String,
     val code: String,
     val message: String,
+) : VadeEvent
+
+/**
+ * `session.list_changed` — RFC-0010 §6.2：别的会话被建/被删后扇出给每个 attached 会话
+ * （**不含**被改的那个）。payload 故意不带行数据：客户端收到就重拉 `session/list`。
+ *
+ * P1-3 · 这是列表刷新的**契约指定**失效边。没有它，列表只能靠 `turn.*` 间接刷新；
+ * 新建/删除别的会话（例如另一台设备）在列表上就看不见。
+ */
+data class SessionListChangedEvent(
+    val seq: Long,
+    /** 被创建 / 删除的那个会话。 */
+    val changedSessionId: String,
+    /** added | removed. */
+    val change: String,
+    /** device_id | admin | system. */
+    val by: String,
 ) : VadeEvent
 
 /**
