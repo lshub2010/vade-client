@@ -601,7 +601,7 @@ private fun ShellBody(state: UiState) {
             // `source`（`UiState.source` 是 val），开合抽屉只改「要不要 start」，
             // 不重建任何东西。`sessionId == null` = 不订阅（列表根 / 其它 tab / 草稿）。
             val usageSessionId: String? =
-                if (detailVisible && session != null && !session.isDraft) session.id else null
+                if (detailVisible && session != null && !session.isDraft && !session.isProvisional) session.id else null
             val usageLine: UsageSubtitleLine =
                 rememberSessionUsageSubtitleLine(state.source, usageSessionId)
             val detailLeading: (@Composable () -> Unit)? = if (detailVisible) {
