@@ -261,9 +261,9 @@ class VadeClientBehaviorTest {
             assertEquals("ui/attach", requestOf(frame).first)
             transport.push(responseFrame(idOf(frame), """{"session_id":"s1","from_seq":0,"snapshot":null}"""))
             // Core replays the backlog FIRST, session.attached closes the replay:
-            transport.push(eventFrame("turn.delta", 1, """{"turn_id":"t1","text":"r1"}"""))
-            transport.push(eventFrame("turn.delta", 2, """{"turn_id":"t1","text":"r2"}"""))
-            transport.push(eventFrame("session.attached", 3, """{"session_id":"s1","from_seq":1,"state":"open","snapshot":false,"replay_count":2}"""))
+            transport.push(eventFrame("turn.delta", 1, """{"turn_id":"t1","text":"r1"}""", sessionId = "s1"))
+            transport.push(eventFrame("turn.delta", 2, """{"turn_id":"t1","text":"r2"}""", sessionId = "s1"))
+            transport.push(eventFrame("session.attached", 3, """{"session_id":"s1","from_seq":1,"state":"open","snapshot":false,"replay_count":2}""", sessionId = "s1"))
             withTimeout(5000) { attachCall.await() }
             withTimeout(5000) { done.await() }
             assertEquals(listOf("TurnDelta", "TurnDelta", "SessionAttached"), order.take(3), "replay before attached, in seq order")

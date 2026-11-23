@@ -26,6 +26,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.test.fail
 
 /**
  * f13 复审 P0-1 / P1-1 / P1-2 / P1-4 · attach 状态机的失败与竞争路径。
@@ -189,7 +190,7 @@ class SessionAttachFailureRoutingTest {
             transport.push(responseFrame(idOf(transport.awaitSent()), """{"session_id":"s-A","from_seq":0,"snapshot":null}"""))
             withTimeout(5_000) { attachA.await() }
 
-            val attachB = async { client.attach(AttachParams("s-B", null)) }
+            val attachB = async { runCatching { client.attach(AttachParams("s-B", null)) } }
             val bFrame = transport.awaitSent()
             val attachC = async { client.attach(AttachParams("s-C", null)) }
             val cFrame = transport.awaitSent()
@@ -205,9 +206,8 @@ class SessionAttachFailureRoutingTest {
             // 先发起的 B 晚回包：只许收拾自己，绝不许把 attached 改回 B。
             transport.push(responseFrame(idOf(bFrame), """{"session_id":"s-B","from_seq":0,"snapshot":null}"""))
             // P1-1 · 被淘汰的成功回包**不是**成功：必须以 CANCELLED 回到调用方。
-            val superseded = assertFailsWith<VadeException>("被淘汰的成功回包不许当成功返回") {
-                withTimeout(5_000) { attachB.await() }
-            }
+            val superseded = withTimeout(5_000) { attachB.await() }.exceptionOrNull()
+                as? VadeException ?: fail("被淘汰的成功回包不许当成功返回")
             assertEquals(VadeErrorCodes.CANCELLED, superseded.code)
             assertEquals("s-C", client.attachedSession, "旧回包不得覆盖新会话（latest-wins）")
             val detachB = transport.awaitSent()
@@ -460,7 +460,7 @@ class SessionAttachFailureRoutingTest {
             val seen = mutableListOf<VadeEvent>()
             val collector = collectEvents(client) { seen.add(it) }
 
-            val attachB = async { client.attach(AttachParams("s-B", null)) }
+            val attachB = async { runCatching { client.attach(AttachParams("s-B", null)) } }
             val bFrame = transport.awaitSent()
             val create = async { client.attach(AttachParams(null, null)) }
             val createFrame = transport.awaitSent()
@@ -468,9 +468,8 @@ class SessionAttachFailureRoutingTest {
             // B 成功，但最新的意图是 create：B 被淘汰 → 摘 sink、门回 A，且回包以
             // CANCELLED 抛给调用方（P1-1：不许把这个快照当成「可以 Ready」）。
             transport.push(responseFrame(idOf(bFrame), """{"session_id":"s-B","from_seq":0,"snapshot":null}"""))
-            val superseded = assertFailsWith<VadeException>("被淘汰的成功回包不许当成功返回") {
-                withTimeout(5_000) { attachB.await() }
-            }
+            val superseded = withTimeout(5_000) { attachB.await() }.exceptionOrNull()
+                as? VadeException ?: fail("被淘汰的成功回包不许当成功返回")
             assertEquals(VadeErrorCodes.CANCELLED, superseded.code)
             assertEquals("s-A", client.attachedSession, "被淘汰的成功 attach 不许改 attached")
 

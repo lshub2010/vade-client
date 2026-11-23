@@ -571,7 +571,7 @@ class VadeClient(
             visibleSessionId == attachedSessionId && createAttachInFlight == 0
         }
         val owner: String? = claimedOwner
-            ?: if (legacySteady) attachedSessionId ?: UNTRACKED_SESSION else null
+            ?: (if (legacySteady) attachedSessionId ?: UNTRACKED_SESSION else null)
         if (owner == null) {
             // 归属不明的老 core 帧：`sessionId = null`（消费方据此知道它不属于任何会话），
             // 只送全量缝。绝不 emit 到 [events]，也绝不写 seqBySession。
