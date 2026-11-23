@@ -80,6 +80,34 @@ class BackDispatchTest {
         assertFalse(d.dispatch(), "栈空后再次返回交还系统")
     }
 
+    // --- 2b · 优先级：先压入的 ALERT 层压过后压入的普通层（f18 复审 P1-3） --------------
+
+    /**
+     * 栈序按**入栈时刻**算：`CoreSwitchPanel` 的 busy 层先组合、后启用，就会压在自签证书
+     * 警告（先入栈）之上。优先级让「必然压住整页」的确认层永远先被问到；同优先级仍按栈序。
+     */
+    @Test
+    fun anAlertLayerOutranksALaterPushedDefaultLayer() {
+        val d = BackDispatcher()
+        var alertClosed = 0
+        var busySwallowed = 0
+
+        val alert = d.push({ alertClosed++ }, BackDispatcher.PRIORITY_ALERT)
+        val busy = d.push { busySwallowed++ } // 后压入 ⇒ 没有优先级时它会赢
+
+        assertTrue(d.dispatch(), "栈非空，返回被消费")
+        assertEquals(1, alertClosed, "ALERT 层必须先处理，哪怕普通层后压入")
+        assertEquals(0, busySwallowed, "busy 的 no-op 不许吃掉这次返回")
+
+        // 警告关掉（出栈）之后，才轮到 busy 那层 —— 同优先级 / 剩余层仍按栈序。
+        d.pop(alert)
+        assertTrue(d.dispatch())
+        assertEquals(1, busySwallowed)
+        d.pop(busy)
+        assertEquals(0, d.depth)
+        assertFalse(d.dispatch(), "栈空交还系统")
+    }
+
     // --- 1 · 浮层真的没了（语义树级） ---------------------------------------------
 
     @Test
