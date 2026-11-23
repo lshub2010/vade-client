@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
@@ -372,7 +373,15 @@ internal class AutoConnectingSessionSource(
     private val host: String,
     private val port: Int,
     private val connectTimeoutMs: Long = AUTO_CONNECT_TIMEOUT_MS,
-) : SessionSource, AdapterHost, ActivitySeamHost, ModuleCatalogProvider, DisconnectableSource {
+) : SessionSource, AdapterHost, ActivitySeamHost, ModuleCatalogProvider, DisconnectableSource, ConnectionStateHost {
+
+    /**
+     * T1 · 生产形态的**唯一**装配就是本 shim 包住 [RealSessionSource]；不透传这条流，
+     * `AppShell` 的 `state.source as? ConnectionStateHost` 在真机上恒为 null —— 顶栏与
+     * 会话中段的连接态会静默消失（「测试绿、生产是死的」的同一形态）。
+     * 复用 [real] 自己的 `StateFlow`，不复制、不另建状态。
+     */
+    override val connectionState: StateFlow<RealSessionState> get() = real.connectionState
 
     /** A1 · 适配器包透传（未连接 = null，与 `RealSessionSource` 的契约逐字一致；snapshot state 读，P1-1）。 */
     override val adapters: AdapterProvider? get() = real.adapters

@@ -109,7 +109,7 @@ class RealSessionSource(
      * 生产路径不经过任何分支差异。
      */
     private val ownedFactoryProvider: (() -> VadeTransportFactory)? = null,
-) : SessionSource, AdapterHost, ActivitySeamHost, ModuleCatalogProvider, DisconnectableSource {
+) : SessionSource, AdapterHost, ActivitySeamHost, ModuleCatalogProvider, DisconnectableSource, ConnectionStateHost {
 
     /**
      * 模块清单通道：**连接期非空、断开后回到 `null`**（`connect()` 建，`disconnect()` dispose）。
@@ -209,6 +209,12 @@ class RealSessionSource(
 
     /** Observable connection lifecycle — bind banners/badges to this. */
     val state: StateFlow<RealSessionState> = _state
+
+    /**
+     * T1 · [ConnectionStateHost] reads the **same** flow, not a copy — the shell's
+     * top-bar badge and the mid-chat notice are bound to the protocol runner's truth.
+     */
+    override val connectionState: StateFlow<RealSessionState> get() = _state
 
     private val _events = MutableSharedFlow<VadeEvent>(
         extraBufferCapacity = 256,

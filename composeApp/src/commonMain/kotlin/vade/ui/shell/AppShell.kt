@@ -348,6 +348,9 @@ private fun ShellBody(state: UiState) {
         val session = state.selectedSession
         // 接线（g-activate）：真数据源的适配器包从这里往下传；假源不实现 AdapterHost ⇒ null。
         val adapters = adaptersOf(state)
+        // T1 · 顶栏的连接徽标读真源自己的生命周期流（夹具源不实现 ConnectionStateHost ⇒ null，
+        // 不画任何节点）。同一份状态也交给详情页做会话中段横幅。
+        val connection = rememberConnectionStatus(state.source)
         val detailOpen = state.dest == Destination.Sessions && session != null && !metrics.twoPane
         // g-route-transition：详情「真正可见」= 详情开着 且（无抽屉断点 或 抽屉已收回）。
         // 顶栏 chrome 跟着这个走：抽屉开着时屏上是列表 → 列表 chrome；抽屉收回时屏上是
@@ -672,6 +675,7 @@ private fun ShellBody(state: UiState) {
                 onSubtitleClick = (usageLine as? UsageSubtitleLine.Retry)?.onRetry,
                 leading = detailLeading,
                 actions = actions,
+                connection = connection,
             )
         }
 
@@ -862,6 +866,8 @@ private fun DestinationHost(
 ) {
     // 接线（g-activate）：与 [ShellBody] 同一处推导，四处屏幕共用这一个值。
     val adapters = adaptersOf(state)
+    // T1 · 详情页的会话中段横幅（与顶栏同一份 ConnectionStatus，不是第二套状态）。
+    val connection = rememberConnectionStatus(state.source)
     // g-nav-stack · ≥600dp 的详情也是一层返回（G1：页面级 push 在 Android 上按返回会直接
     // 退出应用）：双栏右栏与 600–719 rail 单栏的详情都由这里登记，返回 = `state.back()`
     // 清选中 —— 与手机单栏抽屉里那一层、与顶栏「返回」按钮完全同一个动作。
@@ -951,6 +957,7 @@ private fun DestinationHost(
                             ),
                         adapters = adapters,
                         contentPadding = PaddingValues(top = TOP_BAR_ZONE),
+                        connection = connection,
                         // P1-11/`compactEmpty`：这一格**左边真有列表**，空态文案是
                         // 「在左侧选择一个会话」。也因此**不传** `onOpenList` —— 双栏没有
                         // 抽屉，给一个「打开会话列表」按钮只会点了没反应。
@@ -973,6 +980,7 @@ private fun DestinationHost(
                     // The pushed-detail top bar above already carries this title.
                     showTitle = false,
                     adapters = adapters,
+                    connection = connection,
                     // 600–719 的 rail 单栏：没有抽屉（`sessionsDrawerOpen` 在这个断点是
                     // 死状态，见 `UiState` 的 KDoc），列表是 rail 切换到的**根页** ——
                     // 所以这里不 provide/不传任何「打开列表」动作；空态（只可能出现在

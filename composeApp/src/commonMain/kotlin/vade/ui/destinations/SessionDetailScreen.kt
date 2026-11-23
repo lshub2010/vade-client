@@ -45,6 +45,8 @@ import vade.ui.model.ModelActions
 import vade.ui.model.ModelComposerChip
 import vade.ui.model.ModelPickerSheet
 import vade.ui.model.ModelState
+import vade.ui.shell.ConnectionNotice
+import vade.ui.shell.ConnectionStatus
 import vade.ui.skin.LocalSkin
 
 /**
@@ -182,6 +184,12 @@ fun SessionDetailScreen(
      * 一个点了没反应的按钮比没有按钮更糟（§8.5）。
      */
     onOpenList: (() -> Unit)? = null,
+    /**
+     * T1 · 真实连接状态（来自 `RealSessionSource` 的既有生命周期流，经 AppShell 投影）。
+     * 非健康态在会话中段画一条 [ConnectionNotice]；`null`（夹具源 / 未接线）不画任何节点。
+     * 放在参数表末尾，既有调用点（含测试）不需要改。
+     */
+    connection: ConnectionStatus? = null,
 ) {
     if (session == null) {
         EmptyDetail(
@@ -303,6 +311,16 @@ fun SessionDetailScreen(
             )
             // Load-failure banner 已删除：线程的 Loading / 空 / 失败三态由 ChatThread
             // 从 `chat.phase` / `chat.loadError` 一处渲染，重试走 `chat.retryHistory()`。
+            //
+            // T1 · 连接态横幅：断线 / 重连时贴在会话中段顶部（健康态不组合节点，布局零变化）。
+            // 放在 header 之后而不是 ChatThread 内部：ChatThread 是满屏滚动列，横幅作为
+            // 它的兄弟才不会随消息滚走 —— 「界面像停住」时用户始终看得见原因。
+            if (connection != null) {
+                ConnectionNotice(
+                    status = connection,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
+                )
+            }
         }
         if (modelPickerOpen) {
             ModelPickerSheet(
