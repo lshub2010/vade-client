@@ -26,6 +26,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -607,5 +608,24 @@ class ChatSendWireTest {
         // 真 id 一到，同一行立刻可编辑
         chat.applyLiveEvent(queued(1, "t-1", clientMsgId, userMessageId = "u-core-2"))
         assertTrue(chat.canEditMessage("u-core-2"))
+    }
+
+    // --- P2-6 · 页面离开 = dispose：在途 / 后续 RPC 一条都不许出网 --------------------
+
+    @Test
+    fun disposedChatStateSendsNoFurtherWireCallsAndIsIdempotent() = runBlocking {
+        val probe = WireProbe(FakeTranscript())
+        val chat = realChat(probe)
+        chat.loadHistory()
+
+        chat.dispose()
+        chat.dispose() // 幂等
+        assertTrue(chat.isDisposed, "dispose 后必须可观察（页面侧 DisposableEffect 用它兜底）")
+
+        chat.updateDraft("下屏之后才写进来的消息")
+        // main 起 `submit()` 自带 disposed 守卫：入口直接返回 null，本地也不再造气泡。
+        assertNull(chat.submit(), "dispose 之后发送入口必须拒绝（不是「本地成功、只是不出网」）")
+        assertEquals(0, probe.totalCalls, "dispose 之后不许再发 RPC（cancelled wireScope）")
+        assertFalse(chat.isStreaming)
     }
 }

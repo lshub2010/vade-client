@@ -22,11 +22,18 @@ import vade.ui.data.SessionSource
 import vade.ui.data.SessionGroup
 import vade.ui.data.SessionSummary
 import vade.ui.data.TimeBucket
+import vade.ui.data.epochNowMs
 import vade.ui.data.sessionGroups
 import vade.ui.destinations.Destination
 import vade.ui.search.SearchHit
 import vade.ui.search.SearchState
 import vade.ui.skin.BottomBarStyle
+
+/**
+ * A4-1 · 新建成功后、权威 `session/list` 索引到它之前，列表 / 详情上的占位标题。
+ * core 的标题由服务端在首次 attach 时铸出，客户端不猜 —— 权威行一到就被替换。
+ */
+private const val PROVISIONAL_SESSION_TITLE = "新会话"
 
 /**
  * UI-layer state for the shell slice. **No protocol, no persistence** (D98): the drafts
@@ -36,15 +43,22 @@ import vade.ui.skin.BottomBarStyle
  * anything other than the default [FakeSessionSource] (e.g. `VADE_SOURCE=real` builds a
  * [vade.ui.data.RealSessionSource] in `Main.kt`), this class reads it through
  * [SessionsLoader] — the session list is pulled on start, handled events trigger
- * refreshes — and exposes Loading / Ready / Failed phases ([sessionsPhase]) with a
+ * refreshes — and exposes a Loading / Ready / Failed phase ([sessionsPhase]) with a
  * classified error ([sessionsError]) and a retry entry ([retrySessions]). Rows are
  * grouped with the same FR-8.26 contract as the fixtures ([sessionGroups]);
- * `groups()` serves `loader.rows + drafts`.
+ * `groups()` serves `loader.rows + drafts`（真源新建成功后还有一条占位行，见
+ * [createdRows]）.
  *
  * **消息线程不在这里读**：`SessionSource.messages(id)` 是 `ui/attach`，一次选择只许
  * 一次（双读 = 双 sink）。历史 + 事件 + 加载三态的唯一主人是 `ChatState`
  * （`SessionDetailScreen` 每选中一个会话建一个，`ChatThread` 的 `LaunchedEffect(state)`
  * 驱动 `collectLiveEvents` / `loadHistory`）。
+ *
+ * ## 选中对账（审查 P1-4）
+ * 归档 / 删除当前会话后，权威列表会不再包含它；如果只把行从投影里去掉而不动
+ * [selectedSessionId]，屏上就是「空详情 + 详情 chrome」，返回栈也还按有详情登记。
+ * [SessionsLoader.onRowsLoaded] 把每次成功刷新的行交给 [reconcileSelection]：选中不
+ * 在 rows ∪ drafts 里 ⇒ 清选中并回列表（手机打开抽屉）。
  *
  * With the default [FakeSessionSource] NOTHING changes: `loader` is `null`, fixtures
  * stay synchronous, and no coroutine, fetch or event subscription exists — byte for
@@ -146,6 +160,40 @@ class UiState(
         else -> loaderScope ?: CoroutineScope(SupervisorJob() + Dispatchers.Default)
     }
 
+    /** 本地草稿（夹具路径）；先于 loader 初始化 —— 刷新回调可能在构造期同步跑（Unconfined scope）。 */
+    private val drafts = mutableStateListOf<SessionSummary>()
+
+    /**
+     * A4-1 · 刚创建成功、但权威 `session/list` 还没索引到的行（仅真源路径）。
+     *
+     * `SessionSource.createSession()` 只回一个 id。若成功路径只写 [selectedSessionId]，
+     * 详情页拿到的是 `selectedSession == null` ⇒ 渲染 `EmptyDetail`（审查 f14 P1-1）；
+     * 而列表刷新若**先于** core 的索引，rows 里永远没有它，这个会话就再也打不开。
+     *
+     * 所以成功路径先造一条**可渲染的本地占位行**：详情立刻能拿到 `session` 建 ChatState
+     * （该 attach 就 attach，失败也有 ChatThread 的重试），列表也立刻看得到它。权威行
+     * 第一次出现在 `rows` 里即退场（[reconcileSelection]）—— 标题 / 置顶 / 分组此后
+     * 一律以权威行为准，同 id 绝不同屏两行。
+     *
+     * 与 [drafts] 的区别：草稿**从未持久化**（夹具路径的本地模拟），占位行对应的会话
+     * **已经在服务端建好**，只是列表还差一次刷新；行上 `isProvisional = true`，
+     * 元数据动作与用量读取要等权威行接管。
+     */
+    private val createdRows = mutableStateListOf<SessionSummary>()
+
+    /**
+     * 刚由 ✎ 建出来、还没在权威 rows 里露过面的会话 id（审查 P1-4 的对账豁免）。
+     *
+     * `ui/attach(null)` 成功返回 id 后，下一次 `sessions()` 可能先于 core 的列表索引，
+     * 此时 rows 里暂时没有它 —— 没有这个豁免，对账会立刻把刚建好的会话选中清掉。
+     * 行第一次出现即销账；用户切到别的会话时也销账（旧 id 不再需要豁免）。
+     *
+     * @Volatile：写于创建协程（[asyncScope]），读于 loader 线程的 [reconcileSelection]
+     * —— 无 happens-before 的普通 var 在极端调度下会读到 null，把刚建好的选中当悬挂清掉。
+     */
+    @Volatile
+    private var pendingCreatedSessionId: String? = null
+
     /**
      * w-wire: the async reads of [source]. `null` on the fixture path. Derived from
      * [asyncScope] — the two share the same condition, so `loader != null` ⟺
@@ -155,11 +203,14 @@ class UiState(
         SessionsLoader(
             source = source,
             scope = scope,
+            onRowsLoaded = ::reconcileSelection,
         )
     }
 
     init {
         loader?.start()
+        // 深链只写选中：线程读取（`ui/attach`）由详情页的 ChatState 在进入组合时发一次，
+        // 本类不再代发（双读 = 同连接双 sink）。
     }
 
     /**
@@ -171,8 +222,6 @@ class UiState(
      */
     val search = SearchState()
 
-    private val drafts = mutableStateListOf<SessionSummary>()
-
     // --- w-wire · observable source reads (async path; fixture path reports Ready/null) ---
 
     /** Loading / Ready / Failed of the session-list read (fixtures: always Ready). */
@@ -183,6 +232,53 @@ class UiState(
 
     /** Raw rows the source answered with (fixtures: empty — `groups()` serves fixtures). */
     val sessionRows: List<SessionSummary> get() = loader?.rows ?: emptyList()
+
+    /**
+     * 选中对账（审查 P1-4）：每次权威列表刷新成功后，检查当前选中是否还在列表里。
+     *
+     * 判定顺序：
+     *  1. 没有选中 ⇒ 无事；
+     *  2. 本地草稿（夹具路径）⇒ 永远在 `groups()` 里，豁免；
+     *  3. 刚创建、权威列表还没索引到（占位行还在，见 [createdRows]）⇒ 选中有效；
+     *  4. 行里还有它 ⇒ 若它是刚建出来等待露面的 id，销账；
+     *  5. 还有 pending 豁免（占位行已被替换但销账前的窗口）⇒ 保留；
+     *  6. 其余（归档 / 删除 / 不存在的深链 id）⇒ 清选中、回列表。
+     *
+     * 「回列表」只在会话页有意义：手机抽屉模型打开抽屉（屏上是列表、底下是空详情），
+     * 双栏 / rail 的清选中本身就是列表根。
+     */
+    private fun reconcileSelection(rows: List<SessionSummary>) {
+        // 权威行露面 = 占位行退休（先退场再对账，避免同 id 两行同屏）。只在这里做，
+        // 因为 `rows` 是**成功刷新**的产物；一次读失败不会让占位行凭空消失。
+        if (createdRows.isNotEmpty()) {
+            val authoritative = rows.mapTo(HashSet(rows.size)) { it.id }
+            for (i in createdRows.indices.reversed()) {
+                if (createdRows[i].id in authoritative) createdRows.removeAt(i)
+            }
+        }
+        val id = selectedSessionId ?: return
+        if (drafts.any { it.id == id }) return
+        // 占位行就是它此刻的可渲染来源（列表索引还没轮到）：选中必须保留，详情照常渲染。
+        if (createdRows.any { it.id == id }) return
+        if (rows.any { it.id == id }) {
+            if (pendingCreatedSessionId == id) pendingCreatedSessionId = null
+            return
+        }
+        if (pendingCreatedSessionId == id) return
+        clearSelection()
+        if (dest == Destination.Sessions) sessionsDrawerOpen = true
+    }
+
+    /**
+     * 清选中的**唯一**写入口（`select` / `back` / 对账共用）。清选中 = 详情那一层出栈：
+     * `SessionDetailScreen` 收到 `session = null`，持有 `ChatState` 的组合组随之离开，
+     * 下一次进入同一会话会建一个**新的** ChatState 并重新走一次 `ui/attach`（审查 P1-3：
+     * 旧实现让 loader 记住 `messagesSessionId` 并据此跳过重取，重进永远空白）。
+     */
+    private fun clearSelection() {
+        selectedSessionId = null
+        pendingCreatedSessionId = null
+    }
 
     /** Retry entry for a Failed session-list read (no-op on the fixture path). */
     fun retrySessions() {
@@ -245,6 +341,13 @@ class UiState(
      * **真源路径** —— 先在服务端真的建出会话（[SessionSource.createSession] =
      * `ui/attach(null)`），拿到 core 铸的 id 后**再**切过去。失败绝不伪造本地会话：
      * [newSessionError] 带四类分类文案、✎ 可以再按（重试真的重发 attach，1 → 2）。
+     *
+     * 成功路径**先造一条可渲染的占位行**（[createdRows]）再写选中：`createSession()`
+     * 只回 id，若只写 [selectedSessionId]，详情会因 `selectedSession == null` 渲染
+     * EmptyDetail，而且列表索引一旦滞后就再无下一次刷新（审查 f14 P1-1）。占位行让
+     * 详情立刻能建 ChatState（该 attach 就 attach，失败也有 ChatThread 的重试），
+     * 并立刻 `refreshSessions()` 让权威列表尽快收编它；权威行出现时占位行退休。
+     *
      * 切过去只写选中：创建那次 attach 已经带回（空）快照并建好 sink，ChatState 进页面时
      * 若再调 `messages(id)` 就是对同一会话的第二次 attach（同连接双 sink、事件双投递）。
      * 本类因此没有任何 `loader.selectSession` —— 消息线程只有 ChatState 一个主人。
@@ -275,10 +378,30 @@ class UiState(
         newSessionJob = scope.launch {
             try {
                 val newId = source.createSession()
+                // 占位行先入位，再写选中：任何交错的对账都只会看到「有选中且有行」。
+                for (i in createdRows.indices.reversed()) {
+                    if (createdRows[i].id == newId) createdRows.removeAt(i)
+                }
+                createdRows.add(
+                    0,
+                    SessionSummary(
+                        id = newId,
+                        title = PROVISIONAL_SESSION_TITLE,
+                        preview = "",
+                        bucket = TimeBucket.Today,
+                        updatedAt = epochNowMs(),
+                        updatedLabel = "刚刚",
+                        isProvisional = true,
+                    ),
+                )
+                pendingCreatedSessionId = newId
                 selectedSessionId = newId
                 sessionsDrawerOpen = false
                 dest = Destination.Sessions
                 newSessionPhase = LoadPhase.Ready
+                // 让权威列表尽快收编占位行（并发请求由 loader 合并成一次 trailing fetch）。
+                // 索引还没轮到也不阻塞详情：占位行会一直可渲染，直到权威行出现。
+                loader?.refreshSessions()
             } catch (e: CancellationException) {
                 throw e // dispose / cancel —— 不写状态、更不伪造会话
             } catch (t: Throwable) {
@@ -293,7 +416,7 @@ class UiState(
     val selectedSession: SessionSummary?
         get() = groups().asSequence().flatMap { it.sessions.asSequence() }.firstOrNull { it.id == selectedSessionId }
 
-    val totalSessions: Int get() = (loader?.rows?.size ?: FakeSessions.all.size) + drafts.size
+    val totalSessions: Int get() = (loader?.rows?.size ?: FakeSessions.all.size) + createdRows.size + drafts.size
 
     /**
      * 分组结果的**唯一**计算点（审查 P1-4）：一次组合里 `groups()` 曾被调用 3 次
@@ -320,7 +443,11 @@ class UiState(
             // Drafts sort to the top of 今天: their updatedAt is larger than any fake row.
             FakeSessions.groups(drafts)
         }
-        return sessionGroups(ldr.rows + drafts)
+        // 占位行（刚创建、权威列表还没索引到）同步进投影；权威行一旦出现就由它对位，
+        // 同 id 不许两行。createdRows 为空（绝大多数情况）时不分配任何东西。
+        if (createdRows.isEmpty()) return sessionGroups(ldr.rows + drafts)
+        val authoritative = ldr.rows.mapTo(HashSet(ldr.rows.size)) { it.id }
+        return sessionGroups(ldr.rows + createdRows.filterNot { it.id in authoritative } + drafts)
     }
 
     /**
@@ -359,14 +486,14 @@ class UiState(
                 // rail 单栏 + 有选中：退一层（清选中，回列表根）。
                 destination == Destination.Sessions && selectedSessionId != null -> back()
                 // 离开会话页：清选中（旧行为，逐字节不变）。
-                destination != Destination.Sessions -> selectedSessionId = null
+                destination != Destination.Sessions -> clearSelection()
                 // 会话页列表根：no-op。
                 else -> Unit
             }
             return
         }
         dest = destination
-        if (destination != Destination.Sessions) selectedSessionId = null
+        if (destination != Destination.Sessions) clearSelection()
         // g-route-transition：抽屉跟随目的地——落在会话页且没有选中会话 ⇒ 抽屉必须开着
         //（否则手机端会停在「无详情 + 抽屉收起」的空白状态）；离开会话页时抽屉不渲染，
         // 值无所谓，这里仍写成一个统一规则而不是特判。
@@ -378,11 +505,17 @@ class UiState(
     }
 
     /**
-     * w-wire: the canonical selection entry — sets the selection only. **不在这里读消息**：
-     * `SessionSource.messages(id)` 是 `ui/attach`，每选中一次会话只许 attach 一次；历史与
-     * 事件由进入详情后创建的那个 `ChatState` 统一驱动。
+     * w-wire: the canonical selection entry — sets the selection. On the async path the
+     * thread is **not** read here: `SessionDetailScreen` builds one `ChatState` per
+     * selected session and `ChatThread`'s `LaunchedEffect(state)` issues the single
+     * `ui/attach` (`ChatState.loadHistory`). Reading here too was the double-attach
+     * (审查 P1-1).
+     *
+     * The fixture path only sets the selection, exactly as before.
      */
     fun selectSession(sessionId: String) {
+        // 用户明确切走：刚建出来等待露面的 id 不再需要对账豁免。
+        if (pendingCreatedSessionId != sessionId) pendingCreatedSessionId = null
         selectedSessionId = sessionId
         // g-route-transition：点行/搜索命中/新建草稿都会落到这里 ⇒ 抽屉收回，露出底层详情。
         sessionsDrawerOpen = false
@@ -412,11 +545,11 @@ class UiState(
      */
     fun back(drawerModel: Boolean = false) {
         if (dest != Destination.Sessions) {
-            selectedSessionId = null
+            clearSelection()
             return
         }
         if (!drawerModel) {
-            selectedSessionId = null
+            clearSelection()
             sessionsDrawerOpen = true
             return
         }

@@ -47,6 +47,12 @@ import vade.ui.skin.LocalSkin
  * `ChatState.phase` / `loadError` 一处渲染（重试 = `ChatState.retryHistory()`），
  * 这里只保留会话列表（与新会话）两个**动作**横幅。
  *
+ * ## 两个宿主共用一份构造（审查 P1-2）
+ *
+ * [sessionListBannersOf] 是唯一构造点：`AppShell` 的 `DestinationHost` 与手机抽屉
+ * （`RouteTransition` 的 `DrawerSessionList`）都调它。抽屉那份曾漏掉 `NewSessionLoadBanner`，
+ * 于是手机 <600dp 点 ✎ 失败完全静默；同一段逻辑抄两份就必然漂移。
+ *
  * ## In-flight state (why the button cannot be mashed)
  * Every read publishes `error = null` **synchronously** when it starts (`SessionsLoader`
  * clears the error before launching the fetch) and re-publishes one only when it fails. So
@@ -196,6 +202,35 @@ fun NewSessionLoadBanner(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) = LoadBannerHost(LoadBannerKind.NewSession, phase, error, onRetry, modifier)
+
+/**
+ * 会话列表页的两条**动作**横幅（列表读 + 新建会话）的**唯一**构造函数（审查 P1-2）。
+ *
+ * 两个宿主都用它：`AppShell.DestinationHost`（双栏 / rail 单栏）与手机抽屉
+ * （`RouteTransition.DrawerSessionList`）。抽屉那份曾经自己抄了一遍、只组装
+ * `SessionListLoadBanner` —— 手机 <600dp 上新建会话的 Loading / Failed 因此没有
+ * 任何 UI 消费：点 ✎ 没反应，失败了也没有文案与重试入口。
+ *
+ * 返回 `null` = 两条都不需要（全 Ready / 无错误）⇒ 调用方不画横幅，假数据说明不被顶掉。
+ * 真源失败时两条**各自**渲染：列表读失败与新建失败是互不遮挡的两个动作入口。
+ */
+internal fun sessionListBannersOf(state: UiState): (@Composable () -> Unit)? {
+    val nothingToSay = state.sessionsPhase == LoadPhase.Ready && state.sessionsError == null &&
+        state.newSessionPhase == LoadPhase.Ready && state.newSessionError == null
+    if (nothingToSay) return null
+    return {
+        SessionListLoadBanner(
+            phase = state.sessionsPhase,
+            error = state.sessionsError,
+            onRetry = state::retrySessions,
+        )
+        NewSessionLoadBanner(
+            phase = state.newSessionPhase,
+            error = state.newSessionError,
+            onRetry = state::newSession,
+        )
+    }
+}
 
 @Composable
 private fun LoadBannerHost(

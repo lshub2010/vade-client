@@ -453,18 +453,9 @@ private fun DrawerSessionList(
     onLongPress: (SessionSummary, IntRect) -> Unit,
     groups: List<SessionGroup>?,
 ) {
-    val sessionListBanner: (@Composable () -> Unit)? =
-        if (state.sessionsPhase == LoadPhase.Ready && state.sessionsError == null) {
-            null
-        } else {
-            {
-                SessionListLoadBanner(
-                    phase = state.sessionsPhase,
-                    error = state.sessionsError,
-                    onRetry = state::retrySessions,
-                )
-            }
-        }
+    // 与 DestinationHost 共用同一个构造函数（审查 P1-2）：抽屉这份曾只挂列表横幅，
+    // 手机 <600dp 上「新建会话」失败 / 创建中没有 UI 消费（点了没反应）。
+    val sessionListBanner: (@Composable () -> Unit)? = sessionListBannersOf(state)
     val status = settledListStatus {
         listStatusOf(
             fixture = state.source is FakeSessionSource,

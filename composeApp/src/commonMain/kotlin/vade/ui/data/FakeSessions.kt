@@ -42,6 +42,15 @@ data class SessionSummary(
     /** Drafts created with ✎ in this run — never persisted (U1-b owns submit). */
     val isDraft: Boolean = false,
     /**
+     * A4-1 · 新建成功后、权威 `session/list` 还没索引到时的**本地占位行**。
+     *
+     * 与 [isDraft] 的区别：草稿只存在于本进程（从未持久化），占位行对应的会话
+     * **已经在服务端建好**（`ui/attach(null)` 已返回 id），只是列表还差一次刷新。
+     * 因此它参与 `UiState.groups()` / 详情渲染，但元数据动作（重命名 / 归档 / 删除）
+     * 与用量读取要等权威行接管 —— 那时占位行会被 `UiState.reconcileSelection` 换掉。
+     */
+    val isProvisional: Boolean = false,
+    /**
      * `session/list` 行的 `archived_at: int|null` → 布尔投影（`archived_at != null`）。
      *
      * 契约没有 `archived` 布尔字段 —— 归档是「时间戳在不在」，不是「标志位真不真」；

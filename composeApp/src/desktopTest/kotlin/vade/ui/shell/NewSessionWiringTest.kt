@@ -35,9 +35,10 @@ import kotlin.test.assertTrue
  * - **夹具路径**（[FakeSessionSource]）：草稿行为与本批之前**逐字节相同**、纯同步，
  *   探针钉住「对源的调用 = 0 次」（结构性零出网：夹具源没有 [AdapterHost]，不存在
  *   transport/client 通道）。
- * - **真源路径**：先建真会话（[SessionSource.createSession]，恰好一次）→ 拿到 id 再切；
- *   切换走 `isDraft = true` 分支（创建那次 attach 已带回空快照并建好 sink），loader 对
- *   同一会话**零**二次 fetch —— 不引入同连接双 sink。
+ * - **真源路径**：先建真会话（[SessionSource.createSession]，恰好一次）→ 造一条可渲染的
+ *   占位行（[vade.ui.data.SessionSummary.isProvisional]）并切过去（创建那次 attach 已带回
+ *   空快照并建好 sink），随后立刻刷新列表让权威行接管 —— loader 对同一会话**零**二次 fetch，
+ *   不引入同连接双 sink。
  * - **失败**：不伪造会话、分类文案可读（四类）、✎ 可重试且重试真的重发（1 → 2）。
  * - **幂等**：双击「新建」只建一个。
  *
@@ -188,6 +189,8 @@ class NewSessionWiringTest {
         val src = ScriptedCreateSource()
         src.rows(row("s-a"))
         src.createReturns("srv-1")
+        // 成功路径会立刻 refreshSessions()：这里让权威行接管占位行。
+        src.rows(row("s-a"), row("srv-1"))
         val ui = newUi(source = src, scope = newScope())
         try {
             settle()
@@ -197,14 +200,107 @@ class NewSessionWiringTest {
             // 恰好一次建会话调用；返回的 id 成为当前会话 id。
             assertEquals(listOf(1), src.createCalls)
             assertEquals("srv-1", ui.selectedSessionId)
+            // P1-1：成功路径必须立刻有**可渲染**的行 —— 详情拿得到 SessionSummary，
+            // 否则 `SessionDetailScreen` 会 fall through 到 EmptyDetail（审查 f14 P1-1）。
+            val selected = assertNotNull(
+                ui.selectedSession,
+                "新建成功后 selectedSession 必须非 null（旧实现只有选中的 id，详情渲染空态）",
+            )
+            assertEquals("srv-1", selected.id)
+            // 权威行到了就由它接管：同 id 只许一行，标题来自服务端行。
+            assertEquals(1, ids(ui).count { it == "srv-1" })
+            assertEquals("会话 srv-1", selected.title)
             // 选中只写 selectedSessionId：loader 不读线程（ChatState 进页面后才 attach）。
             // 创建那次 attach 已带回（空）快照并建好 sink；第二次 attach = 同连接双 sink。
             assertEquals(emptyList<String>(), src.messagesCalls)
             assertEquals(LoadPhase.Ready, ui.newSessionPhase)
             assertNull(ui.newSessionError)
-            // 没有伪造本地草稿。
+            // 没有伪造夹具草稿 id（占位行的 id 是服务端铸的）。
             assertFalse(ids(ui).any { it.startsWith("draft-") })
             assertEquals(Destination.Sessions, ui.dest)
+        } finally {
+            ui.dispose()
+        }
+    }
+
+    /**
+     * 审查 P1-1：新建成功的那一刻，权威 `session/list` 往往还没索引到新会话。
+     * 详情必须靠**本地占位行**立刻可渲染；占位行在列表里也可见，且一旦权威行出现
+     * 就被替换（同 id 不重复）。
+     */
+    @Test
+    fun theNewSessionRendersImmediatelyAndThePlaceholderYieldsToTheAuthoritativeRow() = runTest {
+        val src = ScriptedCreateSource()
+        src.rows(row("s-a"))
+        src.createReturns("srv-1")
+        src.rows(row("s-a")) // 创建后的自动刷新：索引还没轮到
+        src.rows(row("s-a"), row("srv-1")) // 迟到的索引终于带上它
+        val ui = newUi(source = src, scope = newScope())
+        try {
+            settle()
+            ui.newSession()
+            settle()
+
+            assertEquals("srv-1", ui.selectedSessionId)
+            val provisional = assertNotNull(ui.selectedSession, "详情必须有行可渲染，不许掉进 EmptyDetail")
+            assertEquals("srv-1", provisional.id)
+            assertTrue(provisional.isProvisional, "索引还没轮到时，行是本地占位行")
+            assertEquals(1, ids(ui).count { it == "srv-1" }, "占位行必须出现在列表投影里")
+
+            ui.retrySessions()
+            settle()
+            val authoritative = assertNotNull(ui.selectedSession, "权威行接管后详情仍可渲染")
+            assertEquals("srv-1", authoritative.id)
+            assertFalse(authoritative.isProvisional, "权威行到了，占位行必须退休")
+            assertEquals(1, ids(ui).count { it == "srv-1" }, "同 id 不许两行")
+            assertEquals("会话 srv-1", authoritative.title)
+            assertEquals("srv-1", ui.selectedSessionId)
+        } finally {
+            ui.dispose()
+        }
+    }
+
+    /**
+     * 审查 P1-4 的对账豁免：`ui/attach(null)` 回来后，下一次 `sessions()` 可能**先于**
+     * core 把新会话索引进列表。此时 rows 里暂时没有它，但选中必须保留 —— 否则刚建好的
+     * 会话会被「归档对账」当成悬挂 id 立刻清掉，点 ✎ 后界面闪回列表。
+     * 它一旦露面，豁免销账（占位行退场）；之后从权威列表消失（归档 / 删除）就照常清选中。
+     */
+    @Test
+    fun aListRefreshThatHasNotIndexedTheNewSessionYetKeepsItSelected() = runTest {
+        val src = ScriptedCreateSource()
+        src.rows(row("s-a"))
+        src.createReturns("srv-1")
+        src.rows(row("s-a")) // 创建后的自动刷新：新会话还没被索引
+        src.rows(row("s-a")) // 手动刷新：仍然没被索引
+        src.rows(row("s-a"), row("srv-1")) // 第二次刷新：它出现了
+        src.rows(row("s-a")) // 第三次刷新：又被归档 / 删除
+        val ui = newUi(source = src, scope = newScope())
+        try {
+            settle()
+            ui.newSession()
+            settle()
+            assertEquals("srv-1", ui.selectedSessionId)
+            assertNotNull(ui.selectedSession, "索引没到也必须能渲染详情")
+
+            ui.retrySessions()
+            settle()
+            assertEquals(
+                "srv-1",
+                ui.selectedSessionId,
+                "列表还没索引到刚建的会话，不许当成悬挂清掉",
+            )
+            assertNotNull(ui.selectedSession, "列表索引迟到期间详情不得回退成 EmptyDetail")
+
+            ui.retrySessions()
+            settle()
+            assertEquals("srv-1", ui.selectedSessionId, "行已在列表里，选中保留")
+            assertEquals(1, ids(ui).count { it == "srv-1" }, "占位行已被权威行替换")
+            assertNotNull(ui.selectedSession)
+
+            ui.retrySessions()
+            settle()
+            assertNull(ui.selectedSessionId, "豁免销账后，行再次消失 = 归档/删除 ⇒ 清选中")
         } finally {
             ui.dispose()
         }
@@ -214,6 +310,7 @@ class NewSessionWiringTest {
     fun realPathPhaseIsLoadingWhileCreateIsInFlight() = runTest {
         val src = ScriptedCreateSource()
         src.rows(row("s-a"))
+        src.rows(row("s-a")) // 成功后的自动刷新
         val gate = CompletableDeferred<Unit>()
         src.createGated(gate, id = "srv-gated")
         val ui = newUi(source = src, scope = newScope())
@@ -240,6 +337,7 @@ class NewSessionWiringTest {
         src.rows(row("s-a"))
         src.createFails(VadeException(VadeErrorCodes.UNAVAILABLE, "core is draining"))
         src.createReturns("srv-1")
+        src.rows(row("s-a")) // 重试成功后的自动刷新
         val ui = newUi(source = src, scope = newScope())
         try {
             settle()
@@ -275,6 +373,7 @@ class NewSessionWiringTest {
         val src = ScriptedCreateSource()
         src.rows(row("s-a"))
         src.createReturns("srv-1")
+        src.rows(row("s-a")) // 成功后的自动刷新
         val ui = newUi(source = src, scope = newScope())
         try {
             settle()

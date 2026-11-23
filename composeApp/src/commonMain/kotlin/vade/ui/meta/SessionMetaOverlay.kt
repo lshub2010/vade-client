@@ -132,7 +132,9 @@ class SessionMetaOverlay(
         val removed = removedIds
         val adopt = mutableListOf<MetaSession>()
         for (row in rows) {
-            if (row.isDraft || row.id in removed) continue
+            // 草稿从无服务端实体；占位行（新建成功、列表还没索引到）的权威身份尚未知，
+            // 两者都不进元数据状态机 —— 长按菜单 / 改名 / 归档要等权威行接管。
+            if (row.isDraft || row.isProvisional || row.id in removed) continue
             val projection = row.toMetaSession()
             val current = known[row.id]
             val last = lastSynced[row.id]
@@ -168,7 +170,7 @@ class SessionMetaOverlay(
      * 菜单贴在它下方而不是列表窗格右上角。不传 = 没有锚点（测试 / 旧调用点）。
      */
     fun openSessionMenu(summary: SessionSummary, anchor: IntRect? = null) {
-        if (summary.isDraft) return
+        if (summary.isDraft || summary.isProvisional) return
         if (summary.id !in removedIds && meta.sessions.none { it.id == summary.id }) {
             meta.applyProjection(meta.sessions + summary.toMetaSession(), newGroups = null)
             lastSynced = lastSynced + (summary.id to summary.toMetaSession())
@@ -252,7 +254,7 @@ class SessionMetaOverlay(
         removed: Set<String>,
         now: Long,
     ): SessionSummary? {
-        if (row.isDraft) return row
+        if (row.isDraft || row.isProvisional) return row
         // 墓碑：乐观删除/已确认删除的行必须消失（这一条与「不认识」是两回事）。
         if (row.id in removed) return null
         // 同步过之后仍不认识 = 同步后才出现的新行：原样画，不许丢。
