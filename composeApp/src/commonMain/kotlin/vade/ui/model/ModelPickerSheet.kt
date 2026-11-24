@@ -204,26 +204,28 @@ fun ModelPickerSheet(
                         color = skin.colors.textOnGlass,
                         modifier = Modifier.weight(1f),
                     )
-                    Box(
-                        Modifier
-                            .size(44.dp)
-                            .clip(RoundedCornerShape(skin.shapes.xs))
-                            .clickable(
-                                enabled = !state.readOnly && !state.discovering,
-                                onClick = { scope.launch { state.discoverUpstream() } },
-                            ),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        VadeIcon(
-                            VadeIcons.Refresh,
-                            contentDescription = if (state.discovering) "正在刷新模型列表" else "刷新模型列表",
-                            size = 18.dp,
-                            tint = if (!state.readOnly && !state.discovering) {
-                                skin.colors.onSurfaceVariant
-                            } else {
-                                skin.colors.onSurfaceVariant.copy(alpha = 0.38f)
-                            },
-                        )
+                    if (!state.discoverUnsupported) {
+                        Box(
+                            Modifier
+                                .size(44.dp)
+                                .clip(RoundedCornerShape(skin.shapes.xs))
+                                .clickable(
+                                    enabled = !state.readOnly && !state.discovering,
+                                    onClick = { scope.launch { state.discoverUpstream() } },
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            VadeIcon(
+                                VadeIcons.Refresh,
+                                contentDescription = if (state.discovering) "正在刷新模型列表" else "刷新模型列表",
+                                size = 18.dp,
+                                tint = if (!state.readOnly && !state.discovering) {
+                                    skin.colors.onSurfaceVariant
+                                } else {
+                                    skin.colors.onSurfaceVariant.copy(alpha = 0.38f)
+                                },
+                            )
+                        }
                     }
                     Box(
                         Modifier

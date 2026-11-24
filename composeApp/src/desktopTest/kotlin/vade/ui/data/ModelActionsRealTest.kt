@@ -152,12 +152,29 @@ class ModelActionsRealTest {
         val factory = FakeTransportFactory()
         runBlocking {
             val (client, transport, adapter) = connected(factory)
+
+            // Establish a real prior catalog first; asserting null-remains-null would
+            // not prove that a failed refresh preserves what the picker already shows.
+            val load = async(Dispatchers.Default) { adapter.refreshModels() }
+            transport.awaitNextFrame("model/list request")
+            transport.push(
+                responseFrame(
+                    idOf(transport.record.last()),
+                    """{"revision":1,"not_modified":false,"models":[""" +
+                        modelEntryJson("builtin/gpt-4o-mini", "builtin", "gpt-4o-mini", 0) +
+                        """],"default":null}""",
+                ),
+            )
+            load.await()
+            val before = adapter.models.orEmpty().map { it.id }
+
             val deferred = async(Dispatchers.Default) { runCatching { adapter.discoverModels() } }
             transport.awaitNextFrame("model/discover request")
-            transport.push(errorFrame(idOf(transport.record[0]), "UNAVAILABLE", "upstream model discovery failed"))
+            transport.push(errorFrame(idOf(transport.record.last()), "UNAVAILABLE", "upstream model discovery failed"))
             val failure = deferred.await().exceptionOrNull()
             assertTrue(failure is VadeException && failure.code == "UNAVAILABLE")
-            assertNull(adapter.models, "a failed first discovery leaves the unknown state, not an empty list")
+            assertEquals(before, adapter.models.orEmpty().map { it.id },
+                "a failed refresh must keep the last good catalog")
             assertTrue(!adapter.readOnly, "discovery failure is not the model/list degradation")
             client.close()
         }

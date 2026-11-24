@@ -21,6 +21,8 @@ import vade.ui.data.VadeErrorCategory
 import vade.ui.data.loadErrorCategoryOf
 import vade.ui.data.loadErrorCodeOf
 import vade.ui.protocol.VadeErrorCodes
+import vade.ui.protocol.VadeException
+import vade.ui.protocol.isMethodMissing
 
 /**
  * One failed model RPC, classified for the picker.
@@ -60,7 +62,7 @@ private fun modelFailureOf(t: Throwable, write: Boolean): ModelFailure {
     return when {
         // The core has no such method. Retrying cannot help, so the bucket is upgraded from
         // the table's Retryable default to 需要用户操作 — the copy says "not a network fault".
-        code == METHOD_NOT_FOUND_CODE -> ModelFailure(
+        t is VadeException && t.isMethodMissing() -> ModelFailure(
             category = VadeErrorCategory.NeedsUserAction,
             code = code,
             headline = if (write) "此 core 不支持模型写" else "此 core 不支持模型列表",

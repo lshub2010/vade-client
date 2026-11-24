@@ -48,6 +48,8 @@ import kotlin.concurrent.Volatile
 import vade.ui.data.ModelActionsReal
 import vade.ui.protocol.ModelEntry
 import vade.ui.protocol.VadeClient
+import vade.ui.protocol.VadeException
+import vade.ui.protocol.isMethodMissing
 
 /** Which D101 layer the picker is editing: one session's override, or the global default. */
 sealed interface ModelScope {
@@ -119,6 +121,10 @@ class ModelState private constructor(
 
     /** True while `model/discover` is in flight; the refresh button is disabled then. */
     var discovering: Boolean by mutableStateOf(false)
+        private set
+
+    /** Old core answered `unknown method` to `model/discover`; hide the refresh control. */
+    var discoverUnsupported: Boolean by mutableStateOf(false)
         private set
 
     /** FR-8.46 degrade switch — true after a `-32601` / `unknown method` answer. */
@@ -436,11 +442,13 @@ class ModelState private constructor(
         loadFailure = null
         try {
             wiring.adapter.discoverModels()
+            discoverUnsupported = false
             refresh()
         } catch (c: CancellationException) {
             currentCoroutineContext().ensureActive()
             loadFailure = modelLoadFailureOf(c)
         } catch (t: Throwable) {
+            if (t is VadeException && t.isMethodMissing()) discoverUnsupported = true
             loadFailure = modelLoadFailureOf(t)
         } finally {
             discovering = false
