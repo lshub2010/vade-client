@@ -146,6 +146,22 @@ class ModelActionsReal(
             throw e
         }
     }
+
+    /**
+     * `model/discover` then `model/list`: refresh the upstream `/models` cache and
+     * re-read the catalog. Returns true when the upstream was actually contacted
+     * (`cached=false`); a 2 s cooldown is a successful no-op, not a failure.
+     *
+     * A core without `model/discover` keeps the old read-only degradation: the
+     * picker stays usable with whatever `model/list` already returned, and the
+     * button's failure is classified by the caller — it must not blank [models].
+     */
+    suspend fun discoverModels(): Boolean {
+        val result = client.modelDiscover()
+        _models.value = result.models
+        _readOnly.value = false
+        return !result.cached
+    }
     /** `session/model.get` pull for one session's explicit override (null = follows default). */
     suspend fun refreshSessionOverride(sessionId: String) {
         if (sessionId.isBlank()) {

@@ -124,6 +124,46 @@ class ModelActionsRealTest {
     }
 
     @Test
+    fun discoverModelsSendsEmptyParamsAndStoresTheUpstreamCatalog() {
+        val factory = FakeTransportFactory()
+        runBlocking {
+            val (client, transport, adapter) = connected(factory)
+            val deferred = async(Dispatchers.Default) { adapter.discoverModels() }
+            transport.awaitNextFrame("model/discover request")
+            assertEquals("model/discover", requestOf(transport.record[0]).first)
+            assertEquals("""{}""", requestOf(transport.record[0]).second)
+            transport.push(
+                responseFrame(
+                    idOf(transport.record[0]),
+                    """{"revision":7,"models":[""" +
+                        modelEntryJson("builtin/gpt-4o-mini", "builtin", "gpt-4o-mini", 0) +
+                        """],"discovered_at":"2026-11-24T12:00:00Z","cached":false}""",
+                ),
+            )
+            assertTrue(deferred.await(), "cached=false means the upstream was contacted")
+            assertEquals(listOf("builtin/gpt-4o-mini"), adapter.models.orEmpty().map { it.id })
+            assertTrue(!adapter.readOnly)
+            client.close()
+        }
+    }
+
+    @Test
+    fun discoverModelsFailureKeepsTheLastCatalog() {
+        val factory = FakeTransportFactory()
+        runBlocking {
+            val (client, transport, adapter) = connected(factory)
+            val deferred = async(Dispatchers.Default) { runCatching { adapter.discoverModels() } }
+            transport.awaitNextFrame("model/discover request")
+            transport.push(errorFrame(idOf(transport.record[0]), "UNAVAILABLE", "upstream model discovery failed"))
+            val failure = deferred.await().exceptionOrNull()
+            assertTrue(failure is VadeException && failure.code == "UNAVAILABLE")
+            assertNull(adapter.models, "a failed first discovery leaves the unknown state, not an empty list")
+            assertTrue(!adapter.readOnly, "discovery failure is not the model/list degradation")
+            client.close()
+        }
+    }
+
+    @Test
     fun setSessionModelSendsModelIdNotDisplayName() {
         val factory = FakeTransportFactory()
         runBlocking {

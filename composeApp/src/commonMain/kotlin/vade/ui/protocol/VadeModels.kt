@@ -311,6 +311,24 @@ data class ModelListResult(
     }
 }
 
+/** `model/discover` — upstream `/models` refresh (C-05 1.8.0). */
+data class ModelDiscoverResult(
+    val revision: Long,
+    val models: List<ModelEntry>,
+    val discoveredAt: String?,
+    val cached: Boolean,
+) {
+    companion object {
+        fun fromJson(o: JsonObject): ModelDiscoverResult = ModelDiscoverResult(
+            revision = o.lngStrict("revision") ?: 0,
+            models = o.arr("models")?.mapNotNull { (it as? JsonObject)?.let(ModelEntry::fromJson) }
+                ?: emptyList(),
+            discoveredAt = o.strStrict("discovered_at"),
+            cached = o.boolStrict("cached") ?: false,
+        )
+    }
+}
+
 /** One model entry; `null` is UNKNOWN and is never interchangeable with false/[] (RFC-0005). */
 data class ModelEntry(
     val id: String,

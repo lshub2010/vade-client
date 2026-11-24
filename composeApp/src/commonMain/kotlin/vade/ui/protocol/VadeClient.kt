@@ -161,6 +161,7 @@ internal enum class VadeMethod(val wire: String) {
     UI_QUEUE_CANCEL("ui/queue.cancel"),
     APPROVAL_DECIDE("approval/decide"),
     MODEL_LIST("model/list"),
+    MODEL_DISCOVER("model/discover"),
     SESSION_MODEL_GET("session/model.get"),
     SESSION_MODEL_SET("session/model.set"),
     SESSION_USAGE_GET("session/usage.get"),
@@ -1030,6 +1031,10 @@ class VadeClient(
     /** `model/list` — `not_modified=true` means keep the cache; models is null then. */
     suspend fun modelList(params: ModelListParams): ModelListResult =
         call(VadeMethod.MODEL_LIST, params.toJson()) { ModelListResult.fromJson(it) }
+
+    /** `model/discover` — refresh the builtin upstream's `/models` cache (C-05 1.8.0). */
+    suspend fun modelDiscover(): ModelDiscoverResult =
+        call(VadeMethod.MODEL_DISCOVER, buildJsonObject { }) { ModelDiscoverResult.fromJson(it) }
 
     /** `session/model.get`. */
     suspend fun sessionModelGet(params: SessionModelGetParams): SessionModelGetResult =

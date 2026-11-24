@@ -49,6 +49,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,6 +65,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import vade.ui.UiText
 import vade.ui.component.insets.bottomSafeClearance
 import vade.ui.icon.VadeIcon
@@ -102,6 +104,7 @@ fun ModelPickerSheet(
     footerNote: String? = null,
 ) {
     val skin = LocalSkin.current
+    val scope = rememberCoroutineScope()
     // §334: 四角 28dp —— 全局弹窗卡在 §10 的 sheet 档之上更贴近内容，任务书明确 28dp。
     val shape = RoundedCornerShape(skin.shapes.xl)
     val grabber = if (skin.colors.isDark) Color.White.copy(alpha = 0.70f) else Color.Black.copy(alpha = 0.24f)
@@ -201,6 +204,27 @@ fun ModelPickerSheet(
                         color = skin.colors.textOnGlass,
                         modifier = Modifier.weight(1f),
                     )
+                    Box(
+                        Modifier
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(skin.shapes.xs))
+                            .clickable(
+                                enabled = !state.readOnly && !state.discovering,
+                                onClick = { scope.launch { state.discoverUpstream() } },
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        VadeIcon(
+                            VadeIcons.Refresh,
+                            contentDescription = if (state.discovering) "正在刷新模型列表" else "刷新模型列表",
+                            size = 18.dp,
+                            tint = if (!state.readOnly && !state.discovering) {
+                                skin.colors.onSurfaceVariant
+                            } else {
+                                skin.colors.onSurfaceVariant.copy(alpha = 0.38f)
+                            },
+                        )
+                    }
                     Box(
                         Modifier
                             .size(44.dp)

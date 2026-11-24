@@ -116,6 +116,9 @@ class ModelState private constructor(
      * real `model/list` had already gone out.
      */
     var loadInFlight: Boolean by mutableStateOf(false)
+
+    /** True while `model/discover` is in flight; the refresh button is disabled then. */
+    var discovering: Boolean by mutableStateOf(false)
         private set
 
     /** FR-8.46 degrade switch — true after a `-32601` / `unknown method` answer. */
@@ -414,6 +417,33 @@ class ModelState private constructor(
             }
         } finally {
             loadInFlight = false
+        }
+    }
+
+    /**
+     * Refresh the upstream `/models` catalog, then re-pull `model/list`.
+     *
+     * Failure policy: a failed discovery NEVER clears the current rows. The card
+     * shows the classified failure and keeps the last good list selectable; the
+     * same applies to an old core (method missing) — it is a visible failure, not
+     * a silent empty picker. The 2 s cooldown is a success (`cached=true`), so it
+     * simply re-reads the catalog.
+     */
+    suspend fun discoverUpstream() {
+        if (disposed || discovering) return
+        val wiring = real ?: return
+        discovering = true
+        loadFailure = null
+        try {
+            wiring.adapter.discoverModels()
+            refresh()
+        } catch (c: CancellationException) {
+            currentCoroutineContext().ensureActive()
+            loadFailure = modelLoadFailureOf(c)
+        } catch (t: Throwable) {
+            loadFailure = modelLoadFailureOf(t)
+        } finally {
+            discovering = false
         }
     }
 
