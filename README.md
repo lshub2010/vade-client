@@ -18,7 +18,7 @@ This repository is the **client**: one Compose Multiplatform UI shared by Androi
 ## Release status
 
 - **Current release: `0.0.4-alpha`** — [download page](https://github.com/lshub2010/vade-client/releases/tag/v0.0.4-alpha). The assets below were built by CI and attached to that release.
-- The single version source (`vadeVersion` in [`gradle.properties`](gradle.properties)) is `0.0.4-alpha`; the Android `versionName` and the MSI `packageVersion` (numeric `0.0.3`) derive from it.
+- The single version source (`vadeVersion` in [`gradle.properties`](gradle.properties)) is `0.0.4-alpha`; the Android `versionName` and the MSI `packageVersion` (numeric `0.0.4`) derive from it.
 - The Android APK is built with `:composeApp:assembleDebug` and is **debug-signed** (see [Debug-signed APK](#debug-signed-apk)).
 
 ## Platform status
@@ -50,7 +50,7 @@ The APK comes from the `debug` build variant, and this repository has no release
 
 ### Windows MSI and alpha versions
 
-`jpackage` derives the MSI `ProductVersion` by dropping the `-alpha` suffix. Two alphas with the same numeric `x.y.z` (for example `0.0.4-alpha.1` and `0.0.4-alpha.2`) are therefore indistinguishable to Windows Installer: uninstall the older build first, or use the portable zip. Moving from `0.0.2` to `0.0.3` is a normal version change.
+`jpackage` derives the MSI `ProductVersion` by dropping the `-alpha` suffix. Two alphas with the same numeric `x.y.z` (for example `0.0.4-alpha.1` and `0.0.4-alpha.2`) are therefore indistinguishable to Windows Installer: uninstall the older build first, or use the portable zip. Moving from `0.0.3` to `0.0.4` is a normal version change.
 
 ## Connect to a core
 

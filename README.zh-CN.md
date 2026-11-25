@@ -18,7 +18,7 @@
 ## 发布状态
 
 - **当前发布：`0.0.4-alpha`** —— [下载页](https://github.com/lshub2010/vade-client/releases/tag/v0.0.4-alpha)。下列产物由 CI 构建并挂在该 Release 上。
-- 唯一的版本源（[`gradle.properties`](gradle.properties) 里的 `vadeVersion`）是 `0.0.4-alpha`；Android 的 `versionName` 与 MSI 的 `packageVersion`（数字部分 `0.0.3`）都由它派生。
+- 唯一的版本源（[`gradle.properties`](gradle.properties) 里的 `vadeVersion`）是 `0.0.4-alpha`；Android 的 `versionName` 与 MSI 的 `packageVersion`（数字部分 `0.0.4`）都由它派生。
 - Android APK 由 `:composeApp:assembleDebug` 构建，使用 **debug 签名**（见[debug 签名说明](#debug-签名说明)）。
 
 ## 三端状态
@@ -50,7 +50,7 @@ APK 来自 `debug` 构建变体，本仓库没有配置 release 签名，因此�
 
 ### Windows MSI 与 alpha 版本
 
-`jpackage` 生成 MSI 的 `ProductVersion` 时会去掉 `-alpha` 后缀。数字部分相同的两个 alpha（例如 `0.0.4-alpha.1` 与 `0.0.4-alpha.2`）在 Windows Installer 看来是同一个版本：请先卸载旧版本，或改用免安装 zip。从 `0.0.1` 升到 `0.0.3` 属于正常版本变化。
+`jpackage` 生成 MSI 的 `ProductVersion` 时会去掉 `-alpha` 后缀。数字部分相同的两个 alpha（例如 `0.0.4-alpha.1` 与 `0.0.4-alpha.2`）在 Windows Installer 看来是同一个版本：请先卸载旧版本，或改用免安装 zip。从 `0.0.3` 升到 `0.0.4` 属于正常版本变化。
 
 ## 连接 core
 

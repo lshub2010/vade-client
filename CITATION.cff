@@ -10,7 +10,7 @@ authors:
   - name: "Vade contributors"
 license: Apache-2.0
 version: 0.0.4-alpha
-date-released: "2026-11-23"
+date-released: "2026-11-25"
 repository-code: "https://github.com/lshub2010/vade-client"
 keywords:
   - agent runtime
