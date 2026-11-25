@@ -275,6 +275,37 @@ fun ProfileScreen(
                     ) +
                 seam.degraded?.let { " · $it" }.orEmpty(),
         )
+        // 0.0.4 · 设置页也要能拉上游列表：会话页的模型浮层有刷新按钮，但设置页
+        // 之前只有失败后的「重试」。canDiscover 为 false（fixture / 旧 core /
+        // 非 builtin provider）时整行不出现，不用一个死按钮冒充能力。
+        if (modelState.canDiscover) {
+            val canRefresh = !modelState.discovering && !modelState.loadInFlight
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(percent = 50))
+                    .background(skin.colors.surfaceVariant)
+                    .clickable(enabled = canRefresh) {
+                        retryScope.launch { modelState.discoverUpstream() }
+                    }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                VadeIcon(
+                    VadeIcons.Refresh,
+                    contentDescription = if (modelState.discovering) "正在刷新上游模型列表" else "刷新上游模型列表",
+                    size = 16.dp,
+                    tint = if (canRefresh) skin.colors.onSurface else skin.colors.onSurfaceVariant,
+                )
+                Spacer(Modifier.width(6.dp))
+                UiText(
+                    if (modelState.discovering) "正在刷新上游模型列表" else "刷新上游模型列表",
+                    size = 12,
+                    weight = FontWeight.Medium,
+                    color = if (canRefresh) skin.colors.onSurface else skin.colors.onSurfaceVariant,
+                )
+            }
+        }
         // I3 · 写成功要看得见：卡本身只画选中态，没有一句「已设为…」的确认，用户点完
         // 不知道到底有没有生效。这条提示就是 ModelState.lastNotice（内存路径与真适配器
         // 路径都会填），出现即代表这一笔写入走完了。
