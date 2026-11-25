@@ -127,6 +127,16 @@ class ModelState private constructor(
     var discoverUnsupported: Boolean by mutableStateOf(false)
         private set
 
+    /** True only when the real adapter can attempt discovery (not the fixture seam). */
+    val canDiscover: Boolean get() = real != null && !discoverUnsupported
+
+    /**
+     * Monotonic pull id. A second `refresh()` supersedes the first; the older
+     * answer must not write over the newer catalog when it resumes.
+     */
+    @Volatile
+    private var loadGeneration: Int = 0
+
     /** FR-8.46 degrade switch — true after a `-32601` / `unknown method` answer. */
     var readOnly: Boolean by mutableStateOf(actions.readOnly)
         private set
@@ -382,6 +392,7 @@ class ModelState private constructor(
         loadAttempted = true
         loadInFlight = true
         loadFailure = null
+        val generation = ++loadGeneration
         try {
             val sessionId = (scope as? ModelScope.Session)?.sessionId
             try {
@@ -392,8 +403,9 @@ class ModelState private constructor(
             } catch (t: Throwable) {
                 loadFailure = modelLoadFailureOf(t)
             }
-            // Late answer for a dead state: do not mirror, do not chase the override.
-            if (disposed) return
+            // Late answer for a dead state or for a superseded pull: do not mirror,
+            // do not chase the override.
+            if (disposed || generation != loadGeneration) return
             models = wiring.adapter.models
             readOnly = wiring.adapter.readOnly
             defaultModelId = wiring.adapter.defaultModelId
@@ -404,8 +416,9 @@ class ModelState private constructor(
                 try {
                     wiring.adapter.refreshSessionOverride(sessionId)
                     // Same gate, one suspension later: a `session/model.get` answer that lands
-                    // after the page is gone must not become this dead state's selection.
-                    if (disposed) return
+                    // after the page is gone (or after a newer pull started) must not
+                    // become this state's selection.
+                    if (disposed || generation != loadGeneration) return
                     // Only adopt the pulled override into an empty selection: a pick made while
                     // the pull was in flight must not be clobbered by a stale answer.
                     if (selectedId == null) selectedId = wiring.adapter.sessionOverride(sessionId)
@@ -422,7 +435,9 @@ class ModelState private constructor(
                 selectedId = wiring.adapter.defaultModelId
             }
         } finally {
-            loadInFlight = false
+            // Only the newest pull owns the flag; an older answer resuming late must
+            // not make the picker think the newer request has finished.
+            if (generation == loadGeneration) loadInFlight = false
         }
     }
 
@@ -436,18 +451,20 @@ class ModelState private constructor(
      * simply re-reads the catalog.
      */
     suspend fun discoverUpstream() {
-        if (disposed || discovering) return
+        if (disposed || discovering || loadInFlight) return
         val wiring = real ?: return
         discovering = true
         loadFailure = null
         try {
             wiring.adapter.discoverModels()
+            if (disposed) return
             discoverUnsupported = false
             refresh()
         } catch (c: CancellationException) {
             currentCoroutineContext().ensureActive()
-            loadFailure = modelLoadFailureOf(c)
+            if (!disposed) loadFailure = modelLoadFailureOf(c)
         } catch (t: Throwable) {
+            if (disposed) return
             if (t is VadeException && t.isMethodMissing()) discoverUnsupported = true
             loadFailure = modelLoadFailureOf(t)
         } finally {
