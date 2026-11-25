@@ -128,7 +128,8 @@ class ModelState private constructor(
         private set
 
     /** True only when the real adapter can attempt discovery (not the fixture seam). */
-    val canDiscover: Boolean get() = real != null && !discoverUnsupported
+    val canDiscover: Boolean get() =
+        real != null && !readOnly && !discoverUnsupported && !real.adapter.discoveryBlocked
 
     /**
      * Monotonic pull id. A second `refresh()` supersedes the first; the older
@@ -465,7 +466,13 @@ class ModelState private constructor(
             if (!disposed) loadFailure = modelLoadFailureOf(c)
         } catch (t: Throwable) {
             if (disposed) return
-            if (t is VadeException && t.isMethodMissing()) discoverUnsupported = true
+            if (t is VadeException && (t.isMethodMissing() || t.reason == "not_discoverable")) {
+                // Old core, or a core whose provider owns its own list (module/mock):
+                // one answer is enough. Keep the flag on the shared adapter so the
+                // next page does not render the same dead control.
+                discoverUnsupported = true
+                wiring.adapter.discoveryBlocked = true
+            }
             loadFailure = modelLoadFailureOf(t)
         } finally {
             discovering = false

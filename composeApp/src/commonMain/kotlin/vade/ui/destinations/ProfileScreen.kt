@@ -278,7 +278,7 @@ fun ProfileScreen(
         // 0.0.4 · 设置页也要能拉上游列表：会话页的模型浮层有刷新按钮，但设置页
         // 之前只有失败后的「重试」。canDiscover 为 false（fixture / 旧 core /
         // 非 builtin provider）时整行不出现，不用一个死按钮冒充能力。
-        if (modelState.canDiscover) {
+        if (modelState.canDiscover && modelState.loadFailure == null) {
             val canRefresh = !modelState.discovering && !modelState.loadInFlight
             Row(
                 Modifier
@@ -293,7 +293,7 @@ fun ProfileScreen(
             ) {
                 VadeIcon(
                     VadeIcons.Refresh,
-                    contentDescription = if (modelState.discovering) "正在刷新上游模型列表" else "刷新上游模型列表",
+                    contentDescription = null, // the row's text is the accessible label
                     size = 16.dp,
                     tint = if (canRefresh) skin.colors.onSurface else skin.colors.onSurfaceVariant,
                 )
@@ -323,7 +323,9 @@ fun ProfileScreen(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(percent = 50))
                     .background(skin.colors.surfaceVariant)
-                    .clickable { retryScope.launch { modelState.refresh() } }
+                    .clickable(enabled = !modelState.discovering && !modelState.loadInFlight) {
+                        retryScope.launch { modelState.refresh() }
+                    }
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

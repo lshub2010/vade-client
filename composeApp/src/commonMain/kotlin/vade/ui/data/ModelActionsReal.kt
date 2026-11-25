@@ -1,5 +1,6 @@
 package vade.ui.data
 
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -62,6 +63,15 @@ class ModelActionsReal(
 
     /** FR-8.46 degrade switch: true only after a method-missing answer from `model/list`. */
     override val readOnly: Boolean get() = _readOnly.value
+
+    /**
+     * The connection has already answered `model/discover` with a terminal
+     * "this core cannot discover" (old core / module / mock). Kept on the
+     * adapter, not the page's [vade.ui.model.ModelState], so re-entering
+     * Settings does not show the same dead button and burn another RPC.
+     */
+    @Volatile
+    var discoveryBlocked: Boolean = false
 
     private val _defaultModelId = MutableStateFlow<String?>(null)
 

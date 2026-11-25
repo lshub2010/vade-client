@@ -9,7 +9,7 @@ type: software
 authors:
   - name: "Vade contributors"
 license: Apache-2.0
-version: 0.0.3-alpha
+version: 0.0.4-alpha
 date-released: "2026-11-23"
 repository-code: "https://github.com/lshub2010/vade-client"
 keywords:
@@ -23,5 +23,5 @@ preferred-citation:
   authors:
     - name: "Vade contributors"
   year: 2026
-  version: 0.0.3-alpha
+  version: 0.0.4-alpha
   url: "https://github.com/lshub2010/vade-client"

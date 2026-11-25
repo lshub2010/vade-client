@@ -5,6 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import vade.ui.data.ModelActionsReal
 import vade.ui.data.VadeErrorCategory
@@ -305,6 +306,34 @@ class ModelStateSeamPathTest {
         state.refresh()
         assertIs<ModelPickerContent.NoModels>(state.content(), "refresh() on the seam changes nothing")
         assertNull(state.loadFailure)
+    }
+
+    @Test
+    fun notDiscoverableCoreHidesTheControlOnThisAndTheNextState() = runBlocking {
+        harness { client, transport, scope ->
+            val adapter = ModelActionsReal(client)
+            val state = ModelState.forDefault(adapter, scope, autoRefresh = false)
+            assertTrue(state.canDiscover, "a real adapter starts as discoverable")
+
+            val job = scope.launch { state.discoverUpstream() }
+            waitUntil { transport.record.size >= 1 }
+            transport.push(
+                errorFrame(
+                    idOf(transport.record[0]),
+                    "UNAVAILABLE",
+                    "the configured provider declares its own list",
+                    """{"reason":"not_discoverable"}""",
+                ),
+            )
+            job.join()
+
+            assertFalse(state.canDiscover, "module/mock core must not keep a dead refresh button")
+            assertTrue(adapter.discoveryBlocked, "the verdict belongs to the connection, not this page")
+            val nextPage = ModelState.forDefault(adapter, scope, autoRefresh = false)
+            assertFalse(nextPage.canDiscover, "re-entering Settings must not show the dead button again")
+            nextPage.dispose()
+            state.dispose()
+        }
     }
 
     @Test

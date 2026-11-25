@@ -17,8 +17,8 @@
 
 ## 发布状态
 
-- **当前发布：`0.0.3-alpha`** —— [下载页](https://github.com/lshub2010/vade-client/releases/tag/v0.0.3-alpha)。下列产物由 CI 构建并挂在该 Release 上。
-- 唯一的版本源（[`gradle.properties`](gradle.properties) 里的 `vadeVersion`）是 `0.0.3-alpha`；Android 的 `versionName` 与 MSI 的 `packageVersion`（数字部分 `0.0.3`）都由它派生。
+- **当前发布：`0.0.4-alpha`** —— [下载页](https://github.com/lshub2010/vade-client/releases/tag/v0.0.4-alpha)。下列产物由 CI 构建并挂在该 Release 上。
+- 唯一的版本源（[`gradle.properties`](gradle.properties) 里的 `vadeVersion`）是 `0.0.4-alpha`；Android 的 `versionName` 与 MSI 的 `packageVersion`（数字部分 `0.0.3`）都由它派生。
 - Android APK 由 `:composeApp:assembleDebug` 构建，使用 **debug 签名**（见[debug 签名说明](#debug-签名说明)）。
 
 ## 三端状态
@@ -30,16 +30,16 @@
 | 桌面 · macOS / Linux | ⚠️ 未验证 | 源码与构建路径相同，但没有现成产物，也没有记录在案的验证结果。需自备 JDK 21 从源码构建。 |
 | Web · wasmJs | 🟡 能编译，CI 会打包静态站点 | 页面与 core 同源（或 Origin 在白名单）时可以完成首次配对；构建出的站点尚未在真实浏览器验证。 |
 
-## 下载与安装（0.0.3-alpha）
+## 下载与安装（0.0.4-alpha）
 
-发布页：**<https://github.com/lshub2010/vade-client/releases/tag/v0.0.3-alpha>**
+发布页：**<https://github.com/lshub2010/vade-client/releases/tag/v0.0.4-alpha>**
 
 | 产物 | 平台 | 安装方式 |
 |---|---|---|
-| `vade-ui-0.0.3-alpha-android.apk` | Android | 允许「未知来源」后侧载安装。 |
-| `vade-ui-0.0.3-alpha-windows-x64.msi` | Windows | 运行安装器。若某次发布没有 MSI（WiX 步骤允许失败），改用 zip。 |
-| `vade-ui-0.0.3-alpha-windows-x64.zip` | Windows | 解压到任意目录，运行 `vade-ui.exe`。自带 jlink 运行时，目标机器不需要 JDK。 |
-| `vade-ui-0.0.3-alpha-web.zip` | Web | 解压后用 HTTP 静态服务器托管该目录；不能直接以 `file://` 打开。 |
+| `vade-ui-0.0.4-alpha-android.apk` | Android | 允许「未知来源」后侧载安装。 |
+| `vade-ui-0.0.4-alpha-windows-x64.msi` | Windows | 运行安装器。若某次发布没有 MSI（WiX 步骤允许失败），改用 zip。 |
+| `vade-ui-0.0.4-alpha-windows-x64.zip` | Windows | 解压到任意目录，运行 `vade-ui.exe`。自带 jlink 运行时，目标机器不需要 JDK。 |
+| `vade-ui-0.0.4-alpha-web.zip` | Web | 解压后用 HTTP 静态服务器托管该目录；不能直接以 `file://` 打开。 |
 
 ### debug 签名说明
 
@@ -50,7 +50,7 @@ APK 来自 `debug` 构建变体，本仓库没有配置 release 签名，因此�
 
 ### Windows MSI 与 alpha 版本
 
-`jpackage` 生成 MSI 的 `ProductVersion` 时会去掉 `-alpha` 后缀。数字部分相同的两个 alpha（例如 `0.0.3-alpha.1` 与 `0.0.3-alpha.2`）在 Windows Installer 看来是同一个版本：请先卸载旧版本，或改用免安装 zip。从 `0.0.1` 升到 `0.0.3` 属于正常版本变化。
+`jpackage` 生成 MSI 的 `ProductVersion` 时会去掉 `-alpha` 后缀。数字部分相同的两个 alpha（例如 `0.0.4-alpha.1` 与 `0.0.4-alpha.2`）在 Windows Installer 看来是同一个版本：请先卸载旧版本，或改用免安装 zip。从 `0.0.1` 升到 `0.0.3` 属于正常版本变化。
 
 ## 连接 core
 
