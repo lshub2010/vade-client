@@ -8,7 +8,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.onSubscription
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -196,7 +196,7 @@ class RealCoreRestartSnapshotE2ETest {
             val subscribed = CompletableDeferred<Unit>()
             collector = CoroutineScope(Dispatchers.Default).launch {
                 first.observeEvents()
-                    .onSubscription { subscribed.complete(Unit) }
+                    .onStart { subscribed.complete(Unit) }
                     .collect { events.trySend(it) }
             }
             subscribed.await()
