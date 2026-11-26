@@ -242,7 +242,7 @@ class RealCoreRestartSnapshotE2ETest {
             assertEquals(
                 cookie,
                 assertNotNull(PairingStores.load(), "重启后必须能从磁盘读回凭据").cookie,
-                "磁盘上的 cookie 必须跨重启存活",
+                "磁盘上的 cookie 必须与重启前一致",
             )
 
             assertTrue(handle.isAlive, "本测试只重启客户端：core 必须一直活着")
