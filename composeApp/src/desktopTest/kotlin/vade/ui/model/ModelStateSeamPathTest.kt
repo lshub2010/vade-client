@@ -337,6 +337,37 @@ class ModelStateSeamPathTest {
     }
 
     @Test
+    fun retryAfterAnUpstreamErrorRunsDiscoverAgain() = runBlocking {
+        harness { client, transport, scope ->
+            val adapter = ModelActionsReal(client)
+            val state = ModelState.forDefault(adapter, scope, autoRefresh = false)
+
+            val first = scope.launch { state.discoverUpstream() }
+            waitUntil { transport.record.size >= 1 }
+            transport.push(errorFrame(idOf(transport.record[0]), "UNAVAILABLE", "upstream is down"))
+            first.join()
+            assertTrue(state.discoveryFailed, "a retryable upstream error must be retryable")
+            assertTrue(state.canDiscover, "upstream_error is not the terminal not_discoverable verdict")
+
+            val retry = scope.launch { state.retryLoad() }
+            waitUntil { transport.record.size >= 2 }
+            assertEquals("model/discover", requestOf(transport.record[1]).first,
+                "retry after discovery failure must not degrade into model/list")
+            retry.cancel()
+            state.dispose()
+        }
+    }
+
+    @Test
+    fun initialAutoRefreshBlocksDiscoveryBeforeTheCoroutineRuns() = runBlocking {
+        harness { client, _, scope ->
+            val state = ModelState.forRealDefault(client, scope, autoRefresh = true)
+            assertTrue(state.loadInFlight, "the first frame must already be busy")
+            state.dispose()
+        }
+    }
+
+    @Test
     fun seamDefaultScopeStaysWritableAndUsesTheSeamWrite() = runBlocking {
         val actions = InMemoryModelActions()
         val state = ModelState.forDefault(actions)

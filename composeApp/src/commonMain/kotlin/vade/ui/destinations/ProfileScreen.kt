@@ -317,14 +317,14 @@ fun ProfileScreen(
         // 入口（不是第二套重试）；点击后 loadFailure 清空、loadInFlight 点亮，卡片回到
         // 「正在加载模型列表」——结果只会是三态之一，绝不洗成空列表。方法不存在（-32601）
         // 走卡的只读降级，不落进这里（readOnly 时 refresh 直接 return，loadFailure 为空）。
-        if (modelState.loadFailure != null) {
+        if (modelState.loadFailure != null && !modelState.discoverUnsupported && !modelState.readOnly) {
             Row(
                 Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(percent = 50))
                     .background(skin.colors.surfaceVariant)
                     .clickable(enabled = !modelState.discovering && !modelState.loadInFlight) {
-                        retryScope.launch { modelState.refresh() }
+                        retryScope.launch { modelState.retryLoad() }
                     }
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -337,7 +337,7 @@ fun ProfileScreen(
                 )
                 Spacer(Modifier.width(6.dp))
                 UiText(
-                    "重试拉取模型列表",
+                    if (modelState.discoveryFailed) "重试刷新上游模型" else "重试拉取模型列表",
                     size = 12,
                     weight = FontWeight.Medium,
                     color = skin.colors.onSurface,

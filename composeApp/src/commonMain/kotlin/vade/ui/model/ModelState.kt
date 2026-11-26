@@ -127,6 +127,10 @@ class ModelState private constructor(
     var discoverUnsupported: Boolean by mutableStateOf(false)
         private set
 
+    /** Last terminal discovery failure was a retryable upstream error (not a dead control). */
+    var discoveryFailed: Boolean by mutableStateOf(false)
+        private set
+
     /** True only when the real adapter can attempt discovery (not the fixture seam). */
     val canDiscover: Boolean get() =
         real != null && !readOnly && !discoverUnsupported && !real.adapter.discoveryBlocked
@@ -230,7 +234,13 @@ class ModelState private constructor(
                 )
             }
             val state = ModelState(actions, scope, wiring)
-            if (wiring != null && autoRefresh) wiring.scope.launch { state.refresh() }
+            if (wiring != null && autoRefresh) {
+                // Set the flag synchronously: the launched coroutine may not run before
+                // the first composition, and a click in that window must not fall into
+                // `discoverUpstream`'s `loadInFlight` early-return without feedback.
+                state.loadInFlight = true
+                wiring.scope.launch { state.refresh() }
+            }
             return state
         }
 
@@ -456,14 +466,19 @@ class ModelState private constructor(
         val wiring = real ?: return
         discovering = true
         loadFailure = null
+        discoveryFailed = false
         try {
             wiring.adapter.discoverModels()
             if (disposed) return
             discoverUnsupported = false
+            discoveryFailed = false
             refresh()
         } catch (c: CancellationException) {
             currentCoroutineContext().ensureActive()
-            if (!disposed) loadFailure = modelLoadFailureOf(c)
+            if (!disposed) {
+                discoveryFailed = true
+                loadFailure = modelLoadFailureOf(c)
+            }
         } catch (t: Throwable) {
             if (disposed) return
             if (t is VadeException && (t.isMethodMissing() || t.reason == "not_discoverable")) {
@@ -472,11 +487,24 @@ class ModelState private constructor(
                 // next page does not render the same dead control.
                 discoverUnsupported = true
                 wiring.adapter.discoveryBlocked = true
+            } else {
+                discoveryFailed = true
             }
             loadFailure = modelLoadFailureOf(t)
         } finally {
             discovering = false
         }
+    }
+
+    /**
+     * The one retry entry the card uses. A discovery failure must re-run
+     * `model/discover`; re-pulling `model/list` cannot repair an upstream
+     * probe and would leave the user clicking twice. Terminal verdicts are
+     * hidden by the UI instead.
+     */
+    suspend fun retryLoad() {
+        if (discoveryFailed && canDiscover) discoverUpstream() else refresh()
+    }
     }
 
     /** Every drawable row with its selection / clickability decision (server order kept). */
