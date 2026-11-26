@@ -505,7 +505,6 @@ class ModelState private constructor(
     suspend fun retryLoad() {
         if (discoveryFailed && canDiscover) discoverUpstream() else refresh()
     }
-    }
 
     /** Every drawable row with its selection / clickability decision (server order kept). */
     fun rows(): List<ModelRow> = when (val content = content()) {
