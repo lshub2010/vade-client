@@ -313,10 +313,10 @@ fun ProfileScreen(
             UiText(notice, size = 11, color = skin.colors.onSurfaceVariant)
         }
         // G · 拉取失败的可重试出口：ModelPickerCard 的 LoadFailed 文案承诺「重试后再判断」，
-        // 但卡内没有重试钮（model/ 包本棒不可改），这里补上它。refresh() 就是既有的拉取
-        // 入口（不是第二套重试）；点击后 loadFailure 清空、loadInFlight 点亮，卡片回到
-        // 「正在加载模型列表」——结果只会是三态之一，绝不洗成空列表。方法不存在（-32601）
-        // 走卡的只读降级，不落进这里（readOnly 时 refresh 直接 return，loadFailure 为空）。
+        // 但卡内没有重试钮（model/ 包本棒不可改），这里补上它。retryLoad() 会按最近一次
+        // 失败来源分派：发现失败重发 model/discover，列表失败才 refresh()；点击后
+        // loadFailure 清空、loadInFlight 点亮，卡片回到「正在加载模型列表」——结果只会是
+        // 三态之一，绝不洗成空列表。方法不存在（-32601）走卡的只读降级，不落进这里。
         if (modelState.loadFailure != null && !modelState.discoverUnsupported && !modelState.readOnly) {
             Row(
                 Modifier
