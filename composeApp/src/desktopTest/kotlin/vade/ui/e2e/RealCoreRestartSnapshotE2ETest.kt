@@ -225,7 +225,7 @@ class RealCoreRestartSnapshotE2ETest {
             assertNull(resume.snapshot, "同一客户端从自己的水位续订必须是 replay（snapshot = null）")
             assertTrue(resume.fromSeq > 0, "replay 的 attach 点必须是非零 seq")
             val attached = awaitSessionAttached(events, sessionId, CoreBootBudget.WAIT_TIMEOUT_MS)
-            assertEquals(0, attached.replayCount, "按水位续订的 replay_count 必须为 0（不是全量重放）")
+            assertEquals(0, attached.replayCount ?: -1, "按水位续订的 replay_count 必须为 0（不是全量重放）")
             assertEquals(before + 1, resume.fromSeq, "replay 必须从客户端水位 +1 开始")
             awaitAppliedThrough(real1, sessionId, resume.fromSeq, CoreBootBudget.WAIT_TIMEOUT_MS)
             val anchor = resume.fromSeq
@@ -412,7 +412,7 @@ class RealCoreRestartSnapshotE2ETest {
             val event = withTimeoutOrNull((deadline - System.currentTimeMillis()).coerceAtLeast(1)) {
                 channel.receive()
             } ?: break
-            if (event is SessionAttachedEvent && event.sessionId == sessionId) return event
+            if (event is SessionAttachedEvent && event.sessionId == sessionId && !event.snapshot) return event
         }
         fail("session $sessionId 在 ${timeoutMs}ms 内没有等到 session.attached")
     }
