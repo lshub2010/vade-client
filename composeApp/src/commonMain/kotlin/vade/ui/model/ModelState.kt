@@ -489,6 +489,7 @@ class ModelState private constructor(
             }
             discoverUnsupported = false
             discoveryFailed = false
+            lastNotice = null
             refresh()
         } catch (c: CancellationException) {
             currentCoroutineContext().ensureActive()
