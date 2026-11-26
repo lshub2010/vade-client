@@ -127,6 +127,10 @@ class ModelState private constructor(
     var discoverUnsupported: Boolean by mutableStateOf(false)
         private set
 
+    /** Last terminal discovery failure was a retryable upstream error (not a dead control). */
+    var discoveryFailed: Boolean by mutableStateOf(false)
+        private set
+
     /** True only when the real adapter can attempt discovery (not the fixture seam). */
     val canDiscover: Boolean get() =
         real != null && !readOnly && !discoverUnsupported && !real.adapter.discoveryBlocked
@@ -230,7 +234,14 @@ class ModelState private constructor(
                 )
             }
             val state = ModelState(actions, scope, wiring)
-            if (wiring != null && autoRefresh) wiring.scope.launch { state.refresh() }
+            if (wiring != null && autoRefresh) {
+                // Set the flag synchronously: the launched coroutine may not run before
+                // the first composition. Without this, a click in that window could
+                // start a second, concurrent discovery before the initial pull marks
+                // itself busy.
+                state.loadInFlight = true
+                wiring.scope.launch { state.refresh() }
+            }
             return state
         }
 
@@ -393,6 +404,10 @@ class ModelState private constructor(
         loadAttempted = true
         loadInFlight = true
         loadFailure = null
+        // A list refresh is not a discovery retry: if this pull fails, the
+        // retry control must go back to model/list, not keep an old discover
+        // verdict.
+        discoveryFailed = false
         val generation = ++loadGeneration
         try {
             val sessionId = (scope as? ModelScope.Session)?.sessionId
@@ -454,16 +469,34 @@ class ModelState private constructor(
     suspend fun discoverUpstream() {
         if (disposed || discovering || loadInFlight) return
         val wiring = real ?: return
+        val previousFailure = loadFailure
         discovering = true
         loadFailure = null
+        discoveryFailed = false
         try {
-            wiring.adapter.discoverModels()
+            val contacted = wiring.adapter.discoverModels()
             if (disposed) return
+            if (!contacted) {
+                // Core's 2 s cooldown answered from cache instead of probing the
+                // upstream. Do not turn a failed retry into a visible success:
+                // keep the error and say what actually happened.
+                if (previousFailure != null) {
+                    loadFailure = previousFailure
+                    discoveryFailed = true
+                }
+                lastNotice = "上游仍在 2 秒冷却内，已复用缓存，尚未重新探测"
+                return
+            }
             discoverUnsupported = false
+            discoveryFailed = false
+            lastNotice = null
             refresh()
         } catch (c: CancellationException) {
             currentCoroutineContext().ensureActive()
-            if (!disposed) loadFailure = modelLoadFailureOf(c)
+            if (!disposed) {
+                discoveryFailed = true
+                loadFailure = modelLoadFailureOf(c)
+            }
         } catch (t: Throwable) {
             if (disposed) return
             if (t is VadeException && (t.isMethodMissing() || t.reason == "not_discoverable")) {
@@ -472,11 +505,23 @@ class ModelState private constructor(
                 // next page does not render the same dead control.
                 discoverUnsupported = true
                 wiring.adapter.discoveryBlocked = true
+            } else {
+                discoveryFailed = true
             }
             loadFailure = modelLoadFailureOf(t)
         } finally {
             discovering = false
         }
+    }
+
+    /**
+     * The one retry entry the card uses. A discovery failure must re-run
+     * `model/discover`; re-pulling `model/list` cannot repair an upstream
+     * probe and would leave the user clicking twice. Terminal verdicts are
+     * hidden by the UI instead.
+     */
+    suspend fun retryLoad() {
+        if (discoveryFailed && canDiscover) discoverUpstream() else refresh()
     }
 
     /** Every drawable row with its selection / clickability decision (server order kept). */

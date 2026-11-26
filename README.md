@@ -17,8 +17,8 @@ This repository is the **client**: one Compose Multiplatform UI shared by Androi
 
 ## Release status
 
-- **Current release: `0.0.4-alpha`** — [download page](https://github.com/lshub2010/vade-client/releases/tag/v0.0.4-alpha). The assets below were built by CI and attached to that release.
-- The single version source (`vadeVersion` in [`gradle.properties`](gradle.properties)) is `0.0.4-alpha`; the Android `versionName` and the MSI `packageVersion` (numeric `0.0.4`) derive from it.
+- **Current release: `0.0.5-alpha`** — [download page](https://github.com/lshub2010/vade-client/releases/tag/v0.0.5-alpha). The assets below were built by CI and attached to that release.
+- The single version source (`vadeVersion` in [`gradle.properties`](gradle.properties)) is `0.0.5-alpha`; the Android `versionName` and the MSI `packageVersion` (numeric `0.0.4`) derive from it.
 - The Android APK is built with `:composeApp:assembleDebug` and is **debug-signed** (see [Debug-signed APK](#debug-signed-apk)).
 
 ## Platform status
@@ -30,16 +30,16 @@ This repository is the **client**: one Compose Multiplatform UI shared by Androi
 | Desktop · macOS / Linux | ⚠️ Not verified | Same source and build path, but no prebuilt artifacts and no recorded test pass. Build from source with JDK 21. |
 | Web · wasmJs | 🟡 Compiles; CI packages a static site | First pairing works when the page is served from the core origin (or an allowlisted Origin); the built site has not been verified in a real browser here. |
 
-## Download and install (0.0.4-alpha)
+## Download and install (0.0.5-alpha)
 
-Release page: **<https://github.com/lshub2010/vade-client/releases/tag/v0.0.4-alpha>**
+Release page: **<https://github.com/lshub2010/vade-client/releases/tag/v0.0.5-alpha>**
 
 | Asset | Platform | How to install |
 |---|---|---|
-| `vade-ui-0.0.4-alpha-android.apk` | Android | Sideload the APK (allow installation from unknown sources). |
-| `vade-ui-0.0.4-alpha-windows-x64.msi` | Windows | Run the installer. If a release has no MSI (the WiX step is allowed to fail), use the zip. |
-| `vade-ui-0.0.4-alpha-windows-x64.zip` | Windows | Unzip anywhere and run `vade-ui.exe`. The bundled jlink runtime means no JDK is needed. |
-| `vade-ui-0.0.4-alpha-web.zip` | Web | Unzip and serve the directory over HTTP; it will not run from `file://`. |
+| `vade-ui-0.0.5-alpha-android.apk` | Android | Sideload the APK (allow installation from unknown sources). |
+| `vade-ui-0.0.5-alpha-windows-x64.msi` | Windows | Run the installer. If a release has no MSI (the WiX step is allowed to fail), use the zip. |
+| `vade-ui-0.0.5-alpha-windows-x64.zip` | Windows | Unzip anywhere and run `vade-ui.exe`. The bundled jlink runtime means no JDK is needed. |
+| `vade-ui-0.0.5-alpha-web.zip` | Web | Unzip and serve the directory over HTTP; it will not run from `file://`. |
 
 ### Debug-signed APK
 
@@ -50,7 +50,7 @@ The APK comes from the `debug` build variant, and this repository has no release
 
 ### Windows MSI and alpha versions
 
-`jpackage` derives the MSI `ProductVersion` by dropping the `-alpha` suffix. Two alphas with the same numeric `x.y.z` (for example `0.0.4-alpha.1` and `0.0.4-alpha.2`) are therefore indistinguishable to Windows Installer: uninstall the older build first, or use the portable zip. Moving from `0.0.3` to `0.0.4` is a normal version change.
+`jpackage` derives the MSI `ProductVersion` by dropping the `-alpha` suffix. Two alphas with the same numeric `x.y.z` (for example `0.0.5-alpha.1` and `0.0.5-alpha.2`) are therefore indistinguishable to Windows Installer: uninstall the older build first, or use the portable zip. Moving from `0.0.3` to `0.0.4` is a normal version change.
 
 ## Connect to a core
 
