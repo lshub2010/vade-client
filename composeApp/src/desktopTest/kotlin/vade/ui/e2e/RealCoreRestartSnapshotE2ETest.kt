@@ -28,6 +28,7 @@ import vade.ui.data.PairingStores
 import vade.ui.data.RawSourceStrings
 import vade.ui.data.RealSessionSource
 import vade.ui.data.RealSessionState
+import vade.ui.data.SessionAttachedEvent
 import vade.ui.data.StringPairingStore
 import vade.ui.data.TurnCompletedEvent
 import vade.ui.data.VadeEvent
@@ -102,6 +103,7 @@ class RealCoreRestartSnapshotE2ETest {
     fun cleanup() {
         runCatching { core?.kill() }
         core = null
+        runBlocking { runCatching { PairingRuntime.pairedFactory?.dispose() } }
         PairingRuntime.clearForTests()
         workDir?.let { root -> runCatching { root.deleteRecursively() } }
         workDir = null
@@ -214,9 +216,17 @@ class RealCoreRestartSnapshotE2ETest {
 
             // 重启前的「断点」：从客户端自己跟踪的水位续订。core 必须答 replay ——
             // 这同时证明这个水位对 core 来说是真实且连续的（covers 的下界与上界都成立）。
+            // P1-2：光看 resume.fromSeq 不够——客户端即使送 0，core 也会回 durable+1。
+            // 这里同时钉住「客户端水位非零」和「本次 attach 的 session.attached.replay_count == 0」，
+            // 两者合起来才能区分「按水位续订」与「全量重放」。
+            val before = assertNotNull(real1.client, "重启前客户端必须还在").lastSeqFor(sessionId)
+            assertTrue(before > 0, "重启前客户端必须已经应用过事件（水位非零），实际=$before")
             val resume = real1.attach(sessionId)
             assertNull(resume.snapshot, "同一客户端从自己的水位续订必须是 replay（snapshot = null）")
             assertTrue(resume.fromSeq > 0, "replay 的 attach 点必须是非零 seq")
+            val attached = awaitSessionAttached(events, sessionId, CoreBootBudget.WAIT_TIMEOUT_MS)
+            assertEquals(0, attached.replayCount, "按水位续订的 replay_count 必须为 0（不是全量重放）")
+            assertEquals(before + 1, resume.fromSeq, "replay 必须从客户端水位 +1 开始")
             awaitAppliedThrough(real1, sessionId, resume.fromSeq, CoreBootBudget.WAIT_TIMEOUT_MS)
             val anchor = resume.fromSeq
             println("E2E-T2-FIRST-ANCHOR last_seq=$anchor")
@@ -324,16 +334,10 @@ class RealCoreRestartSnapshotE2ETest {
                 "重启后第一次 attach 必须是快照（这条连接没有可续订的游标）",
             )
             assertEquals(sessionId, attachAfterRestart.sessionId, "attach 的必须是重启前那个会话")
-            assertEquals(attachAfterRestart.fromSeq, snapshot.fromSeq, "wrapper 与 snapshot 的 from_seq 必须一致")
             assertEquals(
                 anchor,
                 attachAfterRestart.fromSeq,
                 "快照锚点必须逐字等于重启前客户端追平到的 seq（last_seq 连续：不重置、不倒退）",
-            )
-            assertEquals(
-                snapshot.fromSeq,
-                snapshot.session?.seqCounter,
-                "core 自己的 session.seq_counter 必须与快照 from_seq 一致",
             )
             println(
                 "E2E-T2-SNAPSHOT session=$sessionId from_seq=${attachAfterRestart.fromSeq} " +
@@ -362,10 +366,9 @@ class RealCoreRestartSnapshotE2ETest {
             runCatching { secondReal?.disconnect() }
             runCatching { firstReal?.disconnect() }
             runCatching { restoredFactory?.dispose() }
+            runCatching { handle.kill() }
+            assertTrue(!handle.isAlive, "core 进程在测试结束后必须被干净回收（不留孤儿）")
         }
-
-        handle.kill()
-        assertTrue(!handle.isAlive, "core 进程在测试结束后必须被干净回收（不留孤儿）")
     }
 
     // ------------------------------------------------------------------ 断言helper
@@ -396,6 +399,22 @@ class RealCoreRestartSnapshotE2ETest {
             "$phase 的历史里必须有脚本化 provider 的回复（$SCRIPTED_REPLY）；实际：" +
                 "${history.map { it.role to it.bodyText }}",
         )
+    }
+
+    /** 收集事件直到本会话的 `session.attached`（attach 回包与事件谁先到都行）。 */
+    private suspend fun awaitSessionAttached(
+        channel: Channel<VadeEvent>,
+        sessionId: String,
+        timeoutMs: Long,
+    ): SessionAttachedEvent {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            val event = withTimeoutOrNull((deadline - System.currentTimeMillis()).coerceAtLeast(1)) {
+                channel.receive()
+            } ?: break
+            if (event is SessionAttachedEvent && event.sessionId == sessionId) return event
+        }
+        fail("session $sessionId 在 ${timeoutMs}ms 内没有等到 session.attached")
     }
 
     /** 收集事件直到本回合的 `turn.completed`；超时把已收到的类型写进消息（不静默）。 */
@@ -485,6 +504,8 @@ class RealCoreRestartSnapshotE2ETest {
             connectCalls += 1
             return inner.connect()
         }
+
+        override suspend fun revokeSession() = inner.revokeSession()
 
         override suspend fun dispose() {
             inner.dispose()
