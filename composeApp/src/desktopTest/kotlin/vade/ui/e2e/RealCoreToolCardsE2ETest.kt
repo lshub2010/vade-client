@@ -168,7 +168,7 @@ class RealCoreToolCardsE2ETest {
             "--approval-timeout 必须原样落到 core 的 policy.approval_timeout_s：$ready",
         )
 
-        // ① core 侧的事实：boom 的 risk 由 `[policy.tool_risk]` 抬到 high（两侧都要，见启动器 KDoc）。
+        // ① core 侧的事实：boom 的 risk 被抬到 high（config 或 runtime override，见启动器 KDoc）。
         val policy = awaitStage(lines, "policy") { process.isAlive }
         assertEquals("high", StrField(policy, "engine"), "PolicyEngine 侧 risk 必须是 high：$policy")
         assertEquals("high", StrField(policy, "registry"), "工具绑定侧 risk 必须是 high：$policy")
