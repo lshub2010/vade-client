@@ -240,6 +240,29 @@ class ApprovalWireTest {
     }
 
     @Test
+    fun canonicalApprovalToolIdDoesNotBindAcrossDifferentModules() = runBlocking {
+        val chat = realChat(ApprovalProbe(FakeTranscript()))
+        assertTrue(chat.loadHistory())
+
+        // 同名工具、不同模块：other__boom 不是 com.example.echo/boom，不能误绑。
+        chat.applyLiveEvent(toolCall(seq = 1, callId = "call-other", tool = "other__boom"))
+        chat.applyLiveEvent(
+            approvalRequired(
+                seq = 2,
+                requestId = "req-other",
+                tool = "com.example.echo/boom",
+                expiresAt = Long.MAX_VALUE,
+            ),
+        )
+
+        val cards = chat.items.filterIsInstance<ChatItem.Tool>()
+        assertEquals(2, cards.size, "找不到目标时必须走尾部降级卡，而不是误绑另一模块的同名工具")
+        assertEquals(ToolRunState.Running, cards.first { it.call.id == "call-other" }.call.state)
+        assertNull(chat.approvalRequestId("call-other"))
+        assertNotNull(cards.firstOrNull { it.call.id.startsWith("approval:") })
+    }
+
+    @Test
     fun approvalRequiredIsIdempotentOnReplay() = runBlocking {
         val chat = realChat(ApprovalProbe(FakeTranscript()))
         chat.loadHistory()
