@@ -13,7 +13,10 @@ import vade.ui.protocol.BrowserPairing
 import vade.ui.protocol.ContentPart
 import vade.ui.protocol.DetachParams
 import vade.ui.protocol.KtorTransportFactory
+import vade.ui.protocol.QueueCancelParams
+import vade.ui.protocol.QueueUpdated
 import vade.ui.protocol.SubmitParams
+import vade.ui.protocol.TurnCancelled
 import vade.ui.protocol.TurnCompleted
 import vade.ui.protocol.TurnDelta
 import vade.ui.protocol.TurnQueued
@@ -46,6 +49,7 @@ import kotlin.test.fail
  *
  * Provider：core 自己的测试注入方式 —— `vade.session._build_llm` 换成脚本化的
  * `MockLLMProvider`（core/tests/e2e/test_turn_lifecycle.py 的同类做法），绝不调外部 API。
+ * T6 的排队取消用例走同一个注入点，只是换成阻塞式 `SlowProvider`（`@SLOW_SECONDS@ > 0`）。
  *
  * 环境变量（默认指向本机标准布局，可被脚本覆盖）：
  *   VADE_PYTHON            core 侧 venv 解释器
@@ -72,6 +76,16 @@ class RealCoreE2ETest {
         private const val USAGE_TOTAL = 21L
 
         /**
+         * 慢 provider 阻塞的秒数（T6 排队取消）。
+         *
+         * 只为「第一回合还在跑」提供时间窗：取消排队回合后测试立刻杀 core，
+         * 这个 sleep 永远不会被等到。取 120 s 而不是 30 s —— 慢机上 30 s 可能
+         * 短于「attach + 两次 submit + 若干轮等待」，一旦第一回合先跑完，
+         * 第二回合就会被 dequeue 成 `turn.started`，测试会红在与契约无关的原因上。
+         */
+        private const val SLOW_PROVIDER_SECONDS = 120
+
+        /**
          * 真 core 启动器。协议（stdout 行缓冲，一行一个 JSON 对象）：
          *   {"stage":"boot","data_dir":...}
          *   {"stage":"ready","port":N,"pair_code":"..."}   — uvicorn 已绑定、配对码已铸
@@ -86,6 +100,11 @@ class RealCoreE2ETest {
             PROTOCOL_DIR = r"@PROTOCOL_DIR@"
             sys.path.insert(0, PROTOCOL_DIR)
             sys.path.insert(0, CORE_DIR)
+
+            #: 0 = 脚本化 MockLLMProvider（既有 e2e）；>0 = 一个阻塞这么多秒才吐第一个
+            #: delta 的 provider（T6 排队取消：需要一个「确实还在跑」的回合）。测试
+            #: 取消排队回合后立刻杀进程，所以这个 sleep 永远不会跑完。
+            SLOW_SECONDS = @SLOW_SECONDS@
 
             def emit(obj):
                 print(json.dumps(obj, ensure_ascii=False), flush=True)
@@ -104,6 +123,14 @@ class RealCoreE2ETest {
                 usage = {"prompt_tokens": @USAGE_PROMPT@, "completion_tokens": @USAGE_COMPLETION@, "total_tokens": @USAGE_TOTAL@}
 
                 def _build_llm(cfg, **kwargs):
+                    if SLOW_SECONDS > 0:
+                        # T6：一次阻塞调用 —— 没有 delta、没有 usage，只有 sleep 后的收尾。
+                        # 第一回合因此长时间停在 running，第二个 submit 只能排队。
+                        class SlowProvider:
+                            async def chat(self, messages, *, tools=None, stream=True, model=None, attribution=None):
+                                await asyncio.sleep(SLOW_SECONDS)
+                                yield Delta(text="slow", finish_reason="stop")
+                        return SlowProvider()
                     # core 测试同款 provider 注入：脚本化 Mock，两段文本 delta，usage 挂最后一段。
                     return MockLLMProvider([[
                         Delta(text=args.echo_text),
@@ -286,6 +313,175 @@ class RealCoreE2ETest {
         // 客户端已关：核心进程必须还能被干净杀掉（不留孤儿 python）
         handle.kill()
         assertTrue(!handle.isAlive, "core process terminated after the test")
+    }
+
+    // ------------------------------------------------------------------ 排队取消（T6）
+
+    /**
+     * T6：第一回合还在跑时提交第二回合 → 取消排队中的第二回合。
+     *
+     * 断言链全部来自真 core 的 wire 事件：
+     *   first:  turn.queued → turn.started（**不要求完成**，慢 provider 还在 sleep）
+     *   second: turn.queued → turn.cancelled，且**从未** turn.started / delta / completed
+     *   cancel 后 core 立刻发 queue.updated：running 仍是第一回合、pending 里没有第二回合
+     *
+     * 「从未 started」不是靠 sleep 猜的：core 的 `TurnQueue.cancel()` 先
+     * `emit(turn.cancelled)` 再 `emit(queue.updated)`，同一 session 的 seq 严格 +1 且
+     * 客户端按序投递 —— 收到 seq 更大的那条 queue.updated，就证明它之前不存在
+     * 「还在路上」的第二回合事件。取消/关 core 即可，120 s 的 slow provider 不会被等。
+     */
+    @Test
+    fun realCoreQueueCancelStopsQueuedTurnBeforeItStarts() {
+        val handle = bootSlowCore()
+        runBlocking {
+            val client = VadeClient(
+                VadeClientConfig(
+                    host = "127.0.0.1",
+                    port = handle.readyInfo.port,
+                    browserSession = BrowserPairing(handle.readyInfo.pairCode, clientName = "w-e2e-t6"),
+                    requestTimeoutMs = 15_000,
+                    keepaliveIntervalMs = null,
+                ),
+            )
+            val received = Channel<VadeEvent>(Channel.UNLIMITED)
+            val subscribed = CompletableDeferred<Unit>()
+            val collector = CoroutineScope(Dispatchers.Default).launch {
+                client.events
+                    .onSubscription { subscribed.complete(Unit) }
+                    .collect { received.trySend(it) }
+            }
+            val seen = mutableListOf<VadeEvent>()
+            try {
+                subscribed.await()
+                client.connect()
+                assertTrue(client.awaitConnected(10_000), "real WS upgrade with cookie accepted")
+
+                val attach = client.attach(AttachParams(sessionId = null, lastSeq = null))
+                assertTrue(attach.sessionId.isNotBlank(), "core minted a session id")
+
+                // ---- 第一回合：SlowProvider 阻塞，回合停在 running ----
+                val first = client.uiSubmit(
+                    SubmitParams(
+                        sessionId = attach.sessionId,
+                        clientMsgId = "t6-first-${System.currentTimeMillis()}",
+                        content = listOf(ContentPart.TextPart("T6：第一回合（慢 provider）")),
+                    ),
+                )
+                println("E2E-T6-FIRST turn_id=${first.turnId} queue_pos=${first.queuePos}")
+
+                val firstStarted = awaitEvent(
+                    received,
+                    seen,
+                    label = "turn.started for the first turn",
+                    deadlineMs = CoreBootBudget.WAIT_TIMEOUT_MS,
+                ) { it is TurnStarted && it.payload.turnId == first.turnId } as TurnStarted
+                println("E2E-T6-FIRST-STARTED seq=${firstStarted.seq} state=${firstStarted.payload.state}")
+                assertEquals("running", firstStarted.payload.state, "the first turn is running, not terminal")
+
+                // ---- 第二回合：第一回合还在跑，只能排队 ----
+                val second = client.uiSubmit(
+                    SubmitParams(
+                        sessionId = attach.sessionId,
+                        clientMsgId = "t6-second-${System.currentTimeMillis()}",
+                        content = listOf(ContentPart.TextPart("T6：第二回合（排队后被取消）")),
+                    ),
+                )
+                println("E2E-T6-SECOND turn_id=${second.turnId} queue_pos=${second.queuePos}")
+                assertTrue(second.turnId != first.turnId, "core minted a distinct turn id for the second submit")
+                assertTrue(
+                    second.queuePos >= 1,
+                    "the second turn is queued behind the running one (queue_pos=${second.queuePos})",
+                )
+
+                val secondQueued = awaitEvent(
+                    received,
+                    seen,
+                    label = "turn.queued for the second turn",
+                    deadlineMs = CoreBootBudget.WAIT_TIMEOUT_MS,
+                ) { it is TurnQueued && it.payload.turnId == second.turnId } as TurnQueued
+                assertEquals("queued", secondQueued.payload.state, "the second turn is announced as queued")
+                assertTrue(
+                    seen.none { it is TurnStarted && it.payload.turnId == second.turnId },
+                    "a queued turn must not have started before the cancel",
+                )
+
+                // ---- 取消排队中的第二回合 ----
+                val cancel = client.uiQueueCancel(QueueCancelParams(attach.sessionId, second.turnId))
+                assertTrue(cancel.ok, "ui/queue.cancel answered {ok:true} on the real core")
+
+                val cancelled = awaitEvent(
+                    received,
+                    seen,
+                    label = "turn.cancelled for the second turn",
+                    deadlineMs = CoreBootBudget.WAIT_TIMEOUT_MS,
+                ) { it is TurnCancelled && it.payload.turnId == second.turnId } as TurnCancelled
+                println("E2E-T6-CANCELLED seq=${cancelled.seq} state=${cancelled.payload.state} by=${cancelled.payload.by}")
+                assertEquals("cancelled", cancelled.payload.state, "turn.cancelled carries the terminal state")
+                assertTrue(cancelled.payload.by.isNotBlank(), "turn.cancelled names who cancelled the turn")
+
+                val queueAfterCancel = awaitEvent(
+                    received,
+                    seen,
+                    label = "queue.updated emitted after turn.cancelled",
+                    deadlineMs = CoreBootBudget.WAIT_TIMEOUT_MS,
+                ) { it is QueueUpdated && it.seq > cancelled.seq } as QueueUpdated
+                println(
+                    "E2E-T6-QUEUE seq=${queueAfterCancel.seq} running=${queueAfterCancel.payload.running} " +
+                        "running_state=${queueAfterCancel.payload.runningState} " +
+                        "pending=${queueAfterCancel.payload.pending.map { it.turnId }}",
+                )
+                assertEquals(first.turnId, queueAfterCancel.payload.running, "the first turn is still the running one")
+                assertEquals(
+                    "running",
+                    queueAfterCancel.payload.runningState,
+                    "cancelling a queued turn must not disturb the running one",
+                )
+                assertTrue(
+                    queueAfterCancel.payload.pending.none { it.turnId == second.turnId },
+                    "the cancelled turn left the pending queue",
+                )
+                assertTrue(
+                    queueAfterCancel.payload.pending.none { it.turnId == first.turnId },
+                    "the running turn is not duplicated into pending",
+                )
+
+                // ---- 关键断言：第二回合从未 started / 产出 / 完成 ----
+                val secondTurnEvents = seen.filter { turnIdOf(it) == second.turnId }
+                println("E2E-T6-SECOND-EVENTS ${secondTurnEvents.joinToString(",") { it::class.simpleName ?: "?" }}")
+                assertTrue(
+                    secondTurnEvents.none { it is TurnStarted },
+                    "the cancelled queued turn never started; events=${types(secondTurnEvents)}",
+                )
+                assertTrue(
+                    secondTurnEvents.none { it is TurnDelta },
+                    "the cancelled queued turn never streamed a delta; events=${types(secondTurnEvents)}",
+                )
+                assertTrue(
+                    secondTurnEvents.none { it is TurnCompleted },
+                    "the cancelled queued turn never completed; events=${types(secondTurnEvents)}",
+                )
+                assertTrue(
+                    secondTurnEvents.lastOrNull() is TurnCancelled,
+                    "turn.cancelled is the last event of the cancelled turn; events=${types(secondTurnEvents)}",
+                )
+
+                // 第一回合没有被 queue.cancel 波及：仍在跑、没有终态事件
+                assertTrue(
+                    seen.none { it is TurnCompleted && it.payload.turnId == first.turnId },
+                    "the running turn is still running (no turn.completed for it)",
+                )
+
+                // ---- ui/detach 收尾：取消之后连接仍是健康的 ----
+                val detached = client.uiDetach(DetachParams(sessionId = attach.sessionId))
+                assertEquals(true, detached.ok, "ui/detach ok after the queue cancel")
+            } finally {
+                runCatching { collector.cancel() }
+                runCatching { client.close() }
+            }
+        }
+        // 客户端已关：慢 provider 的 sleep 还挂着，核心进程仍必须能被干净杀掉。
+        handle.kill()
+        assertTrue(!handle.isAlive, "core process terminated after the queue-cancel test")
     }
 
     // ------------------------------------------------------------------ 失败路径
@@ -471,14 +667,34 @@ class RealCoreE2ETest {
     // ------------------------------------------------------------------ 支撑
 
     /** 写 launcher（含镜像常量）→ 起 core → 等 READY（deadline 内轮询）。 */
-    private fun bootCore(echoText: String): CoreHandle {
+    private fun bootCore(echoText: String): CoreHandle =
+        bootCoreWith(
+            echoText = echoText,
+            slowSeconds = 0,
+            launcherName = "e2e_core_launcher.py",
+        )
+
+    /**
+     * 慢 core：同一个 launcher 协议，只把注入的 provider 换成阻塞
+     * [SLOW_PROVIDER_SECONDS] 秒的 `SlowProvider` —— 第一个回合提交后会长时间停在
+     * `running`，后续 submit 只能排队（T6 排队取消）。
+     */
+    private fun bootSlowCore(): CoreHandle =
+        bootCoreWith(
+            echoText = "unused",
+            slowSeconds = SLOW_PROVIDER_SECONDS,
+            launcherName = "e2e_slow_core_launcher.py",
+        )
+
+    private fun bootCoreWith(echoText: String, slowSeconds: Int, launcherName: String): CoreHandle {
         val dir = newTempDir()
-        val launcher = dir.resolve("e2e_core_launcher.py")
+        val launcher = dir.resolve(launcherName)
         launcher.writeText(
             LAUNCHER_TEMPLATE
                 .replace("@CORE_DIR@", CORE_PKG_DIR)
                 .replace("@PROTOCOL_DIR@", PROTOCOL_PY_DIR)
                 .replace("@ECHO_TEXT@", echoText)
+                .replace("@SLOW_SECONDS@", slowSeconds.toString())
                 .replace("@USAGE_PROMPT@", USAGE_PROMPT.toString())
                 .replace("@USAGE_COMPLETION@", USAGE_COMPLETION.toString())
                 .replace("@USAGE_TOTAL@", USAGE_TOTAL.toString()),
@@ -518,6 +734,42 @@ class RealCoreE2ETest {
     }
 
     private fun types(events: List<VadeEvent>): String = events.joinToString(",") { it::class.simpleName ?: "?" }
+
+    /**
+     * 收到第一条满足 [match] 的事件为止（含），把途中收到的每条事件都追加进 [seen]。
+     *
+     * 与 [collectUntilTerminal] 的区别：这里等的是「某条特定事件」（例如第一回合的
+     * `turn.started`、第二回合的 `turn.cancelled`），不要求回合进入终态 —— T6 里第一
+     * 回合**故意**不完成。每次接收都带同一个 deadline，超时失败时把已收到的类型序列
+     * 一并带进消息，免得为了一条红去翻 core 日志。
+     */
+    private suspend fun awaitEvent(
+        channel: Channel<VadeEvent>,
+        seen: MutableList<VadeEvent>,
+        label: String,
+        deadlineMs: Long,
+        match: (VadeEvent) -> Boolean,
+    ): VadeEvent {
+        val end = System.currentTimeMillis() + deadlineMs
+        while (System.currentTimeMillis() < end) {
+            val next = withTimeoutOrNull((end - System.currentTimeMillis()).coerceAtLeast(1)) {
+                channel.receive()
+            } ?: break
+            seen += next
+            if (match(next)) return next
+        }
+        fail("no $label within ${deadlineMs}ms; got ${types(seen)}")
+    }
+
+    /** 把事件归到它所属的回合（T6 用它证明「第二回合只有 queued + cancelled」）。 */
+    private fun turnIdOf(event: VadeEvent): String? = when (event) {
+        is TurnQueued -> event.payload.turnId
+        is TurnStarted -> event.payload.turnId
+        is TurnDelta -> event.payload.turnId
+        is TurnCancelled -> event.payload.turnId
+        is TurnCompleted -> event.payload.turnId
+        else -> null
+    }
 
     private fun newTempDir(): File = Files.createTempDirectory("vade-e2e-core-").toFile()
 }
