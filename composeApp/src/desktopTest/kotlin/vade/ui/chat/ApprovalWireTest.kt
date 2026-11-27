@@ -259,7 +259,8 @@ class ApprovalWireTest {
         assertEquals(2, cards.size, "找不到目标时必须走尾部降级卡，而不是误绑另一模块的同名工具")
         assertEquals(ToolRunState.Running, cards.first { it.call.id == "call-other" }.call.state)
         assertNull(chat.approvalRequestId("call-other"))
-        assertNotNull(cards.firstOrNull { it.call.id.startsWith("approval:") })
+        assertTrue(cards.firstOrNull { it.call.id.startsWith("approval:") } != null)
+        Unit
     }
 
     @Test
