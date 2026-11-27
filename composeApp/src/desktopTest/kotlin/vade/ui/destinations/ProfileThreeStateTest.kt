@@ -26,6 +26,7 @@ import vade.ui.protocol.VadeClient
 import vade.ui.protocol.VadeErrorCodes
 import vade.ui.protocol.errorFrame
 import vade.ui.protocol.idOf
+import vade.ui.protocol.requestOf
 import vade.ui.protocol.responseFrame
 import vade.ui.protocol.testClient
 import vade.ui.skin.BottomBarStyle
@@ -311,6 +312,128 @@ class ProfileThreeStateTest : IsolatedPreferencesTest() {
             onNodeWithText("模型列表加载失败").assertDoesNotExist()
             onNodeWithText("重试拉取模型列表").assertDoesNotExist()
             assertTrue(nonBlankTexts().isNotEmpty(), "重试恢复后整页不许裸空白")
+        } finally {
+            runBlocking { client.close() }
+        }
+    }
+
+    // ======= 6 · 0.0.5 已知缺口 · 发现失败的重试：一次点击只发一帧 model/discover
+
+    /**
+     * 设置页「刷新上游模型列表」的失败重试必须走 `retryLoad()` 的发现分支：上游探测失败
+     * 之后再发 `model/list` 修不好任何东西，用户只会被要求点第二次。
+     *
+     * 这条 UI 测把 state 层语义（`ModelStateSeamPathTest.retryAfterAnUpstreamErrorRunsDiscoverAgain`）
+     * 钉到真实渲染上，钉四件事：
+     *  1. 首拉 `model/list` 成功后点「刷新上游模型列表」，新增帧是 `model/discover`；
+     *  2. discover 回 `UNAVAILABLE` 后，失败脸配的是「重试刷新上游模型」——不是列表重试文案；
+     *  3. **点一次重试恰好新增一帧**（精确计数，不是「至少一帧」），方法仍是 `model/discover`；
+     *  4. 失败没有被伪装成成功：重试再失败，失败脸原样保留；`cached=true` 的冷却回包也
+     *     不能洗掉失败，只多一句「复用缓存」提示（与 ModelState 的真实语义一致）。
+     */
+    @Test
+    fun discoverFailureRetrySendsExactlyOneDiscoverFrameAndKeepsTheFailure() = runComposeUiTest {
+        // 60s：与列表重试测同理——点重试后的在途窗口不能被 2s 的请求超时打断，否则那次
+        // 超时会被当成一次「真实失败」回包，掩盖我们要数的帧与文案。
+        val (client, factory) = connectedClient(requestTimeoutMs = 60_000)
+        try {
+            setProfile(client)
+            val transport = awaitModelListRequest(factory)
+            expandModelPicker()
+            transport.push(
+                responseFrame(
+                    idOf(transport.record[0]),
+                    """{"revision":1,"not_modified":false,"models":[""" +
+                        modelEntryJson("claude-sonnet", "Claude Sonnet") +
+                        """],"default":{"model_id":"claude-sonnet","source":"config","resolved":true}}""",
+                ),
+            )
+            awaitText("Claude Sonnet")
+
+            // 1 · 「刷新上游模型列表」= 一帧 model/discover，不是又一次 model/list。
+            val beforeRefresh = transport.record.size
+            onNodeWithText("刷新上游模型列表").performScrollTo().performClick()
+            waitUntil(timeoutMillis = 10_000) { transport.record.size > beforeRefresh }
+            assertEquals(beforeRefresh + 1, transport.record.size, "点一次刷新上游只许发一帧")
+            val discoverFrame = transport.record[beforeRefresh]
+            assertEquals(
+                "model/discover",
+                requestOf(discoverFrame).first,
+                "刷新上游必须是 model/discover，不能拿 model/list 冒充",
+            )
+
+            // 2 · 上游探测失败 → 失败脸 + 发现专用的重试文案（列表重试文案必须缺席）。
+            // 注意此处的真实语义：首拉已经成功，models 非空，所以卡片正文保留旧行，失败
+            // 走卡头的 `FailureNotice` 错误行（UNAVAILABLE → 「连接或本地视图已过期」+
+            // core 原话）——失败发现绝不清空已有列表。
+            transport.push(errorFrame(idOf(discoverFrame), "UNAVAILABLE", "upstream catalog is down"))
+            awaitText("重试刷新上游模型")
+            onNodeWithText("连接或本地视图已过期", substring = true).assertExists()
+            onNodeWithText("upstream catalog is down", substring = true).assertExists()
+            // 卡头 currentLabel 与展开行都会出现这个标题，用集合断言避开「恰好一个节点」的假设。
+            assertTrue(
+                onAllNodesWithText("Claude Sonnet").fetchSemanticsNodes().isNotEmpty(),
+                "发现失败绝不能清空已拉到的模型行",
+            )
+            onNodeWithText("重试拉取模型列表").assertDoesNotExist()
+            onNodeWithText("无可用模型").assertDoesNotExist()
+            assertEquals(beforeRefresh + 1, transport.record.size, "失败回包不该触发任何补发")
+            waitForIdle() // 让 discovering=false / 重试行启用这一批快照写入先落定再点
+
+            // 3 · 点一次重试：恰好一帧，且仍是 model/discover。
+            val beforeRetry = transport.record.size
+            onNodeWithText("重试刷新上游模型").performScrollTo().performClick()
+            waitUntil(timeoutMillis = 10_000) { transport.record.size > beforeRetry }
+            // 先证明重试行真的收起（点击生效、状态回到在途），再推失败回包；否则下面
+            // 的 awaitText 可能看到的是点击前就存在的旧节点。
+            waitUntil(timeoutMillis = 10_000) {
+                onAllNodesWithText("重试刷新上游模型").fetchSemanticsNodes().isEmpty()
+            }
+            val retryFrame = transport.record[beforeRetry]
+            assertEquals(
+                "model/discover",
+                requestOf(retryFrame).first,
+                "发现失败的重试必须重发 model/discover，不能退化成 model/list",
+            )
+            transport.push(errorFrame(idOf(retryFrame), "UNAVAILABLE", "upstream catalog is still down"))
+            awaitText("重试刷新上游模型")
+            assertEquals(beforeRetry + 1, transport.record.size, "点一次重试恰好新增一帧")
+            onNodeWithText("upstream catalog is still down", substring = true).assertExists()
+            assertTrue(
+                onAllNodesWithText("Claude Sonnet").fetchSemanticsNodes().isNotEmpty(),
+                "失败重试后旧模型行仍在（失败不等于空列表）",
+            )
+            onNodeWithText("无可用模型").assertDoesNotExist()
+            assertTrue(nonBlankTexts().isNotEmpty(), "发现失败重试态整页不许裸空白")
+            waitForIdle()
+
+            // 4 · 冷却回包（cached=true）不是成功：失败保留，只多一句「复用缓存」。
+            val beforeCachedRetry = transport.record.size
+            onNodeWithText("重试刷新上游模型").performScrollTo().performClick()
+            waitUntil(timeoutMillis = 10_000) { transport.record.size > beforeCachedRetry }
+            waitUntil(timeoutMillis = 10_000) {
+                onAllNodesWithText("重试刷新上游模型").fetchSemanticsNodes().isEmpty()
+            }
+            val cachedFrame = transport.record[beforeCachedRetry]
+            assertEquals("model/discover", requestOf(cachedFrame).first)
+            transport.push(
+                responseFrame(
+                    idOf(cachedFrame),
+                    """{"revision":2,"models":[""" +
+                        modelEntryJson("claude-sonnet", "Claude Sonnet") +
+                        """],"cached":true}""",
+                ),
+            )
+            awaitText("上游仍在 2 秒冷却内，已复用缓存，尚未重新探测")
+            onNodeWithText("连接或本地视图已过期", substring = true).assertExists()
+            onNodeWithText("upstream catalog is still down", substring = true).assertExists()
+            assertTrue(
+                onAllNodesWithText("Claude Sonnet").fetchSemanticsNodes().isNotEmpty(),
+                "cached 回包同样不能清空旧模型行",
+            )
+            onNodeWithText("重试刷新上游模型").assertExists()
+            onNodeWithText("无可用模型").assertDoesNotExist()
+            assertEquals(beforeCachedRetry + 1, transport.record.size, "cached 回包不该再触发 model/list")
         } finally {
             runBlocking { client.close() }
         }
