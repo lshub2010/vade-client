@@ -13,6 +13,8 @@ import vade.ui.protocol.TurnApprovalRequired
 import vade.ui.protocol.TurnApprovalRequiredPayload
 import vade.ui.protocol.TurnApprovalResolved
 import vade.ui.protocol.TurnApprovalResolvedPayload
+import vade.ui.protocol.TurnToolCall
+import vade.ui.protocol.TurnToolCallPayload
 import vade.ui.protocol.VadeErrorCodes
 import vade.ui.protocol.VadeEvent
 import vade.ui.protocol.VadeException
@@ -170,6 +172,28 @@ class ApprovalWireTest {
         wireDispatcher = Dispatchers.Unconfined,
     )
 
+    private fun toolCall(
+        seq: Long,
+        callId: String,
+        turn: String = "t-1",
+        tool: String = "write_file",
+    ) = TurnToolCall(
+        seq = seq,
+        coalesced = false,
+        payload = TurnToolCallPayload(
+            turnId = turn,
+            callId = callId,
+            tool = tool,
+            argsDigest = "sha256:deadbeefdeadbeef",
+            argsPreview = """{"path":"/tmp/demo.txt"}""",
+            argsPreviewMode = "redacted",
+            argsPreviewRedacted = listOf("path"),
+            argsPreviewTruncated = false,
+            startedAt = 1_700_000_000_000,
+            batchId = "bat_0123456789abcdef",
+        ),
+    )
+
     private fun approvalCard(chat: ChatState): ChatItem.Tool =
         chat.items.filterIsInstance<ChatItem.Tool>()
             .first { it.call.state == ToolRunState.PendingApproval }
@@ -189,6 +213,30 @@ class ApprovalWireTest {
         assertEquals("req-1", chat.approvalRequestId(card.call.id), "callId → requestId 单一真相（服务端的 id，不是本地 callId）")
         assertEquals(ApprovalOutcome.Pending, chat.approvalOutcome(card.call.id))
         assertTrue(chat.hasPendingApproval, "真源审批卡挂起中")
+    }
+
+    @Test
+    fun canonicalApprovalToolIdBindsToTheAdvertisedToolCard() = runBlocking {
+        val chat = realChat(ApprovalProbe(FakeTranscript()))
+        assertTrue(chat.loadHistory())
+
+        // 真 core 的两种命名：tool_call 用模型广告名，approval_required 用 canonical id。
+        chat.applyLiveEvent(toolCall(seq = 1, callId = "call-boom", tool = "echo__boom"))
+        chat.applyLiveEvent(
+            approvalRequired(
+                seq = 2,
+                requestId = "req-canonical",
+                tool = "com.example.echo/boom",
+                expiresAt = Long.MAX_VALUE,
+            ),
+        )
+
+        val cards = chat.items.filterIsInstance<ChatItem.Tool>()
+        assertEquals(1, cards.size, "审批请求必须原地升级 boom 卡，不得另建一张降级卡")
+        assertEquals("call-boom", cards.single().call.id)
+        assertEquals(ToolRunState.PendingApproval, cards.single().call.state)
+        assertEquals("req-canonical", chat.approvalRequestId("call-boom"))
+        assertEquals(ApprovalOutcome.Pending, chat.approvalOutcome("call-boom"))
     }
 
     @Test

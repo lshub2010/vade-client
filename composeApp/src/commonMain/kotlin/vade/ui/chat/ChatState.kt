@@ -1728,7 +1728,7 @@ class ChatState(
             if (item !is ChatItem.Tool) continue
             val call = item.call
             if (call.turnId == p.turnId &&
-                call.name == p.tool &&
+                sameToolName(call.name, p.tool) &&
                 call.state == ToolRunState.Running &&
                 !approvalRequestIds.containsKey(call.id)
             ) {
@@ -1737,6 +1737,18 @@ class ChatState(
         }
         return null
     }
+
+    /**
+     * `turn.tool_call.tool` 是模型侧广告名（`echo__boom`），而
+     * `turn.approval_required.tool` 是 core 的 canonical `module_id/tool`
+     * （`com.example.echo/boom`）。两者指同一次调用，但字面不相等；只比裸工具名，
+     * 且仍在同一 `turn_id` + 未绑定 + Running 的约束内，不会把不同工具串到一起。
+     */
+    private fun sameToolName(left: String, right: String): Boolean =
+        left == right || bareToolName(left) == bareToolName(right)
+
+    private fun bareToolName(name: String): String =
+        name.substringAfterLast('/').substringAfterLast("__")
 
     /**
      * `turn.approval_resolved` 到达 → **服务端为准**：覆盖乐观值，并记下 `by`/`scope`
