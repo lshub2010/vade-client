@@ -1728,12 +1728,47 @@ class ChatState(
             if (item !is ChatItem.Tool) continue
             val call = item.call
             if (call.turnId == p.turnId &&
-                call.name == p.tool &&
+                sameToolName(call.name, p.tool) &&
                 call.state == ToolRunState.Running &&
                 !approvalRequestIds.containsKey(call.id)
             ) {
                 return call.id
             }
+        }
+        return null
+    }
+
+    /**
+     * `turn.tool_call.tool` 是模型侧广告名（`echo__boom`），而
+     * `turn.approval_required.tool` 是 core 的 canonical `module_id/tool`
+     * （`com.example.echo/boom`）。两者指同一次调用，但字面不相等；归一到
+     * `(模块短名, 工具名)` 再比，且仍在同一 `turn_id` + 未绑定 + Running 的约束内，
+     * 不会把不同模块的同名工具串到一起。
+     */
+    private fun sameToolName(left: String, right: String): Boolean {
+        if (left == right) return true
+        val a = toolIdentity(left) ?: return false
+        val b = toolIdentity(right) ?: return false
+        return a == b
+    }
+
+    /**
+     * 两种事件命名都归一成 `(模块短名, 工具名)`：
+     * `echo__boom` 与 `com.example.echo/boom` 都得到 `("echo", "boom")`。
+     * 没有分隔符的旧名字（`write_file`）返回 null，只允许字面相等。
+     */
+    private fun toolIdentity(name: String): Pair<String, String>? {
+        val slash = name.lastIndexOf('/')
+        if (slash > 0 && slash < name.length - 1) {
+            val module = name.substring(0, slash).substringAfterLast('.')
+            val tool = name.substring(slash + 1)
+            if (module.isNotEmpty() && tool.isNotEmpty()) return module to tool
+        }
+        val sep = name.lastIndexOf("__")
+        if (sep > 0 && sep < name.length - 2) {
+            val module = name.substring(0, sep).substringAfterLast('.')
+            val tool = name.substring(sep + 2)
+            if (module.isNotEmpty() && tool.isNotEmpty()) return module to tool
         }
         return null
     }
