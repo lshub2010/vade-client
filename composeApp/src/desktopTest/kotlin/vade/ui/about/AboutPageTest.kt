@@ -43,11 +43,11 @@ class AboutPageTest : IsolatedPreferencesTest() {
     // --- 1 · the constant itself -------------------------------------------------
 
     @Test
-    fun versionConstantIsNonEmptySemverWithAlpha() {
+    fun versionConstantIsNonEmptySemverWithPrerelease() {
         assertTrue(VadeBuildConfig.VERSION.isNotBlank(), "版本常量为空——generateVadeBuildConfig 没跑或被改")
         assertTrue(
-            Regex("""\d+\.\d+\.\d+-alpha(\.\d+)?""").matches(VadeBuildConfig.VERSION),
-            "版本必须形如 0.1.0-alpha.1（semver 且带 -alpha 后缀），实际：${VadeBuildConfig.VERSION}",
+            Regex("""\d+\.\d+\.\d+-(alpha|beta)(\.\d+)?""").matches(VadeBuildConfig.VERSION),
+            "版本必须形如 0.1.0-beta（semver 且带 -alpha/-beta 预发布后缀），实际：${VadeBuildConfig.VERSION}",
         )
     }
 
