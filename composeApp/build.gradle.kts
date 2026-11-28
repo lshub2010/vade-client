@@ -226,7 +226,7 @@ android {
         applicationId = "io.github.lshub2010.vade"
         minSdk = 24
         targetSdk = 36
-        versionCode = 6
+        versionCode = 7
         // A5 · derived from gradle.properties `vadeVersion` — no second version literal.
         versionName = vadeVersion
     }
